@@ -151,7 +151,7 @@ After=network.target
 
 [Service]
 Type=simple
-ExecStart=/usr/local/bin/routebox --config /etc/amnezia-box/config.json
+ExecStart=/usr/local/bin/routebox
 Restart=on-failure
 RestartSec=5
 
