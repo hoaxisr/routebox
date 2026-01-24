@@ -188,10 +188,3 @@ echo -e "   ${GREEN}http://${IP}:8080${NC}"
 echo ""
 echo "3. Follow the setup wizard"
 echo ""
-
-# Check if amnezia-box is installed
-if ! command -v sing-box &> /dev/null && ! command -v amnezia-box &> /dev/null; then
-    echo -e "${YELLOW}Note: amnezia-box not found. Install it before using RouteBox.${NC}"
-    echo "      https://github.com/amnezia-vpn/amnezia-box"
-    echo ""
-fi
