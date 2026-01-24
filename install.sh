@@ -1,7 +1,9 @@
 #!/bin/bash
 #
 # RouteBox Installer
-# Usage: curl -fsSL https://raw.githubusercontent.com/hoaxisr/routebox/main/install.sh | sudo bash
+#
+# Install:   curl -fsSL https://raw.githubusercontent.com/hoaxisr/routebox/main/install.sh | sudo bash
+# Uninstall: curl -fsSL https://raw.githubusercontent.com/hoaxisr/routebox/main/install.sh | sudo bash -s -- --uninstall
 #
 
 set -e
@@ -18,17 +20,70 @@ INSTALL_DIR="/usr/local/bin"
 CONFIG_DIR="/etc/amnezia-box"
 SERVICE_NAME="routebox"
 
-echo -e "${GREEN}"
-echo "╔═══════════════════════════════════════════╗"
-echo "║         RouteBox Installer                ║"
-echo "╚═══════════════════════════════════════════╝"
-echo -e "${NC}"
-
 # Check root
 if [ "$EUID" -ne 0 ]; then
     echo -e "${RED}Error: Please run as root (sudo)${NC}"
     exit 1
 fi
+
+# ============================================
+# Uninstall function
+# ============================================
+do_uninstall() {
+    echo -e "${YELLOW}"
+    echo "╔═══════════════════════════════════════════╗"
+    echo "║         RouteBox Uninstaller              ║"
+    echo "╚═══════════════════════════════════════════╝"
+    echo -e "${NC}"
+
+    # Stop and disable service
+    if command -v systemctl &> /dev/null; then
+        if systemctl is-active --quiet ${SERVICE_NAME} 2>/dev/null; then
+            echo "Stopping ${SERVICE_NAME} service..."
+            systemctl stop ${SERVICE_NAME}
+        fi
+        if systemctl is-enabled --quiet ${SERVICE_NAME} 2>/dev/null; then
+            echo "Disabling ${SERVICE_NAME} service..."
+            systemctl disable ${SERVICE_NAME}
+        fi
+        if [ -f /etc/systemd/system/${SERVICE_NAME}.service ]; then
+            echo "Removing systemd service file..."
+            rm -f /etc/systemd/system/${SERVICE_NAME}.service
+            systemctl daemon-reload
+        fi
+    fi
+
+    # Remove binary
+    if [ -f ${INSTALL_DIR}/${BINARY_NAME} ]; then
+        echo "Removing ${INSTALL_DIR}/${BINARY_NAME}..."
+        rm -f ${INSTALL_DIR}/${BINARY_NAME}
+    fi
+
+    echo ""
+    echo -e "${GREEN}RouteBox uninstalled.${NC}"
+    echo ""
+    echo -e "${YELLOW}Note: Config directory ${CONFIG_DIR} was kept.${NC}"
+    echo "      Remove manually if no longer needed:"
+    echo "      sudo rm -rf ${CONFIG_DIR}"
+    echo ""
+    exit 0
+}
+
+# Parse arguments
+case "${1:-}" in
+    --uninstall|-u|uninstall|remove)
+        do_uninstall
+        ;;
+esac
+
+# ============================================
+# Install
+# ============================================
+echo -e "${GREEN}"
+echo "╔═══════════════════════════════════════════╗"
+echo "║         RouteBox Installer                ║"
+echo "╚═══════════════════════════════════════════╝"
+echo -e "${NC}"
 
 # Detect architecture
 ARCH=$(uname -m)
