@@ -1,0 +1,142 @@
+#!/bin/bash
+#
+# RouteBox Installer
+# Usage: curl -fsSL https://raw.githubusercontent.com/hoaxisr/routebox/main/install.sh | sudo bash
+#
+
+set -e
+
+# Colors
+RED='\033[0;31m'
+GREEN='\033[0;32m'
+YELLOW='\033[1;33m'
+NC='\033[0m' # No Color
+
+REPO="hoaxisr/routebox"
+BINARY_NAME="routebox"
+INSTALL_DIR="/usr/local/bin"
+CONFIG_DIR="/etc/amnezia-box"
+SERVICE_NAME="routebox"
+
+echo -e "${GREEN}"
+echo "╔═══════════════════════════════════════════╗"
+echo "║         RouteBox Installer                ║"
+echo "╚═══════════════════════════════════════════╝"
+echo -e "${NC}"
+
+# Check root
+if [ "$EUID" -ne 0 ]; then
+    echo -e "${RED}Error: Please run as root (sudo)${NC}"
+    exit 1
+fi
+
+# Detect architecture
+ARCH=$(uname -m)
+case $ARCH in
+    x86_64)
+        ARCH="amd64"
+        ;;
+    aarch64)
+        ARCH="arm64"
+        ;;
+    *)
+        echo -e "${RED}Error: Unsupported architecture: $ARCH${NC}"
+        exit 1
+        ;;
+esac
+
+echo "Detected architecture: $ARCH"
+
+# Check for systemd
+if ! command -v systemctl &> /dev/null; then
+    echo -e "${YELLOW}Warning: systemd not found. Service will not be installed.${NC}"
+    NO_SYSTEMD=1
+fi
+
+# Download binary
+echo ""
+echo "Downloading RouteBox..."
+DOWNLOAD_URL="https://raw.githubusercontent.com/${REPO}/main/releases/${BINARY_NAME}-linux-${ARCH}"
+
+if command -v curl &> /dev/null; then
+    curl -fsSL -o /tmp/${BINARY_NAME} "${DOWNLOAD_URL}"
+elif command -v wget &> /dev/null; then
+    wget -q -O /tmp/${BINARY_NAME} "${DOWNLOAD_URL}"
+else
+    echo -e "${RED}Error: curl or wget required${NC}"
+    exit 1
+fi
+
+# Install binary
+echo "Installing to ${INSTALL_DIR}/${BINARY_NAME}..."
+mv /tmp/${BINARY_NAME} ${INSTALL_DIR}/${BINARY_NAME}
+chmod +x ${INSTALL_DIR}/${BINARY_NAME}
+
+# Create config directory
+mkdir -p ${CONFIG_DIR}
+
+# Enable IP forwarding
+echo ""
+echo "Configuring system..."
+if [ "$(sysctl -n net.ipv4.ip_forward)" != "1" ]; then
+    echo "Enabling IPv4 forwarding..."
+    sysctl -w net.ipv4.ip_forward=1 > /dev/null
+    if ! grep -q "net.ipv4.ip_forward=1" /etc/sysctl.conf 2>/dev/null; then
+        echo "net.ipv4.ip_forward=1" >> /etc/sysctl.conf
+    fi
+fi
+
+# Install systemd service
+if [ -z "$NO_SYSTEMD" ]; then
+    echo "Installing systemd service..."
+    cat > /etc/systemd/system/${SERVICE_NAME}.service << 'EOF'
+[Unit]
+Description=RouteBox - VPN Router Web UI
+After=network.target
+
+[Service]
+Type=simple
+ExecStart=/usr/local/bin/routebox --config /etc/amnezia-box/config.json
+Restart=on-failure
+RestartSec=5
+
+[Install]
+WantedBy=multi-user.target
+EOF
+
+    systemctl daemon-reload
+    systemctl enable ${SERVICE_NAME}
+
+    echo ""
+    echo -e "${YELLOW}Start the service with:${NC}"
+    echo "  sudo systemctl start routebox"
+fi
+
+# Get IP address
+IP=$(hostname -I | awk '{print $1}')
+
+echo ""
+echo -e "${GREEN}╔═══════════════════════════════════════════╗"
+echo "║         Installation Complete!            ║"
+echo "╚═══════════════════════════════════════════╝${NC}"
+echo ""
+echo "Binary installed: ${INSTALL_DIR}/${BINARY_NAME}"
+echo "Config directory: ${CONFIG_DIR}"
+echo ""
+echo -e "${GREEN}Next steps:${NC}"
+echo ""
+echo "1. Start RouteBox:"
+echo "   sudo systemctl start routebox"
+echo ""
+echo "2. Open in browser:"
+echo -e "   ${GREEN}http://${IP}:8080${NC}"
+echo ""
+echo "3. Follow the setup wizard"
+echo ""
+
+# Check if amnezia-box is installed
+if ! command -v sing-box &> /dev/null && ! command -v amnezia-box &> /dev/null; then
+    echo -e "${YELLOW}Note: amnezia-box not found. Install it before using RouteBox.${NC}"
+    echo "      https://github.com/amnezia-vpn/amnezia-box"
+    echo ""
+fi

@@ -1,0 +1,8 @@
+# Ignore everything except release files
+*
+!.gitignore
+!README.md
+!install.sh
+!LICENSE
+!releases/
+!releases/**
