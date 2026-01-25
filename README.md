@@ -11,11 +11,12 @@ RouteBox управляет [amnezia-box](https://github.com/amnezia-vpn/amnezia
 - **Гибкая маршрутизация** — весь трафик через VPN или только выбранные сайты
 - **Готовые списки** — Antizapret и другие rule sets из коробки
 - **Мониторинг** — трафик, соединения, логи в реальном времени
+- **GeoIP** — флаги стран и информация о провайдерах для соединений
 - **Веб-интерфейс** — управление с любого устройства в сети
 
 ## Требования
 
-- Linux (amd64) — Debian, Ubuntu, Arch и др.
+- Linux (amd64/arm64) — Debian, Ubuntu, Arch и др.
 - Права root (для TUN-интерфейса)
 - Установленный [amnezia-box](https://github.com/amnezia-vpn/amnezia-box)
 
@@ -29,6 +30,7 @@ curl -fsSL https://raw.githubusercontent.com/hoaxisr/routebox/main/install.sh | 
 
 Скрипт:
 - Скачает и установит RouteBox в `/usr/local/bin/`
+- Создаст файл настроек `/etc/routebox/routebox.toml`
 - Создаст systemd сервис
 - Включит IP-forwarding
 
@@ -63,13 +65,90 @@ http://IP-АДРЕС-УСТРОЙСТВА:8080
 curl -fsSL https://raw.githubusercontent.com/hoaxisr/routebox/main/install.sh | sudo bash -s -- --uninstall
 ```
 
-## Установка как сервис (ручная)
+## Конфигурация
 
-Для автозапуска при загрузке системы:
+RouteBox использует TOML-файл для настроек приложения:
+
+```
+/etc/routebox/routebox.toml
+```
+
+### Основные секции
+
+| Секция | Описание |
+|--------|----------|
+| `[geoip]` | Путь к MMDB базе, включение GeoIP |
+| `[ui]` | Тема, язык, формат отображения |
+| `[monitoring]` | Настройки мониторинга соединений |
+| `[network]` | Адрес и порт веб-интерфейса |
+| `[singbox]` | Пути к конфигу amnezia-box |
+
+### Пример настройки GeoIP
+
+```toml
+[geoip]
+path = "/etc/routebox/ipinfo.mmdb"
+enabled = true
+```
+
+## GeoIP (флаги стран)
+
+RouteBox может показывать флаги стран и информацию о провайдерах для активных соединений.
+
+### Установка GeoIP базы
+
+1. Скачайте бесплатную базу IPInfo:
+   https://ipinfo.io/developers/free-ip-database
+
+2. Поместите файл `.mmdb` в `/etc/routebox/`
+
+3. Обновите настройки:
+   ```bash
+   sudo nano /etc/routebox/routebox.toml
+   ```
+
+   Установите путь:
+   ```toml
+   [geoip]
+   path = "/etc/routebox/ipinfo_lite.mmdb"
+   enabled = true
+   ```
+
+4. Перезапустите сервис:
+   ```bash
+   sudo systemctl restart routebox
+   ```
+
+После этого в списке соединений появятся флаги стран, а при наведении — информация о провайдере.
+
+## Параметры запуска
+
+```
+--settings PATH   Путь к routebox.toml (по умолчанию: авто-поиск)
+--config PATH     Путь к конфигу amnezia-box (переопределяет settings)
+--listen ADDR     Адрес веб-интерфейса (переопределяет settings)
+--geoip PATH      Путь к GeoIP MMDB (переопределяет settings)
+--clash ADDR      Адрес Clash API (определяется автоматически)
+```
+
+### Приоритет настроек
+
+1. Флаги командной строки (высший приоритет)
+2. Файл `routebox.toml`
+3. Авто-определение
+4. Значения по умолчанию
+
+## Установка как сервис (ручная)
 
 ```bash
 # Скопировать в /usr/local/bin
 sudo cp routebox /usr/local/bin/
+
+# Создать директории
+sudo mkdir -p /etc/routebox /etc/amnezia-box
+
+# Скопировать настройки
+sudo cp routebox.toml /etc/routebox/
 
 # Создать systemd сервис
 sudo tee /etc/systemd/system/routebox.service << 'EOF'
@@ -79,7 +158,7 @@ After=network.target
 
 [Service]
 Type=simple
-ExecStart=/usr/local/bin/routebox --config /etc/amnezia-box/config.json
+ExecStart=/usr/local/bin/routebox --settings /etc/routebox/routebox.toml
 Restart=on-failure
 RestartSec=5
 
@@ -105,27 +184,51 @@ echo "net.ipv4.ip_forward=1" | sudo tee -a /etc/sysctl.conf
 sudo sysctl -p
 ```
 
-## Параметры запуска
+## API
 
-```
---config PATH   Путь к конфигу amnezia-box (по умолчанию: /etc/amnezia-box/config.json)
---listen ADDR   Адрес веб-интерфейса (по умолчанию: 0.0.0.0:8080)
---clash ADDR    Адрес Clash API (определяется автоматически)
-```
+RouteBox предоставляет REST API для интеграции:
 
-## Скриншоты
+| Endpoint | Описание |
+|----------|----------|
+| `GET /api/status` | Статус amnezia-box |
+| `GET /api/settings` | Настройки RouteBox |
+| `PUT /api/settings` | Обновить настройки |
+| `GET /api/clash/connections` | Активные соединения |
+| `GET /api/clash/proxies` | Статус прокси |
 
-*Dashboard с мониторингом трафика*
-
-*Мастер быстрой настройки*
-
-*Управление маршрутами*
+Полная документация API: [docs/API.md](docs/API.md)
 
 ## Поддерживаемые форматы конфигурации
 
 - **AmneziaWG** — `.conf` файл или текст конфига
 - **VLESS** — ссылка `vless://...`
 - **Hysteria2** — ссылка `hy2://...`
+
+## Структура проекта
+
+```
+routebox/
+├── backend/           # Go backend
+│   ├── cmd/routebox/  # Main
+│   └── internal/      # Packages
+├── frontend/          # SvelteKit SPA
+├── routebox.toml      # Пример настроек
+├── install.sh         # Установщик
+└── Makefile           # Сборка
+```
+
+## Сборка из исходников
+
+```bash
+# Установить зависимости
+make deps
+
+# Собрать
+make build
+
+# Запустить
+sudo ./routebox
+```
 
 ## Лицензия
 

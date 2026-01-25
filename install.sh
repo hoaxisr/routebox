@@ -12,13 +12,16 @@ set -e
 RED='\033[0;31m'
 GREEN='\033[0;32m'
 YELLOW='\033[1;33m'
+BLUE='\033[0;34m'
 NC='\033[0m' # No Color
 
 REPO="hoaxisr/routebox"
 BINARY_NAME="routebox"
 INSTALL_DIR="/usr/local/bin"
-CONFIG_DIR="/etc/amnezia-box"
+CONFIG_DIR="/etc/routebox"
+SINGBOX_CONFIG_DIR="/etc/amnezia-box"
 SERVICE_NAME="routebox"
+SETTINGS_FILE="routebox.toml"
 
 # Check root
 if [ "$EUID" -ne 0 ]; then
@@ -62,9 +65,12 @@ do_uninstall() {
     echo ""
     echo -e "${GREEN}RouteBox uninstalled.${NC}"
     echo ""
-    echo -e "${YELLOW}Note: Config directory ${CONFIG_DIR} was kept.${NC}"
+    echo -e "${YELLOW}Note: Config directories were kept:${NC}"
+    echo "      ${CONFIG_DIR}"
+    echo "      ${SINGBOX_CONFIG_DIR}"
+    echo ""
     echo "      Remove manually if no longer needed:"
-    echo "      sudo rm -rf ${CONFIG_DIR}"
+    echo "      sudo rm -rf ${CONFIG_DIR} ${SINGBOX_CONFIG_DIR}"
     echo ""
     exit 0
 }
@@ -127,8 +133,28 @@ echo "Installing to ${INSTALL_DIR}/${BINARY_NAME}..."
 mv /tmp/${BINARY_NAME} ${INSTALL_DIR}/${BINARY_NAME}
 chmod +x ${INSTALL_DIR}/${BINARY_NAME}
 
-# Create config directory
+# Create config directories
 mkdir -p ${CONFIG_DIR}
+mkdir -p ${SINGBOX_CONFIG_DIR}
+
+# Download and install settings file if not exists
+if [ ! -f ${CONFIG_DIR}/${SETTINGS_FILE} ]; then
+    echo "Downloading default settings..."
+    SETTINGS_URL="https://raw.githubusercontent.com/${REPO}/main/routebox.toml"
+    if command -v curl &> /dev/null; then
+        curl -fsSL -o ${CONFIG_DIR}/${SETTINGS_FILE} "${SETTINGS_URL}" 2>/dev/null || true
+    elif command -v wget &> /dev/null; then
+        wget -q -O ${CONFIG_DIR}/${SETTINGS_FILE} "${SETTINGS_URL}" 2>/dev/null || true
+    fi
+
+    if [ -f ${CONFIG_DIR}/${SETTINGS_FILE} ]; then
+        echo "Settings installed: ${CONFIG_DIR}/${SETTINGS_FILE}"
+    else
+        echo -e "${YELLOW}Note: Could not download settings template. Using defaults.${NC}"
+    fi
+else
+    echo "Settings file exists, keeping: ${CONFIG_DIR}/${SETTINGS_FILE}"
+fi
 
 # Enable IP forwarding
 echo ""
@@ -144,14 +170,14 @@ fi
 # Install systemd service
 if [ -z "$NO_SYSTEMD" ]; then
     echo "Installing systemd service..."
-    cat > /etc/systemd/system/${SERVICE_NAME}.service << 'EOF'
+    cat > /etc/systemd/system/${SERVICE_NAME}.service << EOF
 [Unit]
 Description=RouteBox - VPN Router Web UI
 After=network.target
 
 [Service]
 Type=simple
-ExecStart=/usr/local/bin/routebox
+ExecStart=${INSTALL_DIR}/${BINARY_NAME} --settings ${CONFIG_DIR}/${SETTINGS_FILE}
 Restart=on-failure
 RestartSec=5
 
@@ -175,8 +201,9 @@ echo -e "${GREEN}╔════════════════════
 echo "║         Installation Complete!            ║"
 echo "╚═══════════════════════════════════════════╝${NC}"
 echo ""
-echo "Binary installed: ${INSTALL_DIR}/${BINARY_NAME}"
-echo "Config directory: ${CONFIG_DIR}"
+echo "Binary:   ${INSTALL_DIR}/${BINARY_NAME}"
+echo "Settings: ${CONFIG_DIR}/${SETTINGS_FILE}"
+echo "Config:   ${SINGBOX_CONFIG_DIR}"
 echo ""
 echo -e "${GREEN}Next steps:${NC}"
 echo ""
@@ -187,4 +214,15 @@ echo "2. Open in browser:"
 echo -e "   ${GREEN}http://${IP}:8080${NC}"
 echo ""
 echo "3. Follow the setup wizard"
+echo ""
+echo -e "${BLUE}Optional: GeoIP (country flags in connections)${NC}"
+echo ""
+echo "   Download IPInfo database (free):"
+echo "   https://ipinfo.io/developers/free-ip-database"
+echo ""
+echo "   Place the .mmdb file and update settings:"
+echo "   nano ${CONFIG_DIR}/${SETTINGS_FILE}"
+echo ""
+echo "   Set geoip.path = \"/path/to/ipinfo.mmdb\""
+echo "   Then restart: sudo systemctl restart routebox"
 echo ""
