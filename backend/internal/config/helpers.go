@@ -14,7 +14,7 @@ func findByTag(arr []interface{}, tag string) int {
 	return -1
 }
 
-// RemoveIPv6FromTunInbounds removes IPv6 addresses from all TUN inbounds.
+// RemoveIPv6FromTunInbounds removes IPv6 addresses from all TUN inbounds in the draft.
 // This is necessary when IPv6 is disabled in the system (net.ipv6.conf.all.disable_ipv6=1)
 // because sing-box will fail to bind IPv6 addresses to the TUN interface.
 // Returns true if any changes were made.
@@ -22,7 +22,12 @@ func (m *Manager) RemoveIPv6FromTunInbounds() bool {
 	m.mu.Lock()
 	defer m.mu.Unlock()
 
-	inbounds, ok := m.config["inbounds"].([]interface{})
+	// Ensure we're working with draft
+	if err := m.ensureDraftUnlocked(); err != nil {
+		return false
+	}
+
+	inbounds, ok := m.draftConfig["inbounds"].([]interface{})
 	if !ok {
 		return false
 	}
@@ -65,6 +70,11 @@ func (m *Manager) RemoveIPv6FromTunInbounds() bool {
 			delete(inbound, "inet6_address")
 			modified = true
 		}
+	}
+
+	// Save draft if modified
+	if modified {
+		m.saveDraftToDisk()
 	}
 
 	return modified

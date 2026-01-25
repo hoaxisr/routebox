@@ -13,7 +13,7 @@ func (h *Handler) GetConfig(w http.ResponseWriter, r *http.Request) {
 	writeSuccess(w, cfg)
 }
 
-// SaveConfig saves and applies the configuration
+// SaveConfig saves full config to draft (does not restart - use ApplyConfig for that)
 func (h *Handler) SaveConfig(w http.ResponseWriter, r *http.Request) {
 	var newConfig map[string]interface{}
 	if err := json.NewDecoder(r.Body).Decode(&newConfig); err != nil {
@@ -28,37 +28,14 @@ func (h *Handler) SaveConfig(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// Save
-	if err := h.config.Save(newConfig); err != nil {
-		writeError(w, http.StatusInternalServerError, fmt.Sprintf("Failed to save: %v", err))
-		return
-	}
-
-	// Reload if running (try hot reload first)
-	status := h.process.GetStatus()
-	if status.Running {
-		if err := h.process.Reload(); err != nil {
-			// Reload failed, try restart
-			if err := h.process.Restart(h.config.GetPath()); err != nil {
-				writeError(w, http.StatusInternalServerError, fmt.Sprintf("Saved but failed to reload/restart: %v", err))
-				return
-			}
-			writeSuccess(w, map[string]interface{}{
-				"message":   "Config saved and restarted",
-				"reloaded":  false,
-				"restarted": true,
-			})
-			return
-		}
-		writeSuccess(w, map[string]interface{}{
-			"message":  "Config saved and reloaded",
-			"reloaded": true,
-		})
+	// Replace draft with new config
+	if err := h.config.SetDraft(newConfig); err != nil {
+		writeError(w, http.StatusInternalServerError, fmt.Sprintf("Failed to save draft: %v", err))
 		return
 	}
 
 	writeSuccess(w, map[string]interface{}{
-		"message": "Config saved",
+		"message": "Config saved to draft (use Apply to restart)",
 	})
 }
 
@@ -131,8 +108,17 @@ func (h *Handler) ImportConfig(w http.ResponseWriter, r *http.Request) {
 	})
 }
 
-// ApplyConfig saves in-memory config to disk and reloads/restarts
+// ApplyConfig saves draft to disk and reloads/restarts (with optional validation)
 func (h *Handler) ApplyConfig(w http.ResponseWriter, r *http.Request) {
+	// Optionally validate draft before applying
+	if h.config.HasDraft() {
+		valid, errors := h.config.CheckDraft()
+		if !valid {
+			writeError(w, http.StatusBadRequest, fmt.Sprintf("Config validation failed: %v", errors))
+			return
+		}
+	}
+
 	if err := h.config.SaveToDisk(); err != nil {
 		writeError(w, http.StatusInternalServerError, fmt.Sprintf("Failed to save: %v", err))
 		return
@@ -185,4 +171,96 @@ func (h *Handler) ApplyConfig(w http.ResponseWriter, r *http.Request) {
 			"restarted": true,
 		})
 	}
+}
+
+// --- Draft Config API ---
+
+// GetConfigStatus returns draft status (hasDraft, changeCount)
+func (h *Handler) GetConfigStatus(w http.ResponseWriter, r *http.Request) {
+	hasDraft := h.config.HasDraft()
+
+	// Calculate change count from diff
+	changeCount := 0
+	if hasDraft {
+		_, additions, deletions, _ := h.config.GetDiff()
+		changeCount = additions + deletions
+	}
+
+	writeSuccess(w, map[string]interface{}{
+		"hasDraft":    hasDraft,
+		"changeCount": changeCount,
+	})
+}
+
+// DiscardConfig discards all draft changes and reverts to active config
+func (h *Handler) DiscardConfig(w http.ResponseWriter, r *http.Request) {
+	if err := h.config.DiscardDraft(); err != nil {
+		writeError(w, http.StatusInternalServerError, fmt.Sprintf("Failed to discard: %v", err))
+		return
+	}
+
+	writeSuccess(w, map[string]interface{}{
+		"message": "Changes discarded",
+	})
+}
+
+// GetDraftDiff returns diff between active and draft config
+func (h *Handler) GetDraftDiff(w http.ResponseWriter, r *http.Request) {
+	diff, additions, deletions, err := h.config.GetDiff()
+	if err != nil {
+		writeError(w, http.StatusInternalServerError, fmt.Sprintf("Failed to generate diff: %v", err))
+		return
+	}
+
+	writeSuccess(w, map[string]interface{}{
+		"diff":      diff,
+		"additions": additions,
+		"deletions": deletions,
+	})
+}
+
+// SaveConfigDraft saves draft as active without restart
+func (h *Handler) SaveConfigDraft(w http.ResponseWriter, r *http.Request) {
+	if !h.config.HasDraft() {
+		writeSuccess(w, map[string]interface{}{
+			"message": "No changes to save",
+		})
+		return
+	}
+
+	if err := h.config.ApplyDraft(); err != nil {
+		writeError(w, http.StatusInternalServerError, fmt.Sprintf("Failed to save: %v", err))
+		return
+	}
+
+	writeSuccess(w, map[string]interface{}{
+		"message": "Config saved (restart required to apply)",
+	})
+}
+
+// CheckConfig validates draft config using sing-box check
+func (h *Handler) CheckConfig(w http.ResponseWriter, r *http.Request) {
+	if !h.config.HasDraft() {
+		writeSuccess(w, map[string]interface{}{
+			"valid":  true,
+			"errors": []string{},
+		})
+		return
+	}
+
+	valid, errors := h.config.CheckDraft()
+	if errors == nil {
+		errors = []string{}
+	}
+
+	writeSuccess(w, map[string]interface{}{
+		"valid":  valid,
+		"errors": errors,
+	})
+}
+
+// GetActiveConfig returns the active config on disk (ignoring draft)
+func (h *Handler) GetActiveConfig(w http.ResponseWriter, r *http.Request) {
+	cfg := h.config.GetActive()
+	writeSuccess(w, cfg)
 }

@@ -2,6 +2,7 @@
 	import type { Outbound, Endpoint } from '$lib/types';
 	import { notifications } from '$lib/stores';
 	import { parseVless, parseHysteria2, toSingboxConfig, type ParsedVless, type ParsedHysteria2 } from '$lib/utils/parsers';
+	import { t } from 'svelte-i18n';
 
 	interface Props {
 		outbound?: Outbound;
@@ -333,12 +334,12 @@
 	}
 
 	const outboundTypes = [
-		{ value: 'direct', label: 'Direct', description: 'Connect directly without proxy' },
-		{ value: 'block', label: 'Block', description: 'Block all connections' },
-		{ value: 'selector', label: 'Selector', description: 'Manual proxy selection' },
-		{ value: 'urltest', label: 'URL Test', description: 'Auto-select fastest proxy' },
-		{ value: 'vless', label: 'VLESS', description: 'VLESS proxy protocol' },
-		{ value: 'hysteria2', label: 'Hysteria2', description: 'Hysteria2 proxy protocol' }
+		{ value: 'direct', labelKey: 'outbounds.types.direct', descKey: 'outbounds.directDesc' },
+		{ value: 'block', labelKey: 'outbounds.types.block', descKey: 'outbounds.blockDesc' },
+		{ value: 'selector', labelKey: 'outbounds.types.selector', descKey: 'outbounds.selectorDesc' },
+		{ value: 'urltest', labelKey: 'outbounds.types.urltest', descKey: 'outbounds.urltestDesc' },
+		{ value: 'vless', labelKey: 'outbounds.vless', descKey: 'outbounds.vlessDesc' },
+		{ value: 'hysteria2', labelKey: 'outbounds.hysteria2', descKey: 'outbounds.hysteria2Desc' }
 	];
 
 	const fingerprints = ['chrome', 'firefox', 'safari', 'edge', 'ios', 'android', 'random', 'randomized'];
@@ -347,7 +348,7 @@
 <form onsubmit={(e) => { e.preventDefault(); handleSubmit(); }} class="space-y-6">
 	<!-- Tag -->
 	<div>
-		<label for="tag" class="block text-sm font-medium text-[var(--ctp-subtext1)] mb-1">Tag *</label>
+		<label for="tag" class="block text-sm font-medium text-[var(--ctp-subtext1)] mb-1">{$t('common.tag')} *</label>
 		<input
 			id="tag"
 			type="text"
@@ -362,16 +363,16 @@
 
 	<!-- Type -->
 	<div>
-		<label class="block text-sm font-medium text-[var(--ctp-subtext1)] mb-2">Type</label>
+		<label class="block text-sm font-medium text-[var(--ctp-subtext1)] mb-2">{$t('common.type')}</label>
 		<div class="grid grid-cols-2 gap-2">
-			{#each outboundTypes as t}
+			{#each outboundTypes as ot}
 				<button
 					type="button"
-					onclick={() => type = t.value}
-					class="type-btn {type === t.value ? 'selected' : ''}"
+					onclick={() => type = ot.value}
+					class="type-btn {type === ot.value ? 'selected' : ''}"
 				>
-					<div class="type-label">{t.label}</div>
-					<div class="type-desc">{t.description}</div>
+					<div class="type-label">{$t(ot.labelKey)}</div>
+					<div class="type-desc">{$t(ot.descKey)}</div>
 				</button>
 			{/each}
 		</div>
@@ -381,8 +382,8 @@
 	{#if type === 'selector' || type === 'urltest'}
 		<div>
 			<label class="block text-sm font-medium text-[var(--ctp-subtext1)] mb-2">
-				Select Outbounds *
-				<span class="font-normal text-[var(--ctp-overlay0)]">({selectedOutbounds.length} selected)</span>
+				{$t('outbounds.selectedOutbounds')} *
+				<span class="font-normal text-[var(--ctp-overlay0)]">({selectedOutbounds.length} {$t('proxies.selected').toLowerCase()})</span>
 			</label>
 			{#if errors['outbounds']}
 				<p class="mb-2 text-sm text-[var(--ctp-red)]">{errors['outbounds']}</p>
@@ -390,21 +391,21 @@
 			<div class="max-h-48 overflow-y-auto bg-[var(--ctp-surface0)] rounded-lg border border-[var(--ctp-surface2)]">
 				{#if availableForSelection.length === 0}
 					<div class="p-4 text-center text-[var(--ctp-overlay0)]">
-						No endpoints or outbounds available
+						{$t('outbounds.noOutboundsAvailable')}
 					</div>
 				{:else}
-					{#each availableForSelection as t}
+					{#each availableForSelection as tag}
 						<button
 							type="button"
-							onclick={() => toggleOutboundSelection(t)}
-							class="w-full px-4 py-2 flex items-center justify-between hover:bg-[var(--ctp-surface1)] transition-colors {selectedOutbounds.includes(t) ? 'bg-[var(--ctp-surface1)]' : ''}"
+							onclick={() => toggleOutboundSelection(tag)}
+							class="w-full px-4 py-2 flex items-center justify-between hover:bg-[var(--ctp-surface1)] transition-colors {selectedOutbounds.includes(tag) ? 'bg-[var(--ctp-surface1)]' : ''}"
 						>
-							<span class="text-[var(--ctp-text)]">{t}</span>
+							<span class="text-[var(--ctp-text)]">{tag}</span>
 							<span class="flex items-center gap-2">
-								{#if defaultOutbound === t}
-									<span class="status-badge">default</span>
+								{#if defaultOutbound === tag}
+									<span class="status-badge">{$t('common.default').toLowerCase()}</span>
 								{/if}
-								{#if selectedOutbounds.includes(t)}
+								{#if selectedOutbounds.includes(tag)}
 									<svg class="w-5 h-5 text-[var(--ctp-primary)]" fill="none" stroke="currentColor" viewBox="0 0 24 24">
 										<path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 13l4 4L19 7" />
 									</svg>
@@ -418,14 +419,14 @@
 
 		{#if selectedOutbounds.length > 0}
 			<div>
-				<label for="default" class="block text-sm font-medium text-[var(--ctp-subtext1)] mb-1">Default Outbound</label>
+				<label for="default" class="block text-sm font-medium text-[var(--ctp-subtext1)] mb-1">{$t('outbounds.defaultOutbound')}</label>
 				<select
 					id="default"
 					bind:value={defaultOutbound}
 					class="w-full px-3 py-2 bg-[var(--ctp-surface0)] border border-[var(--ctp-surface2)] rounded-lg text-[var(--ctp-text)] focus:outline-none focus:ring-2 focus:ring-[var(--ctp-primary)]"
 				>
-					{#each selectedOutbounds as t}
-						<option value={t}>{t}</option>
+					{#each selectedOutbounds as tag}
+						<option value={tag}>{tag}</option>
 					{/each}
 				</select>
 			</div>
@@ -436,16 +437,16 @@
 					bind:checked={interruptExistConnections}
 					class="w-4 h-4 rounded border-[var(--ctp-surface2)] text-[var(--ctp-primary)] focus:ring-[var(--ctp-primary)]"
 				/>
-				Interrupt existing connections on switch
+				{$t('outbounds.interruptExisting')}
 			</label>
 		{/if}
 
 		<!-- URLTest specific settings -->
 		{#if type === 'urltest'}
 			<div class="bg-[var(--ctp-surface0)] rounded-lg p-4 space-y-4">
-				<h3 class="text-sm font-medium text-[var(--ctp-subtext1)]">URL Test Settings</h3>
+				<h3 class="text-sm font-medium text-[var(--ctp-subtext1)]">{$t('outbounds.urlTestSettings')}</h3>
 				<div>
-					<label for="urltestUrl" class="block text-xs text-[var(--ctp-overlay0)] mb-1">Test URL</label>
+					<label for="urltestUrl" class="block text-xs text-[var(--ctp-overlay0)] mb-1">{$t('outbounds.testUrl')}</label>
 					<input
 						id="urltestUrl"
 						type="url"
@@ -456,7 +457,7 @@
 				</div>
 				<div class="grid grid-cols-3 gap-4">
 					<div>
-						<label for="urltestInterval" class="block text-xs text-[var(--ctp-overlay0)] mb-1">Interval</label>
+						<label for="urltestInterval" class="block text-xs text-[var(--ctp-overlay0)] mb-1">{$t('outbounds.testInterval')}</label>
 						<input
 							id="urltestInterval"
 							type="text"
@@ -466,7 +467,7 @@
 						/>
 					</div>
 					<div>
-						<label for="urltestTolerance" class="block text-xs text-[var(--ctp-overlay0)] mb-1">Tolerance (ms)</label>
+						<label for="urltestTolerance" class="block text-xs text-[var(--ctp-overlay0)] mb-1">{$t('outbounds.tolerance')} (ms)</label>
 						<input
 							id="urltestTolerance"
 							type="number"
@@ -477,7 +478,7 @@
 						/>
 					</div>
 					<div>
-						<label for="urltestIdleTimeout" class="block text-xs text-[var(--ctp-overlay0)] mb-1">Idle Timeout</label>
+						<label for="urltestIdleTimeout" class="block text-xs text-[var(--ctp-overlay0)] mb-1">{$t('outbounds.idleTimeout')}</label>
 						<input
 							id="urltestIdleTimeout"
 							type="text"
@@ -501,13 +502,13 @@
 			<svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
 				<path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-8l-4-4m0 0L8 8m4-4v12" />
 			</svg>
-			Import from vless:// link
+			{$t('outbounds.importFromVless')}
 		</button>
 
 		<!-- Server & Port -->
 		<div class="grid grid-cols-3 gap-4">
 			<div class="col-span-2">
-				<label for="server" class="block text-sm font-medium text-[var(--ctp-subtext1)] mb-1">Server *</label>
+				<label for="server" class="block text-sm font-medium text-[var(--ctp-subtext1)] mb-1">{$t('common.server')} *</label>
 				<input
 					id="server"
 					type="text"
@@ -517,7 +518,7 @@
 				/>
 			</div>
 			<div>
-				<label for="port" class="block text-sm font-medium text-[var(--ctp-subtext1)] mb-1">Port *</label>
+				<label for="port" class="block text-sm font-medium text-[var(--ctp-subtext1)] mb-1">{$t('common.port')} *</label>
 				<input
 					id="port"
 					type="number"
@@ -531,7 +532,7 @@
 
 		<!-- UUID -->
 		<div>
-			<label for="uuid" class="block text-sm font-medium text-[var(--ctp-subtext1)] mb-1">UUID *</label>
+			<label for="uuid" class="block text-sm font-medium text-[var(--ctp-subtext1)] mb-1">{$t('outbounds.uuid')} *</label>
 			<input
 				id="uuid"
 				type="text"
@@ -543,13 +544,13 @@
 
 		<!-- Flow -->
 		<div>
-			<label for="flow" class="block text-sm font-medium text-[var(--ctp-subtext1)] mb-1">Flow</label>
+			<label for="flow" class="block text-sm font-medium text-[var(--ctp-subtext1)] mb-1">{$t('outbounds.flow')}</label>
 			<select
 				id="flow"
 				bind:value={flow}
 				class="w-full px-3 py-2 bg-[var(--ctp-surface0)] border border-[var(--ctp-surface2)] rounded-lg text-[var(--ctp-text)] focus:outline-none focus:ring-2 focus:ring-[var(--ctp-primary)]"
 			>
-				<option value="">None</option>
+				<option value="">{$t('common.none')}</option>
 				<option value="xtls-rprx-vision">xtls-rprx-vision</option>
 			</select>
 		</div>
@@ -558,13 +559,13 @@
 		<div class="space-y-4">
 			<label class="flex items-center gap-2 text-sm text-[var(--ctp-subtext1)]">
 				<input type="checkbox" bind:checked={tlsEnabled} />
-				Enable TLS
+				{$t('outbounds.enableTls')}
 			</label>
 
 			{#if tlsEnabled}
 				<div class="grid grid-cols-2 gap-4">
 					<div>
-						<label for="sni" class="block text-sm font-medium text-[var(--ctp-subtext1)] mb-1">SNI</label>
+						<label for="sni" class="block text-sm font-medium text-[var(--ctp-subtext1)] mb-1">{$t('outbounds.sni')}</label>
 						<input
 							id="sni"
 							type="text"
@@ -574,7 +575,7 @@
 						/>
 					</div>
 					<div>
-						<label for="fingerprint" class="block text-sm font-medium text-[var(--ctp-subtext1)] mb-1">Fingerprint</label>
+						<label for="fingerprint" class="block text-sm font-medium text-[var(--ctp-subtext1)] mb-1">{$t('outbounds.fingerprint')}</label>
 						<select
 							id="fingerprint"
 							bind:value={tlsFingerprint}
@@ -590,13 +591,13 @@
 				<!-- Reality -->
 				<label class="flex items-center gap-2 text-sm text-[var(--ctp-subtext1)]">
 					<input type="checkbox" bind:checked={realityEnabled} />
-					Enable Reality
+					{$t('outbounds.enableReality')}
 				</label>
 
 				{#if realityEnabled}
 					<div class="grid grid-cols-2 gap-4">
 						<div>
-							<label for="pbk" class="block text-sm font-medium text-[var(--ctp-subtext1)] mb-1">Public Key *</label>
+							<label for="pbk" class="block text-sm font-medium text-[var(--ctp-subtext1)] mb-1">{$t('outbounds.publicKey')} *</label>
 							<input
 								id="pbk"
 								type="text"
@@ -606,7 +607,7 @@
 							/>
 						</div>
 						<div>
-							<label for="sid" class="block text-sm font-medium text-[var(--ctp-subtext1)] mb-1">Short ID</label>
+							<label for="sid" class="block text-sm font-medium text-[var(--ctp-subtext1)] mb-1">{$t('outbounds.shortId')}</label>
 							<input
 								id="sid"
 								type="text"
@@ -622,15 +623,15 @@
 
 		<!-- Transport -->
 		<div class="space-y-4">
-			<label class="block text-sm font-medium text-[var(--ctp-subtext1)]">Transport</label>
+			<label class="block text-sm font-medium text-[var(--ctp-subtext1)]">{$t('outbounds.transport')}</label>
 			<div class="grid grid-cols-4 gap-2">
-				{#each ['tcp', 'ws', 'grpc', 'http'] as t}
+				{#each ['tcp', 'ws', 'grpc', 'http'] as tp}
 					<button
 						type="button"
-						onclick={() => transportType = t as any}
-						class="toggle-btn text-sm {transportType === t ? 'selected' : ''}"
+						onclick={() => transportType = tp as any}
+						class="toggle-btn text-sm {transportType === tp ? 'selected' : ''}"
 					>
-						{t.toUpperCase()}
+						{tp.toUpperCase()}
 					</button>
 				{/each}
 			</div>
@@ -638,7 +639,7 @@
 			{#if transportType === 'ws' || transportType === 'http'}
 				<div class="grid grid-cols-2 gap-4">
 					<div>
-						<label for="wsPath" class="block text-sm font-medium text-[var(--ctp-subtext1)] mb-1">Path</label>
+						<label for="wsPath" class="block text-sm font-medium text-[var(--ctp-subtext1)] mb-1">{$t('outbounds.path')}</label>
 						<input
 							id="wsPath"
 							type="text"
@@ -648,7 +649,7 @@
 						/>
 					</div>
 					<div>
-						<label for="wsHost" class="block text-sm font-medium text-[var(--ctp-subtext1)] mb-1">Host</label>
+						<label for="wsHost" class="block text-sm font-medium text-[var(--ctp-subtext1)] mb-1">{$t('outbounds.host')}</label>
 						<input
 							id="wsHost"
 							type="text"
@@ -662,7 +663,7 @@
 
 			{#if transportType === 'grpc'}
 				<div>
-					<label for="serviceName" class="block text-sm font-medium text-[var(--ctp-subtext1)] mb-1">Service Name</label>
+					<label for="serviceName" class="block text-sm font-medium text-[var(--ctp-subtext1)] mb-1">{$t('outbounds.serviceName')}</label>
 					<input
 						id="serviceName"
 						type="text"
@@ -685,13 +686,13 @@
 			<svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
 				<path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-8l-4-4m0 0L8 8m4-4v12" />
 			</svg>
-			Import from hy2:// link
+			{$t('outbounds.importFromHy2')}
 		</button>
 
 		<!-- Server & Port -->
 		<div class="grid grid-cols-3 gap-4">
 			<div class="col-span-2">
-				<label for="hy2server" class="block text-sm font-medium text-[var(--ctp-subtext1)] mb-1">Server *</label>
+				<label for="hy2server" class="block text-sm font-medium text-[var(--ctp-subtext1)] mb-1">{$t('common.server')} *</label>
 				<input
 					id="hy2server"
 					type="text"
@@ -701,7 +702,7 @@
 				/>
 			</div>
 			<div>
-				<label for="hy2port" class="block text-sm font-medium text-[var(--ctp-subtext1)] mb-1">Port *</label>
+				<label for="hy2port" class="block text-sm font-medium text-[var(--ctp-subtext1)] mb-1">{$t('common.port')} *</label>
 				<input
 					id="hy2port"
 					type="number"
@@ -715,7 +716,7 @@
 
 		<!-- Password -->
 		<div>
-			<label for="hy2password" class="block text-sm font-medium text-[var(--ctp-subtext1)] mb-1">Password *</label>
+			<label for="hy2password" class="block text-sm font-medium text-[var(--ctp-subtext1)] mb-1">{$t('outbounds.password')} *</label>
 			<input
 				id="hy2password"
 				type="password"
@@ -727,7 +728,7 @@
 
 		<!-- TLS SNI -->
 		<div>
-			<label for="hy2sni" class="block text-sm font-medium text-[var(--ctp-subtext1)] mb-1">SNI</label>
+			<label for="hy2sni" class="block text-sm font-medium text-[var(--ctp-subtext1)] mb-1">{$t('outbounds.sni')}</label>
 			<input
 				id="hy2sni"
 				type="text"
@@ -740,15 +741,15 @@
 		<!-- Insecure -->
 		<label class="flex items-center gap-2 text-sm text-[var(--ctp-subtext1)]">
 			<input type="checkbox" bind:checked={hy2Insecure} />
-			Skip certificate verification (insecure)
+			{$t('outbounds.skipCertVerification')}
 		</label>
 
 		<!-- Port Hopping -->
 		<div class="bg-[var(--ctp-surface0)] rounded-lg p-4 space-y-4">
-			<h3 class="text-sm font-medium text-[var(--ctp-subtext1)]">Port Hopping (optional)</h3>
+			<h3 class="text-sm font-medium text-[var(--ctp-subtext1)]">{$t('outbounds.portHopping')} ({$t('common.optional').toLowerCase()})</h3>
 			<div class="grid grid-cols-2 gap-4">
 				<div>
-					<label for="hy2ServerPorts" class="block text-xs text-[var(--ctp-overlay0)] mb-1">Server Ports</label>
+					<label for="hy2ServerPorts" class="block text-xs text-[var(--ctp-overlay0)] mb-1">{$t('outbounds.serverPorts')}</label>
 					<input
 						id="hy2ServerPorts"
 						type="text"
@@ -756,10 +757,10 @@
 						placeholder="1000-2000,3000-4000"
 						class="w-full px-3 py-2 bg-[var(--ctp-mantle)] border border-[var(--ctp-surface2)] rounded-lg text-[var(--ctp-text)] placeholder-[var(--ctp-overlay0)] focus:outline-none focus:ring-2 focus:ring-[var(--ctp-primary)] text-sm"
 					/>
-					<p class="mt-1 text-xs text-[var(--ctp-overlay0)]">Port ranges for hopping</p>
+					<p class="mt-1 text-xs text-[var(--ctp-overlay0)]">{$t('outbounds.portRangesHint')}</p>
 				</div>
 				<div>
-					<label for="hy2HopInterval" class="block text-xs text-[var(--ctp-overlay0)] mb-1">Hop Interval</label>
+					<label for="hy2HopInterval" class="block text-xs text-[var(--ctp-overlay0)] mb-1">{$t('outbounds.hopInterval')}</label>
 					<input
 						id="hy2HopInterval"
 						type="text"
@@ -773,10 +774,10 @@
 
 		<!-- Bandwidth Limits -->
 		<div class="bg-[var(--ctp-surface0)] rounded-lg p-4 space-y-4">
-			<h3 class="text-sm font-medium text-[var(--ctp-subtext1)]">Bandwidth Limits (optional)</h3>
+			<h3 class="text-sm font-medium text-[var(--ctp-subtext1)]">{$t('outbounds.bandwidthLimits')} ({$t('common.optional').toLowerCase()})</h3>
 			<div class="grid grid-cols-2 gap-4">
 				<div>
-					<label for="hy2UpMbps" class="block text-xs text-[var(--ctp-overlay0)] mb-1">Upload (Mbps)</label>
+					<label for="hy2UpMbps" class="block text-xs text-[var(--ctp-overlay0)] mb-1">{$t('outbounds.uploadMbps')}</label>
 					<input
 						id="hy2UpMbps"
 						type="number"
@@ -787,7 +788,7 @@
 					/>
 				</div>
 				<div>
-					<label for="hy2DownMbps" class="block text-xs text-[var(--ctp-overlay0)] mb-1">Download (Mbps)</label>
+					<label for="hy2DownMbps" class="block text-xs text-[var(--ctp-overlay0)] mb-1">{$t('outbounds.downloadMbps')}</label>
 					<input
 						id="hy2DownMbps"
 						type="number"
@@ -803,20 +804,20 @@
 		<!-- Obfuscation -->
 		<div class="space-y-4">
 			<div>
-				<label for="obfsType" class="block text-sm font-medium text-[var(--ctp-subtext1)] mb-1">Obfuscation Type</label>
+				<label for="obfsType" class="block text-sm font-medium text-[var(--ctp-subtext1)] mb-1">{$t('outbounds.obfuscationType')}</label>
 				<select
 					id="obfsType"
 					bind:value={hy2ObfsType}
 					class="w-full px-3 py-2 bg-[var(--ctp-surface0)] border border-[var(--ctp-surface2)] rounded-lg text-[var(--ctp-text)] focus:outline-none focus:ring-2 focus:ring-[var(--ctp-primary)]"
 				>
-					<option value="">None</option>
+					<option value="">{$t('common.none')}</option>
 					<option value="salamander">Salamander</option>
 				</select>
 			</div>
 
 			{#if hy2ObfsType}
 				<div>
-					<label for="obfsPassword" class="block text-sm font-medium text-[var(--ctp-subtext1)] mb-1">Obfuscation Password</label>
+					<label for="obfsPassword" class="block text-sm font-medium text-[var(--ctp-subtext1)] mb-1">{$t('outbounds.obfuscationPassword')}</label>
 					<input
 						id="obfsPassword"
 						type="text"
@@ -832,9 +833,9 @@
 	{#if type === 'direct' || type === 'block'}
 		<div class="bg-[var(--ctp-surface0)] rounded-lg p-4 text-sm text-[var(--ctp-overlay1)]">
 			{#if type === 'direct'}
-				Direct outbound connects to destinations without using a proxy.
+				{$t('outbounds.directDesc')}
 			{:else}
-				Block outbound drops all connections.
+				{$t('outbounds.blockDesc')}
 			{/if}
 		</div>
 	{/if}
@@ -846,13 +847,13 @@
 			onclick={onCancel}
 			class="px-4 py-2 bg-[var(--ctp-surface1)] text-[var(--ctp-text)] rounded-lg hover:bg-[var(--ctp-surface2)] transition-colors"
 		>
-			Cancel
+			{$t('common.cancel')}
 		</button>
 		<button
 			type="submit"
 			class="px-4 py-2 bg-[var(--ctp-primary)] text-white rounded-lg hover:opacity-90 transition-opacity"
 		>
-			{outbound ? 'Save Changes' : 'Create Outbound'}
+			{outbound ? $t('common.saveChanges') : $t('outbounds.createOutbound')}
 		</button>
 	</div>
 </form>
@@ -863,7 +864,7 @@
 		<div class="bg-[var(--ctp-surface0)] rounded-xl p-6 w-full max-w-lg mx-4 shadow-xl">
 			<div class="flex items-center justify-between mb-4">
 				<h3 class="text-lg font-semibold text-[var(--ctp-text)]">
-					Import {type === 'vless' ? 'VLESS' : 'Hysteria2'} Configuration
+					{$t('common.import')} {type === 'vless' ? 'VLESS' : 'Hysteria2'} {$t('outbounds.configuration')}
 				</h3>
 				<button
 					onclick={() => { showImport = false; importText = ''; importError = ''; }}
@@ -876,7 +877,7 @@
 			</div>
 
 			<p class="text-sm text-[var(--ctp-subtext0)] mb-4">
-				Paste a {type === 'vless' ? 'vless://' : 'hy2:// or hysteria2://'} link to import configuration.
+				{$t('outbounds.pasteLink', { values: { protocol: type === 'vless' ? 'vless://' : 'hy2:// or hysteria2://' } })}
 			</p>
 
 			<textarea
@@ -895,13 +896,13 @@
 					onclick={() => { showImport = false; importText = ''; importError = ''; }}
 					class="px-4 py-2 bg-[var(--ctp-surface1)] text-[var(--ctp-text)] rounded-lg hover:bg-[var(--ctp-surface2)] transition-colors"
 				>
-					Cancel
+					{$t('common.cancel')}
 				</button>
 				<button
 					onclick={parseImportLink}
 					class="px-4 py-2 bg-[var(--ctp-primary)] text-white rounded-lg hover:opacity-90 transition-opacity"
 				>
-					Import
+					{$t('common.import')}
 				</button>
 			</div>
 		</div>

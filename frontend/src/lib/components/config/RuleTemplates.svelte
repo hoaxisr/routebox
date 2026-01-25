@@ -1,4 +1,5 @@
 <script lang="ts">
+	import { t } from 'svelte-i18n';
 	import type { RouteRule, RuleSet, Outbound } from '$lib/types';
 
 	interface Props {
@@ -186,10 +187,10 @@
 	];
 
 	const categories = [
-		{ id: 'services', label: 'Services', description: 'Popular web services' },
-		{ id: 'social', label: 'Social Media', description: 'Social networks and messengers' },
-		{ id: 'streaming', label: 'Streaming', description: 'Video and music streaming' },
-		{ id: 'ads', label: 'Ads Blocking', description: 'Block advertising' }
+		{ id: 'services', labelKey: 'routes.categories.services', descKey: 'routes.categories.servicesDesc' },
+		{ id: 'social', labelKey: 'routes.categories.social', descKey: 'routes.categories.socialDesc' },
+		{ id: 'streaming', labelKey: 'routes.categories.streaming', descKey: 'routes.categories.streamingDesc' },
+		{ id: 'ads', labelKey: 'routes.categories.ads', descKey: 'routes.categories.adsDesc' }
 	] as const;
 
 	function isAlreadyAdded(template: Template): boolean {
@@ -224,7 +225,7 @@
 	<!-- Outbound selector -->
 	<div class="bg-[var(--ctp-surface0)] rounded-lg p-4">
 		<label for="template-outbound" class="block text-sm font-medium text-[var(--ctp-subtext1)] mb-2">
-			Route through
+			{$t('routes.routeThrough')}
 		</label>
 		<select
 			id="template-outbound"
@@ -236,7 +237,7 @@
 			{/each}
 		</select>
 		<p class="mt-1 text-xs text-[var(--ctp-overlay0)]">
-			Rule sets from <a href="https://github.com/SagerNet/sing-geosite" target="_blank" rel="noopener" class="text-[var(--ctp-primary)] hover:underline">SagerNet/sing-geosite</a>
+			{$t('routes.ruleSetsSource')} <a href="https://github.com/SagerNet/sing-geosite" target="_blank" rel="noopener" class="text-[var(--ctp-primary)] hover:underline">SagerNet/sing-geosite</a>
 		</p>
 	</div>
 
@@ -244,8 +245,8 @@
 	{#each categories as category}
 		<div>
 			<div class="flex items-center gap-2 mb-2">
-				<h3 class="text-sm font-medium text-[var(--ctp-subtext1)]">{category.label}</h3>
-				<span class="text-xs text-[var(--ctp-overlay0)]">— {category.description}</span>
+				<h3 class="text-sm font-medium text-[var(--ctp-subtext1)]">{$t(category.labelKey)}</h3>
+				<span class="text-xs text-[var(--ctp-overlay0)]">— {$t(category.descKey)}</span>
 			</div>
 			<div class="grid gap-2">
 				{#each templates.filter(t => t.category === category.id) as template}
@@ -262,9 +263,9 @@
 								<div class="flex items-center gap-2">
 									<span class="font-medium text-[var(--ctp-text)]">{template.name}</span>
 									{#if alreadyAdded}
-										<span class="text-xs text-[var(--ctp-overlay0)]">already added</span>
+										<span class="text-xs text-[var(--ctp-overlay0)]">{$t('routes.alreadyAdded')}</span>
 									{:else if template.action === 'reject'}
-										<span class="text-xs px-1.5 py-0.5 rounded bg-[var(--ctp-red)] bg-opacity-20 text-[var(--ctp-red)]">BLOCK</span>
+										<span class="text-xs px-1.5 py-0.5 rounded bg-[var(--ctp-red)] bg-opacity-20 text-[var(--ctp-red)]">{$t('routes.block')}</span>
 									{:else}
 										<span class="text-xs text-[var(--ctp-overlay0)]">→ {selectedOutbound}</span>
 									{/if}
@@ -290,7 +291,7 @@
 			onclick={onClose}
 			class="px-4 py-2 bg-[var(--ctp-surface1)] text-[var(--ctp-text)] rounded-lg hover:bg-[var(--ctp-surface2)] transition-colors"
 		>
-			Close
+			{$t('common.close')}
 		</button>
 	</div>
 </div>

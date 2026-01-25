@@ -1,6 +1,7 @@
 <script lang="ts">
 	import { onMount } from 'svelte';
 	import { goto } from '$app/navigation';
+	import { t } from 'svelte-i18n';
 	import { api } from '$lib/api/client';
 	import { notifications } from '$lib/stores';
 	import { parseConfig, toSingboxConfig, type ParsedConfig } from '$lib/utils/parsers';
@@ -65,12 +66,12 @@
 			binaryInstalled = status.binary_installed;
 			if (binaryInstalled) {
 				currentStep = 1;
-				notifications.success('amnezia-box detected! You can now continue setup.');
+				notifications.success($t('setup.install.detected'));
 			} else {
-				notifications.error('amnezia-box not found. Please install it first.');
+				notifications.error($t('setup.install.notFoundError'));
 			}
 		} catch (e) {
-			notifications.error('Failed to check installation status');
+			notifications.error($t('setup.install.checkFailed'));
 		} finally {
 			checkingInstall = false;
 		}
@@ -97,7 +98,7 @@
 		parsedVpn = null;
 
 		if (!vpnInput.trim()) {
-			vpnError = 'Please enter a VPN configuration';
+			vpnError = $t('setup.vpn.emptyError');
 			return;
 		}
 
@@ -341,9 +342,9 @@
 			await api.applyConfig();
 
 			applied = true;
-			notifications.success('Конфигурация применена!');
+			notifications.success($t('setup.apply.configApplied'));
 		} catch (err) {
-			notifications.error(`Ошибка: ${err}`);
+			notifications.error($t('setup.apply.configError', { values: { error: String(err) } }));
 		} finally {
 			applying = false;
 		}
@@ -396,7 +397,7 @@
 		const hasValidExt = validExtensions.some(ext => file.name.toLowerCase().endsWith(ext));
 
 		if (!hasValidExt && file.size > 50000) {
-			vpnError = 'Invalid file type. Please select a .conf, .txt, or .json file.';
+			vpnError = $t('setup.vpn.invalidFileType');
 			return;
 		}
 
@@ -409,14 +410,14 @@
 			}
 		};
 		reader.onerror = () => {
-			vpnError = 'Failed to read file';
+			vpnError = $t('setup.vpn.fileReadError');
 		};
 		reader.readAsText(file);
 	}
 </script>
 
 <svelte:head>
-	<title>Quick Setup - RouteBox</title>
+	<title>{$t('setup.pageTitle')}</title>
 </svelte:head>
 
 {#if loading}
@@ -426,7 +427,7 @@
 				<circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle>
 				<path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z"></path>
 			</svg>
-			<p class="mt-2 text-[var(--ctp-overlay1)]">Checking system...</p>
+			<p class="mt-2 text-[var(--ctp-overlay1)]">{$t('setup.checkingSystem')}</p>
 		</div>
 	</div>
 {:else}
@@ -434,8 +435,8 @@
 	<div class="w-full max-w-2xl">
 		<!-- Header -->
 		<div class="text-center mb-8">
-			<h1 class="text-3xl font-bold text-[var(--ctp-text)]">Quick Setup</h1>
-			<p class="text-[var(--ctp-overlay1)] mt-2">Configure your router in a few simple steps</p>
+			<h1 class="text-3xl font-bold text-[var(--ctp-text)]">{$t('setup.title')}</h1>
+			<p class="text-[var(--ctp-overlay1)] mt-2">{$t('setup.subtitle')}</p>
 		</div>
 
 		<!-- System Requirements Warning -->
@@ -446,13 +447,13 @@
 						<path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z" />
 					</svg>
 					<div class="flex-1">
-						<h3 class="text-white font-semibold">System Requirements Not Met</h3>
+						<h3 class="text-white font-semibold">{$t('setup.systemRequirementsNotMet')}</h3>
 						<div class="text-white/90 text-sm mt-1 space-y-1">
 							{#if !systemChecks.is_root}
-								<p>Run with <code class="bg-white/20 px-1.5 py-0.5 rounded">sudo</code> to create TUN interface</p>
+								<p>{$t('setup.runWithSudo', { values: { command: 'sudo' } }).replace('{command}', '')}<code class="bg-white/20 px-1.5 py-0.5 rounded">sudo</code></p>
 							{/if}
 							{#if !systemChecks.ipv4_forward}
-								<p>Enable IP forwarding: <code class="bg-white/20 px-1.5 py-0.5 rounded">sysctl -w net.ipv4.ip_forward=1</code></p>
+								<p>{$t('setup.enableIpForwarding', { values: { command: '' } }).replace('{command}', '')}<code class="bg-white/20 px-1.5 py-0.5 rounded">sysctl -w net.ipv4.ip_forward=1</code></p>
 							{/if}
 						</div>
 					</div>
@@ -496,9 +497,9 @@
 				<!-- Step 0: Install amnezia-box (only shown if not installed) -->
 				<div class="space-y-6">
 					<div>
-						<h2 class="text-xl font-semibold text-[var(--ctp-text)]">1. Install amnezia-box</h2>
+						<h2 class="text-xl font-semibold text-[var(--ctp-text)]">1. {$t('setup.install.title')}</h2>
 						<p class="text-[var(--ctp-overlay1)] mt-1">
-							amnezia-box is not installed on your system. Please install it first.
+							{$t('setup.install.description')}
 						</p>
 					</div>
 
@@ -507,19 +508,19 @@
 							<svg class="w-5 h-5 text-[var(--ctp-yellow)]" fill="none" stroke="currentColor" viewBox="0 0 24 24">
 								<path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z" />
 							</svg>
-							<span class="font-medium text-[var(--ctp-yellow)]">amnezia-box not found</span>
+							<span class="font-medium text-[var(--ctp-yellow)]">{$t('setup.install.notFound')}</span>
 						</div>
 					</div>
 
 					<div class="bg-[var(--ctp-surface0)] rounded-lg p-4 space-y-4">
-						<p class="text-sm text-[var(--ctp-text)]">Run this command to install amnezia-box:</p>
+						<p class="text-sm text-[var(--ctp-text)]">{$t('setup.install.commandHint')}</p>
 
 						<code class="block p-3 bg-[var(--ctp-crust)] rounded text-sm text-[var(--ctp-green)] font-mono break-all">
 							curl -fsSL https://raw.githubusercontent.com/hoaxisr/amnezia-box/main/docs/installation/tools/install-amnezia-box.sh | sh
 						</code>
 
 						<p class="text-xs text-[var(--ctp-overlay1)]">
-							After installation, click "Check Installation" to continue.
+							{$t('setup.install.afterInstall')}
 						</p>
 					</div>
 
@@ -533,12 +534,12 @@
 								<circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle>
 								<path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z"></path>
 							</svg>
-							Checking...
+							{$t('setup.install.checking')}
 						{:else}
 							<svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
 								<path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" />
 							</svg>
-							Check Installation
+							{$t('setup.install.checkButton')}
 						{/if}
 					</button>
 				</div>
@@ -547,9 +548,9 @@
 				<!-- Step: VPN Config -->
 				<div class="space-y-6">
 					<div>
-						<h2 class="text-xl font-semibold text-[var(--ctp-text)]">{binaryInstalled ? '1' : '2'}. Import VPN Configuration</h2>
+						<h2 class="text-xl font-semibold text-[var(--ctp-text)]">{binaryInstalled ? '1' : '2'}. {$t('setup.vpn.title')}</h2>
 						<p class="text-[var(--ctp-overlay1)] mt-1">
-							Paste your VPN link, drop a .conf file, or select a file
+							{$t('setup.vpn.description')}
 						</p>
 					</div>
 
@@ -565,16 +566,14 @@
 						<textarea
 							bind:value={vpnInput}
 							oninput={parseVpnConfig}
-							placeholder="vless://uuid@server:port?params#name
-hy2://password@server:port#name
-or paste/drop AmneziaWG .conf file..."
+							placeholder={$t('setup.vpn.placeholder')}
 							rows="6"
 							class="w-full px-4 py-3 bg-[var(--ctp-surface0)] border border-[var(--ctp-surface2)] rounded-lg text-[var(--ctp-text)] placeholder-[var(--ctp-overlay0)] font-mono text-sm focus:outline-none focus:ring-2 focus:ring-[var(--ctp-primary)] resize-none"
 						></textarea>
 
 						<!-- File upload button -->
 						<div class="mt-3 flex items-center justify-center gap-3">
-							<span class="text-sm text-[var(--ctp-overlay1)]">or</span>
+							<span class="text-sm text-[var(--ctp-overlay1)]">{$t('setup.vpn.or')}</span>
 							<button
 								type="button"
 								onclick={() => fileInput.click()}
@@ -583,7 +582,7 @@ or paste/drop AmneziaWG .conf file..."
 								<svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
 									<path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M7 16a4 4 0 01-.88-7.903A5 5 0 1115.9 6L16 6a5 5 0 011 9.9M15 13l-3-3m0 0l-3 3m3-3v12" />
 								</svg>
-								Select .conf file
+								{$t('setup.vpn.selectFile')}
 							</button>
 							<input
 								bind:this={fileInput}
@@ -607,11 +606,11 @@ or paste/drop AmneziaWG .conf file..."
 								<svg class="w-5 h-5 text-[var(--ctp-primary)]" fill="none" stroke="currentColor" viewBox="0 0 24 24">
 									<path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 13l4 4L19 7" />
 								</svg>
-								<span class="font-medium text-[var(--ctp-primary)]">Configuration parsed successfully</span>
+								<span class="font-medium text-[var(--ctp-primary)]">{$t('setup.vpn.parseSuccess')}</span>
 							</div>
 							<div class="mt-2 text-sm text-[var(--ctp-text)]">
-								<span class="text-[var(--ctp-overlay1)]">Type:</span> {getTypeLabel(parsedVpn.type)} —
-								<span class="text-[var(--ctp-overlay1)]">Name:</span> {parsedVpn.name}
+								<span class="text-[var(--ctp-overlay1)]">{$t('setup.vpn.type')}:</span> {getTypeLabel(parsedVpn.type)} —
+								<span class="text-[var(--ctp-overlay1)]">{$t('setup.vpn.name')}:</span> {parsedVpn.name}
 							</div>
 						</div>
 					{/if}
@@ -621,9 +620,9 @@ or paste/drop AmneziaWG .conf file..."
 				<!-- Step: Usage Mode -->
 				<div class="space-y-6">
 					<div>
-						<h2 class="text-xl font-semibold text-[var(--ctp-text)]">{binaryInstalled ? '2' : '3'}. Режим использования</h2>
+						<h2 class="text-xl font-semibold text-[var(--ctp-text)]">{binaryInstalled ? '2' : '3'}. {$t('setup.mode.title')}</h2>
 						<p class="text-[var(--ctp-overlay1)] mt-1">
-							Как вы планируете использовать RouteBox?
+							{$t('setup.mode.description')}
 						</p>
 					</div>
 
@@ -643,15 +642,14 @@ or paste/drop AmneziaWG .conf file..."
 									{/if}
 								</div>
 								<div>
-									<div class="font-semibold text-[var(--ctp-text)]">Роутер</div>
+									<div class="font-semibold text-[var(--ctp-text)]">{$t('setup.mode.router.title')}</div>
 									<div class="text-sm text-[var(--ctp-overlay1)] mt-1">
-										Маршрутизация трафика всей локальной сети через VPN.
-										Требует настройки других устройств на использование этого роутера как шлюза.
+										{$t('setup.mode.router.description')}
 									</div>
 									<div class="mt-2 flex flex-wrap gap-2">
-										<span class="px-2 py-0.5 bg-[var(--ctp-surface1)] text-[var(--ctp-subtext0)] text-xs rounded">TUN интерфейс</span>
-										<span class="px-2 py-0.5 bg-[var(--ctp-surface1)] text-[var(--ctp-subtext0)] text-xs rounded">Split tunneling</span>
-										<span class="px-2 py-0.5 bg-[var(--ctp-surface1)] text-[var(--ctp-subtext0)] text-xs rounded">Rule sets</span>
+										<span class="px-2 py-0.5 bg-[var(--ctp-surface1)] text-[var(--ctp-subtext0)] text-xs rounded">{$t('setup.mode.router.tunInterface')}</span>
+										<span class="px-2 py-0.5 bg-[var(--ctp-surface1)] text-[var(--ctp-subtext0)] text-xs rounded">{$t('setup.mode.router.splitTunneling')}</span>
+										<span class="px-2 py-0.5 bg-[var(--ctp-surface1)] text-[var(--ctp-subtext0)] text-xs rounded">{$t('setup.mode.router.ruleSets')}</span>
 									</div>
 								</div>
 							</div>
@@ -672,14 +670,14 @@ or paste/drop AmneziaWG .conf file..."
 									{/if}
 								</div>
 								<div>
-									<div class="font-semibold text-[var(--ctp-text)]">Прокси</div>
+									<div class="font-semibold text-[var(--ctp-text)]">{$t('setup.mode.proxy.title')}</div>
 									<div class="text-sm text-[var(--ctp-overlay1)] mt-1">
-										Локальный SOCKS5/HTTP прокси. Только приложения, настроенные на прокси, будут использовать VPN.
+										{$t('setup.mode.proxy.description')}
 									</div>
 									<div class="mt-2 flex flex-wrap gap-2">
-										<span class="px-2 py-0.5 bg-[var(--ctp-surface1)] text-[var(--ctp-subtext0)] text-xs rounded">SOCKS5</span>
-										<span class="px-2 py-0.5 bg-[var(--ctp-surface1)] text-[var(--ctp-subtext0)] text-xs rounded">HTTP proxy</span>
-										<span class="px-2 py-0.5 bg-[var(--ctp-surface1)] text-[var(--ctp-subtext0)] text-xs rounded">Простая настройка</span>
+										<span class="px-2 py-0.5 bg-[var(--ctp-surface1)] text-[var(--ctp-subtext0)] text-xs rounded">{$t('setup.mode.proxy.socks5')}</span>
+										<span class="px-2 py-0.5 bg-[var(--ctp-surface1)] text-[var(--ctp-subtext0)] text-xs rounded">{$t('setup.mode.proxy.httpProxy')}</span>
+										<span class="px-2 py-0.5 bg-[var(--ctp-surface1)] text-[var(--ctp-subtext0)] text-xs rounded">{$t('setup.mode.proxy.simpleSetup')}</span>
 									</div>
 								</div>
 							</div>
@@ -688,7 +686,7 @@ or paste/drop AmneziaWG .conf file..."
 
 					{#if usageMode === 'proxy'}
 						<div class="bg-[var(--ctp-surface0)] rounded-lg p-4">
-							<label for="proxy-port" class="block text-sm text-[var(--ctp-overlay1)] mb-2">Порт прокси</label>
+							<label for="proxy-port" class="block text-sm text-[var(--ctp-overlay1)] mb-2">{$t('setup.mode.proxyPort')}</label>
 							<input
 								id="proxy-port"
 								type="number"
@@ -698,7 +696,7 @@ or paste/drop AmneziaWG .conf file..."
 								class="w-32 px-3 py-2 bg-[var(--ctp-surface1)] border border-[var(--ctp-surface2)] rounded-lg text-[var(--ctp-text)] focus:outline-none focus:ring-2 focus:ring-[var(--ctp-primary)]"
 							/>
 							<p class="text-xs text-[var(--ctp-overlay0)] mt-2">
-								Прокси будет доступен на <code class="bg-[var(--ctp-surface1)] px-1.5 py-0.5 rounded text-[var(--ctp-text)]">{machineIP}:{proxyPort}</code>
+								{$t('setup.mode.proxyAvailableAt')} <code class="bg-[var(--ctp-surface1)] px-1.5 py-0.5 rounded text-[var(--ctp-text)]">{machineIP}:{proxyPort}</code>
 							</p>
 						</div>
 					{/if}
@@ -708,9 +706,9 @@ or paste/drop AmneziaWG .conf file..."
 				<!-- Step: Rule Sets (Router only) -->
 				<div class="space-y-6">
 					<div>
-						<h2 class="text-xl font-semibold text-[var(--ctp-text)]">{binaryInstalled ? '3' : '4'}. Списки правил</h2>
+						<h2 class="text-xl font-semibold text-[var(--ctp-text)]">{binaryInstalled ? '3' : '4'}. {$t('setup.ruleSets.title')}</h2>
 						<p class="text-[var(--ctp-overlay1)] mt-1">
-							Какой трафик должен идти через VPN
+							{$t('setup.ruleSets.description')}
 						</p>
 					</div>
 
@@ -747,9 +745,9 @@ or paste/drop AmneziaWG .conf file..."
 				<!-- Step: Routing Mode (Router only) -->
 				<div class="space-y-6">
 					<div>
-						<h2 class="text-xl font-semibold text-[var(--ctp-text)]">{binaryInstalled ? '4' : '5'}. Режим маршрутизации</h2>
+						<h2 class="text-xl font-semibold text-[var(--ctp-text)]">{binaryInstalled ? '4' : '5'}. {$t('setup.routing.title')}</h2>
 						<p class="text-[var(--ctp-overlay1)] mt-1">
-							Какой трафик направлять через VPN
+							{$t('setup.routing.description')}
 						</p>
 					</div>
 
@@ -769,9 +767,9 @@ or paste/drop AmneziaWG .conf file..."
 									{/if}
 								</div>
 								<div>
-									<div class="font-semibold text-[var(--ctp-text)]">Split Tunneling (рекомендуется)</div>
+									<div class="font-semibold text-[var(--ctp-text)]">{$t('setup.routing.split.title')}</div>
 									<div class="text-sm text-[var(--ctp-overlay1)] mt-1">
-										Только выбранные списки идут через VPN. Остальной трафик напрямую.
+										{$t('setup.routing.split.description')}
 									</div>
 								</div>
 							</div>
@@ -792,9 +790,9 @@ or paste/drop AmneziaWG .conf file..."
 									{/if}
 								</div>
 								<div>
-									<div class="font-semibold text-[var(--ctp-text)]">Весь трафик</div>
+									<div class="font-semibold text-[var(--ctp-text)]">{$t('setup.routing.all.title')}</div>
 									<div class="text-sm text-[var(--ctp-overlay1)] mt-1">
-										Весь трафик через VPN. Максимальная приватность, но может снизить скорость.
+										{$t('setup.routing.all.description')}
 									</div>
 								</div>
 							</div>
@@ -808,38 +806,38 @@ or paste/drop AmneziaWG .conf file..."
 					<div>
 						<h2 class="text-xl font-semibold text-[var(--ctp-text)]">
 							{#if usageMode === 'router'}
-								{binaryInstalled ? '5' : '6'}. Применить конфигурацию
+								{binaryInstalled ? '5' : '6'}. {$t('setup.apply.title')}
 							{:else}
-								{binaryInstalled ? '3' : '4'}. Применить конфигурацию
+								{binaryInstalled ? '3' : '4'}. {$t('setup.apply.title')}
 							{/if}
 						</h2>
 						<p class="text-[var(--ctp-overlay1)] mt-1">
-							Проверьте настройки и примените конфигурацию
+							{$t('setup.apply.description')}
 						</p>
 					</div>
 
 					{#if !applied}
 						<div class="bg-[var(--ctp-surface0)] rounded-lg p-4 space-y-3 text-sm">
 							<div class="flex justify-between">
-								<span class="text-[var(--ctp-overlay1)]">VPN:</span>
+								<span class="text-[var(--ctp-overlay1)]">{$t('setup.apply.vpnLabel')}:</span>
 								<span class="text-[var(--ctp-text)]">{parsedVpn?.name} ({getTypeLabel(parsedVpn?.type || '')})</span>
 							</div>
 							<div class="flex justify-between">
-								<span class="text-[var(--ctp-overlay1)]">Режим:</span>
-								<span class="text-[var(--ctp-text)]">{usageMode === 'router' ? 'Роутер' : 'Прокси'}</span>
+								<span class="text-[var(--ctp-overlay1)]">{$t('setup.apply.modeLabel')}:</span>
+								<span class="text-[var(--ctp-text)]">{usageMode === 'router' ? $t('setup.apply.modeRouter') : $t('setup.apply.modeProxy')}</span>
 							</div>
 							{#if usageMode === 'router'}
 								<div class="flex justify-between">
-									<span class="text-[var(--ctp-overlay1)]">Списки правил:</span>
-									<span class="text-[var(--ctp-text)]">{selectedRuleSets.length > 0 ? selectedRuleSets.join(', ') : 'Нет'}</span>
+									<span class="text-[var(--ctp-overlay1)]">{$t('setup.apply.ruleSetsLabel')}:</span>
+									<span class="text-[var(--ctp-text)]">{selectedRuleSets.length > 0 ? selectedRuleSets.join(', ') : $t('setup.apply.noneSelected')}</span>
 								</div>
 								<div class="flex justify-between">
-									<span class="text-[var(--ctp-overlay1)]">Маршрутизация:</span>
-									<span class="text-[var(--ctp-text)]">{routingMode === 'split' ? 'Split Tunneling' : 'Весь трафик'}</span>
+									<span class="text-[var(--ctp-overlay1)]">{$t('setup.apply.routingLabel')}:</span>
+									<span class="text-[var(--ctp-text)]">{routingMode === 'split' ? $t('setup.apply.routingSplit') : $t('setup.apply.routingAll')}</span>
 								</div>
 							{:else}
 								<div class="flex justify-between">
-									<span class="text-[var(--ctp-overlay1)]">Адрес:</span>
+									<span class="text-[var(--ctp-overlay1)]">{$t('setup.apply.addressLabel')}:</span>
 									<span class="text-[var(--ctp-text)]">{machineIP}:{proxyPort} (SOCKS5 + HTTP)</span>
 								</div>
 							{/if}
@@ -855,12 +853,12 @@ or paste/drop AmneziaWG .conf file..."
 									<circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle>
 									<path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z"></path>
 								</svg>
-								Applying...
+								{$t('setup.apply.applying')}
 							{:else}
 								<svg class="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
 									<path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 13l4 4L19 7" />
 								</svg>
-								Apply Configuration
+								{$t('setup.apply.applyButton')}
 							{/if}
 						</button>
 					{:else}
@@ -870,9 +868,9 @@ or paste/drop AmneziaWG .conf file..."
 									<path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 13l4 4L19 7" />
 								</svg>
 							</div>
-							<h3 class="text-xl font-semibold text-[var(--ctp-text)]">Setup Complete!</h3>
+							<h3 class="text-xl font-semibold text-[var(--ctp-text)]">{$t('setup.apply.complete')}</h3>
 							<p class="text-[var(--ctp-overlay1)] mt-2">
-								Your router is now configured and ready to use.
+								{$t('setup.apply.completeDescription')}
 							</p>
 						</div>
 					{/if}
@@ -887,7 +885,7 @@ or paste/drop AmneziaWG .conf file..."
 				disabled={currentStep === 0 || (currentStep === 1 && binaryInstalled)}
 				class="px-6 py-2 bg-[var(--ctp-surface1)] text-[var(--ctp-text)] rounded-lg hover:bg-[var(--ctp-surface2)] disabled:opacity-50 transition-colors"
 			>
-				Back
+				{$t('setup.navigation.back')}
 			</button>
 
 			{#if (usageMode === 'router' && effectiveStep === 5 && applied) || (usageMode === 'proxy' && effectiveStep === 3 && applied)}
@@ -895,7 +893,7 @@ or paste/drop AmneziaWG .conf file..."
 					onclick={finish}
 					class="px-6 py-2 bg-[var(--ctp-primary)] text-white rounded-lg hover:opacity-90 transition-opacity"
 				>
-					Перейти в Dashboard
+					{$t('setup.navigation.goToDashboard')}
 				</button>
 			{:else if currentStep > 0 && ((usageMode === 'router' && effectiveStep < 5) || (usageMode === 'proxy' && effectiveStep < 3))}
 				<button
@@ -903,7 +901,7 @@ or paste/drop AmneziaWG .conf file..."
 					disabled={!canProceed()}
 					class="px-6 py-2 bg-[var(--ctp-primary)] text-white rounded-lg hover:opacity-90 disabled:opacity-50 transition-opacity"
 				>
-					Далее
+					{$t('setup.navigation.next')}
 				</button>
 			{/if}
 		</div>
@@ -911,7 +909,7 @@ or paste/drop AmneziaWG .conf file..."
 		<!-- Skip link -->
 		<div class="text-center mt-4">
 			<a href="/" class="text-sm text-[var(--ctp-overlay0)] hover:text-[var(--ctp-text)] transition-colors">
-				Skip setup and go to dashboard
+				{$t('setup.navigation.skipSetup')}
 			</a>
 		</div>
 	</div>

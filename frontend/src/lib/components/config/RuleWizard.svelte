@@ -1,4 +1,5 @@
 <script lang="ts">
+	import { t } from 'svelte-i18n';
 	import type { RouteRule, RuleSet, Outbound, Inbound } from '$lib/types';
 
 	interface Props {
@@ -35,12 +36,12 @@
 	let ipIsPrivate = $state(false);
 	let selectedInbounds = $state<string[]>([]);
 
-	const steps: { id: Step; label: string; number: number }[] = [
-		{ id: 'action', label: 'Action', number: 1 },
-		{ id: 'target', label: 'What to Match', number: 2 },
-		{ id: 'conditions', label: 'Specify', number: 3 },
-		{ id: 'review', label: 'Review', number: 4 }
-	];
+	let steps = $derived([
+		{ id: 'action' as Step, label: $t('routes.ruleAction'), number: 1 },
+		{ id: 'target' as Step, label: $t('routes.wizard.whatToMatch'), number: 2 },
+		{ id: 'conditions' as Step, label: $t('routes.wizard.specify'), number: 3 },
+		{ id: 'review' as Step, label: $t('routes.wizard.review'), number: 4 }
+	]);
 
 	function nextStep() {
 		if (currentStep === 'action') currentStep = 'target';
@@ -123,20 +124,20 @@
 
 		if (targetType === 'domains' && domainSuffix.trim()) {
 			const domains = parseLines(domainSuffix);
-			parts.push(`Domains: ${domains.slice(0, 2).join(', ')}${domains.length > 2 ? ` +${domains.length - 2}` : ''}`);
+			parts.push(`${$t('routes.wizard.domains')}: ${domains.slice(0, 2).join(', ')}${domains.length > 2 ? ` +${domains.length - 2}` : ''}`);
 		}
 		if (targetType === 'ips') {
-			if (ipIsPrivate) parts.push('Private IPs');
+			if (ipIsPrivate) parts.push($t('routes.wizard.privateIps'));
 			if (ipCidr.trim()) {
 				const ips = parseLines(ipCidr);
-				parts.push(`IPs: ${ips.slice(0, 2).join(', ')}${ips.length > 2 ? ` +${ips.length - 2}` : ''}`);
+				parts.push(`${$t('routes.wizard.ips')}: ${ips.slice(0, 2).join(', ')}${ips.length > 2 ? ` +${ips.length - 2}` : ''}`);
 			}
 		}
 		if (targetType === 'ruleset' && selectedRuleSets.length > 0) {
-			parts.push(`Rule sets: ${selectedRuleSets.join(', ')}`);
+			parts.push(`${$t('routes.ruleSets')}: ${selectedRuleSets.join(', ')}`);
 		}
 		if (targetType === 'other' && selectedInbounds.length > 0) {
-			parts.push(`From inbound: ${selectedInbounds.join(', ')}`);
+			parts.push(`${$t('routes.wizard.fromInbound')}: ${selectedInbounds.join(', ')}`);
 		}
 
 		const target = action === 'route' ? outbound : 'REJECT';
@@ -180,7 +181,7 @@
 	<div class="min-h-[280px]">
 		{#if currentStep === 'action'}
 			<div class="space-y-4">
-				<h3 class="text-lg font-medium text-[var(--ctp-text)]">What should happen to matching traffic?</h3>
+				<h3 class="text-lg font-medium text-[var(--ctp-text)]">{$t('routes.wizard.actionQuestion')}</h3>
 
 				<div class="grid gap-3">
 					<button
@@ -195,8 +196,8 @@
 								</svg>
 							</div>
 							<div>
-								<div class="font-medium text-[var(--ctp-text)]">Route to outbound</div>
-								<div class="text-sm text-[var(--ctp-overlay1)]">Send traffic through VPN or direct</div>
+								<div class="font-medium text-[var(--ctp-text)]">{$t('routes.routeToOutbound')}</div>
+								<div class="text-sm text-[var(--ctp-overlay1)]">{$t('routes.actionRouteDesc')}</div>
 							</div>
 						</div>
 					</button>
@@ -213,8 +214,8 @@
 								</svg>
 							</div>
 							<div>
-								<div class="font-medium text-[var(--ctp-text)]">Block / Reject</div>
-								<div class="text-sm text-[var(--ctp-overlay1)]">Drop matching connections</div>
+								<div class="font-medium text-[var(--ctp-text)]">{$t('routes.wizard.blockReject')}</div>
+								<div class="text-sm text-[var(--ctp-overlay1)]">{$t('routes.actionRejectDesc')}</div>
 							</div>
 						</div>
 					</button>
@@ -223,7 +224,7 @@
 				{#if action === 'route'}
 					<div class="mt-4">
 						<label for="wizard-outbound" class="block text-sm font-medium text-[var(--ctp-subtext1)] mb-2">
-							Route to:
+							{$t('routes.routeTo')}:
 						</label>
 						<select
 							id="wizard-outbound"
@@ -240,7 +241,7 @@
 
 		{:else if currentStep === 'target'}
 			<div class="space-y-4">
-				<h3 class="text-lg font-medium text-[var(--ctp-text)]">What do you want to match?</h3>
+				<h3 class="text-lg font-medium text-[var(--ctp-text)]">{$t('routes.wizard.matchQuestion')}</h3>
 
 				<div class="grid gap-3">
 					<button
@@ -251,8 +252,8 @@
 						<div class="flex items-center gap-3">
 							<span class="text-2xl">🌐</span>
 							<div>
-								<div class="font-medium text-[var(--ctp-text)]">Domains</div>
-								<div class="text-sm text-[var(--ctp-overlay1)]">Match by website domain (google.com, youtube.com)</div>
+								<div class="font-medium text-[var(--ctp-text)]">{$t('routes.wizard.domains')}</div>
+								<div class="text-sm text-[var(--ctp-overlay1)]">{$t('routes.wizard.domainsDesc')}</div>
 							</div>
 						</div>
 					</button>
@@ -265,8 +266,8 @@
 						<div class="flex items-center gap-3">
 							<span class="text-2xl">📍</span>
 							<div>
-								<div class="font-medium text-[var(--ctp-text)]">IP Addresses</div>
-								<div class="text-sm text-[var(--ctp-overlay1)]">Match by destination IP or CIDR range</div>
+								<div class="font-medium text-[var(--ctp-text)]">{$t('routes.wizard.ipAddresses')}</div>
+								<div class="text-sm text-[var(--ctp-overlay1)]">{$t('routes.wizard.ipAddressesDesc')}</div>
 							</div>
 						</div>
 					</button>
@@ -279,8 +280,8 @@
 						<div class="flex items-center gap-3">
 							<span class="text-2xl">📋</span>
 							<div>
-								<div class="font-medium text-[var(--ctp-text)]">Rule Sets</div>
-								<div class="text-sm text-[var(--ctp-overlay1)]">Use pre-defined domain/IP lists</div>
+								<div class="font-medium text-[var(--ctp-text)]">{$t('routes.ruleSets')}</div>
+								<div class="text-sm text-[var(--ctp-overlay1)]">{$t('routes.wizard.ruleSetsDesc')}</div>
 							</div>
 						</div>
 					</button>
@@ -294,8 +295,8 @@
 							<div class="flex items-center gap-3">
 								<span class="text-2xl">🔌</span>
 								<div>
-									<div class="font-medium text-[var(--ctp-text)]">By Inbound</div>
-									<div class="text-sm text-[var(--ctp-overlay1)]">Match traffic from specific interfaces</div>
+									<div class="font-medium text-[var(--ctp-text)]">{$t('routes.wizard.byInbound')}</div>
+									<div class="text-sm text-[var(--ctp-overlay1)]">{$t('routes.wizard.byInboundDesc')}</div>
 								</div>
 							</div>
 						</button>
@@ -306,13 +307,13 @@
 		{:else if currentStep === 'conditions'}
 			<div class="space-y-4">
 				<h3 class="text-lg font-medium text-[var(--ctp-text)]">
-					{#if targetType === 'domains'}Enter domain names{:else if targetType === 'ips'}Enter IP addresses{:else if targetType === 'ruleset'}Select rule sets{:else}Select inbounds{/if}
+					{#if targetType === 'domains'}{$t('routes.wizard.enterDomains')}{:else if targetType === 'ips'}{$t('routes.wizard.enterIps')}{:else if targetType === 'ruleset'}{$t('routes.wizard.selectRuleSets')}{:else}{$t('routes.wizard.selectInbounds')}{/if}
 				</h3>
 
 				{#if targetType === 'domains'}
 					<div>
 						<label for="wizard-domains" class="block text-sm text-[var(--ctp-overlay1)] mb-2">
-							Enter domains (one per line). Matches the domain and all subdomains.
+							{$t('routes.wizard.domainsHint')}
 						</label>
 						<textarea
 							id="wizard-domains"
@@ -331,14 +332,14 @@
 								class="w-5 h-5 rounded border-[var(--ctp-surface2)] text-[var(--ctp-primary)] focus:ring-[var(--ctp-primary)]"
 							/>
 							<div>
-								<span class="font-medium text-[var(--ctp-text)]">Private/LAN IPs</span>
+								<span class="font-medium text-[var(--ctp-text)]">{$t('routes.wizard.privateLanIps')}</span>
 								<p class="text-sm text-[var(--ctp-overlay1)]">192.168.x.x, 10.x.x.x, 172.16-31.x.x</p>
 							</div>
 						</label>
 
 						<div>
 							<label for="wizard-ips" class="block text-sm text-[var(--ctp-overlay1)] mb-2">
-								Or enter specific IPs/CIDRs (one per line):
+								{$t('routes.wizard.orEnterIps')}
 							</label>
 							<textarea
 								id="wizard-ips"
@@ -372,8 +373,8 @@
 						</div>
 					{:else}
 						<div class="bg-[var(--ctp-surface0)] rounded-lg border border-[var(--ctp-surface2)] p-6 text-center">
-							<p class="text-[var(--ctp-overlay1)] mb-2">No available rule sets</p>
-							<p class="text-sm text-[var(--ctp-overlay0)]">All rule sets already have routing rules assigned</p>
+							<p class="text-[var(--ctp-overlay1)] mb-2">{$t('routes.noRuleSetsAvailable')}</p>
+							<p class="text-sm text-[var(--ctp-overlay0)]">{$t('routes.allRuleSetsHaveRoutes')}</p>
 						</div>
 					{/if}
 					{#if onCreateRuleSet}
@@ -385,7 +386,7 @@
 							<svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
 								<path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 4v16m8-8H4" />
 							</svg>
-							Create New Rule Set
+							{$t('routes.wizard.createNewRuleSet')}
 						</button>
 					{/if}
 				{:else if targetType === 'other'}
@@ -413,12 +414,12 @@
 
 		{:else if currentStep === 'review'}
 			<div class="space-y-4">
-				<h3 class="text-lg font-medium text-[var(--ctp-text)]">Review your rule</h3>
+				<h3 class="text-lg font-medium text-[var(--ctp-text)]">{$t('routes.wizard.reviewRule')}</h3>
 
 				<div class="bg-[var(--ctp-surface0)] rounded-lg p-4 space-y-3">
 					<div class="flex items-center gap-2">
 						<span class="status-badge {action === 'route' ? 'success' : 'error'}">
-							{action === 'route' ? 'ROUTE' : 'REJECT'}
+							{action === 'route' ? $t('routes.actionRoute').toUpperCase() : $t('routes.actionReject').toUpperCase()}
 						</span>
 						{#if action === 'route'}
 							<span class="text-[var(--ctp-text)]">→</span>
@@ -427,7 +428,7 @@
 					</div>
 
 					<div class="border-t border-[var(--ctp-surface2)] pt-3">
-						<div class="text-sm text-[var(--ctp-overlay1)] mb-1">Matching:</div>
+						<div class="text-sm text-[var(--ctp-overlay1)] mb-1">{$t('routes.wizard.matching')}:</div>
 						<div class="text-[var(--ctp-text)]">
 							{#if targetType === 'domains' && domainSuffix.trim()}
 								<div class="flex flex-wrap gap-1">
@@ -435,19 +436,19 @@
 										<span class="selection-chip">{domain}</span>
 									{/each}
 									{#if parseLines(domainSuffix).length > 5}
-										<span class="text-[var(--ctp-overlay0)]">+{parseLines(domainSuffix).length - 5} more</span>
+										<span class="text-[var(--ctp-overlay0)]">+{parseLines(domainSuffix).length - 5} {$t('routes.wizard.more')}</span>
 									{/if}
 								</div>
 							{:else if targetType === 'ips'}
 								<div class="flex flex-wrap gap-1">
 									{#if ipIsPrivate}
-										<span class="selection-chip">Private IPs</span>
+										<span class="selection-chip">{$t('routes.wizard.privateIps')}</span>
 									{/if}
 									{#each parseLines(ipCidr).slice(0, 3) as ip}
 										<span class="selection-chip">{ip}</span>
 									{/each}
 									{#if parseLines(ipCidr).length > 3}
-										<span class="text-[var(--ctp-overlay0)]">+{parseLines(ipCidr).length - 3} more</span>
+										<span class="text-[var(--ctp-overlay0)]">+{parseLines(ipCidr).length - 3} {$t('routes.wizard.more')}</span>
 									{/if}
 								</div>
 							{:else if targetType === 'ruleset'}
@@ -468,7 +469,7 @@
 				</div>
 
 				<p class="text-sm text-[var(--ctp-overlay1)]">
-					Click "Create Rule" to add this rule. You can edit it later or drag to reorder.
+					{$t('routes.wizard.reviewHint')}
 				</p>
 			</div>
 		{/if}
@@ -488,7 +489,7 @@
 			onclick={currentStep === 'action' ? onCancel : prevStep}
 			class="px-4 py-2 bg-[var(--ctp-surface1)] text-[var(--ctp-text)] rounded-lg hover:bg-[var(--ctp-surface2)] transition-colors"
 		>
-			{currentStep === 'action' ? 'Cancel' : 'Back'}
+			{currentStep === 'action' ? $t('common.cancel') : $t('routes.wizard.back')}
 		</button>
 
 		{#if currentStep === 'review'}
@@ -497,7 +498,7 @@
 				onclick={handleSubmit}
 				class="px-4 py-2 bg-[var(--ctp-primary)] text-white rounded-lg hover:opacity-90 transition-opacity"
 			>
-				Create Rule
+				{$t('routes.createRule')}
 			</button>
 		{:else}
 			<button
@@ -506,7 +507,7 @@
 				disabled={!canProceed()}
 				class="px-4 py-2 bg-[var(--ctp-primary)] text-white rounded-lg hover:opacity-90 transition-opacity disabled:opacity-50"
 			>
-				Next
+				{$t('routes.wizard.next')}
 			</button>
 		{/if}
 	</div>

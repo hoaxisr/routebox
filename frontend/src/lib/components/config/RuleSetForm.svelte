@@ -1,4 +1,5 @@
 <script lang="ts">
+	import { t } from 'svelte-i18n';
 	import type { RuleSet, Outbound } from '$lib/types';
 	import { notifications } from '$lib/stores';
 
@@ -53,21 +54,21 @@
 		errors = {};
 
 		if (!tag.trim()) {
-			errors['tag'] = 'Tag is required';
+			errors['tag'] = $t('dns.validation.tagRequired');
 		} else if (existingTags.includes(tag.trim())) {
-			errors['tag'] = 'Tag already exists';
+			errors['tag'] = $t('dns.validation.tagExists');
 		}
 
 		if (type === 'remote' && !url.trim()) {
-			errors['url'] = 'URL is required for remote type';
+			errors['url'] = $t('dns.validation.serverRequired');
 		}
 
 		if (type === 'local' && !path.trim()) {
-			errors['path'] = 'Path is required for local type';
+			errors['path'] = $t('errors.requiredField');
 		}
 
 		if (routeAction === 'route' && !selectedOutbound) {
-			errors['outbound'] = 'Please select an outbound';
+			errors['outbound'] = $t('routes.outboundRequired');
 		}
 
 		const errorKeys = Object.keys(errors);
@@ -112,7 +113,7 @@
 	<!-- Presets (only when creating) -->
 	{#if !isEditing}
 		<div>
-			<label class="block text-sm font-medium text-[var(--ctp-subtext1)] mb-2">Quick Add Preset</label>
+			<label class="block text-sm font-medium text-[var(--ctp-subtext1)] mb-2">{$t('dns.quickAddPreset')}</label>
 			<div class="flex flex-wrap gap-2">
 				{#each PRESETS as preset}
 					<button
@@ -128,7 +129,7 @@
 		</div>
 
 		<div class="border-t border-[var(--ctp-surface2)] pt-4">
-			<p class="text-sm text-[var(--ctp-overlay0)] mb-4">Or configure manually:</p>
+			<p class="text-sm text-[var(--ctp-overlay0)] mb-4">{$t('dns.orConfigureManually')}</p>
 		</div>
 	{/if}
 
@@ -136,7 +137,7 @@
 
 		<!-- Tag -->
 		<div class="mb-4">
-			<label for="tag" class="block text-sm font-medium text-[var(--ctp-subtext1)] mb-1">Tag *</label>
+			<label for="tag" class="block text-sm font-medium text-[var(--ctp-subtext1)] mb-1">{$t('common.tag')} *</label>
 			<input
 				id="tag"
 				type="text"
@@ -151,42 +152,42 @@
 
 		<!-- Type -->
 		<div class="mb-4">
-			<label class="block text-sm font-medium text-[var(--ctp-subtext1)] mb-2">Type</label>
+			<label class="block text-sm font-medium text-[var(--ctp-subtext1)] mb-2">{$t('common.type')}</label>
 			<div class="flex gap-2">
 				<button
 					type="button"
 					onclick={() => type = 'remote'}
 					class="toggle-btn {type === 'remote' ? 'selected' : ''}"
 				>
-					Remote
+					{$t('routes.ruleSetTypes.remote')}
 				</button>
 				<button
 					type="button"
 					onclick={() => type = 'local'}
 					class="toggle-btn {type === 'local' ? 'selected' : ''}"
 				>
-					Local
+					{$t('routes.ruleSetTypes.local')}
 				</button>
 			</div>
 		</div>
 
 		<!-- Format -->
 		<div class="mb-4">
-			<label class="block text-sm font-medium text-[var(--ctp-subtext1)] mb-2">Format</label>
+			<label class="block text-sm font-medium text-[var(--ctp-subtext1)] mb-2">{$t('common.format')}</label>
 			<div class="flex gap-2">
 				<button
 					type="button"
 					onclick={() => format = 'binary'}
 					class="toggle-btn {format === 'binary' ? 'selected' : ''}"
 				>
-					Binary (.srs)
+					{$t('routes.ruleSetFormats.binary')}
 				</button>
 				<button
 					type="button"
 					onclick={() => format = 'source'}
 					class="toggle-btn {format === 'source' ? 'selected' : ''}"
 				>
-					Source (.json)
+					{$t('routes.ruleSetFormats.source')}
 				</button>
 			</div>
 		</div>
@@ -194,7 +195,7 @@
 		<!-- URL (for remote) -->
 		{#if type === 'remote'}
 			<div class="mb-4">
-				<label for="url" class="block text-sm font-medium text-[var(--ctp-subtext1)] mb-1">URL *</label>
+				<label for="url" class="block text-sm font-medium text-[var(--ctp-subtext1)] mb-1">{$t('routes.ruleSetUrl')} *</label>
 				<input
 					id="url"
 					type="url"
@@ -209,21 +210,21 @@
 
 			<div class="grid grid-cols-2 gap-4 mb-4">
 				<div>
-					<label for="downloadDetour" class="block text-sm font-medium text-[var(--ctp-subtext1)] mb-1">Download Detour</label>
+					<label for="downloadDetour" class="block text-sm font-medium text-[var(--ctp-subtext1)] mb-1">{$t('routes.downloadDetour')}</label>
 					<select
 						id="downloadDetour"
 						bind:value={downloadDetour}
 						class="w-full px-3 py-2 bg-[var(--ctp-surface0)] border border-[var(--ctp-surface2)] rounded-lg text-[var(--ctp-text)] focus:outline-none focus:ring-2 focus:ring-[var(--ctp-primary)]"
 					>
-						<option value="">Default (direct)</option>
+						<option value="">{$t('dns.noneDirect')}</option>
 						{#each outbounds as ob}
 							<option value={ob.tag}>{ob.tag}</option>
 						{/each}
 					</select>
-					<p class="mt-1 text-xs text-[var(--ctp-overlay0)]">Outbound for downloading rule set</p>
+					<p class="mt-1 text-xs text-[var(--ctp-overlay0)]">{$t('routes.downloadDetourHint')}</p>
 				</div>
 				<div>
-					<label for="updateInterval" class="block text-sm font-medium text-[var(--ctp-subtext1)] mb-1">Update Interval</label>
+					<label for="updateInterval" class="block text-sm font-medium text-[var(--ctp-subtext1)] mb-1">{$t('routes.updateInterval')}</label>
 					<input
 						id="updateInterval"
 						type="text"
@@ -231,7 +232,7 @@
 						placeholder="24h"
 						class="w-full px-3 py-2 bg-[var(--ctp-surface0)] border border-[var(--ctp-surface2)] rounded-lg text-[var(--ctp-text)] placeholder-[var(--ctp-overlay0)] focus:outline-none focus:ring-2 focus:ring-[var(--ctp-primary)]"
 					/>
-					<p class="mt-1 text-xs text-[var(--ctp-overlay0)]">e.g., 24h, 7d</p>
+					<p class="mt-1 text-xs text-[var(--ctp-overlay0)]">{$t('routes.updateIntervalHint')}</p>
 				</div>
 			</div>
 		{/if}
@@ -239,7 +240,7 @@
 		<!-- Path (for local) -->
 		{#if type === 'local'}
 			<div class="mb-4">
-				<label for="path" class="block text-sm font-medium text-[var(--ctp-subtext1)] mb-1">Path *</label>
+				<label for="path" class="block text-sm font-medium text-[var(--ctp-subtext1)] mb-1">{$t('routes.ruleSetPath')} *</label>
 				<input
 					id="path"
 					type="text"
@@ -256,34 +257,34 @@
 
 	<!-- Route Configuration -->
 	<div class="border-t border-[var(--ctp-surface2)] pt-4">
-		<label class="block text-sm font-medium text-[var(--ctp-subtext1)] mb-2">Route Action</label>
+		<label class="block text-sm font-medium text-[var(--ctp-subtext1)] mb-2">{$t('routes.ruleAction')}</label>
 		<div class="flex gap-2 mb-3">
 			<button
 				type="button"
 				onclick={() => routeAction = 'none'}
 				class="toggle-btn {routeAction === 'none' ? 'selected' : ''}"
 			>
-				None
+				{$t('common.none')}
 			</button>
 			<button
 				type="button"
 				onclick={() => routeAction = 'route'}
 				class="toggle-btn {routeAction === 'route' ? 'selected' : ''}"
 			>
-				Route to...
+				{$t('routes.routeTo')}...
 			</button>
 			<button
 				type="button"
 				onclick={() => routeAction = 'reject'}
 				class="toggle-btn {routeAction === 'reject' ? 'selected' : ''}"
 			>
-				Reject
+				{$t('routes.actionReject')}
 			</button>
 		</div>
 
 		{#if routeAction === 'route'}
 			<div>
-				<label for="outbound" class="block text-sm font-medium text-[var(--ctp-subtext1)] mb-1">Outbound</label>
+				<label for="outbound" class="block text-sm font-medium text-[var(--ctp-subtext1)] mb-1">{$t('routes.outbound')}</label>
 				<select
 					id="outbound"
 					bind:value={selectedOutbound}
@@ -299,11 +300,11 @@
 			</div>
 		{:else if routeAction === 'reject'}
 			<p class="text-sm text-[var(--ctp-overlay0)]">
-				Traffic matching this rule set will be rejected.
+				{$t('routes.rejectHint')}
 			</p>
 		{:else}
 			<p class="text-sm text-[var(--ctp-overlay0)]">
-				No route rule will be created. You can add rules manually later.
+				{$t('routes.noRouteHint')}
 			</p>
 		{/if}
 	</div>
@@ -315,13 +316,13 @@
 			onclick={onCancel}
 			class="px-4 py-2 bg-[var(--ctp-surface1)] text-[var(--ctp-text)] rounded-lg hover:bg-[var(--ctp-surface2)] transition-colors"
 		>
-			Cancel
+			{$t('common.cancel')}
 		</button>
 		<button
 			type="submit"
 			class="px-4 py-2 bg-[var(--ctp-primary)] text-white rounded-lg hover:opacity-90 transition-opacity"
 		>
-			{isEditing ? 'Save Changes' : 'Add Rule Set'}
+			{isEditing ? $t('common.saveChanges') : $t('routes.addRuleSet')}
 		</button>
 	</div>
 </form>

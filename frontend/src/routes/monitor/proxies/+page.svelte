@@ -1,5 +1,6 @@
 <script lang="ts">
 	import { onMount, onDestroy } from 'svelte';
+	import { t } from 'svelte-i18n';
 	import { api } from '$lib/api/client';
 	import { notifications } from '$lib/stores';
 	import type { ClashProxy } from '$lib/types';
@@ -28,7 +29,7 @@
 				(p): p is ClashProxy => p && typeof p === 'object' && 'name' in p
 			);
 		} catch (err) {
-			notifications.error(`Failed to load proxies: ${err}`);
+			notifications.error(`${$t('errors.loadFailed')}: ${err}`);
 		} finally {
 			loading = false;
 		}
@@ -50,7 +51,7 @@
 
 		await fetchProxies();
 		testingAll = false;
-		notifications.success('All proxies tested');
+		notifications.success($t('proxies.allProxiesTested'));
 	}
 
 	const filteredProxies = $derived(() => {
@@ -112,16 +113,18 @@
 </script>
 
 <svelte:head>
-	<title>Proxies - RouteBox</title>
+	<title>{$t('proxies.title')} - RouteBox</title>
 </svelte:head>
 
 <div class="p-6 max-w-6xl mx-auto">
 	<!-- Header -->
 	<div class="flex items-center justify-between mb-6">
 		<div>
-			<h1 class="text-2xl font-semibold text-[var(--ctp-text)]">Proxies</h1>
+			<h1 class="text-2xl font-semibold text-[var(--ctp-text)]">{$t('proxies.title')}</h1>
 			<p class="text-sm text-[var(--ctp-overlay1)] mt-1">
-				{proxies.length} proxy{proxies.length !== 1 ? 'ies' : ''} configured
+				{proxies.length === 1
+					? $t('proxies.proxyCount', { values: { count: proxies.length } })
+					: $t('proxies.proxyCountPlural', { values: { count: proxies.length } })}
 			</p>
 		</div>
 		<div class="flex items-center gap-3">
@@ -133,7 +136,7 @@
 						bind:checked={autoRefresh}
 						class="w-4 h-4 rounded border-[var(--ctp-surface2)] text-[var(--ctp-primary)] focus:ring-[var(--ctp-primary)]"
 					/>
-					Auto-refresh
+					{$t('proxies.autoRefresh')}
 				</label>
 				{#if autoRefresh}
 					<select
@@ -152,7 +155,7 @@
 				onclick={fetchProxies}
 				disabled={loading}
 				class="p-2 bg-[var(--ctp-surface1)] text-[var(--ctp-text)] rounded-lg hover:bg-[var(--ctp-surface2)] transition-colors disabled:opacity-50"
-				title="Refresh"
+				title={$t('common.refresh')}
 			>
 				<svg class="w-5 h-5 {loading ? 'animate-spin' : ''}" fill="none" stroke="currentColor" viewBox="0 0 24 24">
 					<path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" />
@@ -168,12 +171,12 @@
 						<circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle>
 						<path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z"></path>
 					</svg>
-					Testing...
+					{$t('proxies.testing')}
 				{:else}
 					<svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
 						<path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13 10V3L4 14h7v7l9-11h-7z" />
 					</svg>
-					Test All
+					{$t('proxies.testAll')}
 				{/if}
 			</button>
 		</div>
@@ -182,28 +185,28 @@
 	<!-- Filters -->
 	<div class="flex items-center gap-4 mb-6">
 		<div class="flex items-center gap-2">
-			<label for="filter-type" class="text-sm text-[var(--ctp-subtext1)]">Type:</label>
+			<label for="filter-type" class="text-sm text-[var(--ctp-subtext1)]">{$t('proxies.filterType')}:</label>
 			<select
 				id="filter-type"
 				bind:value={filterType}
 				class="px-3 py-1.5 bg-[var(--ctp-surface0)] border border-[var(--ctp-surface2)] rounded-lg text-[var(--ctp-text)] text-sm focus:outline-none focus:ring-2 focus:ring-[var(--ctp-primary)]"
 			>
-				<option value="all">All</option>
-				<option value="selector">Selectors</option>
-				<option value="endpoint">Endpoints</option>
-				<option value="direct">Direct/Block</option>
+				<option value="all">{$t('proxies.filterAll')}</option>
+				<option value="selector">{$t('proxies.filterSelectors')}</option>
+				<option value="endpoint">{$t('proxies.filterEndpoints')}</option>
+				<option value="direct">{$t('proxies.filterDirect')}</option>
 			</select>
 		</div>
 
 		<div class="flex items-center gap-2">
-			<label for="sort-by" class="text-sm text-[var(--ctp-subtext1)]">Sort:</label>
+			<label for="sort-by" class="text-sm text-[var(--ctp-subtext1)]">{$t('proxies.sortBy')}:</label>
 			<select
 				id="sort-by"
 				bind:value={sortBy}
 				class="px-3 py-1.5 bg-[var(--ctp-surface0)] border border-[var(--ctp-surface2)] rounded-lg text-[var(--ctp-text)] text-sm focus:outline-none focus:ring-2 focus:ring-[var(--ctp-primary)]"
 			>
-				<option value="name">Name</option>
-				<option value="delay">Delay</option>
+				<option value="name">{$t('proxies.sortByName')}</option>
+				<option value="delay">{$t('proxies.sortByDelay')}</option>
 			</select>
 		</div>
 	</div>
@@ -218,7 +221,7 @@
 		</div>
 	{:else if filteredProxies().length === 0}
 		<div class="text-center py-12 text-[var(--ctp-overlay0)]">
-			{filterType === 'all' ? 'No proxies found' : 'No proxies match filter'}
+			{filterType === 'all' ? $t('proxies.noProxies') : $t('proxies.noProxiesMatchFilter')}
 		</div>
 	{:else}
 		<div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">

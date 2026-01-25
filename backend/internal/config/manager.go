@@ -5,24 +5,32 @@ import (
 	"encoding/json"
 	"fmt"
 	"os"
+	"os/exec"
 	"path/filepath"
+	"strings"
 	"sync"
 	"time"
 )
 
-// Manager handles config file operations
+// Manager handles config file operations with draft/staged editing support.
+// Changes are accumulated in a draft file (config.json.bak) and only applied
+// to the active config (config.json) when explicitly saved or applied.
 type Manager struct {
-	path     string
-	config   map[string]interface{}
-	mu       sync.RWMutex
-	readOnly bool
+	path         string                 // config.json path
+	draftPath    string                 // config.json.bak path
+	activeConfig map[string]interface{} // config on disk (read-only during editing)
+	draftConfig  map[string]interface{} // draft config (nil if no changes)
+	hasDraft     bool
+	mu           sync.RWMutex
+	readOnly     bool
 }
 
 // NewManager creates a new config manager and loads the config
 func NewManager(path string) (*Manager, error) {
 	m := &Manager{
-		path:   path,
-		config: make(map[string]interface{}),
+		path:         path,
+		draftPath:    path + ".bak",
+		activeConfig: make(map[string]interface{}),
 	}
 
 	if err := m.Load(); err != nil {
@@ -35,18 +43,20 @@ func NewManager(path string) (*Manager, error) {
 // NewEmptyManager creates a manager with empty config
 func NewEmptyManager(path string) *Manager {
 	return &Manager{
-		path:     path,
-		config:   make(map[string]interface{}),
-		readOnly: false,
+		path:         path,
+		draftPath:    path + ".bak",
+		activeConfig: make(map[string]interface{}),
+		readOnly:     false,
 	}
 }
 
 // NewReadOnlyManager creates a manager that can read but not write
 func NewReadOnlyManager(path string) (*Manager, error) {
 	m := &Manager{
-		path:     path,
-		config:   make(map[string]interface{}),
-		readOnly: true,
+		path:         path,
+		draftPath:    path + ".bak",
+		activeConfig: make(map[string]interface{}),
+		readOnly:     true,
 	}
 
 	if err := m.Load(); err != nil {
@@ -71,9 +81,10 @@ func (m *Manager) SetPathWithoutLoad(path string) {
 	m.mu.Lock()
 	defer m.mu.Unlock()
 	m.path = path
+	m.draftPath = path + ".bak"
 }
 
-// Load reads config from file
+// Load reads config from file into activeConfig and clears any draft
 func (m *Manager) Load() error {
 	m.mu.Lock()
 	defer m.mu.Unlock()
@@ -88,11 +99,13 @@ func (m *Manager) Load() error {
 		return fmt.Errorf("failed to parse config: %w", err)
 	}
 
-	m.config = config
+	m.activeConfig = config
+	m.draftConfig = nil
+	m.hasDraft = false
 	return nil
 }
 
-// Save writes config to file with backup
+// Save writes config to file with backup (saves to active config, clears draft)
 func (m *Manager) Save(config map[string]interface{}) error {
 	m.mu.Lock()
 	defer m.mu.Unlock()
@@ -113,7 +126,7 @@ func (m *Manager) Save(config map[string]interface{}) error {
 		return fmt.Errorf("failed to create config directory: %w", err)
 	}
 
-	// Create backup if file exists
+	// Create timestamped backup if file exists
 	if _, err := os.Stat(m.path); err == nil {
 		backupPath := fmt.Sprintf("%s.%d.bak", m.path, time.Now().Unix())
 		if data, err := os.ReadFile(m.path); err == nil {
@@ -135,20 +148,49 @@ func (m *Manager) Save(config map[string]interface{}) error {
 		return fmt.Errorf("failed to write config: %w", err)
 	}
 
-	m.config = config
+	m.activeConfig = config
+	// Clear draft after successful save to active
+	m.draftConfig = nil
+	m.hasDraft = false
+	// Remove draft file if exists
+	os.Remove(m.draftPath)
 	return nil
 }
 
-// Get returns the current config
+// Get returns the current working config (draft if exists, otherwise active)
 func (m *Manager) Get() map[string]interface{} {
 	m.mu.RLock()
 	defer m.mu.RUnlock()
 
-	// Return a copy (use encoder with SetEscapeHTML(false) to preserve special characters)
+	return m.deepCopy(m.getWorkingConfig())
+}
+
+// GetActive returns the active config on disk (ignoring any draft)
+func (m *Manager) GetActive() map[string]interface{} {
+	m.mu.RLock()
+	defer m.mu.RUnlock()
+
+	return m.deepCopy(m.activeConfig)
+}
+
+// getWorkingConfig returns draft if exists, otherwise active (no lock, internal use)
+func (m *Manager) getWorkingConfig() map[string]interface{} {
+	if m.hasDraft && m.draftConfig != nil {
+		return m.draftConfig
+	}
+	return m.activeConfig
+}
+
+// deepCopy creates a deep copy of a config map
+func (m *Manager) deepCopy(config map[string]interface{}) map[string]interface{} {
+	if config == nil {
+		return nil
+	}
+	// Use encoder with SetEscapeHTML(false) to preserve special characters
 	var buf bytes.Buffer
 	encoder := json.NewEncoder(&buf)
 	encoder.SetEscapeHTML(false)
-	encoder.Encode(m.config)
+	encoder.Encode(config)
 	var copy map[string]interface{}
 	json.Unmarshal(buf.Bytes(), &copy)
 	return copy
@@ -164,8 +206,10 @@ func (m *Manager) HasVpnConfig() bool {
 	m.mu.RLock()
 	defer m.mu.RUnlock()
 
+	config := m.getWorkingConfig()
+
 	// Check for AWG/WireGuard endpoints
-	if endpoints, ok := m.config["endpoints"].([]interface{}); ok {
+	if endpoints, ok := config["endpoints"].([]interface{}); ok {
 		for _, ep := range endpoints {
 			if obj, ok := ep.(map[string]interface{}); ok {
 				if epType, ok := obj["type"].(string); ok {
@@ -178,7 +222,7 @@ func (m *Manager) HasVpnConfig() bool {
 	}
 
 	// Check for VPN outbounds (vless, hysteria2)
-	if outbounds, ok := m.config["outbounds"].([]interface{}); ok {
+	if outbounds, ok := config["outbounds"].([]interface{}); ok {
 		for _, ob := range outbounds {
 			if obj, ok := ob.(map[string]interface{}); ok {
 				if obType, ok := obj["type"].(string); ok {
@@ -198,6 +242,7 @@ func (m *Manager) HasVpnConfig() bool {
 func (m *Manager) SetPath(path string) error {
 	m.mu.Lock()
 	m.path = path
+	m.draftPath = path + ".bak"
 	m.mu.Unlock()
 	return m.Load()
 }
@@ -205,7 +250,7 @@ func (m *Manager) SetPath(path string) error {
 // Diff returns the difference between current and new config
 func (m *Manager) Diff(newConfig map[string]interface{}) (string, error) {
 	m.mu.RLock()
-	current := m.config
+	current := m.getWorkingConfig()
 	m.mu.RUnlock()
 
 	// Use encoder with SetEscapeHTML(false) to preserve special characters
@@ -229,21 +274,376 @@ func (m *Manager) Diff(newConfig map[string]interface{}) (string, error) {
 	return fmt.Sprintf("Current:\n%s\n\nNew:\n%s", currentBuf.String(), newBuf.String()), nil
 }
 
+// --- Draft System Methods ---
+
+// HasDraft returns true if there are uncommitted changes
+func (m *Manager) HasDraft() bool {
+	m.mu.RLock()
+	defer m.mu.RUnlock()
+	return m.hasDraft
+}
+
+// CleanupDraft removes any existing draft file (call on startup)
+func (m *Manager) CleanupDraft() {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+
+	os.Remove(m.draftPath)
+	m.draftConfig = nil
+	m.hasDraft = false
+}
+
+// EnsureDraft creates a draft from active config if one doesn't exist (lazy copy)
+func (m *Manager) EnsureDraft() error {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+
+	if m.hasDraft {
+		return nil // Draft already exists
+	}
+
+	// Deep copy active config to draft
+	m.draftConfig = m.deepCopy(m.activeConfig)
+	m.hasDraft = true
+
+	// Save draft to disk
+	return m.saveDraftToDisk()
+}
+
+// saveDraftToDisk writes draft config to .bak file (internal, must hold lock)
+func (m *Manager) saveDraftToDisk() error {
+	if m.draftConfig == nil {
+		return nil
+	}
+
+	var buf bytes.Buffer
+	encoder := json.NewEncoder(&buf)
+	encoder.SetEscapeHTML(false)
+	encoder.SetIndent("", "  ")
+	if err := encoder.Encode(m.draftConfig); err != nil {
+		return fmt.Errorf("failed to marshal draft config: %w", err)
+	}
+
+	if err := os.WriteFile(m.draftPath, buf.Bytes(), 0644); err != nil {
+		return fmt.Errorf("failed to write draft config: %w", err)
+	}
+
+	return nil
+}
+
+// SaveDraft persists current draft to disk
+func (m *Manager) SaveDraft() error {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+
+	if !m.hasDraft {
+		return nil
+	}
+
+	return m.saveDraftToDisk()
+}
+
+// SetDraft replaces the entire draft config (used by JSON editor)
+func (m *Manager) SetDraft(config map[string]interface{}) error {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+
+	m.draftConfig = m.deepCopy(config)
+	m.hasDraft = true
+
+	return m.saveDraftToDisk()
+}
+
+// DiscardDraft removes draft and reverts to active config
+func (m *Manager) DiscardDraft() error {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+
+	m.draftConfig = nil
+	m.hasDraft = false
+
+	// Remove draft file
+	if err := os.Remove(m.draftPath); err != nil && !os.IsNotExist(err) {
+		return fmt.Errorf("failed to remove draft file: %w", err)
+	}
+
+	return nil
+}
+
+// ApplyDraft saves draft as active config and clears the draft
+func (m *Manager) ApplyDraft() error {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+
+	if !m.hasDraft || m.draftConfig == nil {
+		return nil // Nothing to apply
+	}
+
+	if m.readOnly {
+		return fmt.Errorf("cannot apply: config is read-only")
+	}
+
+	// Ensure parent directory exists
+	dir := filepath.Dir(m.path)
+	if err := os.MkdirAll(dir, 0755); err != nil {
+		return fmt.Errorf("failed to create config directory: %w", err)
+	}
+
+	// Create timestamped backup of current active config
+	if _, err := os.Stat(m.path); err == nil {
+		backupPath := fmt.Sprintf("%s.%d.bak", m.path, time.Now().Unix())
+		if data, err := os.ReadFile(m.path); err == nil {
+			os.WriteFile(backupPath, data, 0644)
+		}
+	}
+
+	// Write draft to active config file
+	var buf bytes.Buffer
+	encoder := json.NewEncoder(&buf)
+	encoder.SetEscapeHTML(false)
+	encoder.SetIndent("", "  ")
+	if err := encoder.Encode(m.draftConfig); err != nil {
+		return fmt.Errorf("failed to marshal config: %w", err)
+	}
+
+	if err := os.WriteFile(m.path, buf.Bytes(), 0644); err != nil {
+		return fmt.Errorf("failed to write config: %w", err)
+	}
+
+	// Update active config and clear draft
+	m.activeConfig = m.draftConfig
+	m.draftConfig = nil
+	m.hasDraft = false
+
+	// Remove draft file
+	os.Remove(m.draftPath)
+
+	return nil
+}
+
+// GetDiff returns a unified diff between active and draft config
+func (m *Manager) GetDiff() (string, int, int, error) {
+	m.mu.RLock()
+	defer m.mu.RUnlock()
+
+	if !m.hasDraft || m.draftConfig == nil {
+		return "", 0, 0, nil
+	}
+
+	// Encode both configs
+	var activeBuf bytes.Buffer
+	activeEncoder := json.NewEncoder(&activeBuf)
+	activeEncoder.SetEscapeHTML(false)
+	activeEncoder.SetIndent("", "  ")
+	if err := activeEncoder.Encode(m.activeConfig); err != nil {
+		return "", 0, 0, err
+	}
+
+	var draftBuf bytes.Buffer
+	draftEncoder := json.NewEncoder(&draftBuf)
+	draftEncoder.SetEscapeHTML(false)
+	draftEncoder.SetIndent("", "  ")
+	if err := draftEncoder.Encode(m.draftConfig); err != nil {
+		return "", 0, 0, err
+	}
+
+	activeLines := strings.Split(strings.TrimSpace(activeBuf.String()), "\n")
+	draftLines := strings.Split(strings.TrimSpace(draftBuf.String()), "\n")
+
+	// Simple line-by-line diff
+	var diff strings.Builder
+	additions := 0
+	deletions := 0
+
+	// Use a simple diff algorithm
+	activeSet := make(map[string]bool)
+	for _, line := range activeLines {
+		activeSet[line] = true
+	}
+	draftSet := make(map[string]bool)
+	for _, line := range draftLines {
+		draftSet[line] = true
+	}
+
+	// Find deletions (lines in active but not in draft)
+	for _, line := range activeLines {
+		if !draftSet[line] {
+			diff.WriteString("- " + line + "\n")
+			deletions++
+		}
+	}
+
+	// Find additions (lines in draft but not in active)
+	for _, line := range draftLines {
+		if !activeSet[line] {
+			diff.WriteString("+ " + line + "\n")
+			additions++
+		}
+	}
+
+	return diff.String(), additions, deletions, nil
+}
+
+// CheckConfig validates config using sing-box check command
+func (m *Manager) CheckConfig(configPath string) (bool, []string) {
+	cmd := exec.Command("sing-box", "check", "-c", configPath)
+	output, err := cmd.CombinedOutput()
+
+	if err != nil {
+		// Parse error output
+		lines := strings.Split(strings.TrimSpace(string(output)), "\n")
+		errors := make([]string, 0, len(lines))
+		for _, line := range lines {
+			if line != "" {
+				errors = append(errors, line)
+			}
+		}
+		if len(errors) == 0 {
+			errors = append(errors, err.Error())
+		}
+		return false, errors
+	}
+
+	return true, nil
+}
+
+// CheckDraft validates draft config using sing-box check command
+func (m *Manager) CheckDraft() (bool, []string) {
+	m.mu.RLock()
+	hasDraft := m.hasDraft
+	draftPath := m.draftPath
+	m.mu.RUnlock()
+
+	if !hasDraft {
+		return true, nil
+	}
+
+	return m.CheckConfig(draftPath)
+}
+
 // --- Internal helpers ---
 
-// getArray returns array from config at given key
+// getArray returns array from working config at given key
 func (m *Manager) getArray(key string) []interface{} {
-	if arr, ok := m.config[key].([]interface{}); ok {
+	config := m.getWorkingConfig()
+	if arr, ok := config[key].([]interface{}); ok {
 		return arr
 	}
 	return []interface{}{}
 }
 
-// SaveToDisk persists current in-memory config to file
+// ensureDraftUnlocked creates draft if needed (internal, must hold write lock)
+func (m *Manager) ensureDraftUnlocked() error {
+	if m.hasDraft {
+		return nil
+	}
+
+	m.draftConfig = m.deepCopy(m.activeConfig)
+	m.hasDraft = true
+	return m.saveDraftToDisk()
+}
+
+// setDraftValue sets a value in the draft config (must call ensureDraftUnlocked first, must hold write lock)
+func (m *Manager) setDraftValue(key string, value interface{}) {
+	if m.draftConfig != nil {
+		m.draftConfig[key] = value
+	}
+}
+
+// getDraftArray returns array from draft config (must hold lock, draft must exist)
+func (m *Manager) getDraftArray(key string) []interface{} {
+	if m.draftConfig == nil {
+		return []interface{}{}
+	}
+	if arr, ok := m.draftConfig[key].([]interface{}); ok {
+		return arr
+	}
+	return []interface{}{}
+}
+
+// --- Draft-aware nested section helpers ---
+
+// getDraftRoute returns route section from draft, creating if needed (must hold lock, draft must exist)
+func (m *Manager) getDraftRoute() map[string]interface{} {
+	if m.draftConfig == nil {
+		return make(map[string]interface{})
+	}
+	if route, ok := m.draftConfig["route"].(map[string]interface{}); ok {
+		return route
+	}
+	route := make(map[string]interface{})
+	m.draftConfig["route"] = route
+	return route
+}
+
+// getDraftRouteArray returns array from draft route section (must hold lock, draft must exist)
+func (m *Manager) getDraftRouteArray(key string) []interface{} {
+	route := m.getDraftRoute()
+	if arr, ok := route[key].([]interface{}); ok {
+		return arr
+	}
+	return []interface{}{}
+}
+
+// getDraftDns returns dns section from draft, creating if needed (must hold lock, draft must exist)
+func (m *Manager) getDraftDns() map[string]interface{} {
+	if m.draftConfig == nil {
+		return make(map[string]interface{})
+	}
+	if dns, ok := m.draftConfig["dns"].(map[string]interface{}); ok {
+		return dns
+	}
+	dns := make(map[string]interface{})
+	m.draftConfig["dns"] = dns
+	return dns
+}
+
+// getDraftDnsArray returns array from draft dns section (must hold lock, draft must exist)
+func (m *Manager) getDraftDnsArray(key string) []interface{} {
+	dns := m.getDraftDns()
+	if arr, ok := dns[key].([]interface{}); ok {
+		return arr
+	}
+	return []interface{}{}
+}
+
+// getDraftLog returns log section from draft, creating if needed (must hold lock, draft must exist)
+func (m *Manager) getDraftLog() map[string]interface{} {
+	if m.draftConfig == nil {
+		return make(map[string]interface{})
+	}
+	if log, ok := m.draftConfig["log"].(map[string]interface{}); ok {
+		return log
+	}
+	log := make(map[string]interface{})
+	m.draftConfig["log"] = log
+	return log
+}
+
+// getDraftExperimental returns experimental section from draft, creating if needed (must hold lock, draft must exist)
+func (m *Manager) getDraftExperimental() map[string]interface{} {
+	if m.draftConfig == nil {
+		return make(map[string]interface{})
+	}
+	if exp, ok := m.draftConfig["experimental"].(map[string]interface{}); ok {
+		return exp
+	}
+	exp := make(map[string]interface{})
+	m.draftConfig["experimental"] = exp
+	return exp
+}
+
+// SaveToDisk persists current draft (or active if no draft) to file
 func (m *Manager) SaveToDisk() error {
 	m.mu.RLock()
-	config := m.config
+	hasDraft := m.hasDraft
+	config := m.getWorkingConfig()
 	m.mu.RUnlock()
+
+	if hasDraft {
+		// Apply draft to active
+		return m.ApplyDraft()
+	}
 
 	return m.Save(config)
 }

@@ -2,7 +2,7 @@ package config
 
 import "fmt"
 
-// ListOutbounds returns all outbounds
+// ListOutbounds returns all outbounds from the working config (draft or active)
 func (m *Manager) ListOutbounds() []map[string]interface{} {
 	m.mu.RLock()
 	defer m.mu.RUnlock()
@@ -17,7 +17,7 @@ func (m *Manager) ListOutbounds() []map[string]interface{} {
 	return result
 }
 
-// GetOutbound returns outbound by tag
+// GetOutbound returns outbound by tag from the working config (draft or active)
 func (m *Manager) GetOutbound(tag string) (map[string]interface{}, bool) {
 	m.mu.RLock()
 	defer m.mu.RUnlock()
@@ -33,7 +33,7 @@ func (m *Manager) GetOutbound(tag string) (map[string]interface{}, bool) {
 	return nil, false
 }
 
-// CreateOutbound adds new outbound with validation
+// CreateOutbound adds new outbound to draft with validation
 func (m *Manager) CreateOutbound(outbound map[string]interface{}) error {
 	// Validate outbound before adding
 	errs := validateOutbound(outbound, 0)
@@ -73,11 +73,19 @@ func (m *Manager) CreateOutbound(outbound map[string]interface{}) error {
 		return fmt.Errorf("reference validation failed: %s", refErrs[0])
 	}
 
-	m.config["outbounds"] = append(arr, outbound)
-	return nil
+	// Ensure draft exists before modifying
+	if err := m.ensureDraftUnlocked(); err != nil {
+		return err
+	}
+
+	// Modify draft
+	draftArr := m.getDraftArray("outbounds")
+	m.setDraftValue("outbounds", append(draftArr, outbound))
+
+	return m.saveDraftToDisk()
 }
 
-// UpdateOutbound updates existing outbound with validation
+// UpdateOutbound updates existing outbound in draft with validation
 func (m *Manager) UpdateOutbound(tag string, outbound map[string]interface{}) error {
 	// Validate outbound before updating
 	errs := validateOutbound(outbound, 0)
@@ -124,12 +132,23 @@ func (m *Manager) UpdateOutbound(tag string, outbound map[string]interface{}) er
 		return fmt.Errorf("reference validation failed: %s", refErrs[0])
 	}
 
-	arr[idx] = outbound
-	m.config["outbounds"] = arr
-	return nil
+	// Ensure draft exists before modifying
+	if err := m.ensureDraftUnlocked(); err != nil {
+		return err
+	}
+
+	// Modify draft
+	draftArr := m.getDraftArray("outbounds")
+	draftIdx := findByTag(draftArr, tag)
+	if draftIdx >= 0 {
+		draftArr[draftIdx] = outbound
+		m.setDraftValue("outbounds", draftArr)
+	}
+
+	return m.saveDraftToDisk()
 }
 
-// DeleteOutbound removes outbound by tag
+// DeleteOutbound removes outbound by tag from draft
 func (m *Manager) DeleteOutbound(tag string) error {
 	m.mu.Lock()
 	defer m.mu.Unlock()
@@ -140,6 +159,17 @@ func (m *Manager) DeleteOutbound(tag string) error {
 		return fmt.Errorf("outbound '%s' not found", tag)
 	}
 
-	m.config["outbounds"] = append(arr[:idx], arr[idx+1:]...)
-	return nil
+	// Ensure draft exists before modifying
+	if err := m.ensureDraftUnlocked(); err != nil {
+		return err
+	}
+
+	// Modify draft
+	draftArr := m.getDraftArray("outbounds")
+	draftIdx := findByTag(draftArr, tag)
+	if draftIdx >= 0 {
+		m.setDraftValue("outbounds", append(draftArr[:draftIdx], draftArr[draftIdx+1:]...))
+	}
+
+	return m.saveDraftToDisk()
 }

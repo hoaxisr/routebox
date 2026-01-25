@@ -1,6 +1,7 @@
 <script lang="ts">
 	import type { RouteRule, RuleSet, Outbound, Inbound } from '$lib/types';
 	import { notifications } from '$lib/stores';
+	import { t } from 'svelte-i18n';
 
 	interface Props {
 		rule?: RouteRule;
@@ -93,7 +94,7 @@
 
 		// Outbound required only for 'route' action
 		if (action === 'route' && !outbound) {
-			errors['outbound'] = 'Outbound is required for route action';
+			errors['outbound'] = $t('routes.outboundRequired');
 		}
 
 		// Check that at least one condition is set (only for route/reject actions)
@@ -118,7 +119,7 @@
 				network;
 
 			if (!hasCondition) {
-				errors['conditions'] = 'At least one match condition is required';
+				errors['conditions'] = $t('routes.conditionRequired');
 			}
 		}
 
@@ -177,52 +178,52 @@
 		onSave(newRule);
 	}
 
-	const tabs: { id: Tab; label: string; desc: string }[] = [
-		{ id: 'destination', label: 'Destination', desc: 'Domain, IP, Port' },
-		{ id: 'source', label: 'Source', desc: 'Inbound, Source IP' },
-		{ id: 'advanced', label: 'Advanced', desc: 'Rule Sets, Process' }
-	];
+	let tabs = $derived([
+		{ id: 'destination' as Tab, label: $t('routes.destination'), desc: $t('routes.destinationDesc') },
+		{ id: 'source' as Tab, label: $t('routes.source'), desc: $t('routes.sourceDesc') },
+		{ id: 'advanced' as Tab, label: $t('common.advanced'), desc: $t('routes.advancedDesc') }
+	]);
 </script>
 
 <form onsubmit={(e) => { e.preventDefault(); handleSubmit(); }} class="space-y-5">
 	<!-- Action selection at top -->
 	<div>
-		<label class="block text-sm font-medium text-[var(--ctp-subtext1)] mb-2">Action</label>
+		<label class="block text-sm font-medium text-[var(--ctp-subtext1)] mb-2">{$t('routes.ruleAction')}</label>
 		<div class="flex flex-wrap gap-2">
 			<button
 				type="button"
 				onclick={() => action = 'route'}
 				class="toggle-btn {action === 'route' ? 'selected' : ''}"
 			>
-				Route
+				{$t('routes.actionRoute')}
 			</button>
 			<button
 				type="button"
 				onclick={() => action = 'reject'}
 				class="toggle-btn-danger {action === 'reject' ? 'selected' : ''}"
 			>
-				Reject
+				{$t('routes.actionReject')}
 			</button>
 			<button
 				type="button"
 				onclick={() => action = 'sniff'}
 				class="toggle-btn {action === 'sniff' ? 'selected' : ''}"
 			>
-				Sniff
+				{$t('routes.actionSniff')}
 			</button>
 			<button
 				type="button"
 				onclick={() => action = 'hijack-dns'}
 				class="toggle-btn {action === 'hijack-dns' ? 'selected' : ''}"
 			>
-				Hijack DNS
+				{$t('routes.actionHijackDns')}
 			</button>
 		</div>
 		<p class="mt-1 text-xs text-[var(--ctp-overlay0)]">
-			{#if action === 'route'}Route traffic to outbound
-			{:else if action === 'reject'}Block/reject traffic
-			{:else if action === 'sniff'}Detect protocol without routing
-			{:else if action === 'hijack-dns'}Redirect DNS queries to sing-box
+			{#if action === 'route'}{$t('routes.actionRouteDesc')}
+			{:else if action === 'reject'}{$t('routes.actionRejectDesc')}
+			{:else if action === 'sniff'}{$t('routes.actionSniffDesc')}
+			{:else if action === 'hijack-dns'}{$t('routes.actionHijackDnsDesc')}
 			{/if}
 		</p>
 	</div>
@@ -230,13 +231,13 @@
 	<!-- Outbound (only for route action) -->
 	{#if action === 'route'}
 		<div>
-			<label for="outbound" class="block text-sm font-medium text-[var(--ctp-subtext1)] mb-1">Route to Outbound *</label>
+			<label for="outbound" class="block text-sm font-medium text-[var(--ctp-subtext1)] mb-1">{$t('routes.routeToOutbound')} *</label>
 			<select
 				id="outbound"
 				bind:value={outbound}
 				class="w-full px-3 py-2 bg-[var(--ctp-surface0)] border rounded-lg text-[var(--ctp-text)] focus:outline-none focus:ring-2 focus:ring-[var(--ctp-primary)] {errors['outbound'] ? 'border-[var(--ctp-red)]' : 'border-[var(--ctp-surface2)]'}"
 			>
-				<option value="">Select outbound...</option>
+				<option value="">{$t('routes.selectOutbound')}</option>
 				{#each outbounds as ob}
 					<option value={ob.tag}>{ob.tag} ({ob.type})</option>
 				{/each}
@@ -251,10 +252,10 @@
 	{#if action === 'sniff'}
 		<div class="bg-[var(--ctp-surface0)] rounded-lg p-4">
 			<p class="text-sm text-[var(--ctp-overlay1)] mb-3">
-				Sniff action detects the protocol of incoming connections. Typically placed as the first rule.
+				{$t('routes.sniffDescription')}
 			</p>
 			<div>
-				<label for="sniff-timeout" class="block text-sm font-medium text-[var(--ctp-subtext1)] mb-1">Timeout</label>
+				<label for="sniff-timeout" class="block text-sm font-medium text-[var(--ctp-subtext1)] mb-1">{$t('routes.timeout')}</label>
 				<input
 					id="sniff-timeout"
 					type="text"
@@ -262,7 +263,7 @@
 					placeholder="300ms"
 					class="w-full px-3 py-2 bg-[var(--ctp-base)] border border-[var(--ctp-surface2)] rounded-lg text-[var(--ctp-text)] placeholder-[var(--ctp-overlay0)] focus:outline-none focus:ring-2 focus:ring-[var(--ctp-primary)]"
 				/>
-				<p class="mt-1 text-xs text-[var(--ctp-overlay0)]">Duration to wait for protocol detection (e.g., 300ms, 1s)</p>
+				<p class="mt-1 text-xs text-[var(--ctp-overlay0)]">{$t('routes.timeoutHint')}</p>
 			</div>
 		</div>
 	{/if}
@@ -271,8 +272,7 @@
 	{#if action === 'hijack-dns'}
 		<div class="bg-[var(--ctp-surface0)] rounded-lg p-4">
 			<p class="text-sm text-[var(--ctp-overlay1)]">
-				Hijack-DNS action redirects DNS queries to the sing-box DNS module.
-				This rule will automatically match DNS protocol traffic.
+				{$t('routes.hijackDnsDescription')}
 			</p>
 		</div>
 	{/if}
@@ -314,8 +314,8 @@
 							class="w-4 h-4 rounded border-[var(--ctp-surface2)] text-[var(--ctp-primary)] focus:ring-[var(--ctp-primary)]"
 						/>
 						<div>
-							<span class="text-sm text-[var(--ctp-text)]">Private IP</span>
-							<p class="text-xs text-[var(--ctp-overlay0)]">Match LAN addresses</p>
+							<span class="text-sm text-[var(--ctp-text)]">{$t('routes.privateIp')}</span>
+							<p class="text-xs text-[var(--ctp-overlay0)]">{$t('routes.privateIpHint')}</p>
 						</div>
 					</label>
 					<label class="flex items-center gap-2 p-2 bg-[var(--ctp-surface0)] rounded-lg cursor-pointer hover:bg-[var(--ctp-surface1)] transition-colors">
@@ -325,8 +325,8 @@
 							class="w-4 h-4 rounded border-[var(--ctp-surface2)] text-[var(--ctp-primary)] focus:ring-[var(--ctp-primary)]"
 						/>
 						<div>
-							<span class="text-sm text-[var(--ctp-text)]">Invert</span>
-							<p class="text-xs text-[var(--ctp-overlay0)]">Match if NOT</p>
+							<span class="text-sm text-[var(--ctp-text)]">{$t('routes.invert')}</span>
+							<p class="text-xs text-[var(--ctp-overlay0)]">{$t('routes.invertHint')}</p>
 						</div>
 					</label>
 				</div>
@@ -334,8 +334,8 @@
 				<!-- Domain Suffix (most common) -->
 				<div>
 					<label for="domain-suffix" class="block text-sm font-medium text-[var(--ctp-subtext1)] mb-1">
-						Domain Suffix
-						<span class="font-normal text-[var(--ctp-overlay0)]">(most common)</span>
+						{$t('routes.domainSuffix')}
+						<span class="font-normal text-[var(--ctp-overlay0)]">({$t('routes.mostCommon')})</span>
 					</label>
 					<textarea
 						id="domain-suffix"
@@ -344,14 +344,14 @@
 						placeholder="google.com&#10;youtube.com&#10;facebook.com"
 						class="w-full px-3 py-2 bg-[var(--ctp-surface0)] border border-[var(--ctp-surface2)] rounded-lg text-[var(--ctp-text)] placeholder-[var(--ctp-overlay0)] focus:outline-none focus:ring-2 focus:ring-[var(--ctp-primary)] font-mono text-sm"
 					></textarea>
-					<p class="mt-1 text-xs text-[var(--ctp-overlay0)]">Matches domain and all subdomains (e.g., google.com matches www.google.com)</p>
+					<p class="mt-1 text-xs text-[var(--ctp-overlay0)]">{$t('routes.domainSuffixHint')}</p>
 				</div>
 
 				<!-- IP CIDR -->
 				<div>
 					<label for="ip-cidr" class="block text-sm font-medium text-[var(--ctp-subtext1)] mb-1">
-						IP / CIDR
-						<span class="font-normal text-[var(--ctp-overlay0)]">(one per line)</span>
+						{$t('routes.ipCidr')}
+						<span class="font-normal text-[var(--ctp-overlay0)]">({$t('routes.onePerLine')})</span>
 					</label>
 					<textarea
 						id="ip-cidr"
@@ -365,7 +365,7 @@
 				<!-- Ports -->
 				<div class="grid grid-cols-2 gap-4">
 					<div>
-						<label for="ports" class="block text-sm font-medium text-[var(--ctp-subtext1)] mb-1">Ports</label>
+						<label for="ports" class="block text-sm font-medium text-[var(--ctp-subtext1)] mb-1">{$t('routes.port')}</label>
 						<input
 							id="ports"
 							type="text"
@@ -375,14 +375,14 @@
 						/>
 					</div>
 					<div>
-						<label class="block text-sm font-medium text-[var(--ctp-subtext1)] mb-1">Network</label>
+						<label class="block text-sm font-medium text-[var(--ctp-subtext1)] mb-1">{$t('routes.network')}</label>
 						<div class="flex gap-2">
 							<button
 								type="button"
 								onclick={() => network = ''}
 								class="flex-1 toggle-btn {network === '' ? 'selected' : ''}"
 							>
-								Any
+								{$t('routes.networkAny')}
 							</button>
 							<button
 								type="button"
@@ -408,7 +408,7 @@
 				{#if inbounds.length > 0}
 					<div>
 						<label class="block text-sm font-medium text-[var(--ctp-subtext1)] mb-2">
-							Match traffic from Inbound
+							{$t('routes.matchFromInbound')}
 						</label>
 						<div class="bg-[var(--ctp-surface0)] rounded-lg border border-[var(--ctp-surface2)] divide-y divide-[var(--ctp-surface2)]">
 							{#each inbounds as ib}
@@ -429,20 +429,20 @@
 								</button>
 							{/each}
 						</div>
-						<p class="mt-1 text-xs text-[var(--ctp-overlay0)]">Only match traffic entering through selected inbounds</p>
+						<p class="mt-1 text-xs text-[var(--ctp-overlay0)]">{$t('routes.matchFromInboundHint')}</p>
 					</div>
 				{:else}
 					<div class="p-4 bg-[var(--ctp-surface0)] rounded-lg text-center text-[var(--ctp-overlay0)]">
-						<p>No inbounds configured.</p>
-						<p class="text-xs mt-1">Add inbounds first to filter by traffic source.</p>
+						<p>{$t('routes.noInboundsConfigured')}</p>
+						<p class="text-xs mt-1">{$t('routes.noInboundsHint')}</p>
 					</div>
 				{/if}
 
 				<!-- Source IP -->
 				<div>
 					<label for="source-ip-cidr" class="block text-sm font-medium text-[var(--ctp-subtext1)] mb-1">
-						Source IP / CIDR
-						<span class="font-normal text-[var(--ctp-overlay0)]">(client address)</span>
+						{$t('routes.sourceIpCidr')}
+						<span class="font-normal text-[var(--ctp-overlay0)]">({$t('routes.clientAddress')})</span>
 					</label>
 					<textarea
 						id="source-ip-cidr"
@@ -451,13 +451,13 @@
 						placeholder="192.168.1.100&#10;10.0.0.0/24"
 						class="w-full px-3 py-2 bg-[var(--ctp-surface0)] border border-[var(--ctp-surface2)] rounded-lg text-[var(--ctp-text)] placeholder-[var(--ctp-overlay0)] focus:outline-none focus:ring-2 focus:ring-[var(--ctp-primary)] font-mono text-sm"
 					></textarea>
-					<p class="mt-1 text-xs text-[var(--ctp-overlay0)]">Match traffic from specific client IPs</p>
+					<p class="mt-1 text-xs text-[var(--ctp-overlay0)]">{$t('routes.sourceIpCidrHint')}</p>
 				</div>
 
 				<!-- Source Ports -->
 				<div class="grid grid-cols-2 gap-4">
 					<div>
-						<label for="source-ports" class="block text-sm font-medium text-[var(--ctp-subtext1)] mb-1">Source Ports</label>
+						<label for="source-ports" class="block text-sm font-medium text-[var(--ctp-subtext1)] mb-1">{$t('routes.sourcePort')}</label>
 						<input
 							id="source-ports"
 							type="text"
@@ -467,7 +467,7 @@
 						/>
 					</div>
 					<div>
-						<label for="source-port-range" class="block text-sm font-medium text-[var(--ctp-subtext1)] mb-1">Source Port Range</label>
+						<label for="source-port-range" class="block text-sm font-medium text-[var(--ctp-subtext1)] mb-1">{$t('routes.sourcePortRange')}</label>
 						<input
 							id="source-port-range"
 							type="text"
@@ -482,11 +482,11 @@
 			<div class="space-y-4">
 				<!-- Rule Sets -->
 				<div>
-					<label class="block text-sm font-medium text-[var(--ctp-subtext1)] mb-2">Rule Sets</label>
+					<label class="block text-sm font-medium text-[var(--ctp-subtext1)] mb-2">{$t('routes.ruleSets')}</label>
 					{#if availableRuleSets.length === 0}
 						<div class="p-4 bg-[var(--ctp-surface0)] rounded-lg text-center text-[var(--ctp-overlay0)]">
-							<p>No rule sets available.</p>
-							<p class="text-xs mt-1">{hiddenRuleSets && hiddenRuleSets.size > 0 ? 'All rule sets already have routes configured.' : 'Add rule sets in the Rule Sets section first.'}</p>
+							<p>{$t('routes.noRuleSetsAvailable')}</p>
+							<p class="text-xs mt-1">{hiddenRuleSets && hiddenRuleSets.size > 0 ? $t('routes.allRuleSetsHaveRoutes') : $t('routes.addRuleSetsFirst')}</p>
 						</div>
 					{:else}
 						<div class="bg-[var(--ctp-surface0)] rounded-lg border border-[var(--ctp-surface2)] divide-y divide-[var(--ctp-surface2)]">
@@ -513,7 +513,7 @@
 
 				<!-- Protocol -->
 				<div>
-					<label for="protocol" class="block text-sm font-medium text-[var(--ctp-subtext1)] mb-1">Protocol</label>
+					<label for="protocol" class="block text-sm font-medium text-[var(--ctp-subtext1)] mb-1">{$t('routes.protocol')}</label>
 					<input
 						id="protocol"
 						type="text"
@@ -521,14 +521,14 @@
 						placeholder="http, tls, quic"
 						class="w-full px-3 py-2 bg-[var(--ctp-surface0)] border border-[var(--ctp-surface2)] rounded-lg text-[var(--ctp-text)] placeholder-[var(--ctp-overlay0)] focus:outline-none focus:ring-2 focus:ring-[var(--ctp-primary)]"
 					/>
-					<p class="mt-1 text-xs text-[var(--ctp-overlay0)]">Detected protocols: http, tls, quic, dns, stun, bittorrent</p>
+					<p class="mt-1 text-xs text-[var(--ctp-overlay0)]">{$t('routes.protocolHint')}</p>
 				</div>
 
 				<!-- Process -->
 				<div>
 					<label for="process-name" class="block text-sm font-medium text-[var(--ctp-subtext1)] mb-1">
-						Process Name
-						<span class="font-normal text-[var(--ctp-overlay0)]">(one per line)</span>
+						{$t('routes.processName')}
+						<span class="font-normal text-[var(--ctp-overlay0)]">({$t('routes.onePerLine')})</span>
 					</label>
 					<textarea
 						id="process-name"
@@ -542,13 +542,13 @@
 				<!-- Less common fields (collapsible) -->
 				<details class="group">
 					<summary class="cursor-pointer text-sm text-[var(--ctp-overlay1)] hover:text-[var(--ctp-text)]">
-						More options (Domain exact, regex, port range...)
+						{$t('routes.moreOptions')}
 					</summary>
 					<div class="mt-4 space-y-4 pl-4 border-l-2 border-[var(--ctp-surface2)]">
 						<!-- Domain Exact Match -->
 						<div>
 							<label for="domain" class="block text-sm font-medium text-[var(--ctp-subtext1)] mb-1">
-								Domain (exact match)
+								{$t('routes.domainExact')}
 							</label>
 							<textarea
 								id="domain"
@@ -562,7 +562,7 @@
 						<!-- Domain Keyword -->
 						<div>
 							<label for="domain-keyword" class="block text-sm font-medium text-[var(--ctp-subtext1)] mb-1">
-								Domain Keyword
+								{$t('routes.domainKeyword')}
 							</label>
 							<textarea
 								id="domain-keyword"
@@ -576,7 +576,7 @@
 						<!-- Domain Regex -->
 						<div>
 							<label for="domain-regex" class="block text-sm font-medium text-[var(--ctp-subtext1)] mb-1">
-								Domain Regex
+								{$t('routes.domainRegex')}
 							</label>
 							<textarea
 								id="domain-regex"
@@ -590,7 +590,7 @@
 						<!-- Port Range -->
 						<div>
 							<label for="port-range" class="block text-sm font-medium text-[var(--ctp-subtext1)] mb-1">
-								Port Range
+								{$t('routes.portRange')}
 							</label>
 							<input
 								id="port-range"
@@ -604,7 +604,7 @@
 						<!-- Process Path -->
 						<div>
 							<label for="process-path" class="block text-sm font-medium text-[var(--ctp-subtext1)] mb-1">
-								Process Path
+								{$t('routes.processPath')}
 							</label>
 							<textarea
 								id="process-path"
@@ -628,13 +628,13 @@
 			onclick={onCancel}
 			class="px-4 py-2 bg-[var(--ctp-surface1)] text-[var(--ctp-text)] rounded-lg hover:bg-[var(--ctp-surface2)] transition-colors"
 		>
-			Cancel
+			{$t('common.cancel')}
 		</button>
 		<button
 			type="submit"
 			class="px-4 py-2 bg-[var(--ctp-primary)] text-white rounded-lg hover:opacity-90 transition-opacity"
 		>
-			{rule ? 'Save Changes' : 'Add Rule'}
+			{rule ? $t('common.saveChanges') : $t('routes.addRule')}
 		</button>
 	</div>
 </form>

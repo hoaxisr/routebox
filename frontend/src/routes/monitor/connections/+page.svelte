@@ -1,5 +1,6 @@
 <script lang="ts">
 	import { onMount, onDestroy } from 'svelte';
+	import { t } from 'svelte-i18n';
 	import { api, createConnectionsStream } from '$lib/api/client';
 	import { notifications } from '$lib/stores';
 	import type { ClashConnection, ConnectionsResponse } from '$lib/types';
@@ -88,9 +89,9 @@
 		try {
 			await api.closeConnection(id);
 			connections = connections.filter(c => c.id !== id);
-			notifications.success('Connection closed');
+			notifications.success($t('connections.connectionClosed'));
 		} catch (err) {
-			notifications.error(`Failed to close connection: ${err}`);
+			notifications.error(`${$t('errors.deleteFailed')}: ${err}`);
 		}
 	}
 
@@ -98,9 +99,9 @@
 		try {
 			await api.closeAllConnections();
 			connections = [];
-			notifications.success('All connections closed');
+			notifications.success($t('connections.allConnectionsClosed'));
 		} catch (err) {
-			notifications.error(`Failed to close connections: ${err}`);
+			notifications.error(`${$t('errors.deleteFailed')}: ${err}`);
 		}
 	}
 
@@ -133,16 +134,18 @@
 </script>
 
 <svelte:head>
-	<title>Connections - RouteBox</title>
+	<title>{$t('connections.title')} - RouteBox</title>
 </svelte:head>
 
 <div class="p-6 max-w-6xl mx-auto">
 	<!-- Header -->
 	<div class="flex items-center justify-between mb-6">
 		<div>
-			<h1 class="text-2xl font-semibold text-[var(--ctp-text)]">Connections</h1>
+			<h1 class="text-2xl font-semibold text-[var(--ctp-text)]">{$t('connections.title')}</h1>
 			<p class="text-sm text-[var(--ctp-overlay1)] mt-1">
-				{connections.length} active connection{connections.length !== 1 ? 's' : ''}
+				{connections.length === 1
+					? $t('connections.activeConnection', { values: { count: connections.length } })
+					: $t('connections.activeConnectionPlural', { values: { count: connections.length } })}
 			</p>
 		</div>
 		<div class="flex items-center gap-3">
@@ -153,7 +156,7 @@
 					bind:checked={useWebSocket}
 					class="w-4 h-4 rounded border-[var(--ctp-surface2)] text-[var(--ctp-primary)] focus:ring-[var(--ctp-primary)]"
 				/>
-				Live updates
+				{$t('connections.liveUpdates')}
 			</label>
 
 			<!-- Refresh (only when not using WebSocket) -->
@@ -161,7 +164,7 @@
 				<button
 					onclick={fetchConnections}
 					class="px-3 py-2 bg-[var(--ctp-surface1)] text-[var(--ctp-text)] rounded-lg hover:bg-[var(--ctp-surface2)] transition-colors"
-					aria-label="Refresh"
+					aria-label={$t('common.refresh')}
 				>
 					<svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
 						<path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" />
@@ -178,7 +181,7 @@
 				<svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
 					<path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12" />
 				</svg>
-				Close All
+				{$t('connections.closeAll')}
 			</button>
 		</div>
 	</div>
@@ -186,15 +189,15 @@
 	<!-- Stats -->
 	<div class="grid grid-cols-3 gap-4 mb-6">
 		<div class="bg-[var(--ctp-surface0)] rounded-lg p-4 border border-[var(--ctp-surface2)]">
-			<div class="text-sm text-[var(--ctp-overlay1)]">Active Connections</div>
+			<div class="text-sm text-[var(--ctp-overlay1)]">{$t('connections.activeConnections')}</div>
 			<div class="text-2xl font-semibold text-[var(--ctp-text)]">{connections.length}</div>
 		</div>
 		<div class="bg-[var(--ctp-surface0)] rounded-lg p-4 border border-[var(--ctp-surface2)]">
-			<div class="text-sm text-[var(--ctp-overlay1)]">Total Upload</div>
+			<div class="text-sm text-[var(--ctp-overlay1)]">{$t('connections.totalUpload')}</div>
 			<div class="text-2xl font-semibold text-[var(--ctp-text)]">{formatBytes(uploadTotal)}</div>
 		</div>
 		<div class="bg-[var(--ctp-surface0)] rounded-lg p-4 border border-[var(--ctp-surface2)]">
-			<div class="text-sm text-[var(--ctp-overlay1)]">Total Download</div>
+			<div class="text-sm text-[var(--ctp-overlay1)]">{$t('connections.totalDownload')}</div>
 			<div class="text-2xl font-semibold text-[var(--ctp-text)]">{formatBytes(downloadTotal)}</div>
 		</div>
 	</div>

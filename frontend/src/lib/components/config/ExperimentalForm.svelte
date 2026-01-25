@@ -1,4 +1,5 @@
 <script lang="ts">
+	import { t } from 'svelte-i18n';
 	import type { ExperimentalSettings, Outbound } from '$lib/types';
 
 	interface Props {
@@ -70,9 +71,9 @@
 				<svg class="w-5 h-5 text-[var(--ctp-primary)]" fill="none" stroke="currentColor" viewBox="0 0 24 24">
 					<path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 7v10c0 2.21 3.582 4 8 4s8-1.79 8-4V7M4 7c0 2.21 3.582 4 8 4s8-1.79 8-4M4 7c0-2.21 3.582-4 8-4s8 1.79 8 4" />
 				</svg>
-				<span class="font-medium text-[var(--ctp-text)]">Cache File</span>
+				<span class="font-medium text-[var(--ctp-text)]">{$t('experimental.cacheFile')}</span>
 				{#if cacheEnabled}
-					<span class="status-badge">Enabled</span>
+					<span class="status-badge">{$t('common.enabled')}</span>
 				{/if}
 			</div>
 			<svg class="w-5 h-5 text-[var(--ctp-overlay1)] transition-transform {cacheFileExpanded ? 'rotate-180' : ''}" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -83,7 +84,7 @@
 		{#if cacheFileExpanded}
 			<div class="p-4 space-y-4">
 				<p class="text-sm text-[var(--ctp-overlay1)]">
-					Stores selector selections and rule-set cache for persistence across restarts.
+					{$t('experimental.cacheFileDescription')}
 				</p>
 
 				<!-- Enable -->
@@ -94,13 +95,13 @@
 						onchange={handleChange}
 						class="w-4 h-4 rounded border-[var(--ctp-surface2)] text-[var(--ctp-primary)] focus:ring-[var(--ctp-primary)]"
 					/>
-					Enable cache file
+					{$t('experimental.cacheFileEnabled')}
 				</label>
 
 				<!-- Path -->
 				<div>
 					<label for="cache-path" class="block text-sm font-medium text-[var(--ctp-subtext1)] mb-1">
-						Path
+						{$t('experimental.cacheFilePath')}
 					</label>
 					<input
 						id="cache-path"
@@ -115,8 +116,8 @@
 				<!-- Cache ID -->
 				<div>
 					<label for="cache-id" class="block text-sm font-medium text-[var(--ctp-subtext1)] mb-1">
-						Cache ID
-						<span class="font-normal text-[var(--ctp-overlay0)]">(optional)</span>
+						{$t('experimental.cacheId')}
+						<span class="font-normal text-[var(--ctp-overlay0)]">({$t('common.optional')})</span>
 					</label>
 					<input
 						id="cache-id"
@@ -127,7 +128,7 @@
 						class="w-full px-3 py-2 bg-[var(--ctp-surface0)] border border-[var(--ctp-surface2)] rounded-lg text-[var(--ctp-text)] placeholder-[var(--ctp-overlay0)] focus:outline-none focus:ring-2 focus:ring-[var(--ctp-primary)]"
 					/>
 					<p class="mt-1 text-xs text-[var(--ctp-overlay0)]">
-						Profile identifier for multiple configs sharing same cache file
+						{$t('experimental.cacheIdHint')}
 					</p>
 				</div>
 
@@ -140,7 +141,7 @@
 							onchange={handleChange}
 							class="w-4 h-4 rounded border-[var(--ctp-surface2)] text-[var(--ctp-primary)] focus:ring-[var(--ctp-primary)]"
 						/>
-						Store FakeIP mappings
+						{$t('experimental.storeFakeip')}
 					</label>
 					<label class="flex items-center gap-2 text-sm text-[var(--ctp-subtext1)]">
 						<input
@@ -149,7 +150,7 @@
 							onchange={handleChange}
 							class="w-4 h-4 rounded border-[var(--ctp-surface2)] text-[var(--ctp-primary)] focus:ring-[var(--ctp-primary)]"
 						/>
-						Store rejected DNS results (RDRC)
+						{$t('experimental.storeRdrc')}
 					</label>
 				</div>
 			</div>
@@ -167,7 +168,7 @@
 				<svg class="w-5 h-5 text-[var(--ctp-primary)]" fill="none" stroke="currentColor" viewBox="0 0 24 24">
 					<path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13 10V3L4 14h7v7l9-11h-7z" />
 				</svg>
-				<span class="font-medium text-[var(--ctp-text)]">Clash API</span>
+				<span class="font-medium text-[var(--ctp-text)]">{$t('experimental.clashApi')}</span>
 				{#if externalController.trim()}
 					<span class="status-badge">{externalController}</span>
 				{/if}
@@ -180,13 +181,13 @@
 		{#if clashApiExpanded}
 			<div class="p-4 space-y-4">
 				<p class="text-sm text-[var(--ctp-overlay1)]">
-					Enables Clash API for external control, monitoring, and third-party dashboards.
+					{$t('experimental.clashApiDescription')}
 				</p>
 
 				<!-- External Controller -->
 				<div>
 					<label for="external-controller" class="block text-sm font-medium text-[var(--ctp-subtext1)] mb-1">
-						External Controller
+						{$t('experimental.externalController')}
 					</label>
 					<input
 						id="external-controller"
@@ -197,15 +198,15 @@
 						class="w-full px-3 py-2 bg-[var(--ctp-surface0)] border border-[var(--ctp-surface2)] rounded-lg text-[var(--ctp-text)] placeholder-[var(--ctp-overlay0)] focus:outline-none focus:ring-2 focus:ring-[var(--ctp-primary)] font-mono text-sm"
 					/>
 					<p class="mt-1 text-xs text-[var(--ctp-overlay0)]">
-						Listen address for API. Leave empty to disable.
+						{$t('experimental.externalControllerHint')}
 					</p>
 				</div>
 
 				<!-- External UI -->
 				<div>
 					<label for="external-ui" class="block text-sm font-medium text-[var(--ctp-subtext1)] mb-1">
-						External UI Path
-						<span class="font-normal text-[var(--ctp-overlay0)]">(optional)</span>
+						{$t('experimental.externalUi')}
+						<span class="font-normal text-[var(--ctp-overlay0)]">({$t('common.optional')})</span>
 					</label>
 					<input
 						id="external-ui"
@@ -220,8 +221,8 @@
 				<!-- External UI Download URL -->
 				<div>
 					<label for="external-ui-url" class="block text-sm font-medium text-[var(--ctp-subtext1)] mb-1">
-						UI Download URL
-						<span class="font-normal text-[var(--ctp-overlay0)]">(optional)</span>
+						{$t('experimental.externalUiDownloadUrl')}
+						<span class="font-normal text-[var(--ctp-overlay0)]">({$t('common.optional')})</span>
 					</label>
 					<input
 						id="external-ui-url"
@@ -236,8 +237,8 @@
 				<!-- Download Detour -->
 				<div>
 					<label for="download-detour" class="block text-sm font-medium text-[var(--ctp-subtext1)] mb-1">
-						Download Detour
-						<span class="font-normal text-[var(--ctp-overlay0)]">(optional)</span>
+						{$t('experimental.downloadDetour')}
+						<span class="font-normal text-[var(--ctp-overlay0)]">({$t('common.optional')})</span>
 					</label>
 					<select
 						id="download-detour"
@@ -245,21 +246,21 @@
 						onchange={handleChange}
 						class="w-full px-3 py-2 bg-[var(--ctp-surface0)] border border-[var(--ctp-surface2)] rounded-lg text-[var(--ctp-text)] focus:outline-none focus:ring-2 focus:ring-[var(--ctp-primary)]"
 					>
-						<option value="">None (direct)</option>
+						<option value="">{$t('common.none')} ({$t('outbounds.types.direct')})</option>
 						{#each outbounds as ob}
 							<option value={ob.tag}>{ob.tag}</option>
 						{/each}
 					</select>
 					<p class="mt-1 text-xs text-[var(--ctp-overlay0)]">
-						Outbound to use when downloading UI
+						{$t('experimental.downloadDetourHint')}
 					</p>
 				</div>
 
 				<!-- Secret -->
 				<div>
 					<label for="api-secret" class="block text-sm font-medium text-[var(--ctp-subtext1)] mb-1">
-						API Secret
-						<span class="font-normal text-[var(--ctp-overlay0)]">(optional)</span>
+						{$t('experimental.secret')}
+						<span class="font-normal text-[var(--ctp-overlay0)]">({$t('common.optional')})</span>
 					</label>
 					<input
 						id="api-secret"
@@ -273,7 +274,7 @@
 
 				<!-- Default Mode -->
 				<div>
-					<label class="block text-sm font-medium text-[var(--ctp-subtext1)] mb-2">Default Mode</label>
+					<label class="block text-sm font-medium text-[var(--ctp-subtext1)] mb-2">{$t('experimental.defaultMode')}</label>
 					<div class="flex gap-2">
 						{#each (['rule', 'global', 'direct'] as const) as mode}
 							<button

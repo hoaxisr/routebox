@@ -4,14 +4,13 @@ import "fmt"
 
 // --- Experimental Settings ---
 
-// getExperimental returns the experimental section, creating if needed
+// getExperimental returns the experimental section from working config (draft or active)
 func (m *Manager) getExperimental() map[string]interface{} {
-	if exp, ok := m.config["experimental"].(map[string]interface{}); ok {
+	config := m.getWorkingConfig()
+	if exp, ok := config["experimental"].(map[string]interface{}); ok {
 		return exp
 	}
-	exp := make(map[string]interface{})
-	m.config["experimental"] = exp
-	return exp
+	return make(map[string]interface{})
 }
 
 // GetExperimental returns experimental configuration
@@ -70,12 +69,28 @@ func (m *Manager) GetExperimental() map[string]interface{} {
 	return result
 }
 
-// UpdateExperimental updates experimental configuration
+// UpdateExperimental updates experimental configuration in draft
 func (m *Manager) UpdateExperimental(settings map[string]interface{}) error {
 	m.mu.Lock()
 	defer m.mu.Unlock()
 
-	exp := m.getExperimental()
+	// Validate default_mode if present
+	if clashApiInput, ok := settings["clash_api"].(map[string]interface{}); ok {
+		if defaultMode, ok := clashApiInput["default_mode"].(string); ok {
+			validModes := map[string]bool{"rule": true, "global": true, "direct": true}
+			if !validModes[defaultMode] {
+				return fmt.Errorf("invalid default_mode '%s'", defaultMode)
+			}
+		}
+	}
+
+	// Ensure draft exists before modifying
+	if err := m.ensureDraftUnlocked(); err != nil {
+		return err
+	}
+
+	// Modify draft
+	exp := m.getDraftExperimental()
 
 	// Update cache_file settings
 	if cacheFileInput, ok := settings["cache_file"].(map[string]interface{}); ok {
@@ -124,10 +139,6 @@ func (m *Manager) UpdateExperimental(settings map[string]interface{}) error {
 			clashApi["secret"] = secret
 		}
 		if defaultMode, ok := clashApiInput["default_mode"].(string); ok {
-			validModes := map[string]bool{"rule": true, "global": true, "direct": true}
-			if !validModes[defaultMode] {
-				return fmt.Errorf("invalid default_mode '%s'", defaultMode)
-			}
 			clashApi["default_mode"] = defaultMode
 		}
 
@@ -140,8 +151,8 @@ func (m *Manager) UpdateExperimental(settings map[string]interface{}) error {
 
 	// Remove experimental section if empty
 	if len(exp) == 0 {
-		delete(m.config, "experimental")
+		delete(m.draftConfig, "experimental")
 	}
 
-	return nil
+	return m.saveDraftToDisk()
 }

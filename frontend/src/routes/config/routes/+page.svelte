@@ -1,5 +1,6 @@
 <script lang="ts">
 	import { onMount } from 'svelte';
+	import { t } from 'svelte-i18n';
 	import { api } from '$lib/api/client';
 	import { notifications, unsavedChanges } from '$lib/stores';
 	import type { RouteRule, RuleSet, Outbound, Inbound, RouteSettings, Endpoint } from '$lib/types';
@@ -354,7 +355,7 @@
 	<!-- Header with tabs -->
 	<div class="flex items-center justify-between">
 		<div class="flex items-center gap-6">
-			<h1 class="text-2xl font-bold text-[var(--ctp-text)]">Routing</h1>
+			<h1 class="text-2xl font-bold text-[var(--ctp-text)]">{$t('routes.routing')}</h1>
 			<div class="flex border-b border-[var(--ctp-surface2)]">
 				<button
 					onclick={() => activeTab = 'rules'}
@@ -362,7 +363,7 @@
 						? 'border-[var(--ctp-primary)] text-[var(--ctp-primary)]'
 						: 'border-transparent text-[var(--ctp-overlay1)] hover:text-[var(--ctp-text)]'}"
 				>
-					Rules
+					{$t('routes.rules')}
 				</button>
 				<button
 					onclick={() => activeTab = 'inspector'}
@@ -373,7 +374,7 @@
 					<svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
 						<path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" />
 					</svg>
-					Inspector
+					{$t('routes.inspector')}
 				</button>
 			</div>
 		</div>
@@ -388,7 +389,7 @@
 						<svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
 							<path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 4v16m8-8H4" />
 						</svg>
-						Create Rule
+						{$t('routes.createRule')}
 						<svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
 							<path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 9l-7 7-7-7" />
 						</svg>
@@ -408,7 +409,7 @@
 								<svg class="w-4 h-4 text-[var(--ctp-primary)]" fill="none" stroke="currentColor" viewBox="0 0 24 24">
 									<path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13 10V3L4 14h7v7l9-11h-7z" />
 								</svg>
-								Guided Wizard
+								{$t('routes.guidedWizard')}
 							</button>
 							<button
 								onclick={() => { showCreateMenu = false; showTemplates = true; }}
@@ -417,7 +418,7 @@
 								<svg class="w-4 h-4 text-[var(--ctp-overlay1)]" fill="none" stroke="currentColor" viewBox="0 0 24 24">
 									<path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 5a1 1 0 011-1h14a1 1 0 011 1v2a1 1 0 01-1 1H5a1 1 0 01-1-1V5zM4 13a1 1 0 011-1h6a1 1 0 011 1v6a1 1 0 01-1 1H5a1 1 0 01-1-1v-6zM16 13a1 1 0 011-1h2a1 1 0 011 1v6a1 1 0 01-1 1h-2a1 1 0 01-1-1v-6z" />
 								</svg>
-								Quick Templates
+								{$t('routes.quickTemplates')}
 							</button>
 						</div>
 					{/if}
@@ -435,24 +436,24 @@
 							<path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
 						</svg>
 					{/if}
-					Apply Changes
+					{$t('changes.applyChanges')}
 				</button>
 			{/if}
 		</div>
 	</div>
 
 	{#if loading}
-		<div class="text-[var(--ctp-overlay0)]">Loading...</div>
+		<div class="text-[var(--ctp-overlay0)]">{$t('common.loading')}</div>
 	{:else if activeTab === 'inspector'}
 		<!-- Route Inspector -->
 		<RouteInspector {rules} finalOutbound={settings.final} />
 	{:else}
 		<!-- Route Settings -->
 		<div class="bg-[var(--ctp-surface0)] rounded-xl p-4 space-y-4">
-			<h2 class="font-medium text-[var(--ctp-subtext1)]">Route Settings</h2>
+			<h2 class="font-medium text-[var(--ctp-subtext1)]">{$t('routes.routeSettings')}</h2>
 			<div class="grid grid-cols-1 md:grid-cols-2 gap-4">
 				<div>
-					<label for="final" class="block text-sm text-[var(--ctp-overlay1)] mb-1">Final Outbound</label>
+					<label for="final" class="block text-sm text-[var(--ctp-overlay1)] mb-1">{$t('routes.finalOutbound')}</label>
 					<select
 						id="final"
 						bind:value={settings.final}
@@ -463,7 +464,7 @@
 							<option value={ob.tag}>{ob.tag}</option>
 						{/each}
 					</select>
-					<p class="mt-1 text-xs text-[var(--ctp-overlay0)]">Traffic that doesn't match any rule goes here</p>
+					<p class="mt-1 text-xs text-[var(--ctp-overlay0)]">{$t('routes.trafficNoMatchHint')}</p>
 				</div>
 				<div class="flex items-start">
 					<label class="flex items-center gap-2 cursor-pointer p-2">
@@ -474,8 +475,8 @@
 							class="w-4 h-4 rounded border-[var(--ctp-surface2)] text-[var(--ctp-primary)] focus:ring-[var(--ctp-primary)]"
 						/>
 						<div>
-							<span class="text-[var(--ctp-text)]">Auto-detect interface</span>
-							<p class="text-xs text-[var(--ctp-overlay0)]">Automatically bind to the default network interface</p>
+							<span class="text-[var(--ctp-text)]">{$t('routes.autoDetectInterface')}</span>
+							<p class="text-xs text-[var(--ctp-overlay0)]">{$t('routes.autoDetectInterfaceHint')}</p>
 						</div>
 					</label>
 				</div>
@@ -492,22 +493,22 @@
 					<svg class="w-4 h-4 text-[var(--ctp-overlay1)] transition-transform {ruleSetsExpanded ? 'rotate-90' : ''}" fill="none" stroke="currentColor" viewBox="0 0 24 24">
 						<path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 5l7 7-7 7" />
 					</svg>
-					<span class="font-medium text-[var(--ctp-subtext1)]">Rule Sets</span>
+					<span class="font-medium text-[var(--ctp-subtext1)]">{$t('routes.ruleSets')}</span>
 					<span class="text-sm text-[var(--ctp-overlay0)]">({ruleSets.length})</span>
 				</button>
 				<button
 					onclick={() => { showRuleSetForm = true; editingRuleSet = null; }}
 					class="px-3 py-1.5 text-sm bg-[var(--ctp-primary)] text-white rounded-lg hover:opacity-90 transition-opacity"
 				>
-					+ Add
+					+ {$t('common.add')}
 				</button>
 			</div>
 
 			{#if ruleSetsExpanded}
 				{#if ruleSets.length === 0}
 					<div class="p-6 text-center text-[var(--ctp-overlay0)]">
-						<p>No rule sets configured.</p>
-						<p class="text-sm mt-1">Rule sets are collections of domains/IPs you can reference in rules.</p>
+						<p>{$t('routes.noRuleSets')}</p>
+						<p class="text-sm mt-1">{$t('routes.noRuleSetsHint')}</p>
 					</div>
 				{:else}
 					<div class="divide-y divide-[var(--ctp-surface2)]">
@@ -525,14 +526,14 @@
 											{mapping.outbound}
 										</span>
 									{:else}
-										<span class="text-xs text-[var(--ctp-overlay0)] italic">no route</span>
+										<span class="text-xs text-[var(--ctp-overlay0)] italic">{$t('routes.noRoute')}</span>
 									{/if}
 								</div>
 								<div class="flex items-center gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
 									<button
 										onclick={() => viewingRuleSet = ruleSet}
 										class="p-1.5 rounded hover:bg-[var(--ctp-surface2)] text-[var(--ctp-overlay1)]"
-										title="View details"
+										title={$t('routes.viewDetails')}
 									>
 										<svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
 											<path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" />
@@ -542,7 +543,7 @@
 									<button
 										onclick={() => { editingRuleSet = ruleSet; showRuleSetForm = true; }}
 										class="p-1.5 rounded hover:bg-[var(--ctp-surface2)] text-[var(--ctp-overlay1)]"
-										title="Edit"
+										title={$t('common.edit')}
 									>
 										<svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
 											<path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z" />
@@ -551,7 +552,7 @@
 									<button
 										onclick={() => handleDeleteRuleSet(ruleSet.tag)}
 										class="p-1.5 rounded hover:bg-[var(--ctp-red)] hover:bg-opacity-20 text-[var(--ctp-red)]"
-										title="Delete"
+										title={$t('common.delete')}
 									>
 										<svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
 											<path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
@@ -575,14 +576,14 @@
 					<svg class="w-4 h-4 text-[var(--ctp-overlay1)] transition-transform {rulesExpanded ? 'rotate-90' : ''}" fill="none" stroke="currentColor" viewBox="0 0 24 24">
 						<path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 5l7 7-7 7" />
 					</svg>
-					<span class="font-medium text-[var(--ctp-subtext1)]">Advanced Rules</span>
+					<span class="font-medium text-[var(--ctp-subtext1)]">{$t('routes.advancedRules')}</span>
 					<span class="text-sm text-[var(--ctp-overlay0)]">({filteredRules.length})</span>
 				</button>
 				<button
 					onclick={openAddRule}
 					class="px-3 py-1.5 text-sm bg-[var(--ctp-primary)] text-white rounded-lg hover:opacity-90 transition-opacity"
 				>
-					+ Add
+					+ {$t('common.add')}
 				</button>
 			</div>
 
@@ -607,7 +608,7 @@
 							<svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
 								<path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
 							</svg>
-							<span>Rules are evaluated in order. Drag to reorder.</span>
+							<span>{$t('routes.rulesOrderHint')}</span>
 						</div>
 					</div>
 				{/if}
@@ -619,7 +620,7 @@
 			<div class="flex items-center justify-center gap-3 py-2">
 				<div class="h-px flex-1 bg-[var(--ctp-surface2)]"></div>
 				<div class="info-banner">
-					<span class="text-sm text-[var(--ctp-overlay1)]">No match:</span>
+					<span class="text-sm text-[var(--ctp-overlay1)]">{$t('routes.noMatch')}:</span>
 					<span class="text-sm font-medium text-[var(--ctp-primary)]">{settings.final}</span>
 				</div>
 				<div class="h-px flex-1 bg-[var(--ctp-surface2)]"></div>
@@ -634,7 +635,7 @@
 		<div class="bg-[var(--ctp-base)] rounded-xl w-full max-w-lg max-h-[90vh] overflow-y-auto">
 			<div class="px-4 py-3 border-b border-[var(--ctp-surface2)] flex items-center justify-between">
 				<h2 class="text-lg font-medium text-[var(--ctp-text)]">
-					{editingRuleSet ? `Edit Rule Set: ${editingRuleSet.tag}` : 'Add Rule Set'}
+					{editingRuleSet ? `${$t('routes.editRuleSet')}: ${editingRuleSet.tag}` : $t('routes.addRuleSet')}
 				</h2>
 				<button
 					onclick={() => { showRuleSetForm = false; editingRuleSet = null; }}
@@ -666,7 +667,7 @@
 	<div class="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4">
 		<div class="bg-[var(--ctp-base)] rounded-xl w-full max-w-md">
 			<div class="px-4 py-3 border-b border-[var(--ctp-surface2)] flex items-center justify-between">
-				<h2 class="text-lg font-medium text-[var(--ctp-text)]">Rule Set Details</h2>
+				<h2 class="text-lg font-medium text-[var(--ctp-text)]">{$t('routes.ruleSetDetails')}</h2>
 				<button
 					onclick={() => viewingRuleSet = null}
 					class="p-1 rounded-md hover:bg-[var(--ctp-surface1)] text-[var(--ctp-overlay1)]"
@@ -679,20 +680,20 @@
 			</div>
 			<div class="p-4 space-y-3">
 				<div>
-					<span class="text-sm text-[var(--ctp-overlay1)]">Tag</span>
+					<span class="text-sm text-[var(--ctp-overlay1)]">{$t('common.tag')}</span>
 					<p class="font-medium text-[var(--ctp-text)]">{viewingRuleSet.tag}</p>
 				</div>
 				<div>
-					<span class="text-sm text-[var(--ctp-overlay1)]">Type</span>
+					<span class="text-sm text-[var(--ctp-overlay1)]">{$t('common.type')}</span>
 					<p class="text-[var(--ctp-text)]">{viewingRuleSet.type}</p>
 				</div>
 				<div>
-					<span class="text-sm text-[var(--ctp-overlay1)]">Format</span>
+					<span class="text-sm text-[var(--ctp-overlay1)]">{$t('routes.ruleSetFormat')}</span>
 					<p class="text-[var(--ctp-text)]">{viewingRuleSet.format}</p>
 				</div>
 				{#if viewingRuleSet.url}
 					<div>
-						<span class="text-sm text-[var(--ctp-overlay1)]">URL</span>
+						<span class="text-sm text-[var(--ctp-overlay1)]">{$t('routes.ruleSetUrl')}</span>
 						<a href={viewingRuleSet.url} target="_blank" rel="noopener" class="block text-[var(--ctp-primary)] hover:underline break-all text-sm">
 							{viewingRuleSet.url}
 						</a>
@@ -700,14 +701,14 @@
 				{/if}
 				{#if viewingRuleSet.path}
 					<div>
-						<span class="text-sm text-[var(--ctp-overlay1)]">Path</span>
+						<span class="text-sm text-[var(--ctp-overlay1)]">{$t('routes.ruleSetPath')}</span>
 						<p class="text-[var(--ctp-text)] font-mono text-sm">{viewingRuleSet.path}</p>
 					</div>
 				{/if}
 				{#if ruleSetOutboundMap.get(viewingRuleSet.tag)}
 					{@const mapping = ruleSetOutboundMap.get(viewingRuleSet.tag)!}
 					<div>
-						<span class="text-sm text-[var(--ctp-overlay1)]">Route to</span>
+						<span class="text-sm text-[var(--ctp-overlay1)]">{$t('routes.routeTo')}</span>
 						<p class="font-medium {mapping.action === 'reject' ? 'text-[var(--ctp-red)]' : 'text-[var(--ctp-green)]'}">
 							{mapping.outbound}
 						</p>
@@ -719,13 +720,13 @@
 					onclick={() => { editingRuleSet = viewingRuleSet; viewingRuleSet = null; showRuleSetForm = true; }}
 					class="px-4 py-2 bg-[var(--ctp-primary)] text-white rounded-lg hover:opacity-90"
 				>
-					Edit
+					{$t('common.edit')}
 				</button>
 				<button
 					onclick={() => viewingRuleSet = null}
 					class="px-4 py-2 bg-[var(--ctp-surface1)] text-[var(--ctp-text)] rounded-lg hover:bg-[var(--ctp-surface2)]"
 				>
-					Close
+					{$t('common.close')}
 				</button>
 			</div>
 		</div>
@@ -738,7 +739,7 @@
 		<div class="bg-[var(--ctp-base)] rounded-xl w-full max-w-lg max-h-[90vh] overflow-y-auto">
 			<div class="px-4 py-3 border-b border-[var(--ctp-surface2)] flex items-center justify-between">
 				<h2 class="text-lg font-medium text-[var(--ctp-text)]">
-					{editingRuleIndex !== null ? `Edit Rule #${editingRuleIndex + 1}` : 'Add Rule'}
+					{editingRuleIndex !== null ? $t('routes.editRuleNumber', { values: { number: editingRuleIndex + 1 } }) : $t('routes.addRule')}
 				</h2>
 				<button
 					onclick={() => { showRuleForm = false; editingRuleIndex = null; }}
@@ -770,7 +771,7 @@
 	<div class="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4">
 		<div class="bg-[var(--ctp-base)] rounded-xl w-full max-w-lg max-h-[90vh] overflow-y-auto">
 			<div class="px-4 py-3 border-b border-[var(--ctp-surface2)] flex items-center justify-between">
-				<h2 class="text-lg font-medium text-[var(--ctp-text)]">Quick Templates</h2>
+				<h2 class="text-lg font-medium text-[var(--ctp-text)]">{$t('routes.quickTemplates')}</h2>
 				<button
 					onclick={() => showTemplates = false}
 					class="p-1 rounded-md hover:bg-[var(--ctp-surface1)] text-[var(--ctp-overlay1)]"
@@ -798,7 +799,7 @@
 	<div class="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4">
 		<div class="bg-[var(--ctp-base)] rounded-xl w-full max-w-lg max-h-[90vh] overflow-y-auto">
 			<div class="px-4 py-3 border-b border-[var(--ctp-surface2)] flex items-center justify-between">
-				<h2 class="text-lg font-medium text-[var(--ctp-text)]">Create Rule</h2>
+				<h2 class="text-lg font-medium text-[var(--ctp-text)]">{$t('routes.createRule')}</h2>
 				<button
 					onclick={() => showWizard = false}
 					class="p-1 rounded-md hover:bg-[var(--ctp-surface1)] text-[var(--ctp-overlay1)]"

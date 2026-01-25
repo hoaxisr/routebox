@@ -1,6 +1,7 @@
 <script lang="ts">
 	import type { DnsRule, DnsServer, RuleSet } from '$lib/types';
 	import { notifications } from '$lib/stores';
+	import { t } from 'svelte-i18n';
 
 	interface Props {
 		rule?: DnsRule;
@@ -62,7 +63,7 @@
 
 		// Server is required ONLY for route action
 		if (action === 'route' && !server) {
-			errors['server'] = 'DNS server is required for route action';
+			errors['server'] = $t('dns.ruleServer') + ' ' + $t('common.required').toLowerCase();
 		}
 
 		// Check at least one condition
@@ -75,7 +76,7 @@
 			selectedRuleSets.length > 0;
 
 		if (!hasCondition) {
-			errors['conditions'] = 'At least one match condition is required';
+			errors['conditions'] = $t('routes.ruleConditions') + ' ' + $t('common.required').toLowerCase();
 		}
 
 		const errorKeys = Object.keys(errors);
@@ -121,49 +122,49 @@
 		onSave(newRule);
 	}
 
-	const tabs: { id: Tab; label: string }[] = [
-		{ id: 'domains', label: 'Domains' },
-		{ id: 'other', label: 'Other' },
-		{ id: 'ruleset', label: 'Rule Sets' }
-	];
+	const tabs: { id: Tab; label: string }[] = $derived([
+		{ id: 'domains', label: $t('routes.domain') },
+		{ id: 'other', label: $t('common.advanced') },
+		{ id: 'ruleset', label: $t('routes.ruleSets') }
+	]);
 
 	const queryTypePresets = ['A', 'AAAA', 'CNAME', 'MX', 'TXT', 'NS', 'PTR'];
 
-	const rcodeOptions: { value: DnsRule['rcode']; label: string; desc: string }[] = [
-		{ value: 'NXDOMAIN', label: 'NXDOMAIN', desc: 'Domain does not exist' },
-		{ value: 'REFUSED', label: 'REFUSED', desc: 'Query refused by server' },
-		{ value: 'SERVFAIL', label: 'SERVFAIL', desc: 'Server failure' },
-		{ value: 'NOERROR', label: 'NOERROR', desc: 'Success (empty response)' },
-		{ value: 'FORMERR', label: 'FORMERR', desc: 'Format error' },
-		{ value: 'NOTIMP', label: 'NOTIMP', desc: 'Not implemented' },
+	const rcodeOptions: { value: DnsRule['rcode']; label: string; descKey: string }[] = [
+		{ value: 'NXDOMAIN', label: 'NXDOMAIN', descKey: 'dns.rcodeNxdomain' },
+		{ value: 'REFUSED', label: 'REFUSED', descKey: 'dns.rcodeRefused' },
+		{ value: 'SERVFAIL', label: 'SERVFAIL', descKey: 'dns.rcodeServfail' },
+		{ value: 'NOERROR', label: 'NOERROR', descKey: 'dns.rcodeNoerror' },
+		{ value: 'FORMERR', label: 'FORMERR', descKey: 'dns.rcodeFormerr' },
+		{ value: 'NOTIMP', label: 'NOTIMP', descKey: 'dns.rcodeNotimp' },
 	];
 </script>
 
 <form onsubmit={(e) => { e.preventDefault(); handleSubmit(); }} class="space-y-6">
 	<!-- Action Selection (moved to top for better UX) -->
 	<div>
-		<label class="block text-sm font-medium text-[var(--ctp-subtext1)] mb-2">Action</label>
+		<label class="block text-sm font-medium text-[var(--ctp-subtext1)] mb-2">{$t('routes.ruleAction')}</label>
 		<div class="flex gap-2">
 			<button
 				type="button"
 				onclick={() => action = 'route'}
 				class="toggle-btn {action === 'route' ? 'selected' : ''}"
 			>
-				Route
+				{$t('dns.actionRoute')}
 			</button>
 			<button
 				type="button"
 				onclick={() => action = 'reject'}
 				class="toggle-btn-danger {action === 'reject' ? 'selected' : ''}"
 			>
-				Reject
+				{$t('dns.actionReject')}
 			</button>
 			<button
 				type="button"
 				onclick={() => action = 'predefined'}
 				class="toggle-btn-danger {action === 'predefined' ? 'selected' : ''}"
 			>
-				Predefined
+				{$t('dns.actionPredefined')}
 			</button>
 		</div>
 	</div>
@@ -172,13 +173,13 @@
 	{#if action === 'route'}
 		<!-- DNS Server (only for route) -->
 		<div>
-			<label for="server" class="block text-sm font-medium text-[var(--ctp-subtext1)] mb-1">DNS Server *</label>
+			<label for="server" class="block text-sm font-medium text-[var(--ctp-subtext1)] mb-1">{$t('dns.ruleServer')} *</label>
 			<select
 				id="server"
 				bind:value={server}
 				class="w-full px-3 py-2 bg-[var(--ctp-surface0)] border rounded-lg text-[var(--ctp-text)] focus:outline-none focus:ring-2 focus:ring-[var(--ctp-primary)] {errors['server'] ? 'border-[var(--ctp-red)]' : 'border-[var(--ctp-surface2)]'}"
 			>
-				<option value="">Select DNS server...</option>
+				<option value="">{$t('dns.selectServer')}</option>
 				{#each dnsServers as srv}
 					<option value={srv.tag}>{srv.tag} ({srv.type})</option>
 				{/each}
@@ -191,7 +192,7 @@
 		<!-- Reject options -->
 		<div class="bg-[var(--ctp-surface0)] rounded-lg p-4 space-y-4">
 			<div>
-				<label class="block text-sm font-medium text-[var(--ctp-subtext1)] mb-2">Reject Method</label>
+				<label class="block text-sm font-medium text-[var(--ctp-subtext1)] mb-2">{$t('dns.rejectMethod')}</label>
 				<div class="flex gap-2">
 					<button
 						type="button"
@@ -205,11 +206,11 @@
 						onclick={() => rejectMethod = 'drop'}
 						class="toggle-btn {rejectMethod === 'drop' ? 'selected' : ''}"
 					>
-						Drop
+						{$t('dns.rejectDrop')}
 					</button>
 				</div>
 				<p class="mt-2 text-xs text-[var(--ctp-overlay0)]">
-					{rejectMethod === 'default' ? 'Reply with REFUSED response code' : 'Silently drop the request (no response)'}
+					{rejectMethod === 'default' ? $t('dns.rejectRefusedHint') : $t('dns.rejectDropHint')}
 				</p>
 			</div>
 
@@ -220,15 +221,15 @@
 						bind:checked={noDrop}
 						class="w-4 h-4 rounded border-[var(--ctp-surface2)] text-[var(--ctp-primary)] focus:ring-[var(--ctp-primary)]"
 					/>
-					Don't auto-switch to drop under heavy load
-					<span class="text-xs text-[var(--ctp-overlay0)]">(prevents drop after 50 triggers in 30s)</span>
+					{$t('dns.noDropLabel')}
+					<span class="text-xs text-[var(--ctp-overlay0)]">({$t('dns.noDropHint')})</span>
 				</label>
 			{/if}
 		</div>
 	{:else if action === 'predefined'}
 		<!-- Predefined options -->
 		<div class="bg-[var(--ctp-surface0)] rounded-lg p-4">
-			<label for="rcode" class="block text-sm font-medium text-[var(--ctp-subtext1)] mb-2">Response Code (RCode)</label>
+			<label for="rcode" class="block text-sm font-medium text-[var(--ctp-subtext1)] mb-2">{$t('dns.responseCode')}</label>
 			<div class="grid grid-cols-2 gap-2">
 				{#each rcodeOptions as opt}
 					<button
@@ -239,7 +240,7 @@
 							: 'border-[var(--ctp-surface2)] hover:border-[var(--ctp-overlay0)]'}"
 					>
 						<span class="font-mono text-sm {rcode === opt.value ? 'text-[var(--ctp-primary)]' : 'text-[var(--ctp-text)]'}">{opt.label}</span>
-						<p class="text-xs text-[var(--ctp-overlay0)]">{opt.desc}</p>
+						<p class="text-xs text-[var(--ctp-overlay0)]">{$t(opt.descKey)}</p>
 					</button>
 				{/each}
 			</div>
@@ -277,8 +278,8 @@
 				<!-- Domain (exact) -->
 				<div>
 					<label for="domain" class="block text-sm font-medium text-[var(--ctp-subtext1)] mb-1">
-						Domain (exact match)
-						<span class="font-normal text-[var(--ctp-overlay0)]">(one per line)</span>
+						{$t('routes.domain')}
+						<span class="font-normal text-[var(--ctp-overlay0)]">({$t('dns.onePerLine')})</span>
 					</label>
 					<textarea
 						id="domain"
@@ -292,8 +293,8 @@
 				<!-- Domain Suffix -->
 				<div>
 					<label for="domain-suffix" class="block text-sm font-medium text-[var(--ctp-subtext1)] mb-1">
-						Domain Suffix
-						<span class="font-normal text-[var(--ctp-overlay0)]">(one per line)</span>
+						{$t('routes.domainSuffix')}
+						<span class="font-normal text-[var(--ctp-overlay0)]">({$t('dns.onePerLine')})</span>
 					</label>
 					<textarea
 						id="domain-suffix"
@@ -307,8 +308,8 @@
 				<!-- Domain Keyword -->
 				<div>
 					<label for="domain-keyword" class="block text-sm font-medium text-[var(--ctp-subtext1)] mb-1">
-						Domain Keyword
-						<span class="font-normal text-[var(--ctp-overlay0)]">(one per line)</span>
+						{$t('routes.domainKeyword')}
+						<span class="font-normal text-[var(--ctp-overlay0)]">({$t('dns.onePerLine')})</span>
 					</label>
 					<textarea
 						id="domain-keyword"
@@ -322,8 +323,8 @@
 				<!-- Domain Regex -->
 				<div>
 					<label for="domain-regex" class="block text-sm font-medium text-[var(--ctp-subtext1)] mb-1">
-						Domain Regex
-						<span class="font-normal text-[var(--ctp-overlay0)]">(one per line)</span>
+						{$t('routes.domainRegex')}
+						<span class="font-normal text-[var(--ctp-overlay0)]">({$t('dns.onePerLine')})</span>
 					</label>
 					<textarea
 						id="domain-regex"
@@ -339,8 +340,8 @@
 				<!-- IP CIDR -->
 				<div>
 					<label for="ip-cidr" class="block text-sm font-medium text-[var(--ctp-subtext1)] mb-1">
-						IP CIDR
-						<span class="font-normal text-[var(--ctp-overlay0)]">(one per line)</span>
+						{$t('routes.ipCidr')}
+						<span class="font-normal text-[var(--ctp-overlay0)]">({$t('dns.onePerLine')})</span>
 					</label>
 					<textarea
 						id="ip-cidr"
@@ -354,8 +355,8 @@
 				<!-- Query Type -->
 				<div>
 					<label for="query-type" class="block text-sm font-medium text-[var(--ctp-subtext1)] mb-1">
-						Query Type
-						<span class="font-normal text-[var(--ctp-overlay0)]">(comma-separated)</span>
+						{$t('dns.queryType')}
+						<span class="font-normal text-[var(--ctp-overlay0)]">({$t('dns.commaSeparated')})</span>
 					</label>
 					<input
 						id="query-type"
@@ -388,11 +389,11 @@
 			<div class="space-y-4">
 				{#if ruleSets.length === 0}
 					<div class="p-8 text-center text-[var(--ctp-overlay0)]">
-						<p>No rule sets available.</p>
-						<p class="text-sm mt-1">Add rule sets in Config &gt; Routes first.</p>
+						<p>{$t('routes.noRuleSets')}</p>
+						<p class="text-sm mt-1">{$t('routes.noRuleSetsHint')}</p>
 					</div>
 				{:else}
-					<p class="text-sm text-[var(--ctp-overlay1)]">Select rule sets to match against:</p>
+					<p class="text-sm text-[var(--ctp-overlay1)]">{$t('dns.selectRuleSetsHint')}</p>
 					<div class="bg-[var(--ctp-surface0)] rounded-lg border border-[var(--ctp-surface2)] divide-y divide-[var(--ctp-surface2)]">
 						{#each ruleSets as rs}
 							<button
@@ -426,7 +427,7 @@
 			bind:checked={disableCache}
 			class="w-4 h-4 rounded border-[var(--ctp-surface2)] text-[var(--ctp-primary)] focus:ring-[var(--ctp-primary)]"
 		/>
-		Disable cache for this rule
+		{$t('dns.disableCache')}
 	</label>
 
 	<!-- Actions -->
@@ -436,13 +437,13 @@
 			onclick={onCancel}
 			class="px-4 py-2 bg-[var(--ctp-surface1)] text-[var(--ctp-text)] rounded-lg hover:bg-[var(--ctp-surface2)] transition-colors"
 		>
-			Cancel
+			{$t('common.cancel')}
 		</button>
 		<button
 			type="submit"
 			class="px-4 py-2 bg-[var(--ctp-primary)] text-white rounded-lg hover:opacity-90 transition-opacity"
 		>
-			{rule ? 'Save Changes' : 'Add Rule'}
+			{rule ? $t('common.saveChanges') : $t('dns.addRule')}
 		</button>
 	</div>
 </form>

@@ -4,14 +4,13 @@ import "fmt"
 
 // --- Log Settings ---
 
-// getLog returns the log section, creating if needed
+// getLog returns the log section from working config (draft or active)
 func (m *Manager) getLog() map[string]interface{} {
-	if log, ok := m.config["log"].(map[string]interface{}); ok {
+	config := m.getWorkingConfig()
+	if log, ok := config["log"].(map[string]interface{}); ok {
 		return log
 	}
-	log := make(map[string]interface{})
-	m.config["log"] = log
-	return log
+	return make(map[string]interface{})
 }
 
 // GetLogSettings returns log configuration settings
@@ -37,12 +36,10 @@ func (m *Manager) GetLogSettings() map[string]interface{} {
 	return result
 }
 
-// UpdateLogSettings updates log configuration settings
+// UpdateLogSettings updates log configuration settings in draft
 func (m *Manager) UpdateLogSettings(settings map[string]interface{}) error {
 	m.mu.Lock()
 	defer m.mu.Unlock()
-
-	log := m.getLog()
 
 	// Validate level
 	if level, ok := settings["level"].(string); ok {
@@ -53,6 +50,17 @@ func (m *Manager) UpdateLogSettings(settings map[string]interface{}) error {
 		if !validLevels[level] {
 			return fmt.Errorf("invalid log level '%s'", level)
 		}
+	}
+
+	// Ensure draft exists before modifying
+	if err := m.ensureDraftUnlocked(); err != nil {
+		return err
+	}
+
+	// Modify draft
+	log := m.getDraftLog()
+
+	if level, ok := settings["level"].(string); ok {
 		log["level"] = level
 	}
 
@@ -68,5 +76,5 @@ func (m *Manager) UpdateLogSettings(settings map[string]interface{}) error {
 		delete(log, "output")
 	}
 
-	return nil
+	return m.saveDraftToDisk()
 }

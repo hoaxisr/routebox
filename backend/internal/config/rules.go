@@ -4,17 +4,16 @@ import "fmt"
 
 // --- Route section helpers ---
 
-// getRoute returns the route section, creating if needed
+// getRoute returns the route section from working config (draft or active)
 func (m *Manager) getRoute() map[string]interface{} {
-	if route, ok := m.config["route"].(map[string]interface{}); ok {
+	config := m.getWorkingConfig()
+	if route, ok := config["route"].(map[string]interface{}); ok {
 		return route
 	}
-	route := make(map[string]interface{})
-	m.config["route"] = route
-	return route
+	return make(map[string]interface{})
 }
 
-// getRouteArray returns array from route section at given key
+// getRouteArray returns array from route section at given key (from working config)
 func (m *Manager) getRouteArray(key string) []interface{} {
 	route := m.getRoute()
 	if arr, ok := route[key].([]interface{}); ok {
@@ -40,7 +39,7 @@ func (m *Manager) ListRuleSets() []map[string]interface{} {
 	return result
 }
 
-// CreateRuleSet adds new rule set with validation
+// CreateRuleSet adds new rule set to draft with validation
 func (m *Manager) CreateRuleSet(rs map[string]interface{}) error {
 	// Validate
 	errs := validateRuleSet(rs, 0)
@@ -52,23 +51,30 @@ func (m *Manager) CreateRuleSet(rs map[string]interface{}) error {
 	defer m.mu.Unlock()
 
 	tag, _ := rs["tag"].(string)
-	route := m.getRoute()
 
 	arr := m.getRouteArray("rule_set")
 	if findByTag(arr, tag) >= 0 {
 		return fmt.Errorf("rule set with tag '%s' already exists", tag)
 	}
 
-	route["rule_set"] = append(arr, rs)
-	return nil
+	// Ensure draft exists before modifying
+	if err := m.ensureDraftUnlocked(); err != nil {
+		return err
+	}
+
+	// Modify draft
+	route := m.getDraftRoute()
+	draftArr := m.getDraftRouteArray("rule_set")
+	route["rule_set"] = append(draftArr, rs)
+
+	return m.saveDraftToDisk()
 }
 
-// DeleteRuleSet removes rule set by tag
+// DeleteRuleSet removes rule set by tag from draft
 func (m *Manager) DeleteRuleSet(tag string) error {
 	m.mu.Lock()
 	defer m.mu.Unlock()
 
-	route := m.getRoute()
 	arr := m.getRouteArray("rule_set")
 	idx := findByTag(arr, tag)
 	if idx < 0 {
@@ -89,8 +95,20 @@ func (m *Manager) DeleteRuleSet(tag string) error {
 		}
 	}
 
-	route["rule_set"] = append(arr[:idx], arr[idx+1:]...)
-	return nil
+	// Ensure draft exists before modifying
+	if err := m.ensureDraftUnlocked(); err != nil {
+		return err
+	}
+
+	// Modify draft
+	route := m.getDraftRoute()
+	draftArr := m.getDraftRouteArray("rule_set")
+	draftIdx := findByTag(draftArr, tag)
+	if draftIdx >= 0 {
+		route["rule_set"] = append(draftArr[:draftIdx], draftArr[draftIdx+1:]...)
+	}
+
+	return m.saveDraftToDisk()
 }
 
 // --- Route Rules CRUD (index-based) ---
@@ -110,7 +128,7 @@ func (m *Manager) ListRules() []map[string]interface{} {
 	return result
 }
 
-// CreateRule appends new rule with validation
+// CreateRule appends new rule to draft with validation
 func (m *Manager) CreateRule(rule map[string]interface{}) error {
 	m.mu.Lock()
 	defer m.mu.Unlock()
@@ -147,18 +165,24 @@ func (m *Manager) CreateRule(rule map[string]interface{}) error {
 		return fmt.Errorf("validation failed: %s", errs[0])
 	}
 
-	route := m.getRoute()
-	arr := m.getRouteArray("rules")
-	route["rules"] = append(arr, rule)
-	return nil
+	// Ensure draft exists before modifying
+	if err := m.ensureDraftUnlocked(); err != nil {
+		return err
+	}
+
+	// Modify draft
+	route := m.getDraftRoute()
+	draftArr := m.getDraftRouteArray("rules")
+	route["rules"] = append(draftArr, rule)
+
+	return m.saveDraftToDisk()
 }
 
-// UpdateRule updates rule at index with validation
+// UpdateRule updates rule at index in draft with validation
 func (m *Manager) UpdateRule(index int, rule map[string]interface{}) error {
 	m.mu.Lock()
 	defer m.mu.Unlock()
 
-	route := m.getRoute()
 	arr := m.getRouteArray("rules")
 	if index < 0 || index >= len(arr) {
 		return fmt.Errorf("rule index %d out of range", index)
@@ -196,32 +220,52 @@ func (m *Manager) UpdateRule(index int, rule map[string]interface{}) error {
 		return fmt.Errorf("validation failed: %s", errs[0])
 	}
 
-	arr[index] = rule
-	route["rules"] = arr
-	return nil
+	// Ensure draft exists before modifying
+	if err := m.ensureDraftUnlocked(); err != nil {
+		return err
+	}
+
+	// Modify draft
+	route := m.getDraftRoute()
+	draftArr := m.getDraftRouteArray("rules")
+	if index < len(draftArr) {
+		draftArr[index] = rule
+		route["rules"] = draftArr
+	}
+
+	return m.saveDraftToDisk()
 }
 
-// DeleteRule removes rule at index
+// DeleteRule removes rule at index from draft
 func (m *Manager) DeleteRule(index int) error {
 	m.mu.Lock()
 	defer m.mu.Unlock()
 
-	route := m.getRoute()
 	arr := m.getRouteArray("rules")
 	if index < 0 || index >= len(arr) {
 		return fmt.Errorf("rule index %d out of range", index)
 	}
 
-	route["rules"] = append(arr[:index], arr[index+1:]...)
-	return nil
+	// Ensure draft exists before modifying
+	if err := m.ensureDraftUnlocked(); err != nil {
+		return err
+	}
+
+	// Modify draft
+	route := m.getDraftRoute()
+	draftArr := m.getDraftRouteArray("rules")
+	if index < len(draftArr) {
+		route["rules"] = append(draftArr[:index], draftArr[index+1:]...)
+	}
+
+	return m.saveDraftToDisk()
 }
 
-// ReorderRules moves rule from one index to another
+// ReorderRules moves rule from one index to another in draft
 func (m *Manager) ReorderRules(from, to int) error {
 	m.mu.Lock()
 	defer m.mu.Unlock()
 
-	route := m.getRoute()
 	arr := m.getRouteArray("rules")
 	if from < 0 || from >= len(arr) {
 		return fmt.Errorf("'from' index %d out of range", from)
@@ -233,11 +277,20 @@ func (m *Manager) ReorderRules(from, to int) error {
 		return nil
 	}
 
+	// Ensure draft exists before modifying
+	if err := m.ensureDraftUnlocked(); err != nil {
+		return err
+	}
+
+	// Modify draft
+	route := m.getDraftRoute()
+	draftArr := m.getDraftRouteArray("rules")
+
 	// Extract the rule being moved
-	rule := arr[from]
+	rule := draftArr[from]
 
 	// Remove from original position
-	arr = append(arr[:from], arr[from+1:]...)
+	draftArr = append(draftArr[:from], draftArr[from+1:]...)
 
 	// Adjust 'to' if it was after 'from'
 	if to > from {
@@ -245,13 +298,14 @@ func (m *Manager) ReorderRules(from, to int) error {
 	}
 
 	// Insert at new position
-	newArr := make([]interface{}, 0, len(arr)+1)
-	newArr = append(newArr, arr[:to]...)
+	newArr := make([]interface{}, 0, len(draftArr)+1)
+	newArr = append(newArr, draftArr[:to]...)
 	newArr = append(newArr, rule)
-	newArr = append(newArr, arr[to:]...)
+	newArr = append(newArr, draftArr[to:]...)
 
 	route["rules"] = newArr
-	return nil
+
+	return m.saveDraftToDisk()
 }
 
 // --- Route Settings ---
@@ -274,12 +328,10 @@ func (m *Manager) GetRouteSettings() map[string]interface{} {
 	return result
 }
 
-// UpdateRouteSettings updates final outbound and auto_detect_interface
+// UpdateRouteSettings updates final outbound and auto_detect_interface in draft
 func (m *Manager) UpdateRouteSettings(settings map[string]interface{}) error {
 	m.mu.Lock()
 	defer m.mu.Unlock()
-
-	route := m.getRoute()
 
 	// Validate final outbound exists (can be an outbound or endpoint tag)
 	if final, ok := settings["final"].(string); ok && final != "" {
@@ -303,12 +355,22 @@ func (m *Manager) UpdateRouteSettings(settings map[string]interface{}) error {
 		if !outboundTags[final] && !endpointTags[final] {
 			return fmt.Errorf("final outbound '%s' does not exist", final)
 		}
-		route["final"] = final
 	}
 
+	// Ensure draft exists before modifying
+	if err := m.ensureDraftUnlocked(); err != nil {
+		return err
+	}
+
+	// Modify draft
+	route := m.getDraftRoute()
+
+	if final, ok := settings["final"].(string); ok && final != "" {
+		route["final"] = final
+	}
 	if autoDetect, ok := settings["auto_detect_interface"].(bool); ok {
 		route["auto_detect_interface"] = autoDetect
 	}
 
-	return nil
+	return m.saveDraftToDisk()
 }

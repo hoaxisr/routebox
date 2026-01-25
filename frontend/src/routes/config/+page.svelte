@@ -1,5 +1,6 @@
 <script lang="ts">
 	import { onMount } from 'svelte';
+	import { t } from 'svelte-i18n';
 	import { api } from '$lib/api/client';
 	import { notifications } from '$lib/stores';
 	import type { SingboxConfig } from '$lib/types';
@@ -97,13 +98,13 @@
 </script>
 
 <svelte:head>
-	<title>Configuration - RouteBox</title>
+	<title>{$t('overview.title')} - RouteBox</title>
 </svelte:head>
 
 <div class="space-y-6">
 	<!-- Header -->
 	<div class="flex items-center justify-between">
-		<h1 class="text-2xl font-bold text-[var(--ctp-text)]">Configuration</h1>
+		<h1 class="text-2xl font-bold text-[var(--ctp-text)]">{$t('overview.title')}</h1>
 		<div class="flex gap-2">
 			{#if activeTab === 'json'}
 				<button
@@ -113,7 +114,7 @@
 					<svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
 						<path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M8 16H6a2 2 0 01-2-2V6a2 2 0 012-2h8a2 2 0 012 2v2m-6 12h8a2 2 0 002-2v-8a2 2 0 00-2-2h-8a2 2 0 00-2 2v8a2 2 0 002 2z" />
 					</svg>
-					Copy
+					{$t('common.copy')}
 				</button>
 				<button
 					onclick={downloadConfig}
@@ -122,7 +123,7 @@
 					<svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
 						<path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4" />
 					</svg>
-					Download
+					{$t('common.download')}
 				</button>
 			{/if}
 			<button
@@ -132,7 +133,7 @@
 				<svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
 					<path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" />
 				</svg>
-				Refresh
+				{$t('common.refresh')}
 			</button>
 		</div>
 	</div>
@@ -143,7 +144,7 @@
 			onclick={() => activeTab = 'overview'}
 			class="px-4 py-1.5 rounded-md text-sm transition-colors {activeTab === 'overview' ? 'bg-[var(--ctp-surface1)] text-[var(--ctp-text)]' : 'text-[var(--ctp-overlay1)] hover:text-[var(--ctp-text)]'}"
 		>
-			Overview
+			{$t('nav.overview')}
 		</button>
 		<button
 			onclick={() => activeTab = 'json'}
@@ -171,32 +172,32 @@
 		</div>
 	{:else if !config}
 		<div class="text-center py-12 text-[var(--ctp-red)]">
-			Failed to load configuration
+			{$t('errors.loadFailed')}
 		</div>
 	{:else}
 		<!-- Overview Tab -->
 		{#if activeTab === 'overview'}
 			<div class="grid grid-cols-2 md:grid-cols-4 gap-4">
 				<a href="/config/endpoints" class="bg-[var(--ctp-surface0)] rounded-xl p-4 hover:bg-[var(--ctp-surface1)] transition-colors">
-					<div class="text-sm text-[var(--ctp-overlay1)]">Endpoints</div>
+					<div class="text-sm text-[var(--ctp-overlay1)]">{$t('nav.endpoints')}</div>
 					<div class="text-2xl font-bold text-[var(--ctp-primary)]">
 						{config.endpoints?.length ?? 0}
 					</div>
 				</a>
 				<a href="/config/outbounds" class="bg-[var(--ctp-surface0)] rounded-xl p-4 hover:bg-[var(--ctp-surface1)] transition-colors">
-					<div class="text-sm text-[var(--ctp-overlay1)]">Outbounds</div>
+					<div class="text-sm text-[var(--ctp-overlay1)]">{$t('nav.outbounds')}</div>
 					<div class="text-2xl font-bold text-[var(--ctp-primary)]">
 						{config.outbounds?.length ?? 0}
 					</div>
 				</a>
 				<a href="/config/inbounds" class="bg-[var(--ctp-surface0)] rounded-xl p-4 hover:bg-[var(--ctp-surface1)] transition-colors">
-					<div class="text-sm text-[var(--ctp-overlay1)]">Inbounds</div>
+					<div class="text-sm text-[var(--ctp-overlay1)]">{$t('nav.inbounds')}</div>
 					<div class="text-2xl font-bold text-[var(--ctp-text)]">
 						{config.inbounds?.length ?? 0}
 					</div>
 				</a>
 				<a href="/config/routes" class="bg-[var(--ctp-surface0)] rounded-xl p-4 hover:bg-[var(--ctp-surface1)] transition-colors">
-					<div class="text-sm text-[var(--ctp-overlay1)]">Route Rules</div>
+					<div class="text-sm text-[var(--ctp-overlay1)]">{$t('routes.rules')}</div>
 					<div class="text-2xl font-bold text-[var(--ctp-primary)]">
 						{config.route?.rules?.length ?? 0}
 					</div>
@@ -206,27 +207,27 @@
 			<!-- Quick stats -->
 			<div class="grid grid-cols-1 md:grid-cols-2 gap-4">
 				<div class="bg-[var(--ctp-surface0)] rounded-xl p-4">
-					<h3 class="text-sm font-medium text-[var(--ctp-overlay1)] mb-3">DNS Configuration</h3>
+					<h3 class="text-sm font-medium text-[var(--ctp-overlay1)] mb-3">{$t('dns.title')}</h3>
 					<div class="space-y-2 text-sm">
 						<div class="flex justify-between">
-							<span class="text-[var(--ctp-subtext1)]">Servers</span>
+							<span class="text-[var(--ctp-subtext1)]">{$t('dns.servers')}</span>
 							<span class="text-[var(--ctp-text)]">{config.dns?.servers?.length ?? 0}</span>
 						</div>
 						<div class="flex justify-between">
-							<span class="text-[var(--ctp-subtext1)]">Rules</span>
+							<span class="text-[var(--ctp-subtext1)]">{$t('dns.rules')}</span>
 							<span class="text-[var(--ctp-text)]">{config.dns?.rules?.length ?? 0}</span>
 						</div>
 					</div>
 				</div>
 				<div class="bg-[var(--ctp-surface0)] rounded-xl p-4">
-					<h3 class="text-sm font-medium text-[var(--ctp-overlay1)] mb-3">Route Configuration</h3>
+					<h3 class="text-sm font-medium text-[var(--ctp-overlay1)] mb-3">{$t('routes.title')}</h3>
 					<div class="space-y-2 text-sm">
 						<div class="flex justify-between">
-							<span class="text-[var(--ctp-subtext1)]">Rule Sets</span>
+							<span class="text-[var(--ctp-subtext1)]">{$t('routes.ruleSets')}</span>
 							<span class="text-[var(--ctp-text)]">{config.route?.rule_set?.length ?? 0}</span>
 						</div>
 						<div class="flex justify-between">
-							<span class="text-[var(--ctp-subtext1)]">Final Outbound</span>
+							<span class="text-[var(--ctp-subtext1)]">{$t('routes.finalOutbound')}</span>
 							<span class="text-[var(--ctp-text)]">{config.route?.final ?? 'direct'}</span>
 						</div>
 					</div>

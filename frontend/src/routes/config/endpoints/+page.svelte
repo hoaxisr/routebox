@@ -1,5 +1,6 @@
 <script lang="ts">
 	import { onMount } from 'svelte';
+	import { t } from 'svelte-i18n';
 	import { api } from '$lib/api/client';
 	import { notifications, unsavedChanges } from '$lib/stores';
 	import type { Endpoint } from '$lib/types';
@@ -132,33 +133,33 @@
 
 <div class="space-y-6">
 	<div class="flex items-center justify-between">
-		<h1 class="text-2xl font-bold text-[var(--ctp-text)]">Endpoints</h1>
+		<h1 class="text-2xl font-bold text-[var(--ctp-text)]">{$t('endpoints.title')}</h1>
 		<div class="flex items-center gap-2">
 			<button
 				onclick={applyChanges}
 				class="px-4 py-2 bg-[var(--ctp-primary)] text-white rounded-lg hover:opacity-90 transition-opacity"
 			>
-				Apply Changes
+				{$t('changes.applyChanges')}
 			</button>
 			<button
 				onclick={openCreate}
 				class="px-4 py-2 bg-[var(--ctp-primary)] text-white rounded-lg hover:opacity-90 transition-opacity"
 			>
-				+ Add Endpoint
+				+ {$t('endpoints.addEndpoint')}
 			</button>
 		</div>
 	</div>
 
 	{#if loading}
-		<div class="text-[var(--ctp-overlay0)]">Loading...</div>
+		<div class="text-[var(--ctp-overlay0)]">{$t('common.loading')}</div>
 	{:else if endpoints.length === 0}
 		<div class="bg-[var(--ctp-surface0)] rounded-xl p-8 text-center">
-			<div class="text-[var(--ctp-overlay1)] mb-4">No endpoints configured</div>
+			<div class="text-[var(--ctp-overlay1)] mb-4">{$t('endpoints.noEndpoints')}</div>
 			<button
 				onclick={openCreate}
 				class="px-4 py-2 bg-[var(--ctp-primary)] text-white rounded-lg hover:opacity-90 transition-opacity"
 			>
-				Add your first endpoint
+				{$t('endpoints.noEndpointsHint')}
 			</button>
 		</div>
 	{:else}
@@ -196,7 +197,7 @@
 							<button
 								onclick={() => openEdit(endpoint)}
 								class="p-2 hover:bg-[var(--ctp-surface2)] rounded-lg transition-colors"
-								title="Edit"
+								title={$t('common.edit')}
 							>
 								<svg class="w-5 h-5 text-[var(--ctp-overlay1)]" fill="none" stroke="currentColor" viewBox="0 0 24 24">
 									<path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z" />
@@ -205,7 +206,7 @@
 							<button
 								onclick={() => handleDelete(endpoint.tag)}
 								class="action-btn-danger"
-								title="Delete"
+								title={$t('common.delete')}
 							>
 								<svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
 									<path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
@@ -235,6 +236,6 @@
 </div>
 
 <!-- Modal -->
-<Modal open={showModal} title={editingEndpoint ? 'Edit Endpoint' : 'Add Endpoint'} size="lg" onClose={closeModal}>
+<Modal open={showModal} title={editingEndpoint ? $t('endpoints.editEndpoint') : $t('endpoints.addEndpoint')} size="lg" onClose={closeModal}>
 	<EndpointForm endpoint={editingEndpoint} onSave={handleSave} onCancel={closeModal} />
 </Modal>

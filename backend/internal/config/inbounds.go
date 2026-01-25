@@ -2,7 +2,7 @@ package config
 
 import "fmt"
 
-// ListInbounds returns all inbounds
+// ListInbounds returns all inbounds from the working config (draft or active)
 func (m *Manager) ListInbounds() []map[string]interface{} {
 	m.mu.RLock()
 	defer m.mu.RUnlock()
@@ -17,7 +17,7 @@ func (m *Manager) ListInbounds() []map[string]interface{} {
 	return result
 }
 
-// GetInbound returns inbound by tag
+// GetInbound returns inbound by tag from the working config (draft or active)
 func (m *Manager) GetInbound(tag string) (map[string]interface{}, bool) {
 	m.mu.RLock()
 	defer m.mu.RUnlock()
@@ -33,7 +33,7 @@ func (m *Manager) GetInbound(tag string) (map[string]interface{}, bool) {
 	return nil, false
 }
 
-// CreateInbound adds new inbound with validation
+// CreateInbound adds new inbound to draft with validation
 func (m *Manager) CreateInbound(inbound map[string]interface{}) error {
 	// Validate inbound before adding
 	errs := validateInbound(inbound, 0)
@@ -51,11 +51,19 @@ func (m *Manager) CreateInbound(inbound map[string]interface{}) error {
 		return fmt.Errorf("inbound with tag '%s' already exists", tag)
 	}
 
-	m.config["inbounds"] = append(arr, inbound)
-	return nil
+	// Ensure draft exists before modifying
+	if err := m.ensureDraftUnlocked(); err != nil {
+		return err
+	}
+
+	// Modify draft
+	draftArr := m.getDraftArray("inbounds")
+	m.setDraftValue("inbounds", append(draftArr, inbound))
+
+	return m.saveDraftToDisk()
 }
 
-// UpdateInbound updates existing inbound with validation
+// UpdateInbound updates existing inbound in draft with validation
 func (m *Manager) UpdateInbound(tag string, inbound map[string]interface{}) error {
 	// Validate inbound before updating
 	errs := validateInbound(inbound, 0)
@@ -77,12 +85,23 @@ func (m *Manager) UpdateInbound(tag string, inbound map[string]interface{}) erro
 		inbound["tag"] = tag
 	}
 
-	arr[idx] = inbound
-	m.config["inbounds"] = arr
-	return nil
+	// Ensure draft exists before modifying
+	if err := m.ensureDraftUnlocked(); err != nil {
+		return err
+	}
+
+	// Modify draft
+	draftArr := m.getDraftArray("inbounds")
+	draftIdx := findByTag(draftArr, tag)
+	if draftIdx >= 0 {
+		draftArr[draftIdx] = inbound
+		m.setDraftValue("inbounds", draftArr)
+	}
+
+	return m.saveDraftToDisk()
 }
 
-// DeleteInbound removes inbound by tag
+// DeleteInbound removes inbound by tag from draft
 func (m *Manager) DeleteInbound(tag string) error {
 	m.mu.Lock()
 	defer m.mu.Unlock()
@@ -93,6 +112,17 @@ func (m *Manager) DeleteInbound(tag string) error {
 		return fmt.Errorf("inbound '%s' not found", tag)
 	}
 
-	m.config["inbounds"] = append(arr[:idx], arr[idx+1:]...)
-	return nil
+	// Ensure draft exists before modifying
+	if err := m.ensureDraftUnlocked(); err != nil {
+		return err
+	}
+
+	// Modify draft
+	draftArr := m.getDraftArray("inbounds")
+	draftIdx := findByTag(draftArr, tag)
+	if draftIdx >= 0 {
+		m.setDraftValue("inbounds", append(draftArr[:draftIdx], draftArr[draftIdx+1:]...))
+	}
+
+	return m.saveDraftToDisk()
 }

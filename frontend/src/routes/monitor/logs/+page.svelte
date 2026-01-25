@@ -1,5 +1,6 @@
 <script lang="ts">
 	import { onMount, onDestroy } from 'svelte';
+	import { t } from 'svelte-i18n';
 	import { createLogsStream } from '$lib/api/client';
 
 	interface LogEntry {
@@ -103,7 +104,7 @@
 
 <div class="space-y-4 h-full flex flex-col">
 	<div class="flex items-center justify-between">
-		<h1 class="text-2xl font-bold text-[var(--ctp-text)]">Live Logs</h1>
+		<h1 class="text-2xl font-bold text-[var(--ctp-text)]">{$t('logs.title')}</h1>
 		<div class="flex items-center gap-2">
 			<span
 				class="w-2 h-2 rounded-full"
@@ -111,7 +112,7 @@
 				class:bg-[var(--ctp-red)]={!connected}
 			></span>
 			<span class="text-sm text-[var(--ctp-overlay1)]">
-				{connected ? 'Streaming' : 'Disconnected'}
+				{connected ? $t('logs.streaming') : $t('status.disconnected')}
 			</span>
 		</div>
 	</div>
@@ -130,7 +131,7 @@
 		<input
 			type="text"
 			bind:value={search}
-			placeholder="Search logs..."
+			placeholder={$t('logs.search')}
 			class="flex-1 px-3 py-2 bg-[var(--ctp-surface0)] border border-[var(--ctp-surface2)] rounded-lg text-[var(--ctp-text)] placeholder-[var(--ctp-overlay0)] focus:outline-none focus:ring-2 focus:ring-[var(--ctp-primary)]"
 		/>
 
@@ -140,14 +141,14 @@
 				bind:checked={autoScroll}
 				class="w-4 h-4 rounded border-[var(--ctp-surface2)] text-[var(--ctp-primary)] focus:ring-[var(--ctp-primary)]"
 			/>
-			Auto-scroll
+			{$t('logs.autoScroll')}
 		</label>
 
 		<button
 			onclick={clearLogs}
 			class="px-3 py-2 bg-[var(--ctp-surface1)] text-[var(--ctp-text)] rounded-lg hover:bg-[var(--ctp-surface2)] transition-colors"
 		>
-			Clear
+			{$t('logs.clear')}
 		</button>
 	</div>
 
@@ -158,7 +159,7 @@
 	>
 		{#if filteredLogs.length === 0}
 			<div class="p-4 text-center text-[var(--ctp-overlay0)]">
-				{logs.length === 0 ? 'Waiting for logs...' : 'No logs match the filter'}
+				{logs.length === 0 ? $t('logs.waitingForLogs') : $t('logs.noLogsMatchFilter')}
 			</div>
 		{:else}
 			<div class="p-2 space-y-0.5">

@@ -1,4 +1,5 @@
 <script lang="ts">
+	import { t } from 'svelte-i18n';
 	import type { ClashProxy } from '$lib/types';
 	import { api } from '$lib/api/client';
 	import { notifications } from '$lib/stores';
@@ -22,7 +23,7 @@
 
 	function formatDelay(ms: number | null): string {
 		if (ms === null) return '-';
-		if (ms === 0) return 'timeout';
+		if (ms === 0) return $t('proxies.timeout');
 		return `${ms}ms`;
 	}
 
@@ -33,7 +34,7 @@
 			delay = result.delay;
 		} catch (err) {
 			delay = 0; // timeout
-			notifications.error(`Test failed: ${err}`);
+			notifications.error(`${$t('common.test')} ${$t('common.error').toLowerCase()}: ${err}`);
 		} finally {
 			testing = false;
 		}
@@ -42,10 +43,10 @@
 	async function switchTo(target: string) {
 		try {
 			await api.switchProxy(proxy.name, target);
-			notifications.success(`Switched to ${target}`);
+			notifications.success(`${$t('proxies.selected')}: ${target}`);
 			onUpdate?.();
 		} catch (err) {
-			notifications.error(`Failed to switch: ${err}`);
+			notifications.error(`${$t('errors.saveFailed')}: ${err}`);
 		}
 	}
 
@@ -68,7 +69,7 @@
 				onclick={testLatency}
 				disabled={testing}
 				class="p-2 rounded-lg hover:bg-[var(--ctp-surface1)] transition-colors disabled:opacity-50"
-				title="Test latency"
+				title={$t('proxies.testLatency')}
 			>
 				{#if testing}
 					<svg class="w-4 h-4 animate-spin text-[var(--ctp-primary)]" fill="none" viewBox="0 0 24 24">
@@ -87,7 +88,7 @@
 	{#if isSelector && proxy.all}
 		<div class="mt-3 pt-3 border-t border-[var(--ctp-surface2)]">
 			<div class="text-xs text-[var(--ctp-overlay0)] mb-2">
-				Current: <span class="text-[var(--ctp-primary)]">{proxy.now || 'None'}</span>
+				{$t('proxies.selected')}: <span class="text-[var(--ctp-primary)]">{proxy.now || $t('common.none')}</span>
 			</div>
 			<div class="flex flex-wrap gap-1">
 				{#each proxy.all as option}

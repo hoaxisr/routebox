@@ -1,4 +1,5 @@
 <script lang="ts">
+	import { t } from 'svelte-i18n';
 	import { api } from '$lib/api/client';
 	import { notifications } from '$lib/stores';
 
@@ -85,15 +86,15 @@
 </script>
 
 <svelte:head>
-	<title>Backup & Restore - RouteBox</title>
+	<title>{$t('backup.title')} - RouteBox</title>
 </svelte:head>
 
 <div class="p-6 max-w-4xl mx-auto">
 	<!-- Header -->
 	<div class="mb-6">
-		<h1 class="text-2xl font-semibold text-[var(--ctp-text)]">Backup & Restore</h1>
+		<h1 class="text-2xl font-semibold text-[var(--ctp-text)]">{$t('backup.title')}</h1>
 		<p class="text-sm text-[var(--ctp-overlay1)] mt-1">
-			Export or import your sing-box configuration
+			{$t('backup.description')}
 		</p>
 	</div>
 
@@ -107,9 +108,9 @@
 					</svg>
 				</div>
 				<div class="flex-1">
-					<h2 class="text-lg font-medium text-[var(--ctp-text)]">Export Configuration</h2>
+					<h2 class="text-lg font-medium text-[var(--ctp-text)]">{$t('backup.exportConfig')}</h2>
 					<p class="text-sm text-[var(--ctp-overlay1)] mt-1">
-						Download your current configuration as a JSON file for backup or transfer.
+						{$t('backup.exportDescription')}
 					</p>
 					<button
 						onclick={handleExport}
@@ -118,7 +119,7 @@
 						<svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
 							<path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4" />
 						</svg>
-						Export Config
+						{$t('backup.exportConfig')}
 					</button>
 				</div>
 			</div>
@@ -133,9 +134,9 @@
 					</svg>
 				</div>
 				<div class="flex-1">
-					<h2 class="text-lg font-medium text-[var(--ctp-text)]">Import Configuration</h2>
+					<h2 class="text-lg font-medium text-[var(--ctp-text)]">{$t('backup.importConfig')}</h2>
 					<p class="text-sm text-[var(--ctp-overlay1)] mt-1">
-						Upload a JSON configuration file to validate and apply.
+						{$t('backup.importDescription')}
 					</p>
 				</div>
 			</div>
@@ -163,16 +164,16 @@
 						<circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle>
 						<path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z"></path>
 					</svg>
-					<p class="mt-2 text-[var(--ctp-text)]">Processing...</p>
+					<p class="mt-2 text-[var(--ctp-text)]">{$t('common.validating')}</p>
 				{:else}
 					<svg class="w-12 h-12 mx-auto text-[var(--ctp-overlay0)]" fill="none" stroke="currentColor" viewBox="0 0 24 24">
 						<path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M7 16a4 4 0 01-.88-7.903A5 5 0 1115.9 6L16 6a5 5 0 011 9.9M15 13l-3-3m0 0l-3 3m3-3v12" />
 					</svg>
 					<p class="mt-2 text-[var(--ctp-text)]">
-						Drag & drop a JSON file here
+						{$t('backup.dropFile')}
 					</p>
 					<p class="text-sm text-[var(--ctp-overlay0)]">
-						or click to browse
+						{$t('backup.selectFile')}
 					</p>
 				{/if}
 			</div>
@@ -185,12 +186,12 @@
 							<svg class="w-5 h-5 text-[var(--ctp-primary)]" fill="none" stroke="currentColor" viewBox="0 0 24 24">
 								<path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 13l4 4L19 7" />
 							</svg>
-							<span class="font-medium text-[var(--ctp-primary)]">Configuration is valid</span>
+							<span class="font-medium text-[var(--ctp-primary)]">{$t('jsonEditor.configValid')}</span>
 						{:else}
 							<svg class="w-5 h-5 text-[var(--ctp-red)]" fill="none" stroke="currentColor" viewBox="0 0 24 24">
 								<path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12" />
 							</svg>
-							<span class="font-medium text-[var(--ctp-red)]">Configuration has errors</span>
+							<span class="font-medium text-[var(--ctp-red)]">{$t('backup.invalidConfig')}</span>
 						{/if}
 					</div>
 
@@ -212,7 +213,7 @@
 						onclick={clearImport}
 						class="px-4 py-2 bg-[var(--ctp-surface1)] text-[var(--ctp-text)] rounded-lg hover:bg-[var(--ctp-surface2)] transition-colors"
 					>
-						Clear
+						{$t('common.discard')}
 					</button>
 					{#if validationResult.valid}
 						<button
@@ -225,9 +226,9 @@
 									<circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle>
 									<path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z"></path>
 								</svg>
-								Applying...
+								{$t('common.applying')}
 							{:else}
-								Apply Configuration
+								{$t('common.apply')}
 							{/if}
 						</button>
 					{/if}
@@ -242,9 +243,9 @@
 					<path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z" />
 				</svg>
 				<div>
-					<p class="text-sm font-medium text-[var(--ctp-text)]">Important</p>
+					<p class="text-sm font-medium text-[var(--ctp-text)]">{$t('common.warning')}</p>
 					<p class="text-sm text-[var(--ctp-subtext1)] mt-1">
-						Importing a configuration will replace your current settings. Make sure to export a backup first if needed.
+						{$t('backup.importWarning')}
 					</p>
 				</div>
 			</div>

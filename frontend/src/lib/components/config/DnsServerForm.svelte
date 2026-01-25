@@ -1,6 +1,7 @@
 <script lang="ts">
 	import type { DnsServer, Outbound } from '$lib/types';
 	import { notifications } from '$lib/stores';
+	import { t } from 'svelte-i18n';
 
 	interface Props {
 		server?: DnsServer;
@@ -83,22 +84,22 @@
 		errors = {};
 
 		if (!tag.trim()) {
-			errors['tag'] = 'Tag is required';
+			errors['tag'] = $t('dns.validation.tagRequired');
 		} else if (!server && existingTags.includes(tag.trim())) {
-			errors['tag'] = 'Tag already exists';
+			errors['tag'] = $t('dns.validation.tagExists');
 		}
 
 		if (type !== 'local' && type !== 'fakeip' && !serverAddr.trim()) {
-			errors['server'] = 'Server address is required';
+			errors['server'] = $t('dns.validation.serverRequired');
 		}
 
 		if (serverPort && (isNaN(parseInt(serverPort)) || parseInt(serverPort) < 1 || parseInt(serverPort) > 65535)) {
-			errors['port'] = 'Invalid port number';
+			errors['port'] = $t('dns.validation.invalidPort');
 		}
 
 		// Validate domain resolver requirement
 		if (needsDomainResolver && !domainResolver) {
-			errors['domain_resolver'] = 'Domain resolver is required for domain-based DNS servers';
+			errors['domain_resolver'] = $t('dns.validation.domainResolverRequired');
 		}
 
 		const errorKeys = Object.keys(errors);
@@ -143,21 +144,21 @@
 		onSave(newServer);
 	}
 
-	const serverTypes: { value: DnsServer['type']; label: string; description: string }[] = [
-		{ value: 'tls', label: 'DNS over TLS', description: 'Encrypted DNS (port 853)' },
-		{ value: 'https', label: 'DNS over HTTPS', description: 'Encrypted DNS over HTTPS' },
-		{ value: 'udp', label: 'UDP', description: 'Standard DNS (port 53)' },
-		{ value: 'tcp', label: 'TCP', description: 'DNS over TCP' },
-		{ value: 'local', label: 'Local', description: 'System resolver' },
-		{ value: 'fakeip', label: 'FakeIP', description: 'Return fake IPs for routing' }
+	const serverTypes: { value: DnsServer['type']; labelKey: string; descriptionKey: string }[] = [
+		{ value: 'tls', labelKey: 'dns.serverTypes.tls', descriptionKey: 'dns.serverTypes.tlsDesc' },
+		{ value: 'https', labelKey: 'dns.serverTypes.https', descriptionKey: 'dns.serverTypes.httpsDesc' },
+		{ value: 'udp', labelKey: 'dns.serverTypes.udp', descriptionKey: 'dns.serverTypes.udpDesc' },
+		{ value: 'tcp', labelKey: 'dns.serverTypes.tcp', descriptionKey: 'dns.serverTypes.tcpDesc' },
+		{ value: 'local', labelKey: 'dns.serverTypes.local', descriptionKey: 'dns.serverTypes.localDesc' },
+		{ value: 'fakeip', labelKey: 'dns.serverTypes.fakeip', descriptionKey: 'dns.serverTypes.fakeipDesc' }
 	];
 
 	const strategyOptions = [
-		{ value: '', label: 'Default' },
-		{ value: 'prefer_ipv4', label: 'Prefer IPv4' },
-		{ value: 'prefer_ipv6', label: 'Prefer IPv6' },
-		{ value: 'ipv4_only', label: 'IPv4 Only' },
-		{ value: 'ipv6_only', label: 'IPv6 Only' }
+		{ value: '', labelKey: 'common.default' },
+		{ value: 'prefer_ipv4', labelKey: 'dns.strategies.preferIpv4' },
+		{ value: 'prefer_ipv6', labelKey: 'dns.strategies.preferIpv6' },
+		{ value: 'ipv4_only', labelKey: 'dns.strategies.ipv4Only' },
+		{ value: 'ipv6_only', labelKey: 'dns.strategies.ipv6Only' }
 	];
 </script>
 
@@ -165,7 +166,7 @@
 	<!-- Presets -->
 	{#if !server}
 		<div>
-			<label class="block text-sm font-medium text-[var(--ctp-subtext1)] mb-2">Quick Add Preset</label>
+			<label class="block text-sm font-medium text-[var(--ctp-subtext1)] mb-2">{$t('dns.quickAddPreset')}</label>
 			<div class="flex flex-wrap gap-2">
 				{#each PRESETS as preset}
 					<button
@@ -181,13 +182,13 @@
 		</div>
 
 		<div class="border-t border-[var(--ctp-surface2)] pt-4">
-			<p class="text-sm text-[var(--ctp-overlay0)] mb-4">Or configure manually:</p>
+			<p class="text-sm text-[var(--ctp-overlay0)] mb-4">{$t('dns.orConfigureManually')}</p>
 		</div>
 	{/if}
 
 	<!-- Tag -->
 	<div>
-		<label for="tag" class="block text-sm font-medium text-[var(--ctp-subtext1)] mb-1">Tag *</label>
+		<label for="tag" class="block text-sm font-medium text-[var(--ctp-subtext1)] mb-1">{$t('common.tag')} *</label>
 		<input
 			id="tag"
 			type="text"
@@ -202,16 +203,16 @@
 
 	<!-- Type -->
 	<div>
-		<label class="block text-sm font-medium text-[var(--ctp-subtext1)] mb-2">Type</label>
+		<label class="block text-sm font-medium text-[var(--ctp-subtext1)] mb-2">{$t('common.type')}</label>
 		<div class="grid grid-cols-2 gap-2">
-			{#each serverTypes as t}
+			{#each serverTypes as st}
 				<button
 					type="button"
-					onclick={() => type = t.value}
-					class="type-btn {type === t.value ? 'selected' : ''}"
+					onclick={() => type = st.value}
+					class="type-btn {type === st.value ? 'selected' : ''}"
 				>
-					<div class="type-label">{t.label}</div>
-					<div class="type-desc">{t.description}</div>
+					<div class="type-label">{$t(st.labelKey)}</div>
+					<div class="type-desc">{$t(st.descriptionKey)}</div>
 				</button>
 			{/each}
 		</div>
@@ -220,7 +221,7 @@
 	<!-- Server Address -->
 	{#if type !== 'local' && type !== 'fakeip'}
 		<div>
-			<label for="server" class="block text-sm font-medium text-[var(--ctp-subtext1)] mb-1">Server Address *</label>
+			<label for="server" class="block text-sm font-medium text-[var(--ctp-subtext1)] mb-1">{$t('dns.serverAddress')} *</label>
 			<input
 				id="server"
 				type="text"
@@ -232,7 +233,7 @@
 				<p class="mt-1 text-sm text-[var(--ctp-red)]">{errors['server']}</p>
 			{/if}
 			<p class="mt-1 text-xs text-[var(--ctp-overlay0)]">
-				Use IP address (8.8.8.8) or domain name (dns.google). Domain names require a bootstrap resolver.
+				{$t('dns.serverAddressHint')}
 			</p>
 		</div>
 
@@ -244,9 +245,9 @@
 						<path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
 					</svg>
 					<div>
-						<p class="text-sm font-medium text-[var(--ctp-text)]">Domain resolver required</p>
+						<p class="text-sm font-medium text-[var(--ctp-text)]">{$t('dns.domainResolverRequired')}</p>
 						<p class="text-xs text-[var(--ctp-overlay1)] mt-1">
-							Since the server address is a domain name, you need a bootstrap DNS to resolve it first.
+							{$t('dns.domainResolverRequiredHint')}
 						</p>
 					</div>
 				</div>
@@ -254,12 +255,12 @@
 
 			<div>
 				<label for="domain_resolver" class="block text-sm font-medium text-[var(--ctp-subtext1)] mb-1">
-					Domain Resolver *
+					{$t('dns.domainResolver')} *
 				</label>
 				{#if bootstrapServers.length === 0}
 					<div class="alert-box error">
 						<p class="text-sm text-[var(--ctp-red)]">
-							No bootstrap DNS available. Add a DNS server with IP address (not domain) or local type first.
+							{$t('dns.noBootstrapDns')}
 						</p>
 					</div>
 				{:else}
@@ -268,7 +269,7 @@
 						bind:value={domainResolver}
 						class="w-full px-3 py-2 bg-[var(--ctp-surface0)] border rounded-lg text-[var(--ctp-text)] focus:outline-none focus:ring-2 focus:ring-[var(--ctp-primary)] {errors['domain_resolver'] ? 'border-[var(--ctp-red)]' : 'border-[var(--ctp-surface2)]'}"
 					>
-						<option value="">Select bootstrap DNS...</option>
+						<option value="">{$t('dns.selectBootstrapDns')}</option>
 						{#each bootstrapServers as bs}
 							<option value={bs.tag}>
 								{bs.tag} ({bs.type}{bs.server ? ` - ${bs.server}` : ''})
@@ -284,8 +285,8 @@
 			<!-- Domain Strategy (optional) -->
 			<div>
 				<label for="domain_strategy" class="block text-sm font-medium text-[var(--ctp-subtext1)] mb-1">
-					Domain Strategy
-					<span class="font-normal text-[var(--ctp-overlay0)]">(optional)</span>
+					{$t('dns.domainStrategy')}
+					<span class="font-normal text-[var(--ctp-overlay0)]">({$t('common.optional')})</span>
 				</label>
 				<select
 					id="domain_strategy"
@@ -293,7 +294,7 @@
 					class="w-full px-3 py-2 bg-[var(--ctp-surface0)] border border-[var(--ctp-surface2)] rounded-lg text-[var(--ctp-text)] focus:outline-none focus:ring-2 focus:ring-[var(--ctp-primary)]"
 				>
 					{#each strategyOptions as opt}
-						<option value={opt.value}>{opt.label}</option>
+						<option value={opt.value}>{$t(opt.labelKey)}</option>
 					{/each}
 				</select>
 			</div>
@@ -302,8 +303,8 @@
 		<!-- Port -->
 		<div>
 			<label for="port" class="block text-sm font-medium text-[var(--ctp-subtext1)] mb-1">
-				Port
-				<span class="font-normal text-[var(--ctp-overlay0)]">(optional)</span>
+				{$t('common.port')}
+				<span class="font-normal text-[var(--ctp-overlay0)]">({$t('common.optional')})</span>
 			</label>
 			<input
 				id="port"
@@ -326,10 +327,9 @@
 					<path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
 				</svg>
 				<div>
-					<p class="text-sm font-medium text-[var(--ctp-text)]">FakeIP requires DNS rules</p>
+					<p class="text-sm font-medium text-[var(--ctp-text)]">{$t('dns.fakeipRequiresRules')}</p>
 					<p class="text-xs text-[var(--ctp-overlay1)] mt-1">
-						After adding this server, you must create DNS rules to direct specific queries to it.
-						FakeIP returns fake addresses used for routing decisions; real resolution happens when connecting.
+						{$t('dns.fakeipRequiresRulesHint')}
 					</p>
 				</div>
 			</div>
@@ -338,7 +338,7 @@
 		<div class="grid grid-cols-2 gap-4">
 			<div>
 				<label for="inet4_range" class="block text-sm font-medium text-[var(--ctp-subtext1)] mb-1">
-					IPv4 Range
+					{$t('dns.ipv4Range')}
 				</label>
 				<input
 					id="inet4_range"
@@ -350,7 +350,7 @@
 			</div>
 			<div>
 				<label for="inet6_range" class="block text-sm font-medium text-[var(--ctp-subtext1)] mb-1">
-					IPv6 Range
+					{$t('dns.ipv6Range')}
 				</label>
 				<input
 					id="inet6_range"
@@ -362,7 +362,7 @@
 			</div>
 		</div>
 		<p class="text-xs text-[var(--ctp-overlay0)]">
-			These ranges should not overlap with your real network. Default values are recommended.
+			{$t('dns.fakeipRangeHint')}
 		</p>
 	{/if}
 
@@ -370,27 +370,27 @@
 	{#if type !== 'local' && type !== 'fakeip'}
 		<div>
 			<label for="detour" class="block text-sm font-medium text-[var(--ctp-subtext1)] mb-1">
-				Detour (Outbound)
-				<span class="font-normal text-[var(--ctp-overlay0)]">(optional)</span>
+				{$t('dns.detour')}
+				<span class="font-normal text-[var(--ctp-overlay0)]">({$t('common.optional')})</span>
 			</label>
 			<select
 				id="detour"
 				bind:value={detour}
 				class="w-full px-3 py-2 bg-[var(--ctp-surface0)] border border-[var(--ctp-surface2)] rounded-lg text-[var(--ctp-text)] focus:outline-none focus:ring-2 focus:ring-[var(--ctp-primary)]"
 			>
-				<option value="">None (direct)</option>
+				<option value="">{$t('dns.noneDirect')}</option>
 				{#each outbounds as ob}
 					<option value={ob.tag}>{ob.tag} ({ob.type})</option>
 				{/each}
 			</select>
-			<p class="mt-1 text-xs text-[var(--ctp-overlay0)]">Route DNS queries through this outbound</p>
+			<p class="mt-1 text-xs text-[var(--ctp-overlay0)]">{$t('dns.detourHint')}</p>
 		</div>
 	{/if}
 
 	<!-- Info for local type -->
 	{#if type === 'local'}
 		<div class="bg-[var(--ctp-surface0)] rounded-lg p-4 text-sm text-[var(--ctp-overlay1)]">
-			Local DNS uses the system's default resolver. Useful as a bootstrap for domain-based DNS servers.
+			{$t('dns.localDnsHint')}
 		</div>
 	{/if}
 
@@ -401,13 +401,13 @@
 			onclick={onCancel}
 			class="px-4 py-2 bg-[var(--ctp-surface1)] text-[var(--ctp-text)] rounded-lg hover:bg-[var(--ctp-surface2)] transition-colors"
 		>
-			Cancel
+			{$t('common.cancel')}
 		</button>
 		<button
 			type="submit"
 			class="px-4 py-2 bg-[var(--ctp-primary)] text-white rounded-lg hover:opacity-90 transition-opacity"
 		>
-			{server ? 'Save Changes' : 'Add Server'}
+			{server ? $t('common.saveChanges') : $t('dns.addServer')}
 		</button>
 	</div>
 </form>

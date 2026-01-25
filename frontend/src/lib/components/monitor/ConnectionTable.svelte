@@ -1,4 +1,5 @@
 <script lang="ts">
+	import { t } from 'svelte-i18n';
 	import type { ClashConnection } from '$lib/types';
 
 	interface Props {
@@ -140,7 +141,7 @@
 		<input
 			type="text"
 			bind:value={filter}
-			placeholder="Filter by host, chain, rule, country, or ASN..."
+			placeholder={$t('connections.search')}
 			class="w-full px-4 py-2 pl-10 bg-[var(--ctp-surface0)] border border-[var(--ctp-surface2)] rounded-lg text-[var(--ctp-text)] placeholder-[var(--ctp-overlay0)] focus:outline-none focus:ring-2 focus:ring-[var(--ctp-primary)]"
 		/>
 		<svg class="absolute left-3 top-2.5 w-5 h-5 text-[var(--ctp-overlay0)]" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -155,28 +156,28 @@
 				<tr class="bg-[var(--ctp-mantle)] text-[var(--ctp-subtext1)] text-sm">
 					<th class="px-4 py-3 text-left font-medium">
 						<button onclick={() => setSort('host')} class="flex items-center gap-1 hover:text-[var(--ctp-text)]">
-							Host <span class="opacity-50">{getSortIcon('host')}</span>
+							{$t('connections.host')} <span class="opacity-50">{getSortIcon('host')}</span>
 						</button>
 					</th>
 					<th class="px-4 py-3 text-left font-medium">
 						<button onclick={() => setSort('network')} class="flex items-center gap-1 hover:text-[var(--ctp-text)]">
-							Network <span class="opacity-50">{getSortIcon('network')}</span>
+							{$t('connections.network')} <span class="opacity-50">{getSortIcon('network')}</span>
 						</button>
 					</th>
 					<th class="px-4 py-3 text-right font-medium">
 						<button onclick={() => setSort('upload')} class="flex items-center gap-1 justify-end hover:text-[var(--ctp-text)]">
-							Upload <span class="opacity-50">{getSortIcon('upload')}</span>
+							{$t('connections.upload')} <span class="opacity-50">{getSortIcon('upload')}</span>
 						</button>
 					</th>
 					<th class="px-4 py-3 text-right font-medium">
 						<button onclick={() => setSort('download')} class="flex items-center gap-1 justify-end hover:text-[var(--ctp-text)]">
-							Download <span class="opacity-50">{getSortIcon('download')}</span>
+							{$t('connections.download')} <span class="opacity-50">{getSortIcon('download')}</span>
 						</button>
 					</th>
-					<th class="px-4 py-3 text-left font-medium">Chain</th>
+					<th class="px-4 py-3 text-left font-medium">{$t('connections.chain')}</th>
 					<th class="px-4 py-3 text-right font-medium">
 						<button onclick={() => setSort('start')} class="flex items-center gap-1 justify-end hover:text-[var(--ctp-text)]">
-							Time <span class="opacity-50">{getSortIcon('start')}</span>
+							{$t('connections.time')} <span class="opacity-50">{getSortIcon('start')}</span>
 						</button>
 					</th>
 					<th class="px-4 py-3 w-12"></th>
@@ -233,7 +234,7 @@
 							<button
 								onclick={() => onClose(conn.id)}
 								class="p-1 text-[var(--ctp-overlay0)] hover:text-[var(--ctp-red)] transition-colors"
-								title="Close connection"
+								title={$t('connections.closeConnection')}
 							>
 								<svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
 									<path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12" />
@@ -246,31 +247,31 @@
 							<td colspan="7" class="px-4 py-3">
 								<div class="grid grid-cols-2 gap-4 text-sm">
 									<div>
-										<span class="text-[var(--ctp-overlay0)]">Source:</span>
+										<span class="text-[var(--ctp-overlay0)]">{$t('connections.sourceIP')}:</span>
 										<span class="ml-2 font-mono text-[var(--ctp-text)]">
 											{conn.metadata.sourceIP}:{conn.metadata.sourcePort}
 										</span>
 									</div>
 									<div>
-										<span class="text-[var(--ctp-overlay0)]">Destination:</span>
+										<span class="text-[var(--ctp-overlay0)]">{$t('connections.destinationIP')}:</span>
 										<span class="ml-2 font-mono text-[var(--ctp-text)]">
 											{conn.metadata.destinationIP}:{conn.metadata.destinationPort}
 										</span>
 									</div>
 									<div>
-										<span class="text-[var(--ctp-overlay0)]">Rule:</span>
+										<span class="text-[var(--ctp-overlay0)]">{$t('connections.rule')}:</span>
 										<span class="ml-2 text-[var(--ctp-text)]">{conn.rule}</span>
 										{#if conn.rulePayload}
 											<span class="ml-1 text-[var(--ctp-overlay1)]">({conn.rulePayload})</span>
 										{/if}
 									</div>
 									<div>
-										<span class="text-[var(--ctp-overlay0)]">Type:</span>
+										<span class="text-[var(--ctp-overlay0)]">{$t('connections.type')}:</span>
 										<span class="ml-2 text-[var(--ctp-text)]">{conn.metadata.type}</span>
 									</div>
 									{#if conn.metadata.processPath}
 										<div class="col-span-2">
-											<span class="text-[var(--ctp-overlay0)]">Process:</span>
+											<span class="text-[var(--ctp-overlay0)]">{$t('routes.processPath')}:</span>
 											<span class="ml-2 font-mono text-[var(--ctp-text)] text-xs">
 												{conn.metadata.processPath}
 											</span>
@@ -278,7 +279,7 @@
 									{/if}
 									{#if conn.geoip}
 										<div class="col-span-2 pt-2 border-t border-[var(--ctp-surface2)]">
-											<span class="text-[var(--ctp-overlay0)]">GeoIP:</span>
+											<span class="text-[var(--ctp-overlay0)]">{$t('routes.geoip')}:</span>
 											<span class="ml-2 text-[var(--ctp-text)]">
 												{#if conn.geoip.country_code}
 													{countryCodeToFlag(conn.geoip.country_code)}
@@ -300,7 +301,7 @@
 				{:else}
 					<tr>
 						<td colspan="7" class="px-4 py-8 text-center text-[var(--ctp-overlay0)]">
-							{filter ? 'No connections match filter' : 'No active connections'}
+							{filter ? $t('proxies.noProxiesMatchFilter') : $t('connections.noConnections')}
 						</td>
 					</tr>
 				{/each}
@@ -308,10 +309,9 @@
 		</table>
 	</div>
 
-	<!-- GeoIP Attribution -->
 	{#if hasGeoIPData}
 		<div class="mt-3 text-xs text-[var(--ctp-overlay0)] text-right">
-			IP address data powered by <a href="https://iplocate.io" target="_blank" rel="noopener noreferrer" class="text-[var(--ctp-primary)] hover:underline">IPLocate.io</a>
+			{$t('settings.geoip')}: <a href="https://iplocate.io" target="_blank" rel="noopener noreferrer" class="text-[var(--ctp-primary)] hover:underline">IPLocate.io</a>
 		</div>
 	{/if}
 </div>

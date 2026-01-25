@@ -1,7 +1,9 @@
 <script lang="ts">
 	import { onMount, onDestroy } from 'svelte';
+	import { t } from 'svelte-i18n';
 	import { api, createTrafficStream, createConnectionsStream } from '$lib/api/client';
 	import { notifications } from '$lib/stores';
+	import PendingChanges from '$lib/components/shared/PendingChanges.svelte';
 	import type { ProcessStatus, DetectedConfig, ClashConnection } from '$lib/types';
 
 	// Svelte 5 reactive state
@@ -183,7 +185,7 @@
 </script>
 
 <div class="space-y-6">
-	<h1 class="text-2xl font-bold text-[var(--ctp-text)]">Dashboard</h1>
+	<h1 class="text-2xl font-bold text-[var(--ctp-text)]">{$t('dashboard.title')}</h1>
 
 	<!-- System Requirements Warning -->
 	{#if status.system_checks && !status.system_checks.all_checks_passed}
@@ -276,19 +278,22 @@
 		</div>
 	{/if}
 
+	<!-- Pending Changes (draft config) -->
+	<PendingChanges />
+
 	<!-- Status Card -->
 	<div class="bg-[var(--ctp-surface0)] rounded-xl p-6">
 		<div class="flex items-center justify-between mb-4">
 			<h2 class="text-lg font-semibold text-[var(--ctp-subtext1)]">amnezia-box</h2>
 			{#if loading}
-				<span class="text-[var(--ctp-overlay1)]">Loading...</span>
+				<span class="text-[var(--ctp-overlay1)]">{$t('common.loading')}</span>
 			{:else}
 				<span
 					class="px-3 py-1 rounded-full text-sm font-medium text-white"
 					class:bg-[var(--ctp-green)]={status.running}
 					class:bg-[var(--ctp-red)]={!status.running}
 				>
-					{status.running ? 'Running' : 'Stopped'}
+					{status.running ? $t('status.running') : $t('status.stopped')}
 				</span>
 			{/if}
 		</div>
@@ -328,7 +333,7 @@
 					disabled={actionLoading !== ''}
 					class="px-4 py-2 bg-[var(--ctp-red)] text-white rounded-lg font-medium hover:opacity-90 disabled:opacity-50 transition-opacity"
 				>
-					{actionLoading === 'stop' ? 'Stopping...' : 'Stop'}
+					{actionLoading === 'stop' ? $t('common.stopping') : $t('dashboard.stop')}
 				</button>
 				<button
 					onclick={handleReload}
@@ -344,7 +349,7 @@
 					class="px-4 py-2 bg-[var(--ctp-surface2)] text-[var(--ctp-text)] rounded-lg font-medium hover:bg-[var(--ctp-overlay0)] disabled:opacity-50 transition-colors"
 					title="Full process restart"
 				>
-					{actionLoading === 'restart' ? 'Restarting...' : 'Restart'}
+					{actionLoading === 'restart' ? $t('common.restarting') : $t('dashboard.restart')}
 				</button>
 			</div>
 
@@ -433,7 +438,7 @@
 					disabled={actionLoading !== ''}
 					class="px-4 py-2 bg-[var(--ctp-primary)] text-white rounded-lg font-medium hover:opacity-90 disabled:opacity-50 transition-opacity"
 				>
-					{actionLoading === 'start' ? 'Starting...' : 'Start'}
+					{actionLoading === 'start' ? $t('common.starting') : $t('dashboard.start')}
 				</button>
 			</div>
 		{/if}

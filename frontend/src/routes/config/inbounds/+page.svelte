@@ -1,5 +1,6 @@
 <script lang="ts">
 	import { onMount } from 'svelte';
+	import { t } from 'svelte-i18n';
 	import { api } from '$lib/api/client';
 	import { notifications, unsavedChanges } from '$lib/stores';
 	import type { Inbound } from '$lib/types';
@@ -18,7 +19,7 @@
 		try {
 			inbounds = await api.listInbounds();
 		} catch (e) {
-			notifications.error(`Failed to load inbounds: ${e}`);
+			notifications.error($t('errors.loadFailed'));
 		} finally {
 			loading = false;
 		}
@@ -44,32 +45,32 @@
 		try {
 			if (editingInbound) {
 				await api.updateInbound(editingInbound.tag, inbound);
-				notifications.success(`Inbound "${inbound.tag}" updated`);
-				unsavedChanges.markChanged('Inbounds', `Updated "${inbound.tag}"`);
+				notifications.success($t('inbounds.inboundUpdated'));
+				unsavedChanges.markChanged($t('inbounds.title'), `${$t('common.update')} "${inbound.tag}"`);
 			} else {
 				await api.createInbound(inbound);
-				notifications.success(`Inbound "${inbound.tag}" created`);
-				unsavedChanges.markChanged('Inbounds', `Created "${inbound.tag}"`);
+				notifications.success($t('inbounds.inboundCreated'));
+				unsavedChanges.markChanged($t('inbounds.title'), `${$t('common.create')} "${inbound.tag}"`);
 			}
 			closeModal();
 			await fetchInbounds();
 		} catch (e) {
-			notifications.error(`Failed to save: ${e}`);
+			notifications.error($t('errors.saveFailed'));
 		} finally {
 			saving = false;
 		}
 	}
 
 	async function handleDelete(tag: string) {
-		if (!confirm(`Delete inbound "${tag}"?`)) return;
+		if (!confirm($t('inbounds.confirmDelete', { values: { name: tag } }))) return;
 
 		try {
 			await api.deleteInbound(tag);
-			notifications.success(`Inbound "${tag}" deleted`);
-			unsavedChanges.markChanged('Inbounds', `Deleted "${tag}"`);
+			notifications.success($t('inbounds.inboundDeleted'));
+			unsavedChanges.markChanged($t('inbounds.title'), `${$t('common.delete')} "${tag}"`);
 			await fetchInbounds();
 		} catch (e) {
-			notifications.error(`Failed to delete: ${e}`);
+			notifications.error($t('errors.deleteFailed'));
 		}
 	}
 
@@ -79,7 +80,7 @@
 			notifications.success(result.message);
 			unsavedChanges.clearChanges();
 		} catch (e) {
-			notifications.error(`Failed to apply: ${e}`);
+			notifications.error($t('changes.failedApply'));
 		}
 	}
 
@@ -114,33 +115,33 @@
 
 <div class="space-y-6">
 	<div class="flex items-center justify-between">
-		<h1 class="text-2xl font-bold text-[var(--ctp-text)]">Inbounds</h1>
+		<h1 class="text-2xl font-bold text-[var(--ctp-text)]">{$t('inbounds.title')}</h1>
 		<div class="flex items-center gap-2">
 			<button
 				onclick={applyChanges}
 				class="px-4 py-2 bg-[var(--ctp-primary)] text-white rounded-lg hover:opacity-90 transition-opacity"
 			>
-				Apply Changes
+				{$t('changes.applyChanges')}
 			</button>
 			<button
 				onclick={openCreate}
 				class="px-4 py-2 bg-[var(--ctp-primary)] text-white rounded-lg hover:opacity-90 transition-opacity"
 			>
-				+ Add Inbound
+				+ {$t('inbounds.addInbound')}
 			</button>
 		</div>
 	</div>
 
 	{#if loading}
-		<div class="text-[var(--ctp-overlay0)]">Loading...</div>
+		<div class="text-[var(--ctp-overlay0)]">{$t('common.loading')}</div>
 	{:else if inbounds.length === 0}
 		<div class="bg-[var(--ctp-surface0)] rounded-xl p-8 text-center">
-			<div class="text-[var(--ctp-overlay1)] mb-4">No inbounds configured</div>
+			<div class="text-[var(--ctp-overlay1)] mb-4">{$t('inbounds.noInbounds')}</div>
 			<button
 				onclick={openCreate}
 				class="px-4 py-2 bg-[var(--ctp-primary)] text-white rounded-lg hover:opacity-90 transition-opacity"
 			>
-				Add your first inbound
+				{$t('inbounds.addInbound')}
 			</button>
 		</div>
 	{:else}
@@ -181,7 +182,7 @@
 							<button
 								onclick={() => openEdit(inbound)}
 								class="p-2 hover:bg-[var(--ctp-surface2)] rounded-lg transition-colors"
-								title="Edit"
+								title={$t('common.edit')}
 							>
 								<svg class="w-5 h-5 text-[var(--ctp-overlay1)]" fill="none" stroke="currentColor" viewBox="0 0 24 24">
 									<path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z" />
@@ -190,7 +191,7 @@
 							<button
 								onclick={() => handleDelete(inbound.tag)}
 								class="action-btn-danger"
-								title="Delete"
+								title={$t('common.delete')}
 							>
 								<svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
 									<path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
@@ -205,6 +206,6 @@
 </div>
 
 <!-- Modal -->
-<Modal open={showModal} title={editingInbound ? 'Edit Inbound' : 'Add Inbound'} size="lg" onClose={closeModal}>
+<Modal open={showModal} title={editingInbound ? $t('inbounds.editInbound') : $t('inbounds.addInbound')} size="lg" onClose={closeModal}>
 	<InboundForm inbound={editingInbound} onSave={handleSave} onCancel={closeModal} />
 </Modal>

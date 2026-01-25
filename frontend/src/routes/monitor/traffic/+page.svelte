@@ -1,5 +1,6 @@
 <script lang="ts">
 	import { onMount, onDestroy } from 'svelte';
+	import { t } from 'svelte-i18n';
 	import { api, createTrafficStream } from '$lib/api/client';
 	import type { ClashConnection } from '$lib/types';
 
@@ -137,7 +138,7 @@
 
 <div class="space-y-6">
 	<div class="flex items-center justify-between">
-		<h1 class="text-2xl font-bold text-[var(--ctp-text)]">Traffic Monitor</h1>
+		<h1 class="text-2xl font-bold text-[var(--ctp-text)]">{$t('traffic.title')}</h1>
 		<div class="flex items-center gap-2">
 			<span
 				class="w-2 h-2 rounded-full"
@@ -146,10 +147,10 @@
 				class:bg-[var(--ctp-red)]={wsError}
 			></span>
 			<span class="text-sm text-[var(--ctp-overlay1)]">
-				{connected ? 'Connected' : wsError ? 'Error' : 'Connecting...'}
+				{connected ? $t('status.connected') : wsError ? $t('common.error') : $t('traffic.connecting')}
 			</span>
 			{#if wsError}
-				<span class="text-xs text-[var(--ctp-red)]" title={wsError}>Clash API unavailable</span>
+				<span class="text-xs text-[var(--ctp-red)]" title={wsError}>{$t('traffic.clashApiUnavailable')}</span>
 			{/if}
 		</div>
 	</div>
@@ -161,10 +162,10 @@
 				<svg class="w-5 h-5 text-[var(--ctp-subtext1)]" fill="none" stroke="currentColor" viewBox="0 0 24 24">
 					<path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 10l7-7m0 0l7 7m-7-7v18" />
 				</svg>
-				<span class="text-[var(--ctp-overlay1)]">Upload</span>
+				<span class="text-[var(--ctp-overlay1)]">{$t('traffic.upload')}</span>
 			</div>
 			<div class="text-3xl font-bold text-[var(--ctp-text)]">{formatSpeed(trafficUp)}</div>
-			<div class="text-sm text-[var(--ctp-overlay0)] mt-1">Total: {formatBytes(totalUp)}</div>
+			<div class="text-sm text-[var(--ctp-overlay0)] mt-1">{$t('traffic.total')}: {formatBytes(totalUp)}</div>
 		</div>
 
 		<div class="bg-[var(--ctp-surface0)] rounded-xl p-6">
@@ -172,16 +173,16 @@
 				<svg class="w-5 h-5 text-[var(--ctp-subtext1)]" fill="none" stroke="currentColor" viewBox="0 0 24 24">
 					<path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 14l-7 7m0 0l-7-7m7 7V3" />
 				</svg>
-				<span class="text-[var(--ctp-overlay1)]">Download</span>
+				<span class="text-[var(--ctp-overlay1)]">{$t('traffic.download')}</span>
 			</div>
 			<div class="text-3xl font-bold text-[var(--ctp-text)]">{formatSpeed(trafficDown)}</div>
-			<div class="text-sm text-[var(--ctp-overlay0)] mt-1">Total: {formatBytes(totalDown)}</div>
+			<div class="text-sm text-[var(--ctp-overlay0)] mt-1">{$t('traffic.total')}: {formatBytes(totalDown)}</div>
 		</div>
 	</div>
 
 	<!-- Traffic chart -->
 	<div class="bg-[var(--ctp-surface0)] rounded-xl p-6">
-		<h2 class="text-lg font-semibold text-[var(--ctp-subtext1)] mb-4">Traffic History</h2>
+		<h2 class="text-lg font-semibold text-[var(--ctp-subtext1)] mb-4">{$t('traffic.history')}</h2>
 
 		<div class="h-40 flex items-end gap-px">
 			{#each history as point}
@@ -201,24 +202,24 @@
 
 			{#if history.length === 0}
 				<div class="flex-1 flex items-center justify-center text-[var(--ctp-overlay0)]">
-					Waiting for data...
+					{$t('traffic.waitingForData')}
 				</div>
 			{/if}
 		</div>
 
 		<div class="flex justify-between mt-2 text-xs text-[var(--ctp-overlay0)]">
-			<span>60 seconds ago</span>
-			<span>Now</span>
+			<span>{$t('traffic.secondsAgo', { values: { count: 60 } })}</span>
+			<span>{$t('traffic.now')}</span>
 		</div>
 	</div>
 
 	<!-- Traffic by Outbound -->
 	<div class="bg-[var(--ctp-surface0)] rounded-xl p-6">
-		<h2 class="text-lg font-semibold text-[var(--ctp-subtext1)] mb-4">Traffic by Outbound</h2>
+		<h2 class="text-lg font-semibold text-[var(--ctp-subtext1)] mb-4">{$t('traffic.byOutbound')}</h2>
 
 		{#if trafficByOutbound.length === 0}
 			<div class="text-center py-4 text-[var(--ctp-overlay0)]">
-				No active connections
+				{$t('traffic.noActiveConnections')}
 			</div>
 		{:else}
 			<div class="space-y-3">

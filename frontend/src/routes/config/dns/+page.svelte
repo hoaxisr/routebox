@@ -1,5 +1,6 @@
 <script lang="ts">
 	import { onMount } from 'svelte';
+	import { t } from 'svelte-i18n';
 	import { api } from '$lib/api/client';
 	import { notifications, unsavedChanges } from '$lib/stores';
 	import type { DnsServer, DnsRule, DnsSettings, RuleSet, Outbound } from '$lib/types';
@@ -40,7 +41,7 @@
 			ruleSets = ruleSetsData;
 			outbounds = outboundsData;
 		} catch (e) {
-			notifications.error(`Failed to load: ${e}`);
+			notifications.error($t('errors.loadFailed'));
 		} finally {
 			loading = false;
 		}
@@ -50,11 +51,11 @@
 		applying = true;
 		try {
 			await api.applyConfig();
-			notifications.success('Changes applied successfully');
+			notifications.success($t('changes.configApplied'));
 			hasChanges = false;
 			unsavedChanges.clearChanges();
 		} catch (e) {
-			notifications.error(`Failed to apply: ${e}`);
+			notifications.error($t('changes.failedApply'));
 		} finally {
 			applying = false;
 		}
@@ -69,7 +70,7 @@
 			editingServer = undefined;
 			hasChanges = true;
 			unsavedChanges.markChanged('DNS', `Created server "${server.tag}"`);
-			notifications.success(`DNS server '${server.tag}' created`);
+			notifications.success($t('dns.serverCreated'));
 		} catch (e) {
 			notifications.error(`${e}`);
 		}
@@ -84,20 +85,20 @@
 			editingServer = undefined;
 			hasChanges = true;
 			unsavedChanges.markChanged('DNS', `Updated server "${server.tag}"`);
-			notifications.success(`DNS server '${server.tag}' updated`);
+			notifications.success($t('dns.serverUpdated'));
 		} catch (e) {
 			notifications.error(`${e}`);
 		}
 	}
 
 	async function handleDeleteServer(tag: string) {
-		if (!confirm(`Delete DNS server "${tag}"?`)) return;
+		if (!confirm($t('dns.confirmDeleteServer', { values: { name: tag } }))) return;
 		try {
 			await api.deleteDnsServer(tag);
 			dnsServers = dnsServers.filter(s => s.tag !== tag);
 			hasChanges = true;
 			unsavedChanges.markChanged('DNS', `Deleted server "${tag}"`);
-			notifications.success(`DNS server '${tag}' deleted`);
+			notifications.success($t('dns.serverDeleted'));
 		} catch (e) {
 			notifications.error(`${e}`);
 		}
@@ -116,7 +117,7 @@
 			showRuleForm = false;
 			hasChanges = true;
 			unsavedChanges.markChanged('DNS', 'Created DNS rule');
-			notifications.success('DNS rule created');
+			notifications.success($t('dns.ruleCreated'));
 		} catch (e) {
 			notifications.error(`${e}`);
 		}
@@ -131,20 +132,20 @@
 			editingRuleIndex = null;
 			hasChanges = true;
 			unsavedChanges.markChanged('DNS', `Updated DNS rule #${editingRuleIndex + 1}`);
-			notifications.success('DNS rule updated');
+			notifications.success($t('dns.ruleUpdated'));
 		} catch (e) {
 			notifications.error(`${e}`);
 		}
 	}
 
 	async function handleDeleteRule(index: number) {
-		if (!confirm(`Delete DNS rule #${index + 1}?`)) return;
+		if (!confirm($t('dns.confirmDeleteRule'))) return;
 		try {
 			await api.deleteDnsRule(index);
 			dnsRules = dnsRules.filter((_, i) => i !== index);
 			hasChanges = true;
 			unsavedChanges.markChanged('DNS', `Deleted DNS rule #${index + 1}`);
-			notifications.success('DNS rule deleted');
+			notifications.success($t('dns.ruleDeleted'));
 		} catch (e) {
 			notifications.error(`${e}`);
 		}
@@ -230,7 +231,7 @@
 <div class="space-y-6">
 	<!-- Header -->
 	<div class="flex items-center justify-between">
-		<h1 class="text-2xl font-bold text-[var(--ctp-text)]">DNS Configuration</h1>
+		<h1 class="text-2xl font-bold text-[var(--ctp-text)]">{$t('dns.title')}</h1>
 		{#if hasChanges}
 			<button
 				onclick={applyChanges}
@@ -243,45 +244,45 @@
 						<path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
 					</svg>
 				{/if}
-				Apply Changes
+				{$t('changes.applyChanges')}
 			</button>
 		{/if}
 	</div>
 
 	{#if loading}
-		<div class="text-[var(--ctp-overlay0)]">Loading...</div>
+		<div class="text-[var(--ctp-overlay0)]">{$t('common.loading')}</div>
 	{:else}
 		<!-- DNS Settings -->
 		<div class="bg-[var(--ctp-surface0)] rounded-xl p-4 space-y-4">
-			<h2 class="font-medium text-[var(--ctp-subtext1)]">DNS Settings</h2>
+			<h2 class="font-medium text-[var(--ctp-subtext1)]">{$t('dns.settings')}</h2>
 			<div class="grid grid-cols-1 md:grid-cols-2 gap-4">
 				<div>
-					<label for="final" class="block text-sm text-[var(--ctp-overlay1)] mb-1">Default DNS Server</label>
+					<label for="final" class="block text-sm text-[var(--ctp-overlay1)] mb-1">{$t('dns.ruleServer')}</label>
 					<select
 						id="final"
 						bind:value={settings.final}
 						onchange={handleSettingsChange}
 						class="w-full px-3 py-2 bg-[var(--ctp-base)] border border-[var(--ctp-surface2)] rounded-lg text-[var(--ctp-text)] focus:outline-none focus:ring-2 focus:ring-[var(--ctp-primary)]"
 					>
-						<option value="">None</option>
+						<option value="">{$t('common.none')}</option>
 						{#each dnsServers as srv}
 							<option value={srv.tag}>{srv.tag}</option>
 						{/each}
 					</select>
 				</div>
 				<div>
-					<label for="strategy" class="block text-sm text-[var(--ctp-overlay1)] mb-1">IP Strategy</label>
+					<label for="strategy" class="block text-sm text-[var(--ctp-overlay1)] mb-1">{$t('dns.strategy')}</label>
 					<select
 						id="strategy"
 						bind:value={settings.strategy}
 						onchange={handleSettingsChange}
 						class="w-full px-3 py-2 bg-[var(--ctp-base)] border border-[var(--ctp-surface2)] rounded-lg text-[var(--ctp-text)] focus:outline-none focus:ring-2 focus:ring-[var(--ctp-primary)]"
 					>
-						<option value="">Default</option>
-						<option value="prefer_ipv4">Prefer IPv4</option>
-						<option value="prefer_ipv6">Prefer IPv6</option>
-						<option value="ipv4_only">IPv4 Only</option>
-						<option value="ipv6_only">IPv6 Only</option>
+						<option value="">{$t('common.default')}</option>
+						<option value="prefer_ipv4">{$t('dns.strategies.preferIpv4')}</option>
+						<option value="prefer_ipv6">{$t('dns.strategies.preferIpv6')}</option>
+						<option value="ipv4_only">{$t('dns.strategies.ipv4Only')}</option>
+						<option value="ipv6_only">{$t('dns.strategies.ipv6Only')}</option>
 					</select>
 				</div>
 			</div>
@@ -289,20 +290,20 @@
 			<!-- Advanced DNS settings -->
 			<div class="grid grid-cols-1 md:grid-cols-2 gap-4">
 				<div>
-					<label for="cache_capacity" class="block text-sm text-[var(--ctp-overlay1)] mb-1">Cache Capacity</label>
+					<label for="cache_capacity" class="block text-sm text-[var(--ctp-overlay1)] mb-1">{$t('dns.cacheCapacity')}</label>
 					<input
 						id="cache_capacity"
 						type="number"
 						bind:value={settings.cache_capacity}
 						onchange={handleSettingsChange}
-						placeholder="Unlimited"
+						placeholder={$t('dns.unlimited')}
 						min="0"
 						class="w-full px-3 py-2 bg-[var(--ctp-base)] border border-[var(--ctp-surface2)] rounded-lg text-[var(--ctp-text)] placeholder-[var(--ctp-overlay0)] focus:outline-none focus:ring-2 focus:ring-[var(--ctp-primary)]"
 					/>
-					<p class="mt-1 text-xs text-[var(--ctp-overlay0)]">Max number of cached DNS entries</p>
+					<p class="mt-1 text-xs text-[var(--ctp-overlay0)]">{$t('dns.cacheCapacityHint')}</p>
 				</div>
 				<div>
-					<label for="client_subnet" class="block text-sm text-[var(--ctp-overlay1)] mb-1">Client Subnet (EDNS)</label>
+					<label for="client_subnet" class="block text-sm text-[var(--ctp-overlay1)] mb-1">{$t('dns.clientSubnet')}</label>
 					<input
 						id="client_subnet"
 						type="text"
@@ -311,7 +312,7 @@
 						placeholder="e.g., 1.2.3.0/24"
 						class="w-full px-3 py-2 bg-[var(--ctp-base)] border border-[var(--ctp-surface2)] rounded-lg text-[var(--ctp-text)] placeholder-[var(--ctp-overlay0)] focus:outline-none focus:ring-2 focus:ring-[var(--ctp-primary)]"
 					/>
-					<p class="mt-1 text-xs text-[var(--ctp-overlay0)]">EDNS Client Subnet for geo-aware DNS</p>
+					<p class="mt-1 text-xs text-[var(--ctp-overlay0)]">{$t('dns.clientSubnetHint')}</p>
 				</div>
 			</div>
 
@@ -323,7 +324,7 @@
 						onchange={handleSettingsChange}
 						class="w-4 h-4 rounded border-[var(--ctp-surface2)] text-[var(--ctp-primary)] focus:ring-[var(--ctp-primary)]"
 					/>
-					<span class="text-sm text-[var(--ctp-text)]">Disable cache</span>
+					<span class="text-sm text-[var(--ctp-text)]">{$t('dns.disableCache')}</span>
 				</label>
 				<label class="flex items-center gap-2 cursor-pointer">
 					<input
@@ -332,7 +333,7 @@
 						onchange={handleSettingsChange}
 						class="w-4 h-4 rounded border-[var(--ctp-surface2)] text-[var(--ctp-primary)] focus:ring-[var(--ctp-primary)]"
 					/>
-					<span class="text-sm text-[var(--ctp-text)]">Disable expire</span>
+					<span class="text-sm text-[var(--ctp-text)]">{$t('dns.disableExpire')}</span>
 				</label>
 				<label class="flex items-center gap-2 cursor-pointer">
 					<input
@@ -341,7 +342,7 @@
 						onchange={handleSettingsChange}
 						class="w-4 h-4 rounded border-[var(--ctp-surface2)] text-[var(--ctp-primary)] focus:ring-[var(--ctp-primary)]"
 					/>
-					<span class="text-sm text-[var(--ctp-text)]">Independent cache</span>
+					<span class="text-sm text-[var(--ctp-text)]">{$t('dns.independentCache')}</span>
 				</label>
 				<label class="flex items-center gap-2 cursor-pointer">
 					<input
@@ -350,7 +351,7 @@
 						onchange={handleSettingsChange}
 						class="w-4 h-4 rounded border-[var(--ctp-surface2)] text-[var(--ctp-primary)] focus:ring-[var(--ctp-primary)]"
 					/>
-					<span class="text-sm text-[var(--ctp-text)]">Reverse mapping</span>
+					<span class="text-sm text-[var(--ctp-text)]">{$t('dns.reverseMapping')}</span>
 					<span class="text-xs text-[var(--ctp-overlay0)]">(IP→domain)</span>
 				</label>
 			</div>
@@ -359,19 +360,19 @@
 		<!-- DNS Servers Section -->
 		<div class="bg-[var(--ctp-surface0)] rounded-xl overflow-hidden">
 			<div class="px-4 py-3 bg-[var(--ctp-surface1)] border-b border-[var(--ctp-surface2)] flex items-center justify-between">
-				<span class="font-medium text-[var(--ctp-subtext1)]">DNS Servers</span>
+				<span class="font-medium text-[var(--ctp-subtext1)]">{$t('dns.servers')}</span>
 				<button
 					onclick={() => { editingServer = undefined; showServerForm = true; }}
 					class="px-3 py-1.5 text-sm bg-[var(--ctp-primary)] text-white rounded-lg hover:opacity-90 transition-opacity"
 				>
-					+ Add Server
+					+ {$t('dns.addServer')}
 				</button>
 			</div>
 
 			{#if dnsServers.length === 0}
 				<div class="p-6 text-center text-[var(--ctp-overlay0)]">
-					<p>No DNS servers configured.</p>
-					<p class="text-sm mt-1">Add DNS servers to handle domain resolution.</p>
+					<p>{$t('dns.noServers')}</p>
+					<p class="text-sm mt-1">{$t('dns.noServersHint')}</p>
 				</div>
 			{:else}
 				<div class="divide-y divide-[var(--ctp-surface2)]">
@@ -395,7 +396,7 @@
 								<button
 									onclick={() => openEditServer(server)}
 									class="p-1.5 rounded-md hover:bg-[var(--ctp-surface2)] text-[var(--ctp-overlay1)] hover:text-[var(--ctp-text)] transition-colors"
-									title="Edit"
+									title={$t('common.edit')}
 								>
 									<svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
 										<path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z" />
@@ -404,7 +405,7 @@
 								<button
 									onclick={() => handleDeleteServer(server.tag)}
 									class="action-btn-danger"
-									title="Delete"
+									title={$t('common.delete')}
 								>
 									<svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
 										<path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
@@ -421,22 +422,22 @@
 		<div class="bg-[var(--ctp-surface0)] rounded-xl overflow-hidden">
 			<div class="px-4 py-3 bg-[var(--ctp-surface1)] border-b border-[var(--ctp-surface2)] flex items-center justify-between">
 				<div>
-					<span class="font-medium text-[var(--ctp-subtext1)]">DNS Rules</span>
-					<span class="ml-2 text-sm text-[var(--ctp-overlay0)]">({dnsRules.length} rules)</span>
+					<span class="font-medium text-[var(--ctp-subtext1)]">{$t('dns.rules')}</span>
+					<span class="ml-2 text-sm text-[var(--ctp-overlay0)]">({dnsRules.length} {$t('routes.rules').toLowerCase()})</span>
 				</div>
 				<button
 					onclick={openAddRule}
 					class="px-3 py-1.5 text-sm bg-[var(--ctp-primary)] text-white rounded-lg hover:opacity-90 transition-opacity"
 				>
-					+ Add Rule
+					+ {$t('dns.addRule')}
 				</button>
 			</div>
 
 			<div class="p-4">
 				{#if dnsRules.length === 0}
 					<div class="p-8 text-center text-[var(--ctp-overlay0)] bg-[var(--ctp-base)] rounded-lg border border-dashed border-[var(--ctp-surface2)]">
-						<p>No DNS rules configured.</p>
-						<p class="text-sm mt-1">Add rules to control which DNS server handles each query.</p>
+						<p>{$t('dns.noRules')}</p>
+						<p class="text-sm mt-1">{$t('dns.noRulesHint')}</p>
 					</div>
 				{:else}
 					<div class="space-y-2">
@@ -497,7 +498,7 @@
 										type="button"
 										onclick={(e) => { e.stopPropagation(); openEditRule(index); }}
 										class="p-1.5 rounded-md hover:bg-[var(--ctp-surface2)] text-[var(--ctp-overlay1)] hover:text-[var(--ctp-text)] transition-colors"
-										title="Edit"
+										title={$t('common.edit')}
 									>
 										<svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
 											<path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z" />
@@ -507,7 +508,7 @@
 										type="button"
 										onclick={(e) => { e.stopPropagation(); handleDeleteRule(index); }}
 										class="action-btn-danger"
-										title="Delete"
+										title={$t('common.delete')}
 									>
 										<svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
 											<path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
@@ -526,7 +527,7 @@
 						<svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
 							<path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
 						</svg>
-						<span>Rules are evaluated in order. Drag to reorder.</span>
+						<span>{$t('dns.rulesOrderHint')}</span>
 					</div>
 				</div>
 			{/if}
@@ -537,7 +538,7 @@
 			<div class="flex items-center justify-center gap-3 py-2">
 				<div class="h-px flex-1 bg-[var(--ctp-surface2)]"></div>
 				<div class="info-banner">
-					<span class="text-sm text-[var(--ctp-overlay1)]">No match:</span>
+					<span class="text-sm text-[var(--ctp-overlay1)]">{$t('routes.noMatch')}:</span>
 					<span class="text-sm font-medium text-[var(--ctp-primary)]">{settings.final}</span>
 				</div>
 				<div class="h-px flex-1 bg-[var(--ctp-surface2)]"></div>
@@ -552,12 +553,12 @@
 		<div class="bg-[var(--ctp-base)] rounded-xl w-full max-w-lg max-h-[90vh] overflow-y-auto">
 			<div class="px-4 py-3 border-b border-[var(--ctp-surface2)] flex items-center justify-between">
 				<h2 class="text-lg font-medium text-[var(--ctp-text)]">
-					{editingServer ? `Edit DNS Server: ${editingServer.tag}` : 'Add DNS Server'}
+					{editingServer ? `${$t('dns.editServer')}: ${editingServer.tag}` : $t('dns.addServer')}
 				</h2>
 				<button
 					onclick={() => { showServerForm = false; editingServer = undefined; }}
 					class="p-1 rounded-md hover:bg-[var(--ctp-surface1)] text-[var(--ctp-overlay1)]"
-					aria-label="Close"
+					aria-label={$t('common.close')}
 				>
 					<svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
 						<path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12" />
@@ -584,12 +585,12 @@
 		<div class="bg-[var(--ctp-base)] rounded-xl w-full max-w-lg max-h-[90vh] overflow-y-auto">
 			<div class="px-4 py-3 border-b border-[var(--ctp-surface2)] flex items-center justify-between">
 				<h2 class="text-lg font-medium text-[var(--ctp-text)]">
-					{editingRuleIndex !== null ? `Edit DNS Rule #${editingRuleIndex + 1}` : 'Add DNS Rule'}
+					{editingRuleIndex !== null ? `${$t('dns.editRule')} #${editingRuleIndex + 1}` : $t('dns.addRule')}
 				</h2>
 				<button
 					onclick={() => { showRuleForm = false; editingRuleIndex = null; }}
 					class="p-1 rounded-md hover:bg-[var(--ctp-surface1)] text-[var(--ctp-overlay1)]"
-					aria-label="Close"
+					aria-label={$t('common.close')}
 				>
 					<svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
 						<path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12" />

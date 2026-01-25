@@ -1,6 +1,7 @@
 <script lang="ts">
 	import type { Endpoint, AWGPeer } from '$lib/types';
 	import { notifications } from '$lib/stores';
+	import { t } from 'svelte-i18n';
 
 	interface Props {
 		endpoint?: Endpoint;
@@ -244,25 +245,20 @@
 		onSave(ep);
 	}
 
-	const tabs = [
-		{ id: 'basic', label: 'Basic' },
-		{ id: 'obfuscation', label: 'Obfuscation' },
-		{ id: 'peers', label: 'Peers' },
-		{ id: 'advanced', label: 'Advanced' }
-	] as const;
+	const tabIds = ['basic', 'obfuscation', 'peers', 'advanced'] as const;
 </script>
 
 <form onsubmit={(e) => { e.preventDefault(); handleSubmit(); }} class="space-y-6">
 	<!-- Tabs -->
 	<div class="flex gap-1 bg-[var(--ctp-surface0)] p-1 rounded-lg">
-		{#each tabs as tab}
+		{#each tabIds as tabId}
 			<button
 				type="button"
-				onclick={() => activeTab = tab.id}
-				class="flex-1 px-3 py-2 text-sm rounded-md transition-colors {activeTab === tab.id ? 'bg-[var(--ctp-primary)] text-white' : 'text-[var(--ctp-subtext1)] hover:text-[var(--ctp-text)]'}"
+				onclick={() => activeTab = tabId}
+				class="flex-1 px-3 py-2 text-sm rounded-md transition-colors {activeTab === tabId ? 'bg-[var(--ctp-primary)] text-white' : 'text-[var(--ctp-subtext1)] hover:text-[var(--ctp-text)]'}"
 			>
-				{tab.label}
-				{#if tab.id === 'peers'}
+				{$t(`endpoints.tabs.${tabId}`)}
+				{#if tabId === 'peers'}
 					<span class="ml-1 text-xs opacity-70">({peers.length})</span>
 				{/if}
 			</button>
@@ -282,12 +278,12 @@
 					<svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
 						<path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-8l-4-4m0 0L8 8m4-4v12" />
 					</svg>
-					Import from AWG/WireGuard config
+					{$t('endpoints.importFromConfig')}
 				</button>
 			{/if}
 
 			<div>
-				<label for="tag" class="block text-sm font-medium text-[var(--ctp-subtext1)] mb-1">Tag *</label>
+				<label for="tag" class="block text-sm font-medium text-[var(--ctp-subtext1)] mb-1">{$t('common.tag')} *</label>
 				<input
 					id="tag"
 					type="text"
@@ -301,7 +297,7 @@
 			</div>
 
 			<div>
-				<label for="type" class="block text-sm font-medium text-[var(--ctp-subtext1)] mb-1">Type</label>
+				<label for="type" class="block text-sm font-medium text-[var(--ctp-subtext1)] mb-1">{$t('common.type')}</label>
 				<select
 					id="type"
 					bind:value={type}
@@ -313,12 +309,12 @@
 			</div>
 
 			<div>
-				<label for="privateKey" class="block text-sm font-medium text-[var(--ctp-subtext1)] mb-1">Private Key *</label>
+				<label for="privateKey" class="block text-sm font-medium text-[var(--ctp-subtext1)] mb-1">{$t('endpoints.privateKey')} *</label>
 				<input
 					id="privateKey"
 					type="password"
 					bind:value={privateKey}
-					placeholder="Base64-encoded private key"
+					placeholder={$t('endpoints.placeholders.privateKey')}
 					class="w-full px-3 py-2 bg-[var(--ctp-surface0)] border rounded-lg text-[var(--ctp-text)] placeholder-[var(--ctp-overlay0)] focus:outline-none focus:ring-2 focus:ring-[var(--ctp-primary)] font-mono {errors['privateKey'] ? 'border-[var(--ctp-red)]' : 'border-[var(--ctp-surface2)]'}"
 				/>
 				{#if errors['privateKey']}
@@ -327,7 +323,7 @@
 			</div>
 
 			<div>
-				<label for="addresses" class="block text-sm font-medium text-[var(--ctp-subtext1)] mb-1">Addresses *</label>
+				<label for="addresses" class="block text-sm font-medium text-[var(--ctp-subtext1)] mb-1">{$t('endpoints.addresses')} *</label>
 				<input
 					id="addresses"
 					type="text"
@@ -335,7 +331,7 @@
 					placeholder="10.0.0.2/32, fd00::2/128"
 					class="w-full px-3 py-2 bg-[var(--ctp-surface0)] border rounded-lg text-[var(--ctp-text)] placeholder-[var(--ctp-overlay0)] focus:outline-none focus:ring-2 focus:ring-[var(--ctp-primary)] {errors['addresses'] ? 'border-[var(--ctp-red)]' : 'border-[var(--ctp-surface2)]'}"
 				/>
-				<p class="mt-1 text-xs text-[var(--ctp-overlay0)]">Comma-separated list of CIDR addresses</p>
+				<p class="mt-1 text-xs text-[var(--ctp-overlay0)]">{$t('endpoints.addressesHint')}</p>
 				{#if errors['addresses']}
 					<p class="mt-1 text-sm text-[var(--ctp-red)]">{errors['addresses']}</p>
 				{/if}
@@ -343,7 +339,7 @@
 
 			<div class="grid grid-cols-2 gap-4">
 				<div>
-					<label for="mtu" class="block text-sm font-medium text-[var(--ctp-subtext1)] mb-1">MTU</label>
+					<label for="mtu" class="block text-sm font-medium text-[var(--ctp-subtext1)] mb-1">{$t('endpoints.mtu')}</label>
 					<input
 						id="mtu"
 						type="number"
@@ -354,14 +350,14 @@
 					/>
 				</div>
 				<div>
-					<label for="listenPort" class="block text-sm font-medium text-[var(--ctp-subtext1)] mb-1">Listen Port</label>
+					<label for="listenPort" class="block text-sm font-medium text-[var(--ctp-subtext1)] mb-1">{$t('inbounds.listenPort')}</label>
 					<input
 						id="listenPort"
 						type="number"
 						bind:value={listenPort}
 						min="0"
 						max="65535"
-						placeholder="Random"
+						placeholder={$t('endpoints.placeholders.random')}
 						class="w-full px-3 py-2 bg-[var(--ctp-surface0)] border border-[var(--ctp-surface2)] rounded-lg text-[var(--ctp-text)] placeholder-[var(--ctp-overlay0)] focus:outline-none focus:ring-2 focus:ring-[var(--ctp-primary)]"
 					/>
 				</div>
@@ -373,10 +369,10 @@
 	{#if activeTab === 'obfuscation'}
 		<div class="space-y-4">
 			<div class="bg-[var(--ctp-surface0)] rounded-lg p-4">
-				<h3 class="text-sm font-medium text-[var(--ctp-subtext1)] mb-3">Junk Packets</h3>
+				<h3 class="text-sm font-medium text-[var(--ctp-subtext1)] mb-3">{$t('endpoints.obfuscation.junkPackets')}</h3>
 				<div class="grid grid-cols-3 gap-4">
 					<div>
-						<label for="jc" class="block text-xs text-[var(--ctp-overlay0)] mb-1">Jc (count)</label>
+						<label for="jc" class="block text-xs text-[var(--ctp-overlay0)] mb-1">{$t('endpoints.jc')}</label>
 						<input
 							id="jc"
 							type="number"
@@ -386,7 +382,7 @@
 						/>
 					</div>
 					<div>
-						<label for="jmin" class="block text-xs text-[var(--ctp-overlay0)] mb-1">Jmin (bytes)</label>
+						<label for="jmin" class="block text-xs text-[var(--ctp-overlay0)] mb-1">{$t('endpoints.jmin')}</label>
 						<input
 							id="jmin"
 							type="number"
@@ -396,7 +392,7 @@
 						/>
 					</div>
 					<div>
-						<label for="jmax" class="block text-xs text-[var(--ctp-overlay0)] mb-1">Jmax (bytes)</label>
+						<label for="jmax" class="block text-xs text-[var(--ctp-overlay0)] mb-1">{$t('endpoints.jmax')}</label>
 						<input
 							id="jmax"
 							type="number"
@@ -409,7 +405,7 @@
 			</div>
 
 			<div class="bg-[var(--ctp-surface0)] rounded-lg p-4">
-				<h3 class="text-sm font-medium text-[var(--ctp-subtext1)] mb-3">Init Packet Parameters</h3>
+				<h3 class="text-sm font-medium text-[var(--ctp-subtext1)] mb-3">{$t('endpoints.obfuscation.initPacketParams')}</h3>
 				<div class="grid grid-cols-4 gap-4">
 					<div>
 						<label for="s1" class="block text-xs text-[var(--ctp-overlay0)] mb-1">S1</label>
@@ -455,7 +451,7 @@
 			</div>
 
 			<div class="bg-[var(--ctp-surface0)] rounded-lg p-4">
-				<h3 class="text-sm font-medium text-[var(--ctp-subtext1)] mb-3">Header Parameters (H1-H4)</h3>
+				<h3 class="text-sm font-medium text-[var(--ctp-subtext1)] mb-3">{$t('endpoints.obfuscation.headerParams')}</h3>
 				<div class="grid grid-cols-4 gap-4">
 					<div>
 						<label for="h1" class="block text-xs text-[var(--ctp-overlay0)] mb-1">H1</label>
@@ -501,7 +497,7 @@
 			</div>
 
 			<div class="bg-[var(--ctp-surface0)] rounded-lg p-4">
-				<h3 class="text-sm font-medium text-[var(--ctp-subtext1)] mb-3">Init Parameters (I1-I5)</h3>
+				<h3 class="text-sm font-medium text-[var(--ctp-subtext1)] mb-3">{$t('endpoints.obfuscation.initParams')}</h3>
 				<div class="grid grid-cols-5 gap-3">
 					<div>
 						<label for="i1" class="block text-xs text-[var(--ctp-overlay0)] mb-1">I1</label>
@@ -557,7 +553,7 @@
 			</div>
 
 			<p class="text-sm text-[var(--ctp-overlay0)]">
-				These parameters should match your AmneziaWG server configuration. Leave at 0 or empty to disable obfuscation features.
+				{$t('endpoints.obfuscation.hint')}
 			</p>
 		</div>
 	{/if}
@@ -572,7 +568,7 @@
 			{#each peers as peer, i}
 				<div class="bg-[var(--ctp-surface0)] rounded-lg p-4 space-y-4">
 					<div class="flex items-center justify-between">
-						<h3 class="text-sm font-medium text-[var(--ctp-subtext1)]">Peer {i + 1}</h3>
+						<h3 class="text-sm font-medium text-[var(--ctp-subtext1)]">{$t('endpoints.peer')} {i + 1}</h3>
 						{#if peers.length > 1}
 							<button
 								type="button"
@@ -588,7 +584,7 @@
 
 					<div class="grid grid-cols-3 gap-4">
 						<div class="col-span-2">
-							<label for="peer_{i}_address" class="block text-xs text-[var(--ctp-overlay0)] mb-1">Server Address *</label>
+							<label for="peer_{i}_address" class="block text-xs text-[var(--ctp-overlay0)] mb-1">{$t('endpoints.serverAddress')} *</label>
 							<input
 								id="peer_{i}_address"
 								type="text"
@@ -598,7 +594,7 @@
 							/>
 						</div>
 						<div>
-							<label for="peer_{i}_port" class="block text-xs text-[var(--ctp-overlay0)] mb-1">Port</label>
+							<label for="peer_{i}_port" class="block text-xs text-[var(--ctp-overlay0)] mb-1">{$t('common.port')}</label>
 							<input
 								id="peer_{i}_port"
 								type="number"
@@ -611,30 +607,30 @@
 					</div>
 
 					<div>
-						<label for="peer_{i}_public_key" class="block text-xs text-[var(--ctp-overlay0)] mb-1">Public Key *</label>
+						<label for="peer_{i}_public_key" class="block text-xs text-[var(--ctp-overlay0)] mb-1">{$t('endpoints.publicKey')} *</label>
 						<input
 							id="peer_{i}_public_key"
 							type="text"
 							bind:value={peer.public_key}
-							placeholder="Base64-encoded public key"
+							placeholder={$t('endpoints.placeholders.publicKey')}
 							class="w-full px-3 py-2 bg-[var(--ctp-mantle)] border rounded-lg text-[var(--ctp-text)] placeholder-[var(--ctp-overlay0)] focus:outline-none focus:ring-2 focus:ring-[var(--ctp-primary)] font-mono text-sm {errors[`peer_${i}_public_key`] ? 'border-[var(--ctp-red)]' : 'border-[var(--ctp-surface2)]'}"
 						/>
 					</div>
 
 					<div>
-						<label for="peer_{i}_psk" class="block text-xs text-[var(--ctp-overlay0)] mb-1">Pre-shared Key (optional)</label>
+						<label for="peer_{i}_psk" class="block text-xs text-[var(--ctp-overlay0)] mb-1">{$t('endpoints.presharedKey')} ({$t('common.optional')})</label>
 						<input
 							id="peer_{i}_psk"
 							type="password"
 							bind:value={peer.pre_shared_key}
-							placeholder="Base64-encoded PSK"
+							placeholder={$t('endpoints.placeholders.psk')}
 							class="w-full px-3 py-2 bg-[var(--ctp-mantle)] border border-[var(--ctp-surface2)] rounded-lg text-[var(--ctp-text)] placeholder-[var(--ctp-overlay0)] focus:outline-none focus:ring-2 focus:ring-[var(--ctp-primary)] font-mono text-sm"
 						/>
 					</div>
 
 					<div class="grid grid-cols-2 gap-4">
 						<div>
-							<label for="peer_{i}_allowed_ips" class="block text-xs text-[var(--ctp-overlay0)] mb-1">Allowed IPs</label>
+							<label for="peer_{i}_allowed_ips" class="block text-xs text-[var(--ctp-overlay0)] mb-1">{$t('endpoints.allowedIPs')}</label>
 							<input
 								id="peer_{i}_allowed_ips"
 								type="text"
@@ -644,7 +640,7 @@
 							/>
 						</div>
 						<div>
-							<label for="peer_{i}_keepalive" class="block text-xs text-[var(--ctp-overlay0)] mb-1">Keepalive (sec)</label>
+							<label for="peer_{i}_keepalive" class="block text-xs text-[var(--ctp-overlay0)] mb-1">{$t('endpoints.keepalive')}</label>
 							<input
 								id="peer_{i}_keepalive"
 								type="number"
@@ -663,7 +659,7 @@
 				onclick={addPeer}
 				class="w-full py-2 border-2 border-dashed border-[var(--ctp-surface2)] rounded-lg text-[var(--ctp-overlay1)] hover:border-[var(--ctp-primary)] hover:text-[var(--ctp-primary)] transition-colors"
 			>
-				+ Add Peer
+				+ {$t('endpoints.addPeer')}
 			</button>
 		</div>
 	{/if}
@@ -672,11 +668,11 @@
 	{#if activeTab === 'advanced'}
 		<div class="space-y-4">
 			<p class="text-sm text-[var(--ctp-overlay0)]">
-				Advanced options for interface and connection configuration.
+				{$t('endpoints.advancedHint')}
 			</p>
 
 			<div class="bg-[var(--ctp-surface0)] rounded-lg p-4 space-y-4">
-				<h3 class="text-sm font-medium text-[var(--ctp-subtext1)]">Interface Options</h3>
+				<h3 class="text-sm font-medium text-[var(--ctp-subtext1)]">{$t('endpoints.interfaceOptions')}</h3>
 
 				<label class="flex items-center gap-3 p-3 bg-[var(--ctp-mantle)] rounded-lg cursor-pointer hover:bg-[var(--ctp-surface1)] transition-colors">
 					<input
@@ -685,14 +681,14 @@
 						class="w-5 h-5 rounded border-[var(--ctp-surface2)] text-[var(--ctp-primary)] focus:ring-[var(--ctp-primary)]"
 					/>
 					<div>
-						<span class="text-[var(--ctp-text)] font-medium">System Interface</span>
-						<p class="text-sm text-[var(--ctp-overlay0)]">Use system network interface instead of userspace</p>
+						<span class="text-[var(--ctp-text)] font-medium">{$t('endpoints.systemInterface')}</span>
+						<p class="text-sm text-[var(--ctp-overlay0)]">{$t('endpoints.systemInterfaceHint')}</p>
 					</div>
 				</label>
 
 				<div class="grid grid-cols-2 gap-4">
 					<div>
-						<label for="interfaceName" class="block text-xs text-[var(--ctp-overlay0)] mb-1">Interface Name</label>
+						<label for="interfaceName" class="block text-xs text-[var(--ctp-overlay0)] mb-1">{$t('inbounds.interfaceName')}</label>
 						<input
 							id="interfaceName"
 							type="text"
@@ -702,28 +698,28 @@
 						/>
 					</div>
 					<div>
-						<label for="workers" class="block text-xs text-[var(--ctp-overlay0)] mb-1">Workers</label>
+						<label for="workers" class="block text-xs text-[var(--ctp-overlay0)] mb-1">{$t('endpoints.workers')}</label>
 						<input
 							id="workers"
 							type="number"
 							bind:value={workers}
 							min="0"
-							placeholder="Auto"
+							placeholder={$t('common.auto')}
 							class="w-full px-3 py-2 bg-[var(--ctp-mantle)] border border-[var(--ctp-surface2)] rounded-lg text-[var(--ctp-text)] placeholder-[var(--ctp-overlay0)] focus:outline-none focus:ring-2 focus:ring-[var(--ctp-primary)]"
 						/>
 					</div>
 				</div>
 
 				<div>
-					<label for="udpTimeout" class="block text-xs text-[var(--ctp-overlay0)] mb-1">UDP Timeout</label>
+					<label for="udpTimeout" class="block text-xs text-[var(--ctp-overlay0)] mb-1">{$t('endpoints.udpTimeout')}</label>
 					<input
 						id="udpTimeout"
 						type="text"
 						bind:value={udpTimeout}
-						placeholder="5m (default)"
+						placeholder={$t('endpoints.placeholders.udpTimeout')}
 						class="w-full px-3 py-2 bg-[var(--ctp-mantle)] border border-[var(--ctp-surface2)] rounded-lg text-[var(--ctp-text)] placeholder-[var(--ctp-overlay0)] focus:outline-none focus:ring-2 focus:ring-[var(--ctp-primary)]"
 					/>
-					<p class="mt-1 text-xs text-[var(--ctp-overlay0)]">Duration format: 5m, 1h, 30s</p>
+					<p class="mt-1 text-xs text-[var(--ctp-overlay0)]">{$t('endpoints.durationFormatHint')}</p>
 				</div>
 			</div>
 		</div>
@@ -736,13 +732,13 @@
 			onclick={onCancel}
 			class="px-4 py-2 bg-[var(--ctp-surface1)] text-[var(--ctp-text)] rounded-lg hover:bg-[var(--ctp-surface2)] transition-colors"
 		>
-			Cancel
+			{$t('common.cancel')}
 		</button>
 		<button
 			type="submit"
 			class="px-4 py-2 bg-[var(--ctp-primary)] text-white rounded-lg hover:opacity-90 transition-opacity"
 		>
-			{endpoint ? 'Save Changes' : 'Create Endpoint'}
+			{endpoint ? $t('common.saveChanges') : $t('endpoints.createEndpoint')}
 		</button>
 	</div>
 </form>
@@ -757,11 +753,11 @@
 	>
 		<div class="bg-[var(--ctp-base)] rounded-xl shadow-xl w-full max-w-2xl mx-4 max-h-[90vh] flex flex-col">
 			<div class="flex items-center justify-between px-6 py-4 border-b border-[var(--ctp-surface2)]">
-				<h2 class="text-lg font-semibold text-[var(--ctp-text)]">Import AWG/WireGuard Config</h2>
+				<h2 class="text-lg font-semibold text-[var(--ctp-text)]">{$t('endpoints.importDialogTitle')}</h2>
 				<button
 					onclick={() => showImport = false}
 					class="p-1 hover:bg-[var(--ctp-surface1)] rounded-lg transition-colors"
-					aria-label="Close"
+					aria-label={$t('common.close')}
 				>
 					<svg class="w-5 h-5 text-[var(--ctp-overlay1)]" fill="none" stroke="currentColor" viewBox="0 0 24 24">
 						<path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12" />
@@ -771,7 +767,7 @@
 
 			<div class="flex-1 overflow-y-auto p-6 space-y-4">
 				<p class="text-sm text-[var(--ctp-overlay1)]">
-					Import from a .conf file or paste your AWG/WireGuard configuration below.
+					{$t('endpoints.importDialogHint')}
 				</p>
 
 				<!-- File upload -->
@@ -790,12 +786,12 @@
 					<svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
 						<path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 13h6m-3-3v6m5 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
 					</svg>
-					Select .conf file
+					{$t('endpoints.selectConfFile')}
 				</button>
 
 				<div class="relative flex items-center">
 					<div class="flex-1 border-t border-[var(--ctp-surface2)]"></div>
-					<span class="px-3 text-sm text-[var(--ctp-overlay0)]">or paste config</span>
+					<span class="px-3 text-sm text-[var(--ctp-overlay0)]">{$t('endpoints.orPasteConfig')}</span>
 					<div class="flex-1 border-t border-[var(--ctp-surface2)]"></div>
 				</div>
 
@@ -823,14 +819,14 @@ AllowedIPs = 0.0.0.0/0, ::/0"
 					onclick={() => showImport = false}
 					class="px-4 py-2 bg-[var(--ctp-surface1)] text-[var(--ctp-text)] rounded-lg hover:bg-[var(--ctp-surface2)] transition-colors"
 				>
-					Cancel
+					{$t('common.cancel')}
 				</button>
 				<button
 					onclick={() => parseAwgConfig(importText)}
 					disabled={!importText.trim()}
 					class="px-4 py-2 bg-[var(--ctp-primary)] text-white rounded-lg hover:opacity-90 transition-opacity disabled:opacity-50 disabled:cursor-not-allowed"
 				>
-					Import
+					{$t('common.import')}
 				</button>
 			</div>
 		</div>

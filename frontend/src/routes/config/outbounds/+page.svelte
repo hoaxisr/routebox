@@ -1,5 +1,6 @@
 <script lang="ts">
 	import { onMount } from 'svelte';
+	import { t } from 'svelte-i18n';
 	import { api } from '$lib/api/client';
 	import { notifications, unsavedChanges } from '$lib/stores';
 	import type { Outbound, Endpoint } from '$lib/types';
@@ -24,7 +25,7 @@
 			outbounds = ob;
 			endpoints = ep;
 		} catch (e) {
-			notifications.error(`Failed to load data: ${e}`);
+			notifications.error($t('errors.loadFailed') + `: ${e}`);
 		} finally {
 			loading = false;
 		}
@@ -50,42 +51,42 @@
 		try {
 			if (editingOutbound) {
 				await api.updateOutbound(editingOutbound.tag, outbound);
-				notifications.success(`Outbound "${outbound.tag}" updated`);
-				unsavedChanges.markChanged('Outbounds', `Updated "${outbound.tag}"`);
+				notifications.success($t('outbounds.outboundUpdated'));
+				unsavedChanges.markChanged($t('outbounds.title'), `${$t('common.update')} "${outbound.tag}"`);
 			} else {
 				await api.createOutbound(outbound);
-				notifications.success(`Outbound "${outbound.tag}" created`);
-				unsavedChanges.markChanged('Outbounds', `Created "${outbound.tag}"`);
+				notifications.success($t('outbounds.outboundCreated'));
+				unsavedChanges.markChanged($t('outbounds.title'), `${$t('common.create')} "${outbound.tag}"`);
 			}
 			closeModal();
 			await fetchData();
 		} catch (e) {
-			notifications.error(`Failed to save: ${e}`);
+			notifications.error($t('errors.saveFailed') + `: ${e}`);
 		} finally {
 			saving = false;
 		}
 	}
 
 	async function handleDelete(tag: string) {
-		if (!confirm(`Delete outbound "${tag}"?`)) return;
+		if (!confirm($t('outbounds.confirmDelete', { values: { name: tag } }))) return;
 
 		try {
 			await api.deleteOutbound(tag);
-			notifications.success(`Outbound "${tag}" deleted`);
-			unsavedChanges.markChanged('Outbounds', `Deleted "${tag}"`);
+			notifications.success($t('outbounds.outboundDeleted'));
+			unsavedChanges.markChanged($t('outbounds.title'), `${$t('common.delete')} "${tag}"`);
 			await fetchData();
 		} catch (e) {
-			notifications.error(`Failed to delete: ${e}`);
+			notifications.error($t('errors.deleteFailed') + `: ${e}`);
 		}
 	}
 
 	async function applyChanges() {
 		try {
 			const result = await api.applyConfig();
-			notifications.success(result.message);
+			notifications.success($t('changes.configApplied'));
 			unsavedChanges.clearChanges();
 		} catch (e) {
-			notifications.error(`Failed to apply: ${e}`);
+			notifications.error($t('changes.failedApply') + `: ${e}`);
 		}
 	}
 
@@ -111,33 +112,33 @@
 
 <div class="space-y-6">
 	<div class="flex items-center justify-between">
-		<h1 class="text-2xl font-bold text-[var(--ctp-text)]">Outbounds</h1>
+		<h1 class="text-2xl font-bold text-[var(--ctp-text)]">{$t('outbounds.title')}</h1>
 		<div class="flex items-center gap-2">
 			<button
 				onclick={applyChanges}
 				class="px-4 py-2 bg-[var(--ctp-primary)] text-white rounded-lg hover:opacity-90 transition-opacity"
 			>
-				Apply Changes
+				{$t('changes.applyChanges')}
 			</button>
 			<button
 				onclick={openCreate}
 				class="px-4 py-2 bg-[var(--ctp-primary)] text-white rounded-lg hover:opacity-90 transition-opacity"
 			>
-				+ Add Outbound
+				+ {$t('outbounds.addOutbound')}
 			</button>
 		</div>
 	</div>
 
 	{#if loading}
-		<div class="text-[var(--ctp-overlay0)]">Loading...</div>
+		<div class="text-[var(--ctp-overlay0)]">{$t('common.loading')}</div>
 	{:else if outbounds.length === 0}
 		<div class="bg-[var(--ctp-surface0)] rounded-xl p-8 text-center">
-			<div class="text-[var(--ctp-overlay1)] mb-4">No outbounds configured</div>
+			<div class="text-[var(--ctp-overlay1)] mb-4">{$t('outbounds.noOutbounds')}</div>
 			<button
 				onclick={openCreate}
 				class="px-4 py-2 bg-[var(--ctp-primary)] text-white rounded-lg hover:opacity-90 transition-opacity"
 			>
-				Add your first outbound
+				{$t('outbounds.addOutbound')}
 			</button>
 		</div>
 	{:else}
@@ -174,7 +175,7 @@
 							<button
 								onclick={() => openEdit(outbound)}
 								class="p-2 hover:bg-[var(--ctp-surface2)] rounded-lg transition-colors"
-								title="Edit"
+								title={$t('common.edit')}
 							>
 								<svg class="w-5 h-5 text-[var(--ctp-overlay1)]" fill="none" stroke="currentColor" viewBox="0 0 24 24">
 									<path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z" />
@@ -183,7 +184,7 @@
 							<button
 								onclick={() => handleDelete(outbound.tag)}
 								class="action-btn-danger"
-								title="Delete"
+								title={$t('common.delete')}
 							>
 								<svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
 									<path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
@@ -198,6 +199,6 @@
 </div>
 
 <!-- Modal -->
-<Modal open={showModal} title={editingOutbound ? 'Edit Outbound' : 'Add Outbound'} size="lg" onClose={closeModal}>
+<Modal open={showModal} title={editingOutbound ? $t('outbounds.editOutbound') : $t('outbounds.addOutbound')} size="lg" onClose={closeModal}>
 	<OutboundForm outbound={editingOutbound} {endpoints} {outbounds} onSave={handleSave} onCancel={closeModal} />
 </Modal>

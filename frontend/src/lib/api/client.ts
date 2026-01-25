@@ -64,7 +64,7 @@ export const api = {
 	getConfig: () => request<SingboxConfig>('/config'),
 
 	saveConfig: (config: SingboxConfig) =>
-		request<{ message: string; restarted: boolean }>('/config', {
+		request<{ message: string }>('/config', {
 			method: 'PUT',
 			body: JSON.stringify(config)
 		}),
@@ -89,6 +89,30 @@ export const api = {
 			method: 'POST',
 			body: JSON.stringify(config)
 		}),
+
+	// Config draft system
+	getConfigStatus: () =>
+		request<{ hasDraft: boolean; changeCount: number }>('/config/status'),
+
+	discardConfig: () =>
+		request<{ message: string }>('/config/discard', {
+			method: 'POST'
+		}),
+
+	getDraftDiff: () =>
+		request<{ diff: string; additions: number; deletions: number }>('/config/draft-diff'),
+
+	saveConfigDraft: () =>
+		request<{ message: string }>('/config/save', {
+			method: 'POST'
+		}),
+
+	checkConfig: () =>
+		request<{ valid: boolean; errors: string[] }>('/config/check', {
+			method: 'POST'
+		}),
+
+	getActiveConfig: () => request<SingboxConfig>('/config/active'),
 
 	// Endpoints CRUD
 	listEndpoints: () => request<Endpoint[]>('/endpoints'),

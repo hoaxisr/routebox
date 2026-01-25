@@ -1,4 +1,5 @@
 <script lang="ts">
+	import { t } from 'svelte-i18n';
 	import { api } from '$lib/api/client';
 	import { notifications } from '$lib/stores';
 	import type { TestRouteResponse, RuleMatch, RouteRule } from '$lib/types';
@@ -38,7 +39,7 @@
 			result = await api.testRoute(input.trim());
 		} catch (e) {
 			error = `${e}`;
-			notifications.error(`Test failed: ${e}`);
+			notifications.error($t('routes.inspector.testFailed', { values: { error: String(e) } }));
 		} finally {
 			testing = false;
 		}
@@ -77,7 +78,7 @@
 	<div class="bg-[var(--ctp-surface0)] rounded-xl p-4 space-y-4">
 		<div>
 			<label for="test-input" class="block text-sm font-medium text-[var(--ctp-subtext1)] mb-2">
-				Test domain or IP address
+				{$t('routes.inspector.inputLabel')}
 			</label>
 			<div class="flex gap-2">
 				<input
@@ -85,7 +86,7 @@
 					type="text"
 					bind:value={input}
 					onkeydown={handleKeydown}
-					placeholder="google.com or 192.168.1.1"
+					placeholder={$t('routes.inspector.inputPlaceholder')}
 					class="min-w-0 flex-1 px-4 py-2.5 bg-[var(--ctp-base)] border border-[var(--ctp-surface2)] rounded-lg text-[var(--ctp-text)] placeholder-[var(--ctp-overlay0)] focus:outline-none focus:ring-2 focus:ring-[var(--ctp-primary)] font-mono"
 				/>
 				<button
@@ -103,14 +104,14 @@
 							<path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" />
 						</svg>
 					{/if}
-					Test
+					{$t('common.test')}
 				</button>
 			</div>
 		</div>
 
 		<!-- Quick examples -->
 		<div class="flex flex-wrap gap-2">
-			<span class="text-xs text-[var(--ctp-overlay0)]">Quick test:</span>
+			<span class="text-xs text-[var(--ctp-overlay0)]">{$t('routes.inspector.quickTest')}:</span>
 			{#each examples as ex}
 				<button
 					type="button"
@@ -166,7 +167,7 @@
 							</div>
 							<div class="flex-1">
 								<div class="flex items-center gap-2 flex-wrap">
-									<span class="font-medium text-[var(--ctp-text)]">Rule #{result.matched_rule + 1}</span>
+									<span class="font-medium text-[var(--ctp-text)]">{$t('routes.inspector.ruleNumber', { values: { number: result.matched_rule + 1 } })}</span>
 									<span class="px-2 py-0.5 text-xs rounded" style="background-color: color-mix(in srgb, {getActionColor(matchedRuleData.action)} 20%, transparent); color: {getActionColor(matchedRuleData.action)}">
 										{matchedRuleData.action.toUpperCase()}
 									</span>
@@ -181,7 +182,7 @@
 								{/if}
 								{#if matchedRuleData.conditions && matchedRuleData.conditions.length > 0}
 									<div class="mt-1 text-xs text-[var(--ctp-overlay0)]">
-										Conditions: {matchedRuleData.conditions.join(', ')}
+										{$t('routes.ruleConditions')}: {matchedRuleData.conditions.join(', ')}
 									</div>
 								{/if}
 							</div>
@@ -193,7 +194,7 @@
 							<svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
 								<path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
 							</svg>
-							<span>No rule matched — using final outbound: <strong class="text-[var(--ctp-text)]">{finalOutbound}</strong></span>
+							<span>{$t('routes.inspector.noRuleMatched')}: <strong class="text-[var(--ctp-text)]">{finalOutbound}</strong></span>
 						</div>
 					</div>
 				{/if}
@@ -210,12 +211,12 @@
 						<svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
 							<path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 15l7-7 7 7" />
 						</svg>
-						Hide rule evaluation details
+						{$t('routes.inspector.hideRuleDetails')}
 					{:else}
 						<svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
 							<path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 9l-7 7-7-7" />
 						</svg>
-						Show all {result.matches.length} rules evaluation
+						{$t('routes.inspector.showAllRules', { values: { count: result.matches.length } })}
 					{/if}
 				</button>
 			</div>
@@ -224,7 +225,7 @@
 			{#if showAllRules}
 				<div class="bg-[var(--ctp-surface0)] rounded-xl overflow-hidden">
 					<div class="px-4 py-3 bg-[var(--ctp-surface1)] border-b border-[var(--ctp-surface2)]">
-						<span class="font-medium text-[var(--ctp-subtext1)]">Rule Evaluation Order</span>
+						<span class="font-medium text-[var(--ctp-subtext1)]">{$t('routes.inspector.ruleEvaluationOrder')}</span>
 					</div>
 
 					<div class="divide-y divide-[var(--ctp-surface2)] max-h-80 overflow-y-auto">
@@ -243,7 +244,7 @@
 
 								<div class="flex-1 min-w-0 flex items-center gap-2 flex-wrap">
 									<span class="text-sm {match.matched ? 'font-medium text-[var(--ctp-text)]' : 'text-[var(--ctp-overlay1)]'}">
-										Rule #{match.index + 1}
+										{$t('routes.inspector.ruleNumber', { values: { number: match.index + 1 } })}
 									</span>
 									<span class="px-1.5 py-0.5 text-xs rounded" style="background-color: color-mix(in srgb, {getActionColor(match.action)} 15%, transparent); color: {getActionColor(match.action)}">
 										{match.action}
@@ -260,7 +261,7 @@
 							<!-- Show rule_keys for debugging -->
 							{#if match.rule_keys && match.rule_keys.length > 0}
 								<div class="px-4 py-1 text-[10px] text-[var(--ctp-overlay0)] bg-[var(--ctp-base)] border-t border-[var(--ctp-surface2)]">
-									Keys: {match.rule_keys.join(', ')}
+									{$t('routes.inspector.keys')}: {match.rule_keys.join(', ')}
 								</div>
 							{/if}
 						{/each}
@@ -270,7 +271,7 @@
 							<div class="w-6 h-6 rounded-full bg-[var(--ctp-overlay0)] bg-opacity-20 flex items-center justify-center">
 								<span class="text-xs text-[var(--ctp-overlay0)]">∞</span>
 							</div>
-							<span class="text-sm text-[var(--ctp-overlay1)]">Final (default)</span>
+							<span class="text-sm text-[var(--ctp-overlay1)]">{$t('routes.inspector.finalDefault')}</span>
 							<span class="text-sm font-medium text-[var(--ctp-text)]">→ {finalOutbound}</span>
 						</div>
 					</div>
@@ -284,14 +285,14 @@
 						<svg class="w-4 h-4 text-[var(--ctp-overlay0)]" fill="none" stroke="currentColor" viewBox="0 0 24 24">
 							<path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M10 20l4-16m4 4l4 4-4 4M6 16l-4-4 4-4" />
 						</svg>
-						<span class="text-[var(--ctp-overlay1)] font-medium">Debug Info</span>
+						<span class="text-[var(--ctp-overlay1)] font-medium">{$t('routes.inspector.debugInfo')}</span>
 					</div>
 					<div class="grid grid-cols-2 gap-2 text-[var(--ctp-overlay0)]">
-						<div>Rules: <span class="text-[var(--ctp-text)]">{result.debug.rule_count}</span></div>
-						<div>Rule Sets: <span class="text-[var(--ctp-text)]">{result.debug.rule_set_count}</span></div>
-						<div>Final: <span class="text-[var(--ctp-text)]">{result.debug.final_outbound}</span></div>
+						<div>{$t('routes.rules')}: <span class="text-[var(--ctp-text)]">{result.debug.rule_count}</span></div>
+						<div>{$t('routes.ruleSets')}: <span class="text-[var(--ctp-text)]">{result.debug.rule_set_count}</span></div>
+						<div>{$t('routes.inspector.final')}: <span class="text-[var(--ctp-text)]">{result.debug.final_outbound}</span></div>
 						<div class="col-span-2">
-							Tags: <span class="text-[var(--ctp-text)]">{result.debug.rule_set_tags.join(', ') || 'none'}</span>
+							{$t('routes.inspector.tags')}: <span class="text-[var(--ctp-text)]">{result.debug.rule_set_tags.join(', ') || $t('common.none')}</span>
 						</div>
 					</div>
 				</div>
@@ -301,9 +302,9 @@
 		<!-- Empty state -->
 		<div class="bg-[var(--ctp-surface0)] rounded-xl p-8 text-center">
 			<div class="text-4xl mb-3">🔍</div>
-			<h3 class="text-lg font-medium text-[var(--ctp-text)] mb-2">Route Inspector</h3>
+			<h3 class="text-lg font-medium text-[var(--ctp-text)] mb-2">{$t('routes.inspector.title')}</h3>
 			<p class="text-[var(--ctp-overlay1)] max-w-md mx-auto">
-				Enter a domain name or IP address to see which routing rule will match and where the traffic will be sent.
+				{$t('routes.inspector.emptyStateDescription')}
 			</p>
 		</div>
 	{/if}

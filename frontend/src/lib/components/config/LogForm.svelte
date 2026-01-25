@@ -1,4 +1,5 @@
 <script lang="ts">
+	import { t } from 'svelte-i18n';
 	import type { LogSettings } from '$lib/types';
 
 	interface Props {
@@ -28,7 +29,7 @@
 	<!-- Log Level -->
 	<div>
 		<label for="log-level" class="block text-sm font-medium text-[var(--ctp-subtext1)] mb-1">
-			Log Level
+			{$t('log.level')}
 		</label>
 		<select
 			id="log-level"
@@ -37,11 +38,11 @@
 			class="w-full px-3 py-2 bg-[var(--ctp-surface0)] border border-[var(--ctp-surface2)] rounded-lg text-[var(--ctp-text)] focus:outline-none focus:ring-2 focus:ring-[var(--ctp-primary)]"
 		>
 			{#each levels as lvl}
-				<option value={lvl}>{lvl}</option>
+				<option value={lvl}>{$t(`log.levels.${lvl}`)}</option>
 			{/each}
 		</select>
 		<p class="mt-1 text-xs text-[var(--ctp-overlay0)]">
-			trace = most verbose, panic = least verbose
+			{$t('log.levels.trace')} = most verbose, {$t('log.levels.panic')} = least verbose
 		</p>
 	</div>
 
@@ -53,14 +54,14 @@
 			onchange={handleChange}
 			class="w-4 h-4 rounded border-[var(--ctp-surface2)] text-[var(--ctp-primary)] focus:ring-[var(--ctp-primary)]"
 		/>
-		Include timestamp in logs
+		{$t('log.timestamp')}
 	</label>
 
 	<!-- Output Path -->
 	<div>
 		<label for="log-output" class="block text-sm font-medium text-[var(--ctp-subtext1)] mb-1">
-			Log Output
-			<span class="font-normal text-[var(--ctp-overlay0)]">(optional)</span>
+			{$t('log.output')}
+			<span class="font-normal text-[var(--ctp-overlay0)]">({$t('common.optional')})</span>
 		</label>
 		<input
 			id="log-output"
@@ -71,7 +72,7 @@
 			class="w-full px-3 py-2 bg-[var(--ctp-surface0)] border border-[var(--ctp-surface2)] rounded-lg text-[var(--ctp-text)] placeholder-[var(--ctp-overlay0)] focus:outline-none focus:ring-2 focus:ring-[var(--ctp-primary)] font-mono text-sm"
 		/>
 		<p class="mt-1 text-xs text-[var(--ctp-overlay0)]">
-			Leave empty for stdout
+			{$t('common.empty')} = stdout
 		</p>
 	</div>
 </div>

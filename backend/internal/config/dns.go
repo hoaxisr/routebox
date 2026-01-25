@@ -4,17 +4,16 @@ import "fmt"
 
 // --- DNS section helpers ---
 
-// getDns returns the dns section, creating if needed
+// getDns returns the dns section from working config (draft or active)
 func (m *Manager) getDns() map[string]interface{} {
-	if dns, ok := m.config["dns"].(map[string]interface{}); ok {
+	config := m.getWorkingConfig()
+	if dns, ok := config["dns"].(map[string]interface{}); ok {
 		return dns
 	}
-	dns := make(map[string]interface{})
-	m.config["dns"] = dns
-	return dns
+	return make(map[string]interface{})
 }
 
-// getDnsArray returns array from dns section at given key
+// getDnsArray returns array from dns section at given key (from working config)
 func (m *Manager) getDnsArray(key string) []interface{} {
 	dns := m.getDns()
 	if arr, ok := dns[key].([]interface{}); ok {
@@ -40,7 +39,7 @@ func (m *Manager) ListDnsServers() []map[string]interface{} {
 	return result
 }
 
-// CreateDnsServer adds new DNS server with validation
+// CreateDnsServer adds new DNS server to draft with validation
 func (m *Manager) CreateDnsServer(server map[string]interface{}) error {
 	errs := validateDnsServer(server, 0)
 	if len(errs) > 0 {
@@ -51,7 +50,6 @@ func (m *Manager) CreateDnsServer(server map[string]interface{}) error {
 	defer m.mu.Unlock()
 
 	tag, _ := server["tag"].(string)
-	dns := m.getDns()
 
 	arr := m.getDnsArray("servers")
 	if findByTag(arr, tag) >= 0 {
@@ -73,11 +71,20 @@ func (m *Manager) CreateDnsServer(server map[string]interface{}) error {
 		}
 	}
 
-	dns["servers"] = append(arr, server)
-	return nil
+	// Ensure draft exists before modifying
+	if err := m.ensureDraftUnlocked(); err != nil {
+		return err
+	}
+
+	// Modify draft
+	dns := m.getDraftDns()
+	draftArr := m.getDraftDnsArray("servers")
+	dns["servers"] = append(draftArr, server)
+
+	return m.saveDraftToDisk()
 }
 
-// UpdateDnsServer updates existing DNS server with validation
+// UpdateDnsServer updates existing DNS server in draft with validation
 func (m *Manager) UpdateDnsServer(tag string, server map[string]interface{}) error {
 	errs := validateDnsServer(server, 0)
 	if len(errs) > 0 {
@@ -87,7 +94,6 @@ func (m *Manager) UpdateDnsServer(tag string, server map[string]interface{}) err
 	m.mu.Lock()
 	defer m.mu.Unlock()
 
-	dns := m.getDns()
 	arr := m.getDnsArray("servers")
 	idx := findByTag(arr, tag)
 	if idx < 0 {
@@ -114,12 +120,24 @@ func (m *Manager) UpdateDnsServer(tag string, server map[string]interface{}) err
 		server["tag"] = tag
 	}
 
-	arr[idx] = server
-	dns["servers"] = arr
-	return nil
+	// Ensure draft exists before modifying
+	if err := m.ensureDraftUnlocked(); err != nil {
+		return err
+	}
+
+	// Modify draft
+	dns := m.getDraftDns()
+	draftArr := m.getDraftDnsArray("servers")
+	draftIdx := findByTag(draftArr, tag)
+	if draftIdx >= 0 {
+		draftArr[draftIdx] = server
+		dns["servers"] = draftArr
+	}
+
+	return m.saveDraftToDisk()
 }
 
-// DeleteDnsServer removes DNS server by tag
+// DeleteDnsServer removes DNS server by tag from draft
 func (m *Manager) DeleteDnsServer(tag string) error {
 	m.mu.Lock()
 	defer m.mu.Unlock()
@@ -146,8 +164,20 @@ func (m *Manager) DeleteDnsServer(tag string) error {
 		return fmt.Errorf("cannot delete DNS server '%s': it is the default (final) server", tag)
 	}
 
-	dns["servers"] = append(arr[:idx], arr[idx+1:]...)
-	return nil
+	// Ensure draft exists before modifying
+	if err := m.ensureDraftUnlocked(); err != nil {
+		return err
+	}
+
+	// Modify draft
+	draftDns := m.getDraftDns()
+	draftArr := m.getDraftDnsArray("servers")
+	draftIdx := findByTag(draftArr, tag)
+	if draftIdx >= 0 {
+		draftDns["servers"] = append(draftArr[:draftIdx], draftArr[draftIdx+1:]...)
+	}
+
+	return m.saveDraftToDisk()
 }
 
 // --- DNS Rules CRUD (index-based) ---
@@ -167,7 +197,7 @@ func (m *Manager) ListDnsRules() []map[string]interface{} {
 	return result
 }
 
-// CreateDnsRule appends new DNS rule with validation
+// CreateDnsRule appends new DNS rule to draft with validation
 func (m *Manager) CreateDnsRule(rule map[string]interface{}) error {
 	m.mu.Lock()
 	defer m.mu.Unlock()
@@ -197,18 +227,24 @@ func (m *Manager) CreateDnsRule(rule map[string]interface{}) error {
 		return fmt.Errorf("validation failed: %s", errs[0])
 	}
 
-	dns := m.getDns()
-	arr := m.getDnsArray("rules")
-	dns["rules"] = append(arr, rule)
-	return nil
+	// Ensure draft exists before modifying
+	if err := m.ensureDraftUnlocked(); err != nil {
+		return err
+	}
+
+	// Modify draft
+	dns := m.getDraftDns()
+	draftArr := m.getDraftDnsArray("rules")
+	dns["rules"] = append(draftArr, rule)
+
+	return m.saveDraftToDisk()
 }
 
-// UpdateDnsRule updates DNS rule at index with validation
+// UpdateDnsRule updates DNS rule at index in draft with validation
 func (m *Manager) UpdateDnsRule(index int, rule map[string]interface{}) error {
 	m.mu.Lock()
 	defer m.mu.Unlock()
 
-	dns := m.getDns()
 	arr := m.getDnsArray("rules")
 	if index < 0 || index >= len(arr) {
 		return fmt.Errorf("DNS rule index %d out of range", index)
@@ -239,32 +275,52 @@ func (m *Manager) UpdateDnsRule(index int, rule map[string]interface{}) error {
 		return fmt.Errorf("validation failed: %s", errs[0])
 	}
 
-	arr[index] = rule
-	dns["rules"] = arr
-	return nil
+	// Ensure draft exists before modifying
+	if err := m.ensureDraftUnlocked(); err != nil {
+		return err
+	}
+
+	// Modify draft
+	dns := m.getDraftDns()
+	draftArr := m.getDraftDnsArray("rules")
+	if index < len(draftArr) {
+		draftArr[index] = rule
+		dns["rules"] = draftArr
+	}
+
+	return m.saveDraftToDisk()
 }
 
-// DeleteDnsRule removes DNS rule at index
+// DeleteDnsRule removes DNS rule at index from draft
 func (m *Manager) DeleteDnsRule(index int) error {
 	m.mu.Lock()
 	defer m.mu.Unlock()
 
-	dns := m.getDns()
 	arr := m.getDnsArray("rules")
 	if index < 0 || index >= len(arr) {
 		return fmt.Errorf("DNS rule index %d out of range", index)
 	}
 
-	dns["rules"] = append(arr[:index], arr[index+1:]...)
-	return nil
+	// Ensure draft exists before modifying
+	if err := m.ensureDraftUnlocked(); err != nil {
+		return err
+	}
+
+	// Modify draft
+	dns := m.getDraftDns()
+	draftArr := m.getDraftDnsArray("rules")
+	if index < len(draftArr) {
+		dns["rules"] = append(draftArr[:index], draftArr[index+1:]...)
+	}
+
+	return m.saveDraftToDisk()
 }
 
-// ReorderDnsRules moves DNS rule from one index to another
+// ReorderDnsRules moves DNS rule from one index to another in draft
 func (m *Manager) ReorderDnsRules(from, to int) error {
 	m.mu.Lock()
 	defer m.mu.Unlock()
 
-	dns := m.getDns()
 	arr := m.getDnsArray("rules")
 	if from < 0 || from >= len(arr) {
 		return fmt.Errorf("'from' index %d out of range", from)
@@ -276,18 +332,28 @@ func (m *Manager) ReorderDnsRules(from, to int) error {
 		return nil
 	}
 
-	rule := arr[from]
-	arr = append(arr[:from], arr[from+1:]...)
+	// Ensure draft exists before modifying
+	if err := m.ensureDraftUnlocked(); err != nil {
+		return err
+	}
+
+	// Modify draft
+	dns := m.getDraftDns()
+	draftArr := m.getDraftDnsArray("rules")
+
+	rule := draftArr[from]
+	draftArr = append(draftArr[:from], draftArr[from+1:]...)
 	if to > from {
 		to--
 	}
-	newArr := make([]interface{}, 0, len(arr)+1)
-	newArr = append(newArr, arr[:to]...)
+	newArr := make([]interface{}, 0, len(draftArr)+1)
+	newArr = append(newArr, draftArr[:to]...)
 	newArr = append(newArr, rule)
-	newArr = append(newArr, arr[to:]...)
+	newArr = append(newArr, draftArr[to:]...)
 
 	dns["rules"] = newArr
-	return nil
+
+	return m.saveDraftToDisk()
 }
 
 // --- DNS Settings ---
@@ -329,12 +395,10 @@ func (m *Manager) GetDnsSettings() map[string]interface{} {
 	return result
 }
 
-// UpdateDnsSettings updates DNS configuration settings
+// UpdateDnsSettings updates DNS configuration settings in draft
 func (m *Manager) UpdateDnsSettings(settings map[string]interface{}) error {
 	m.mu.Lock()
 	defer m.mu.Unlock()
-
-	dns := m.getDns()
 
 	// Validate final server exists
 	if final, ok := settings["final"].(string); ok && final != "" {
@@ -349,9 +413,19 @@ func (m *Manager) UpdateDnsSettings(settings map[string]interface{}) error {
 		if !serverTags[final] {
 			return fmt.Errorf("DNS server '%s' does not exist", final)
 		}
-		dns["final"] = final
 	}
 
+	// Ensure draft exists before modifying
+	if err := m.ensureDraftUnlocked(); err != nil {
+		return err
+	}
+
+	// Modify draft
+	dns := m.getDraftDns()
+
+	if final, ok := settings["final"].(string); ok && final != "" {
+		dns["final"] = final
+	}
 	if strategy, ok := settings["strategy"].(string); ok {
 		dns["strategy"] = strategy
 	}
@@ -379,5 +453,5 @@ func (m *Manager) UpdateDnsSettings(settings map[string]interface{}) error {
 		delete(dns, "client_subnet")
 	}
 
-	return nil
+	return m.saveDraftToDisk()
 }

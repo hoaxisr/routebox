@@ -3,6 +3,8 @@
 	import { api } from '$lib/api/client';
 	import { notifications } from '$lib/stores';
 	import type { RouteBoxSettings, SettingsResponse } from '$lib/types';
+	import { t } from 'svelte-i18n';
+	import { setLocale } from '$lib/i18n';
 
 	// State
 	let loading = $state(true);
@@ -27,6 +29,10 @@
 			settingsPath = response.settings_path;
 			geoipLoaded = response.geoip_loaded;
 			originalSettings = JSON.stringify(response.settings);
+			// Sync i18n locale with settings
+			if (response.settings.ui.language) {
+				setLocale(response.settings.ui.language);
+			}
 		} catch (err) {
 			notifications.error(`Failed to load settings: ${err}`);
 		} finally {
@@ -59,7 +65,9 @@
 
 			await api.updateSettings(updates);
 			originalSettings = JSON.stringify(settings);
-			notifications.success('Settings saved');
+			// Update i18n locale if language changed
+			setLocale(settings.ui.language);
+			notifications.success($t('common.success'));
 		} catch (err) {
 			notifications.error(`Failed to save settings: ${err}`);
 		} finally {
