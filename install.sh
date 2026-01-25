@@ -116,13 +116,13 @@ if ! command -v systemctl &> /dev/null; then
     NO_SYSTEMD=1
 fi
 
-# Download binary
+# Download binary from GitHub Releases (latest)
 echo ""
-echo "Downloading RouteBox..."
-DOWNLOAD_URL="https://raw.githubusercontent.com/${REPO}/main/releases/${BINARY_NAME}-linux-${ARCH}"
+echo "Downloading RouteBox (latest release)..."
+DOWNLOAD_URL="https://github.com/${REPO}/releases/latest/download/${BINARY_NAME}-linux-${ARCH}"
 
 if command -v curl &> /dev/null; then
-    curl -fsSL -o /tmp/${BINARY_NAME} "${DOWNLOAD_URL}"
+    curl -fsSL -L -o /tmp/${BINARY_NAME} "${DOWNLOAD_URL}"
 elif command -v wget &> /dev/null; then
     wget -q -O /tmp/${BINARY_NAME} "${DOWNLOAD_URL}"
 else
