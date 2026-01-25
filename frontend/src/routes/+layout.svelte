@@ -49,7 +49,17 @@
 	});
 </script>
 
-{#if isSetupPage}
+{#if $i18nLoading}
+	<!-- Wait for i18n to load before rendering anything with translations -->
+	<div class="min-h-screen bg-[var(--ctp-base)] flex items-center justify-center">
+		<div class="text-center">
+			<svg class="w-8 h-8 animate-spin text-[var(--ctp-primary)] mx-auto" fill="none" viewBox="0 0 24 24">
+				<circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle>
+				<path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z"></path>
+			</svg>
+		</div>
+	</div>
+{:else if isSetupPage}
 	<!-- Setup page: minimal layout without sidebar/header -->
 	<div class="min-h-screen bg-[var(--ctp-base)] text-[var(--ctp-text)]">
 		{@render children()}
