@@ -1,0 +1,33 @@
+# Dependencies
+node_modules/
+
+# Build outputs
+frontend/build/
+frontend/.svelte-kit/
+backend/internal/embedded/dist/*
+!backend/internal/embedded/dist/.gitkeep
+routebox
+
+# IDE
+.idea/
+.vscode/
+*.swp
+*.swo
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Logs
+*.log
+
+# Environment
+.env
+.env.local
+
+# Data
+data/
+*.mmdb
+
+# Backups
+*.bak

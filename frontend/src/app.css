@@ -1,0 +1,538 @@
+@import 'tailwindcss';
+@source "lib/**/*.svelte";
+@source "lib/**/*.ts";
+@source "routes/*.svelte";
+@source "routes/config/*.svelte";
+@source "routes/config/backup/*.svelte";
+@source "routes/config/dns/*.svelte";
+@source "routes/config/endpoints/*.svelte";
+@source "routes/config/inbounds/*.svelte";
+@source "routes/config/outbounds/*.svelte";
+@source "routes/config/routes/*.svelte";
+@source "routes/config/settings/*.svelte";
+@source "routes/monitor/*.svelte";
+@source "routes/monitor/connections/*.svelte";
+@source "routes/monitor/logs/*.svelte";
+@source "routes/monitor/proxies/*.svelte";
+@source "routes/monitor/traffic/*.svelte";
+@source "routes/setup/*.svelte";
+
+/* Anthropic-inspired Dark Theme */
+:root {
+	/* Base colors - warm dark */
+	--ctp-base: #1a1a1a;
+	--ctp-mantle: #141414;
+	--ctp-crust: #0a0a0a;
+
+	/* Surface colors - subtle elevation */
+	--ctp-surface0: #242424;
+	--ctp-surface1: #2e2e2e;
+	--ctp-surface2: #3a3a3a;
+
+	/* Overlay/muted colors - brighter for better contrast */
+	--ctp-overlay0: #5c5c5c;
+	--ctp-overlay1: #858585;
+	--ctp-overlay2: #a0a0a0;
+
+	/* Text colors - much brighter for readability */
+	--ctp-subtext0: #b8b8b8;
+	--ctp-subtext1: #d4d4d4;
+	--ctp-text: #f5f5f5;
+
+	/* Primary accent - Anthropic coral */
+	--ctp-primary: #da7756;
+	--ctp-primary-hover: #e08a6c;
+
+	/* Semantic colors - minimal */
+	--ctp-green: #3d9970;      /* Only for "Running" status */
+	--ctp-red: #d9534f;        /* Errors and destructive actions */
+
+	/* Aliases for backward compatibility */
+	--ctp-mauve: var(--ctp-primary);
+	--ctp-blue: var(--ctp-primary);
+	--ctp-yellow: var(--ctp-overlay1);
+	--ctp-teal: var(--ctp-primary);
+	--ctp-sapphire: var(--ctp-primary);
+	--ctp-lavender: var(--ctp-primary);
+	--ctp-peach: var(--ctp-primary);
+	--ctp-pink: var(--ctp-primary);
+	--ctp-sky: var(--ctp-primary);
+	--ctp-maroon: var(--ctp-red);
+	--ctp-rosewater: var(--ctp-primary);
+	--ctp-flamingo: var(--ctp-primary);
+}
+
+/* Light Theme */
+:root.light {
+	/* Base colors - clean */
+	--ctp-base: #ffffff;
+	--ctp-mantle: #f8f8f8;
+	--ctp-crust: #f0f0f0;
+
+	/* Surface colors */
+	--ctp-surface0: #f5f5f5;
+	--ctp-surface1: #ebebeb;
+	--ctp-surface2: #d4d4d4;
+
+	/* Overlay/muted colors */
+	--ctp-overlay0: #a3a3a3;
+	--ctp-overlay1: #737373;
+	--ctp-overlay2: #525252;
+
+	/* Text colors */
+	--ctp-subtext0: #525252;
+	--ctp-subtext1: #404040;
+	--ctp-text: #171717;
+
+	/* Primary accent - darker for light theme */
+	--ctp-primary: #c45d3e;
+	--ctp-primary-hover: #b5502f;
+
+	/* Semantic colors */
+	--ctp-green: #1e7a4a;
+	--ctp-red: #b33a30;
+
+	/* Aliases */
+	--ctp-mauve: var(--ctp-primary);
+	--ctp-blue: var(--ctp-primary);
+	--ctp-yellow: var(--ctp-overlay1);
+	--ctp-teal: var(--ctp-primary);
+	--ctp-sapphire: var(--ctp-primary);
+	--ctp-lavender: var(--ctp-primary);
+	--ctp-peach: var(--ctp-primary);
+	--ctp-pink: var(--ctp-primary);
+	--ctp-sky: var(--ctp-primary);
+	--ctp-maroon: var(--ctp-red);
+	--ctp-rosewater: var(--ctp-primary);
+	--ctp-flamingo: var(--ctp-primary);
+}
+
+/* Apply theme colors */
+html {
+	background-color: var(--ctp-base);
+	color: var(--ctp-text);
+}
+
+body {
+	font-family:
+		-apple-system,
+		BlinkMacSystemFont,
+		'Segoe UI',
+		'Noto Sans',
+		Helvetica,
+		Arial,
+		sans-serif;
+	margin: 0;
+	min-height: 100vh;
+	font-size: 14px;
+	line-height: 1.5;
+	-webkit-font-smoothing: antialiased;
+	-moz-osx-font-smoothing: grayscale;
+}
+
+/* Scrollbar styling */
+::-webkit-scrollbar {
+	width: 8px;
+	height: 8px;
+}
+
+::-webkit-scrollbar-track {
+	background: transparent;
+}
+
+::-webkit-scrollbar-thumb {
+	background: var(--ctp-surface2);
+	border-radius: 4px;
+}
+
+::-webkit-scrollbar-thumb:hover {
+	background: var(--ctp-overlay0);
+}
+
+/* Selection */
+::selection {
+	background-color: var(--ctp-primary);
+	color: white;
+}
+
+/* Focus styles */
+:focus-visible {
+	outline: 2px solid var(--ctp-primary);
+	outline-offset: 2px;
+}
+
+/* Input styling */
+input, textarea, select {
+	font-size: inherit;
+	font-family: inherit;
+	color: var(--ctp-text);
+}
+
+input::placeholder, textarea::placeholder {
+	color: var(--ctp-overlay0);
+}
+
+/* Custom select styling */
+select {
+	appearance: none;
+	background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' fill='none' viewBox='0 0 24 24' stroke='%23858585'%3E%3Cpath stroke-linecap='round' stroke-linejoin='round' stroke-width='2' d='M19 9l-7 7-7-7'/%3E%3C/svg%3E");
+	background-repeat: no-repeat;
+	background-position: right 0.5rem center;
+	background-size: 1.25rem;
+	padding-right: 2.5rem;
+}
+
+select option {
+	background-color: var(--ctp-surface0);
+	color: var(--ctp-text);
+}
+
+/* Custom checkbox styling */
+input[type="checkbox"] {
+	appearance: none;
+	width: 1rem;
+	height: 1rem;
+	border: 2px solid var(--ctp-overlay0);
+	border-radius: 0.25rem;
+	background-color: transparent;
+	cursor: pointer;
+	transition: all 0.15s ease;
+	position: relative;
+}
+
+input[type="checkbox"]:hover {
+	border-color: var(--ctp-overlay1);
+}
+
+input[type="checkbox"]:checked {
+	background-color: var(--ctp-primary);
+	border-color: var(--ctp-primary);
+}
+
+input[type="checkbox"]:checked::after {
+	content: '';
+	position: absolute;
+	left: 3px;
+	top: 0px;
+	width: 5px;
+	height: 9px;
+	border: solid white;
+	border-width: 0 2px 2px 0;
+	transform: rotate(45deg);
+}
+
+input[type="checkbox"]:focus-visible {
+	outline: 2px solid var(--ctp-primary);
+	outline-offset: 2px;
+}
+
+/* Monospace */
+code, pre, .font-mono {
+	font-family: ui-monospace, SFMono-Regular, 'SF Mono', Menlo, Consolas, 'Liberation Mono', monospace;
+}
+
+/* Type selection buttons */
+.type-btn {
+	padding: 0.75rem;
+	text-align: left;
+	border-radius: 0.5rem;
+	border: 1px solid var(--ctp-surface2);
+	background-color: var(--ctp-surface0);
+	transition: all 0.15s ease;
+}
+
+.type-btn:hover {
+	border-color: var(--ctp-overlay0);
+}
+
+.type-btn.selected {
+	border-color: var(--ctp-primary);
+	background-color: color-mix(in srgb, var(--ctp-primary) 10%, transparent);
+}
+
+.type-btn .type-label {
+	font-weight: 500;
+	color: var(--ctp-text);
+}
+
+.type-btn .type-desc {
+	font-size: 0.75rem;
+	color: var(--ctp-overlay0);
+}
+
+.type-btn.selected .type-label {
+	color: var(--ctp-primary);
+}
+
+.type-btn.selected .type-desc {
+	color: var(--ctp-primary);
+	opacity: 0.7;
+}
+
+/* Simple toggle buttons */
+.toggle-btn {
+	flex: 1;
+	padding: 0.5rem 1rem;
+	border-radius: 0.5rem;
+	border: 1px solid var(--ctp-surface2);
+	background-color: var(--ctp-surface0);
+	color: var(--ctp-text);
+	transition: all 0.15s ease;
+}
+
+.toggle-btn:hover {
+	border-color: var(--ctp-overlay0);
+}
+
+.toggle-btn.selected {
+	border-color: var(--ctp-primary);
+	background-color: color-mix(in srgb, var(--ctp-primary) 10%, transparent);
+	color: var(--ctp-primary);
+}
+
+/* Danger toggle button (for reject, etc.) */
+.toggle-btn-danger {
+	flex: 1;
+	padding: 0.5rem 1rem;
+	border-radius: 0.5rem;
+	border: 1px solid var(--ctp-surface2);
+	background-color: var(--ctp-surface0);
+	color: var(--ctp-text);
+	transition: all 0.15s ease;
+}
+
+.toggle-btn-danger:hover {
+	border-color: var(--ctp-overlay0);
+}
+
+.toggle-btn-danger.selected {
+	border-color: var(--ctp-red);
+	background-color: color-mix(in srgb, var(--ctp-red) 10%, transparent);
+	color: var(--ctp-red);
+}
+
+/* Preset buttons */
+.preset-btn {
+	padding: 0.375rem 0.75rem;
+	font-size: 0.875rem;
+	border-radius: 0.5rem;
+	border: 1px solid var(--ctp-primary);
+	background-color: color-mix(in srgb, var(--ctp-primary) 10%, transparent);
+	color: var(--ctp-primary);
+	transition: all 0.15s ease;
+}
+
+.preset-btn:hover {
+	background-color: color-mix(in srgb, var(--ctp-primary) 20%, transparent);
+}
+
+.preset-btn:disabled {
+	border-color: var(--ctp-surface2);
+	background-color: var(--ctp-surface0);
+	color: var(--ctp-overlay0);
+	cursor: not-allowed;
+}
+
+/* Status badge */
+.status-badge {
+	font-size: 0.75rem;
+	padding: 0.125rem 0.5rem;
+	border-radius: 0.25rem;
+	background-color: color-mix(in srgb, var(--ctp-primary) 20%, transparent);
+	color: var(--ctp-primary);
+}
+
+.status-badge.success {
+	background-color: color-mix(in srgb, var(--ctp-green) 20%, transparent);
+	color: var(--ctp-green);
+}
+
+.status-badge.error {
+	background-color: color-mix(in srgb, var(--ctp-red) 20%, transparent);
+	color: var(--ctp-red);
+}
+
+.status-badge.info {
+	background-color: color-mix(in srgb, var(--ctp-overlay1) 20%, transparent);
+	color: var(--ctp-overlay1);
+}
+
+/* Action button (delete, etc.) */
+.action-btn-danger {
+	padding: 0.375rem;
+	border-radius: 0.375rem;
+	color: var(--ctp-overlay1);
+	transition: all 0.15s ease;
+}
+
+.action-btn-danger:hover {
+	background-color: color-mix(in srgb, var(--ctp-red) 20%, transparent);
+	color: var(--ctp-red);
+}
+
+/* Selection chip */
+.selection-chip {
+	display: inline-flex;
+	align-items: center;
+	padding: 0.125rem 0.5rem;
+	font-size: 0.75rem;
+	border-radius: 0.25rem;
+	background-color: color-mix(in srgb, var(--ctp-primary) 20%, transparent);
+	color: var(--ctp-primary);
+}
+
+/* Query type chip (selectable) */
+.query-type-chip {
+	padding: 0.125rem 0.5rem;
+	font-size: 0.75rem;
+	border-radius: 0.25rem;
+	border: 1px solid var(--ctp-surface2);
+	background-color: transparent;
+	color: var(--ctp-overlay1);
+	transition: all 0.15s ease;
+}
+
+.query-type-chip:hover {
+	border-color: var(--ctp-overlay0);
+}
+
+.query-type-chip.selected {
+	border-color: var(--ctp-primary);
+	background-color: color-mix(in srgb, var(--ctp-primary) 20%, transparent);
+	color: var(--ctp-primary);
+}
+
+/* Import button (dashed border) */
+.import-btn {
+	width: 100%;
+	padding: 0.5rem;
+	border: 2px dashed var(--ctp-primary);
+	border-radius: 0.5rem;
+	background-color: transparent;
+	color: var(--ctp-primary);
+	transition: all 0.15s ease;
+	display: flex;
+	align-items: center;
+	justify-content: center;
+	gap: 0.5rem;
+}
+
+.import-btn:hover {
+	background-color: color-mix(in srgb, var(--ctp-primary) 10%, transparent);
+}
+
+/* Icon badge (circular icon container) */
+.icon-badge {
+	padding: 0.75rem;
+	border-radius: 0.5rem;
+	background-color: color-mix(in srgb, var(--ctp-primary) 20%, transparent);
+}
+
+.icon-badge svg {
+	color: var(--ctp-primary);
+}
+
+/* Info banner (centered indicator) */
+.info-banner {
+	display: flex;
+	align-items: center;
+	gap: 0.5rem;
+	padding: 0.5rem 1rem;
+	border-radius: 0.5rem;
+	background-color: color-mix(in srgb, var(--ctp-primary) 10%, transparent);
+}
+
+/* Alert box variants */
+.alert-box {
+	padding: 0.75rem 1rem;
+	border-radius: 0.5rem;
+	border: 1px solid;
+}
+
+.alert-box.primary {
+	background-color: color-mix(in srgb, var(--ctp-primary) 10%, transparent);
+	border-color: var(--ctp-primary);
+}
+
+.alert-box.error {
+	background-color: color-mix(in srgb, var(--ctp-red) 10%, transparent);
+	border-color: var(--ctp-red);
+}
+
+/* Dropzone */
+.dropzone {
+	border: 2px dashed var(--ctp-surface2);
+	border-radius: 0.5rem;
+	padding: 2rem;
+	text-align: center;
+	transition: all 0.15s ease;
+	cursor: pointer;
+}
+
+.dropzone:hover {
+	border-color: var(--ctp-overlay0);
+}
+
+.dropzone.active {
+	border-color: var(--ctp-primary);
+	background-color: color-mix(in srgb, var(--ctp-primary) 5%, transparent);
+}
+
+/* Result card */
+.result-card {
+	padding: 1rem;
+	border-radius: 0.5rem;
+	border: 1px solid;
+}
+
+.result-card.success {
+	background-color: color-mix(in srgb, var(--ctp-primary) 10%, transparent);
+	border-color: var(--ctp-primary);
+}
+
+.result-card.error {
+	background-color: color-mix(in srgb, var(--ctp-red) 10%, transparent);
+	border-color: var(--ctp-red);
+}
+
+/* Selectable card (for setup wizard, etc.) */
+.selectable-card {
+	width: 100%;
+	padding: 1rem;
+	border-radius: 0.5rem;
+	border: 2px solid var(--ctp-surface2);
+	text-align: left;
+	transition: all 0.15s ease;
+	background-color: transparent;
+}
+
+.selectable-card:hover {
+	border-color: var(--ctp-overlay0);
+}
+
+.selectable-card.selected {
+	border-color: var(--ctp-primary);
+	background-color: color-mix(in srgb, var(--ctp-primary) 10%, transparent);
+}
+
+.selectable-card-lg {
+	padding: 1.5rem;
+}
+
+/* Success icon circle */
+.success-icon-circle {
+	width: 5rem;
+	height: 5rem;
+	margin: 0 auto;
+	border-radius: 9999px;
+	background-color: color-mix(in srgb, var(--ctp-primary) 20%, transparent);
+	display: flex;
+	align-items: center;
+	justify-content: center;
+}
+
+.success-icon-circle svg {
+	width: 2.5rem;
+	height: 2.5rem;
+	color: var(--ctp-primary);
+}

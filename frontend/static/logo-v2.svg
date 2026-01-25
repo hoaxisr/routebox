@@ -1,0 +1,40 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64" fill="none">
+  <defs>
+    <!-- Gradient for depth - Anthropic coral -->
+    <linearGradient id="boxGrad" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#e08a6c"/>
+      <stop offset="100%" stop-color="#c45d3e"/>
+    </linearGradient>
+    <linearGradient id="lineGrad" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#da7756"/>
+      <stop offset="100%" stop-color="#b5502f"/>
+    </linearGradient>
+  </defs>
+
+  <!-- Route paths - flowing lines -->
+  <!-- Top route with arrow -->
+  <path d="M32 18 L32 4" stroke="url(#lineGrad)" stroke-width="3" stroke-linecap="round"/>
+  <path d="M28 8 L32 3 L36 8" stroke="url(#lineGrad)" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" fill="none"/>
+
+  <!-- Left route with arrow -->
+  <path d="M18 32 L4 32" stroke="url(#lineGrad)" stroke-width="3" stroke-linecap="round"/>
+  <path d="M8 28 L3 32 L8 36" stroke="url(#lineGrad)" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" fill="none"/>
+
+  <!-- Right route with arrow -->
+  <path d="M46 32 L60 32" stroke="url(#lineGrad)" stroke-width="3" stroke-linecap="round"/>
+  <path d="M56 28 L61 32 L56 36" stroke="url(#lineGrad)" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" fill="none"/>
+
+  <!-- Bottom route with arrow -->
+  <path d="M32 46 L32 60" stroke="url(#lineGrad)" stroke-width="3" stroke-linecap="round"/>
+  <path d="M28 56 L32 61 L36 56" stroke="url(#lineGrad)" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" fill="none"/>
+
+  <!-- Central box with rounded corners and gradient -->
+  <rect x="18" y="18" width="28" height="28" rx="6" fill="url(#boxGrad)"/>
+
+  <!-- Inner grid pattern suggesting routing/network -->
+  <path d="M26 22 L26 42 M38 22 L38 42 M22 26 L42 26 M22 38 L42 38"
+        stroke="white" stroke-width="1.5" stroke-linecap="round" opacity="0.3"/>
+
+  <!-- Central node -->
+  <circle cx="32" cy="32" r="4" fill="white" opacity="0.9"/>
+</svg>

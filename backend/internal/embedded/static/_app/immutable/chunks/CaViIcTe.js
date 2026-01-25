@@ -1,0 +1,1 @@
+import{A as a,B as r}from"./BuVMbePc.js";function u(i,t,e,s,l){a&&r();var n=t.$$slots?.[e],f=!1;n===!0&&(n=t[e==="default"?"children":e],f=!0),n===void 0||n(i,f?()=>s:s)}function d(i){const t={};i.children&&(t.default=!0);for(const e in i.$$slots)t[e]=!0;return t}export{u as a,d as s};

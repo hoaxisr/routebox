@@ -1,0 +1,24 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64" fill="none">
+  <!-- Central box - representing "Box" - Anthropic coral -->
+  <rect x="20" y="20" width="24" height="24" rx="4" fill="#da7756"/>
+
+  <!-- Route lines going out from the box -->
+  <!-- Top-left route -->
+  <path d="M22 22 L8 8" stroke="#da7756" stroke-width="3" stroke-linecap="round"/>
+  <circle cx="6" cy="6" r="3" fill="#da7756"/>
+
+  <!-- Top-right route -->
+  <path d="M42 22 L56 8" stroke="#da7756" stroke-width="3" stroke-linecap="round"/>
+  <circle cx="58" cy="6" r="3" fill="#da7756"/>
+
+  <!-- Bottom-left route -->
+  <path d="M22 42 L8 56" stroke="#da7756" stroke-width="3" stroke-linecap="round"/>
+  <circle cx="6" cy="58" r="3" fill="#da7756"/>
+
+  <!-- Bottom-right route -->
+  <path d="M42 42 L56 56" stroke="#da7756" stroke-width="3" stroke-linecap="round"/>
+  <circle cx="58" cy="58" r="3" fill="#da7756"/>
+
+  <!-- Inner glow/detail on the box -->
+  <rect x="26" y="26" width="12" height="12" rx="2" fill="#e08a6c" opacity="0.6"/>
+</svg>

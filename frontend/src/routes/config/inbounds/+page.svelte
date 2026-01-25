@@ -1,0 +1,210 @@
+<script lang="ts">
+	import { onMount } from 'svelte';
+	import { api } from '$lib/api/client';
+	import { notifications, unsavedChanges } from '$lib/stores';
+	import type { Inbound } from '$lib/types';
+	import Modal from '$lib/components/shared/Modal.svelte';
+	import InboundForm from '$lib/components/config/InboundForm.svelte';
+
+	let inbounds = $state<Inbound[]>([]);
+	let loading = $state(true);
+
+	// Modal state
+	let showModal = $state(false);
+	let editingInbound = $state<Inbound | undefined>(undefined);
+	let saving = $state(false);
+
+	async function fetchInbounds() {
+		try {
+			inbounds = await api.listInbounds();
+		} catch (e) {
+			notifications.error(`Failed to load inbounds: ${e}`);
+		} finally {
+			loading = false;
+		}
+	}
+
+	function openCreate() {
+		editingInbound = undefined;
+		showModal = true;
+	}
+
+	function openEdit(inbound: Inbound) {
+		editingInbound = inbound;
+		showModal = true;
+	}
+
+	function closeModal() {
+		showModal = false;
+		editingInbound = undefined;
+	}
+
+	async function handleSave(inbound: Inbound) {
+		saving = true;
+		try {
+			if (editingInbound) {
+				await api.updateInbound(editingInbound.tag, inbound);
+				notifications.success(`Inbound "${inbound.tag}" updated`);
+				unsavedChanges.markChanged('Inbounds', `Updated "${inbound.tag}"`);
+			} else {
+				await api.createInbound(inbound);
+				notifications.success(`Inbound "${inbound.tag}" created`);
+				unsavedChanges.markChanged('Inbounds', `Created "${inbound.tag}"`);
+			}
+			closeModal();
+			await fetchInbounds();
+		} catch (e) {
+			notifications.error(`Failed to save: ${e}`);
+		} finally {
+			saving = false;
+		}
+	}
+
+	async function handleDelete(tag: string) {
+		if (!confirm(`Delete inbound "${tag}"?`)) return;
+
+		try {
+			await api.deleteInbound(tag);
+			notifications.success(`Inbound "${tag}" deleted`);
+			unsavedChanges.markChanged('Inbounds', `Deleted "${tag}"`);
+			await fetchInbounds();
+		} catch (e) {
+			notifications.error(`Failed to delete: ${e}`);
+		}
+	}
+
+	async function applyChanges() {
+		try {
+			const result = await api.applyConfig();
+			notifications.success(result.message);
+			unsavedChanges.clearChanges();
+		} catch (e) {
+			notifications.error(`Failed to apply: ${e}`);
+		}
+	}
+
+	function getInboundColor(type: string) {
+		switch (type) {
+			case 'tun':
+				return 'var(--ctp-primary)';
+			case 'mixed':
+				return 'var(--ctp-primary)';
+			case 'socks':
+				return 'var(--ctp-primary)';
+			case 'http':
+				return 'var(--ctp-primary)';
+			default:
+				return 'var(--ctp-overlay1)';
+		}
+	}
+
+	function getInboundIcon(type: string) {
+		switch (type) {
+			case 'tun':
+				return 'M13 10V3L4 14h7v7l9-11h-7z'; // lightning bolt for system-level
+			case 'mixed':
+				return 'M8 16H6a2 2 0 01-2-2V6a2 2 0 012-2h8a2 2 0 012 2v2m-6 12h8a2 2 0 002-2v-8a2 2 0 00-2-2h-8a2 2 0 00-2 2v8a2 2 0 002 2z'; // overlapping squares
+			default:
+				return 'M5 12h14M5 12a2 2 0 01-2-2V6a2 2 0 012-2h14a2 2 0 012 2v4a2 2 0 01-2 2M5 12a2 2 0 00-2 2v4a2 2 0 002 2h14a2 2 0 002-2v-4a2 2 0 00-2-2';
+		}
+	}
+
+	onMount(fetchInbounds);
+</script>
+
+<div class="space-y-6">
+	<div class="flex items-center justify-between">
+		<h1 class="text-2xl font-bold text-[var(--ctp-text)]">Inbounds</h1>
+		<div class="flex items-center gap-2">
+			<button
+				onclick={applyChanges}
+				class="px-4 py-2 bg-[var(--ctp-primary)] text-white rounded-lg hover:opacity-90 transition-opacity"
+			>
+				Apply Changes
+			</button>
+			<button
+				onclick={openCreate}
+				class="px-4 py-2 bg-[var(--ctp-primary)] text-white rounded-lg hover:opacity-90 transition-opacity"
+			>
+				+ Add Inbound
+			</button>
+		</div>
+	</div>
+
+	{#if loading}
+		<div class="text-[var(--ctp-overlay0)]">Loading...</div>
+	{:else if inbounds.length === 0}
+		<div class="bg-[var(--ctp-surface0)] rounded-xl p-8 text-center">
+			<div class="text-[var(--ctp-overlay1)] mb-4">No inbounds configured</div>
+			<button
+				onclick={openCreate}
+				class="px-4 py-2 bg-[var(--ctp-primary)] text-white rounded-lg hover:opacity-90 transition-opacity"
+			>
+				Add your first inbound
+			</button>
+		</div>
+	{:else}
+		<div class="space-y-3">
+			{#each inbounds as inbound}
+				<div class="bg-[var(--ctp-surface0)] rounded-xl p-4 hover:bg-[var(--ctp-surface1)] transition-colors">
+					<div class="flex items-center justify-between">
+						<div class="flex items-center gap-4">
+							<div
+								class="w-10 h-10 rounded-lg flex items-center justify-center"
+								style="background-color: color-mix(in srgb, {getInboundColor(inbound.type)} 20%, transparent)"
+							>
+								<svg class="w-5 h-5" style="color: {getInboundColor(inbound.type)}" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+									<path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d={getInboundIcon(inbound.type)} />
+								</svg>
+							</div>
+							<div>
+								<div class="flex items-center gap-2">
+									<span class="font-semibold text-[var(--ctp-text)]">{inbound.tag}</span>
+									<span class="px-2 py-0.5 text-xs bg-[var(--ctp-surface2)] rounded text-[var(--ctp-subtext1)]">
+										{inbound.type.toUpperCase()}
+									</span>
+								</div>
+								<div class="text-sm text-[var(--ctp-overlay1)] mt-1">
+									{#if inbound.type === 'tun'}
+										{(inbound as any).interface_name ?? 'sing0'}
+										{#if inbound.auto_route}
+											<span class="text-[var(--ctp-primary)]">• auto_route</span>
+										{/if}
+									{:else}
+										{inbound.listen ?? '127.0.0.1'}:{inbound.listen_port ?? 1080}
+									{/if}
+								</div>
+							</div>
+						</div>
+
+						<div class="flex items-center gap-2">
+							<button
+								onclick={() => openEdit(inbound)}
+								class="p-2 hover:bg-[var(--ctp-surface2)] rounded-lg transition-colors"
+								title="Edit"
+							>
+								<svg class="w-5 h-5 text-[var(--ctp-overlay1)]" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+									<path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z" />
+								</svg>
+							</button>
+							<button
+								onclick={() => handleDelete(inbound.tag)}
+								class="action-btn-danger"
+								title="Delete"
+							>
+								<svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+									<path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
+								</svg>
+							</button>
+						</div>
+					</div>
+				</div>
+			{/each}
+		</div>
+	{/if}
+</div>
+
+<!-- Modal -->
+<Modal open={showModal} title={editingInbound ? 'Edit Inbound' : 'Add Inbound'} size="lg" onClose={closeModal}>
+	<InboundForm inbound={editingInbound} onSave={handleSave} onCancel={closeModal} />
+</Modal>
