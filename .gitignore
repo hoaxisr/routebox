@@ -3,6 +3,7 @@
 !.gitignore
 !README.md
 !install.sh
+
 !LICENSE
 !routebox.toml
 !releases/
