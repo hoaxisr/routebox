@@ -93,33 +93,33 @@ enabled = true
 
 ## GeoIP (флаги стран)
 
-RouteBox может показывать флаги стран и информацию о провайдерах для активных соединений.
+RouteBox показывает флаги стран для активных соединений. База данных [IPLocate.io](https://iplocate.io) скачивается автоматически при установке.
 
-### Установка GeoIP базы
+**Что включено:**
+- Флаги стран рядом с IP-адресами
+- Название страны при наведении
+- Фильтрация по стране
 
-1. Скачайте бесплатную базу IPInfo:
-   https://ipinfo.io/developers/free-ip-database
+GeoIP работает из коробки — никаких дополнительных действий не требуется.
 
-2. Поместите файл `.mmdb` в `/etc/routebox/`
+### Обновление базы
 
-3. Обновите настройки:
-   ```bash
-   sudo nano /etc/routebox/routebox.toml
-   ```
+База обновляется ежедневно. Для ручного обновления:
 
-   Установите путь:
-   ```toml
-   [geoip]
-   path = "/etc/routebox/ipinfo_lite.mmdb"
-   enabled = true
-   ```
+```bash
+curl -fsSL -o /etc/routebox/geoip.mmdb \
+  https://github.com/iplocate/ip-address-databases/raw/main/ip-to-country/ip-to-country.mmdb
+sudo systemctl restart routebox
+```
 
-4. Перезапустите сервис:
-   ```bash
-   sudo systemctl restart routebox
-   ```
+### Альтернативные базы
 
-После этого в списке соединений появятся флаги стран, а при наведении — информация о провайдере.
+Можно использовать другие MMDB базы (IPInfo, MaxMind):
+
+```toml
+[geoip]
+path = "/etc/routebox/custom-geoip.mmdb"
+```
 
 ## Параметры запуска
 

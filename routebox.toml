@@ -10,16 +10,17 @@
 # =============================================================================
 # GeoIP Configuration
 # =============================================================================
-# GeoIP enrichment adds country flags and network information to connections.
-# Supports MaxMind and IPInfo MMDB format databases.
+# GeoIP enrichment adds country flags and country information to connections.
+# Supports IPLocate.io, IPInfo, and MaxMind MMDB format databases.
+# Database is downloaded automatically during installation.
 
 [geoip]
 # Path to the MMDB database file.
-# Recommended: IPInfo Lite (free) or MaxMind GeoLite2
-# Download: https://ipinfo.io/developers/free-ip-database
+# Default: IPLocate.io free database (auto-downloaded)
+# Alternatives: IPInfo Lite, MaxMind GeoLite2
 # Leave empty to disable GeoIP features.
 # [restart]
-path = ""
+path = "/etc/routebox/geoip.mmdb"
 
 # Enable or disable GeoIP enrichment for connections.
 # When disabled, the database stays loaded but enrichment is skipped.

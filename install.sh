@@ -22,6 +22,8 @@ CONFIG_DIR="/etc/routebox"
 SINGBOX_CONFIG_DIR="/etc/amnezia-box"
 SERVICE_NAME="routebox"
 SETTINGS_FILE="routebox.toml"
+GEOIP_FILE="geoip.mmdb"
+GEOIP_URL="https://github.com/iplocate/ip-address-databases/raw/main/ip-to-country/ip-to-country.mmdb"
 
 # Check root
 if [ "$EUID" -ne 0 ]; then
@@ -156,6 +158,24 @@ else
     echo "Settings file exists, keeping: ${CONFIG_DIR}/${SETTINGS_FILE}"
 fi
 
+# Download GeoIP database if not exists
+if [ ! -f ${CONFIG_DIR}/${GEOIP_FILE} ]; then
+    echo "Downloading GeoIP database..."
+    if command -v curl &> /dev/null; then
+        curl -fsSL -o ${CONFIG_DIR}/${GEOIP_FILE} "${GEOIP_URL}" 2>/dev/null || true
+    elif command -v wget &> /dev/null; then
+        wget -q -O ${CONFIG_DIR}/${GEOIP_FILE} "${GEOIP_URL}" 2>/dev/null || true
+    fi
+
+    if [ -f ${CONFIG_DIR}/${GEOIP_FILE} ]; then
+        echo "GeoIP database installed: ${CONFIG_DIR}/${GEOIP_FILE}"
+    else
+        echo -e "${YELLOW}Note: Could not download GeoIP database. Flags will not be shown.${NC}"
+    fi
+else
+    echo "GeoIP database exists, keeping: ${CONFIG_DIR}/${GEOIP_FILE}"
+fi
+
 # Enable IP forwarding
 echo ""
 echo "Configuring system..."
@@ -203,6 +223,7 @@ echo "╚═══════════════════════�
 echo ""
 echo "Binary:   ${INSTALL_DIR}/${BINARY_NAME}"
 echo "Settings: ${CONFIG_DIR}/${SETTINGS_FILE}"
+echo "GeoIP:    ${CONFIG_DIR}/${GEOIP_FILE}"
 echo "Config:   ${SINGBOX_CONFIG_DIR}"
 echo ""
 echo -e "${GREEN}Next steps:${NC}"
@@ -214,15 +235,4 @@ echo "2. Open in browser:"
 echo -e "   ${GREEN}http://${IP}:8080${NC}"
 echo ""
 echo "3. Follow the setup wizard"
-echo ""
-echo -e "${BLUE}Optional: GeoIP (country flags in connections)${NC}"
-echo ""
-echo "   Download IPInfo database (free):"
-echo "   https://ipinfo.io/developers/free-ip-database"
-echo ""
-echo "   Place the .mmdb file and update settings:"
-echo "   nano ${CONFIG_DIR}/${SETTINGS_FILE}"
-echo ""
-echo "   Set geoip.path = \"/path/to/ipinfo.mmdb\""
-echo "   Then restart: sudo systemctl restart routebox"
 echo ""
