@@ -61,6 +61,12 @@
 						{#if displayCount > 0}
 							<span class="ml-2 text-sm opacity-80">({$t('changes.linesChanged', { values: { count: displayCount } })})</span>
 						{/if}
+						<a
+							href="/config?tab=diff"
+							class="ml-2 text-sm underline hover:no-underline"
+						>
+							{$t('changes.viewDiff')}
+						</a>
 						{#if changesState.changes.length > 0}
 							<button
 								type="button"

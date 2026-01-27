@@ -5,6 +5,19 @@ import (
 	"net/http"
 )
 
+// GetVersion returns the sing-box version and feature flags
+func (h *Handler) GetVersion(w http.ResponseWriter, r *http.Request) {
+	version, err := h.process.GetVersion()
+	if err != nil {
+		version = ""
+	}
+	features := h.process.GetFeatureFlags()
+	writeSuccess(w, map[string]interface{}{
+		"version":  version,
+		"features": features,
+	})
+}
+
 // GetStatus returns amnezia-box process status
 func (h *Handler) GetStatus(w http.ResponseWriter, r *http.Request) {
 	status := h.process.GetStatus()

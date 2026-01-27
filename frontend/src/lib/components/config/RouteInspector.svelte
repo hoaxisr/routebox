@@ -62,14 +62,17 @@
 			case 'reject': return 'var(--ctp-red)';
 			case 'sniff': return 'var(--ctp-blue)';
 			case 'hijack-dns': return 'var(--ctp-yellow)';
+			case 'route-options': return 'var(--ctp-peach, var(--ctp-primary))';
+			case 'resolve': return 'var(--ctp-teal, var(--ctp-blue))';
 			default: return 'var(--ctp-overlay1)';
 		}
 	}
 
 	// Get the matched rule from result
 	let matchedRuleData = $derived.by(() => {
-		if (!result || result.matched_rule < 0) return null;
-		return result.matches.find(m => m.index === result.matched_rule);
+		const r = result;
+		if (!r || r.matched_rule < 0) return null;
+		return r.matches.find(m => m.index === r.matched_rule);
 	});
 </script>
 

@@ -22,6 +22,21 @@ func (m *Manager) getRouteArray(key string) []interface{} {
 	return []interface{}{}
 }
 
+// hasTunAutoRedirect checks if any TUN inbound in the working config has auto_redirect enabled.
+// Must be called with m.mu held.
+func (m *Manager) hasTunAutoRedirect() bool {
+	for _, ib := range m.getArray("inbounds") {
+		if obj, ok := ib.(map[string]interface{}); ok {
+			if ibType, _ := obj["type"].(string); ibType == "tun" {
+				if ar, ok := obj["auto_redirect"].(bool); ok && ar {
+					return true
+				}
+			}
+		}
+	}
+	return false
+}
+
 // --- Rule Sets CRUD (tag-based) ---
 
 // ListRuleSets returns all rule sets
@@ -81,14 +96,28 @@ func (m *Manager) DeleteRuleSet(tag string) error {
 		return fmt.Errorf("rule set '%s' not found", tag)
 	}
 
-	// Check if any rule references this rule set
+	// Check if any route rule references this rule set
 	rules := m.getRouteArray("rules")
 	for i, rule := range rules {
 		if obj, ok := rule.(map[string]interface{}); ok {
 			if ruleSets, ok := obj["rule_set"].([]interface{}); ok {
 				for _, rs := range ruleSets {
 					if rsTag, ok := rs.(string); ok && rsTag == tag {
-						return fmt.Errorf("cannot delete rule set '%s': referenced by rule[%d]", tag, i)
+						return fmt.Errorf("cannot delete rule set '%s': referenced by route rule[%d]", tag, i)
+					}
+				}
+			}
+		}
+	}
+
+	// Check if any DNS rule references this rule set
+	dnsRules := m.getDnsArray("rules")
+	for i, rule := range dnsRules {
+		if obj, ok := rule.(map[string]interface{}); ok {
+			if ruleSets, ok := obj["rule_set"].([]interface{}); ok {
+				for _, rs := range ruleSets {
+					if rsTag, ok := rs.(string); ok && rsTag == tag {
+						return fmt.Errorf("cannot delete rule set '%s': referenced by dns rule[%d]", tag, i)
 					}
 				}
 			}
@@ -107,6 +136,44 @@ func (m *Manager) DeleteRuleSet(tag string) error {
 	if draftIdx >= 0 {
 		route["rule_set"] = append(draftArr[:draftIdx], draftArr[draftIdx+1:]...)
 	}
+
+	return m.saveDraftToDisk()
+}
+
+// UpdateRuleSet updates an existing rule set by tag in draft
+func (m *Manager) UpdateRuleSet(tag string, rs map[string]interface{}) error {
+	// Validate
+	errs := validateRuleSet(rs, 0)
+	if len(errs) > 0 {
+		return fmt.Errorf("validation failed: %s", errs[0])
+	}
+
+	m.mu.Lock()
+	defer m.mu.Unlock()
+
+	arr := m.getRouteArray("rule_set")
+	idx := findByTag(arr, tag)
+	if idx < 0 {
+		return fmt.Errorf("rule set '%s' not found", tag)
+	}
+
+	// Ensure draft exists before modifying
+	if err := m.ensureDraftUnlocked(); err != nil {
+		return err
+	}
+
+	// Modify draft — replace the rule set at the same index
+	route := m.getDraftRoute()
+	draftArr := m.getDraftRouteArray("rule_set")
+	draftIdx := findByTag(draftArr, tag)
+	if draftIdx < 0 {
+		return fmt.Errorf("rule set '%s' not found in draft", tag)
+	}
+
+	// Preserve the tag (don't allow tag changes through this endpoint)
+	rs["tag"] = tag
+	draftArr[draftIdx] = rs
+	route["rule_set"] = draftArr
 
 	return m.saveDraftToDisk()
 }
@@ -310,7 +377,16 @@ func (m *Manager) ReorderRules(from, to int) error {
 
 // --- Route Settings ---
 
-// GetRouteSettings returns final outbound and auto_detect_interface
+// routeSettingsKeys lists all route-level settings fields we read/write
+var routeSettingsKeys = []string{
+	"final", "auto_detect_interface",
+	"default_interface", "default_mark",
+	"default_domain_resolver",
+	"default_network_strategy", "default_network_type",
+	"default_fallback_network_type", "default_fallback_delay",
+}
+
+// GetRouteSettings returns route-level settings
 func (m *Manager) GetRouteSettings() map[string]interface{} {
 	m.mu.RLock()
 	defer m.mu.RUnlock()
@@ -318,17 +394,16 @@ func (m *Manager) GetRouteSettings() map[string]interface{} {
 	route := m.getRoute()
 	result := make(map[string]interface{})
 
-	if final, ok := route["final"].(string); ok {
-		result["final"] = final
-	}
-	if autoDetect, ok := route["auto_detect_interface"].(bool); ok {
-		result["auto_detect_interface"] = autoDetect
+	for _, key := range routeSettingsKeys {
+		if val, ok := route[key]; ok {
+			result[key] = val
+		}
 	}
 
 	return result
 }
 
-// UpdateRouteSettings updates final outbound and auto_detect_interface in draft
+// UpdateRouteSettings merges provided settings into draft (null-safe: only overwrites keys present in payload)
 func (m *Manager) UpdateRouteSettings(settings map[string]interface{}) error {
 	m.mu.Lock()
 	defer m.mu.Unlock()
@@ -343,7 +418,6 @@ func (m *Manager) UpdateRouteSettings(settings map[string]interface{}) error {
 				}
 			}
 		}
-		// AWG/WireGuard endpoints can be used directly as final outbound
 		endpointTags := make(map[string]bool)
 		for _, ep := range m.getArray("endpoints") {
 			if obj, ok := ep.(map[string]interface{}); ok {
@@ -357,20 +431,119 @@ func (m *Manager) UpdateRouteSettings(settings map[string]interface{}) error {
 		}
 	}
 
+	// Validate default_network_strategy if provided
+	if strategy, ok := settings["default_network_strategy"].(string); ok && strategy != "" {
+		valid := map[string]bool{"prefer_ipv4": true, "prefer_ipv6": true, "ipv4_only": true, "ipv6_only": true}
+		if !valid[strategy] {
+			return fmt.Errorf("invalid default_network_strategy: %s", strategy)
+		}
+	}
+
+	// Check default_interface + default_network_strategy conflict
+	// Need to consider both incoming settings and existing route values
+	currentRoute := m.getRoute()
+	effectiveInterface := ""
+	effectiveStrategy := ""
+	if di, ok := settings["default_interface"].(string); ok {
+		effectiveInterface = di
+	} else if di, ok := currentRoute["default_interface"].(string); ok {
+		effectiveInterface = di
+	}
+	if ns, ok := settings["default_network_strategy"].(string); ok {
+		effectiveStrategy = ns
+	} else if ns, ok := currentRoute["default_network_strategy"].(string); ok {
+		effectiveStrategy = ns
+	}
+	if effectiveInterface != "" && effectiveStrategy != "" {
+		return fmt.Errorf("default_interface conflicts with default_network_strategy — cannot use both simultaneously")
+	}
+
+	// Validate default_mark if provided
+	if mark, ok := settings["default_mark"]; ok {
+		if markNum, ok := mark.(float64); ok && markNum < 0 {
+			return fmt.Errorf("default_mark must be >= 0")
+		}
+		// Check auto_redirect conflict
+		if markNum, ok := mark.(float64); ok && markNum != 0 {
+			if m.hasTunAutoRedirect() {
+				return fmt.Errorf("default_mark conflicts with tun auto_redirect — they use overlapping firewall marks (see sing-box docs)")
+			}
+		}
+	}
+
 	// Ensure draft exists before modifying
 	if err := m.ensureDraftUnlocked(); err != nil {
 		return err
 	}
 
-	// Modify draft
+	// Merge only provided keys into draft (null-safe)
 	route := m.getDraftRoute()
-
-	if final, ok := settings["final"].(string); ok && final != "" {
-		route["final"] = final
-	}
-	if autoDetect, ok := settings["auto_detect_interface"].(bool); ok {
-		route["auto_detect_interface"] = autoDetect
+	for _, key := range routeSettingsKeys {
+		if val, exists := settings[key]; exists {
+			if val == nil || val == "" {
+				delete(route, key)
+			} else {
+				route[key] = val
+			}
+		}
 	}
 
 	return m.saveDraftToDisk()
+}
+
+// --- Rule Sets Usage ---
+
+// GetRuleSetsUsage scans route.rules and dns.rules to find which rules reference each rule set tag.
+// Returns a map: { "tag": { "route_rules": [0, 3], "dns_rules": [1] }, ... }
+func (m *Manager) GetRuleSetsUsage() map[string]map[string][]int {
+	m.mu.RLock()
+	defer m.mu.RUnlock()
+
+	usage := make(map[string]map[string][]int)
+
+	// Initialize entries for all known rule set tags
+	for _, item := range m.getRouteArray("rule_set") {
+		if obj, ok := item.(map[string]interface{}); ok {
+			if tag, ok := obj["tag"].(string); ok {
+				usage[tag] = map[string][]int{
+					"route_rules": {},
+					"dns_rules":   {},
+				}
+			}
+		}
+	}
+
+	// Scan route rules
+	routeRules := m.getRouteArray("rules")
+	for i, rule := range routeRules {
+		if obj, ok := rule.(map[string]interface{}); ok {
+			if ruleSets, ok := obj["rule_set"].([]interface{}); ok {
+				for _, rs := range ruleSets {
+					if rsTag, ok := rs.(string); ok {
+						if entry, exists := usage[rsTag]; exists {
+							entry["route_rules"] = append(entry["route_rules"], i)
+						}
+					}
+				}
+			}
+		}
+	}
+
+	// Scan DNS rules
+	dnsRules := m.getDnsArray("rules")
+	for i, rule := range dnsRules {
+		if obj, ok := rule.(map[string]interface{}); ok {
+			if ruleSets, ok := obj["rule_set"].([]interface{}); ok {
+				for _, rs := range ruleSets {
+					if rsTag, ok := rs.(string); ok {
+						if entry, exists := usage[rsTag]; exists {
+							entry["dns_rules"] = append(entry["dns_rules"], i)
+						}
+					}
+				}
+			}
+		}
+	}
+
+	return usage
 }

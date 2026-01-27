@@ -2,9 +2,8 @@
 	import { onMount } from 'svelte';
 	import { t } from 'svelte-i18n';
 	import { api } from '$lib/api/client';
-	import { notifications, unsavedChanges } from '$lib/stores';
+	import { notifications, unsavedChanges, featureFlags } from '$lib/stores';
 	import type { RouteRule, RuleSet, Outbound, Inbound, RouteSettings, Endpoint } from '$lib/types';
-	import RuleSetForm from '$lib/components/config/RuleSetForm.svelte';
 	import RuleForm from '$lib/components/config/RuleForm.svelte';
 	import RuleTemplates from '$lib/components/config/RuleTemplates.svelte';
 	import RuleWizard from '$lib/components/config/RuleWizard.svelte';
@@ -35,15 +34,11 @@
 	let rulesExpanded = $state(false);
 
 	// Modal states
-	let showRuleSetForm = $state(false);
 	let showRuleForm = $state(false);
 	let showTemplates = $state(false);
 	let showWizard = $state(false);
-	let showAddMenu = $state(false);
 	let showCreateMenu = $state(false);
 	let editingRuleIndex = $state<number | null>(null);
-	let editingRuleSet = $state<RuleSet | null>(null);
-	let viewingRuleSet = $state<RuleSet | null>(null);
 
 	async function fetchData() {
 		try {
@@ -119,122 +114,6 @@
 		});
 	});
 
-	// Derived: rule-sets that already have rules (for hiding in advanced form)
-	let usedRuleSets = $derived(new Set(ruleSetOutboundMap.keys()));
-
-	// Rule Set handlers
-	async function handleCreateRuleSet(ruleSet: RuleSet, routeConfig?: { outbound?: string; action?: string }) {
-		try {
-			await api.createRuleSet(ruleSet);
-			ruleSets = [...ruleSets, ruleSet];
-
-			// If route config provided, also create a rule
-			if (routeConfig && (routeConfig.outbound || routeConfig.action === 'reject')) {
-				const rule: RouteRule = {
-					rule_set: [ruleSet.tag]
-				};
-				if (routeConfig.action === 'reject') {
-					rule.action = 'reject';
-				} else if (routeConfig.outbound) {
-					rule.outbound = routeConfig.outbound;
-				}
-				await api.createRule(rule);
-				rules = [...rules, rule];
-				unsavedChanges.markChanged('Routes', `Created rule set "${ruleSet.tag}" with route to ${routeConfig.action === 'reject' ? 'REJECT' : routeConfig.outbound}`);
-			} else {
-				unsavedChanges.markChanged('Routes', `Created rule set "${ruleSet.tag}"`);
-			}
-
-			showRuleSetForm = false;
-			editingRuleSet = null;
-			hasChanges = true;
-			notifications.success(`Rule set '${ruleSet.tag}' created`);
-		} catch (e) {
-			notifications.error(`${e}`);
-		}
-	}
-
-	async function handleUpdateRuleSet(ruleSet: RuleSet, routeConfig?: { outbound?: string; action?: string }) {
-		if (!editingRuleSet) return;
-		const oldTag = editingRuleSet.tag;
-		try {
-			// Check if rule set itself changed (not just the route config)
-			const ruleSetChanged =
-				editingRuleSet.tag !== ruleSet.tag ||
-				editingRuleSet.type !== ruleSet.type ||
-				editingRuleSet.format !== ruleSet.format ||
-				editingRuleSet.url !== ruleSet.url ||
-				editingRuleSet.path !== ruleSet.path ||
-				editingRuleSet.download_detour !== ruleSet.download_detour ||
-				editingRuleSet.update_interval !== ruleSet.update_interval;
-
-			const existingMapping = ruleSetOutboundMap.get(oldTag);
-
-			// Only update rule set if it actually changed
-			if (ruleSetChanged) {
-				// If rule set is referenced by a rule, we need to update the rule first to remove reference
-				if (existingMapping) {
-					// Temporarily update the rule to not reference this rule set
-					await api.deleteRule(existingMapping.ruleIndex);
-				}
-
-				// Delete old and create new rule set
-				await api.deleteRuleSet(oldTag);
-				await api.createRuleSet(ruleSet);
-				ruleSets = ruleSets.map(rs => rs.tag === oldTag ? ruleSet : rs);
-			}
-
-			// Handle route config changes
-			if (routeConfig && (routeConfig.outbound || routeConfig.action === 'reject')) {
-				const rule: RouteRule = { rule_set: [ruleSet.tag] };
-				if (routeConfig.action === 'reject') {
-					rule.action = 'reject';
-				} else if (routeConfig.outbound) {
-					rule.outbound = routeConfig.outbound;
-				}
-
-				if (existingMapping && !ruleSetChanged) {
-					// Just update the existing rule (rule set didn't change)
-					await api.updateRule(existingMapping.ruleIndex, rule);
-					rules = rules.map((r, i) => i === existingMapping.ruleIndex ? rule : r);
-				} else {
-					// Create new rule (either new mapping or we deleted the old rule above)
-					await api.createRule(rule);
-					if (ruleSetChanged && existingMapping) {
-						// We deleted the old rule, so adjust the rules array
-						rules = rules.filter((_, i) => i !== existingMapping.ruleIndex);
-					}
-					rules = [...rules, rule];
-				}
-			} else if (existingMapping && !ruleSetChanged) {
-				// Route config removed - delete the rule
-				await api.deleteRule(existingMapping.ruleIndex);
-				rules = rules.filter((_, i) => i !== existingMapping.ruleIndex);
-			}
-
-			showRuleSetForm = false;
-			editingRuleSet = null;
-			hasChanges = true;
-			unsavedChanges.markChanged('Routes', `Updated rule set "${ruleSet.tag}"`);
-			notifications.success(`Rule set '${ruleSet.tag}' updated`);
-		} catch (e) {
-			notifications.error(`${e}`);
-		}
-	}
-
-	async function handleDeleteRuleSet(tag: string) {
-		if (!confirm(`Delete rule set "${tag}"?`)) return;
-		try {
-			await api.deleteRuleSet(tag);
-			ruleSets = ruleSets.filter(rs => rs.tag !== tag);
-			hasChanges = true;
-			unsavedChanges.markChanged('Routes', `Deleted rule set "${tag}"`);
-			notifications.success(`Rule set '${tag}' deleted`);
-		} catch (e) {
-			notifications.error(`${e}`);
-		}
-	}
-
 	// Route Rule handlers
 	async function handleCreateRule(rule: RouteRule) {
 		try {
@@ -255,9 +134,9 @@
 			await api.updateRule(editingRuleIndex, rule);
 			rules = rules.map((r, i) => i === editingRuleIndex ? rule : r);
 			showRuleForm = false;
-			editingRuleIndex = null;
 			hasChanges = true;
 			unsavedChanges.markChanged('Routes', `Updated rule #${editingRuleIndex + 1}`);
+			editingRuleIndex = null;
 			notifications.success('Rule updated');
 		} catch (e) {
 			notifications.error(`${e}`);
@@ -338,6 +217,65 @@
 		}
 	}
 
+	function handleRuleSetCreated(ruleSet: RuleSet) {
+		ruleSets = [...ruleSets, ruleSet];
+		hasChanges = true;
+		unsavedChanges.markChanged('Routes', `Created rule set "${ruleSet.tag}"`);
+	}
+
+	// Inline outbound change for rule set mappings
+	async function handleRuleSetOutboundChange(ruleSetTag: string, newOutbound: string) {
+		const mapping = ruleSetOutboundMap.get(ruleSetTag);
+		if (mapping) {
+			// Update existing rule
+			const updatedRule = { ...rules[mapping.ruleIndex] };
+			if (newOutbound === '__reject__') {
+				updatedRule.action = 'reject';
+				delete updatedRule.outbound;
+			} else {
+				updatedRule.action = 'route';
+				updatedRule.outbound = newOutbound;
+			}
+			try {
+				await api.updateRule(mapping.ruleIndex, updatedRule);
+				rules = rules.map((r, i) => i === mapping.ruleIndex ? updatedRule : r);
+				hasChanges = true;
+				unsavedChanges.markChanged('Routes', `Changed outbound for ${ruleSetTag}`);
+			} catch (e) {
+				notifications.error(`${e}`);
+			}
+		} else {
+			// Create new simple rule
+			const rule: RouteRule = {
+				rule_set: [ruleSetTag],
+				outbound: newOutbound,
+			};
+			try {
+				await api.createRule(rule);
+				rules = [...rules, rule];
+				hasChanges = true;
+				unsavedChanges.markChanged('Routes', `Added route for ${ruleSetTag}`);
+			} catch (e) {
+				notifications.error(`${e}`);
+			}
+		}
+	}
+
+	async function handleDeleteRuleSetMapping(ruleSetTag: string) {
+		const mapping = ruleSetOutboundMap.get(ruleSetTag);
+		if (!mapping) return;
+		if (!confirm($t('routes.deleteRuleSetMapping', { values: { tag: ruleSetTag } }) || `Remove route for ${ruleSetTag}?`)) return;
+		try {
+			await api.deleteRule(mapping.ruleIndex);
+			rules = rules.filter((_, i) => i !== mapping.ruleIndex);
+			hasChanges = true;
+			unsavedChanges.markChanged('Routes', `Removed route for ${ruleSetTag}`);
+			notifications.success($t('common.deleted'));
+		} catch (e) {
+			notifications.error(`${e}`);
+		}
+	}
+
 	// Settings handlers
 	async function handleSettingsChange() {
 		try {
@@ -374,7 +312,7 @@
 					<svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
 						<path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" />
 					</svg>
-					{$t('routes.inspector')}
+					{$t('routes.inspector.title')}
 				</button>
 			</div>
 		</div>
@@ -480,10 +418,77 @@
 						</div>
 					</label>
 				</div>
+				<div>
+					<label for="default_interface" class="block text-sm text-[var(--ctp-overlay1)] mb-1">{$t('routes.defaultInterface')}</label>
+					<input
+						id="default_interface"
+						type="text"
+						bind:value={settings.default_interface}
+						onchange={handleSettingsChange}
+						placeholder="eth0"
+						class="w-full px-3 py-2 bg-[var(--ctp-base)] border border-[var(--ctp-surface2)] rounded-lg text-[var(--ctp-text)] placeholder-[var(--ctp-overlay0)] focus:outline-none focus:ring-2 focus:ring-[var(--ctp-primary)]"
+					/>
+					<p class="mt-1 text-xs text-[var(--ctp-overlay0)]">{$t('routes.defaultInterfaceHint')}</p>
+				</div>
+				<div>
+					<label for="default_mark" class="block text-sm text-[var(--ctp-overlay1)] mb-1">{$t('routes.defaultMark')}</label>
+					<input
+						id="default_mark"
+						type="number"
+						min="0"
+						bind:value={settings.default_mark}
+						onchange={handleSettingsChange}
+						placeholder="0"
+						class="w-full px-3 py-2 bg-[var(--ctp-base)] border border-[var(--ctp-surface2)] rounded-lg text-[var(--ctp-text)] placeholder-[var(--ctp-overlay0)] focus:outline-none focus:ring-2 focus:ring-[var(--ctp-primary)]"
+					/>
+					<p class="mt-1 text-xs text-[var(--ctp-overlay0)]">{$t('routes.defaultMarkHint')}</p>
+				</div>
+				{#if $featureFlags['default_domain_resolver']}
+					<div>
+						<label for="default_domain_resolver" class="block text-sm text-[var(--ctp-overlay1)] mb-1">{$t('routes.defaultDomainResolver')}</label>
+						<input
+							id="default_domain_resolver"
+							type="text"
+							bind:value={settings.default_domain_resolver}
+							onchange={handleSettingsChange}
+							placeholder="dns-server-tag"
+							class="w-full px-3 py-2 bg-[var(--ctp-base)] border border-[var(--ctp-surface2)] rounded-lg text-[var(--ctp-text)] placeholder-[var(--ctp-overlay0)] focus:outline-none focus:ring-2 focus:ring-[var(--ctp-primary)]"
+						/>
+						<p class="mt-1 text-xs text-[var(--ctp-overlay0)]">{$t('routes.defaultDomainResolverHint')}</p>
+					</div>
+				{/if}
+				{#if $featureFlags['network_strategy']}
+					<div>
+						<label for="default_network_strategy" class="block text-sm text-[var(--ctp-overlay1)] mb-1">{$t('routes.defaultNetworkStrategy')}</label>
+						<select
+							id="default_network_strategy"
+							bind:value={settings.default_network_strategy}
+							onchange={handleSettingsChange}
+							class="w-full px-3 py-2 bg-[var(--ctp-base)] border border-[var(--ctp-surface2)] rounded-lg text-[var(--ctp-text)] focus:outline-none focus:ring-2 focus:ring-[var(--ctp-primary)]"
+						>
+							<option value="">{$t('common.default')}</option>
+							<option value="prefer_ipv4">{$t('dns.strategies.preferIpv4')}</option>
+							<option value="prefer_ipv6">{$t('dns.strategies.preferIpv6')}</option>
+							<option value="ipv4_only">{$t('dns.strategies.ipv4Only')}</option>
+							<option value="ipv6_only">{$t('dns.strategies.ipv6Only')}</option>
+						</select>
+					</div>
+					<div>
+						<label for="default_fallback_delay" class="block text-sm text-[var(--ctp-overlay1)] mb-1">{$t('routes.defaultFallbackDelay')}</label>
+						<input
+							id="default_fallback_delay"
+							type="text"
+							bind:value={settings.default_fallback_delay}
+							onchange={handleSettingsChange}
+							placeholder="300ms"
+							class="w-full px-3 py-2 bg-[var(--ctp-base)] border border-[var(--ctp-surface2)] rounded-lg text-[var(--ctp-text)] placeholder-[var(--ctp-overlay0)] focus:outline-none focus:ring-2 focus:ring-[var(--ctp-primary)]"
+						/>
+					</div>
+				{/if}
 			</div>
 		</div>
 
-		<!-- Rule Sets Section -->
+		<!-- Rule Sets Section (read-only overview) -->
 		<div class="bg-[var(--ctp-surface0)] rounded-xl overflow-hidden">
 			<div class="px-4 py-3 bg-[var(--ctp-surface1)] border-b border-[var(--ctp-surface2)] flex items-center justify-between">
 				<button
@@ -496,12 +501,15 @@
 					<span class="font-medium text-[var(--ctp-subtext1)]">{$t('routes.ruleSets')}</span>
 					<span class="text-sm text-[var(--ctp-overlay0)]">({ruleSets.length})</span>
 				</button>
-				<button
-					onclick={() => { showRuleSetForm = true; editingRuleSet = null; }}
-					class="px-3 py-1.5 text-sm bg-[var(--ctp-primary)] text-white rounded-lg hover:opacity-90 transition-opacity"
+				<a
+					href="/config/rule-sets"
+					class="px-3 py-1.5 text-sm text-[var(--ctp-primary)] hover:bg-[var(--ctp-surface2)] rounded-lg transition-colors flex items-center gap-1"
 				>
-					+ {$t('common.add')}
-				</button>
+					{$t('ruleSets.manageRuleSets')}
+					<svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+						<path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 5l7 7-7 7" />
+					</svg>
+				</a>
 			</div>
 
 			{#if ruleSetsExpanded}
@@ -514,50 +522,42 @@
 					<div class="divide-y divide-[var(--ctp-surface2)]">
 						{#each ruleSets as ruleSet}
 							{@const mapping = ruleSetOutboundMap.get(ruleSet.tag)}
-							<div class="px-4 py-3 flex items-center justify-between group">
+							<div class="group px-4 py-3 flex items-center justify-between hover:bg-[var(--ctp-surface1)] transition-colors">
 								<div class="flex items-center gap-3 min-w-0 flex-1">
 									<span class="px-2 py-0.5 text-xs rounded bg-[var(--ctp-surface2)] text-[var(--ctp-overlay1)] flex-shrink-0">
 										{ruleSet.type}
 									</span>
 									<span class="font-medium text-[var(--ctp-text)]">{ruleSet.tag}</span>
-									{#if mapping}
-										<span class="text-[var(--ctp-overlay0)]">→</span>
-										<span class="px-2 py-0.5 text-xs rounded flex-shrink-0 {mapping.action === 'reject' ? 'bg-[var(--ctp-red)] text-white' : 'bg-[var(--ctp-primary)] text-white'}">
-											{mapping.outbound}
-										</span>
-									{:else}
-										<span class="text-xs text-[var(--ctp-overlay0)] italic">{$t('routes.noRoute')}</span>
-									{/if}
+									<span class="text-[var(--ctp-overlay0)]">→</span>
+									<select
+										value={mapping ? (mapping.action === 'reject' ? '__reject__' : mapping.outbound) : ''}
+										onchange={(e) => {
+											const val = (e.target as HTMLSelectElement).value;
+											if (val) handleRuleSetOutboundChange(ruleSet.tag, val);
+										}}
+										class="px-2 py-1 text-xs rounded bg-[var(--ctp-base)] border border-[var(--ctp-surface2)] text-[var(--ctp-text)] focus:outline-none focus:ring-1 focus:ring-[var(--ctp-primary)] cursor-pointer"
+									>
+										{#if !mapping}
+											<option value="" disabled selected>{$t('routes.noRoute')}</option>
+										{/if}
+										{#each allOutbounds as ob}
+											<option value={ob.tag}>{ob.tag}</option>
+										{/each}
+										<option value="__reject__">⛔ REJECT</option>
+									</select>
 								</div>
 								<div class="flex items-center gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
-									<button
-										onclick={() => viewingRuleSet = ruleSet}
-										class="p-1.5 rounded hover:bg-[var(--ctp-surface2)] text-[var(--ctp-overlay1)]"
-										title={$t('routes.viewDetails')}
-									>
-										<svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-											<path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" />
-											<path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M2.458 12C3.732 7.943 7.523 5 12 5c4.478 0 8.268 2.943 9.542 7-1.274 4.057-5.064 7-9.542 7-4.477 0-8.268-2.943-9.542-7z" />
-										</svg>
-									</button>
-									<button
-										onclick={() => { editingRuleSet = ruleSet; showRuleSetForm = true; }}
-										class="p-1.5 rounded hover:bg-[var(--ctp-surface2)] text-[var(--ctp-overlay1)]"
-										title={$t('common.edit')}
-									>
-										<svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-											<path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z" />
-										</svg>
-									</button>
-									<button
-										onclick={() => handleDeleteRuleSet(ruleSet.tag)}
-										class="p-1.5 rounded hover:bg-[var(--ctp-red)] hover:bg-opacity-20 text-[var(--ctp-red)]"
-										title={$t('common.delete')}
-									>
-										<svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-											<path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
-										</svg>
-									</button>
+									{#if mapping}
+										<button
+											onclick={() => handleDeleteRuleSetMapping(ruleSet.tag)}
+											class="p-1.5 rounded-md hover:bg-[var(--ctp-red)] hover:bg-opacity-10 text-[var(--ctp-overlay1)] hover:text-[var(--ctp-red)] transition-colors"
+											title={$t('common.delete')}
+										>
+											<svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+												<path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
+											</svg>
+										</button>
+									{/if}
 								</div>
 							</div>
 						{/each}
@@ -629,110 +629,6 @@
 	{/if}
 </div>
 
-<!-- Rule Set Form Modal -->
-{#if showRuleSetForm}
-	<div class="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4">
-		<div class="bg-[var(--ctp-base)] rounded-xl w-full max-w-lg max-h-[90vh] overflow-y-auto">
-			<div class="px-4 py-3 border-b border-[var(--ctp-surface2)] flex items-center justify-between">
-				<h2 class="text-lg font-medium text-[var(--ctp-text)]">
-					{editingRuleSet ? `${$t('routes.editRuleSet')}: ${editingRuleSet.tag}` : $t('routes.addRuleSet')}
-				</h2>
-				<button
-					onclick={() => { showRuleSetForm = false; editingRuleSet = null; }}
-					class="p-1 rounded-md hover:bg-[var(--ctp-surface1)] text-[var(--ctp-overlay1)]"
-					aria-label="Close"
-				>
-					<svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-						<path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12" />
-					</svg>
-				</button>
-			</div>
-			<div class="p-4">
-				<RuleSetForm
-					existingTags={ruleSets.filter(rs => rs.tag !== editingRuleSet?.tag).map(rs => rs.tag)}
-					outbounds={allOutbounds}
-					ruleSet={editingRuleSet}
-					currentOutbound={editingRuleSet ? ruleSetOutboundMap.get(editingRuleSet.tag)?.outbound : undefined}
-					currentAction={editingRuleSet ? ruleSetOutboundMap.get(editingRuleSet.tag)?.action : undefined}
-					onSave={editingRuleSet ? handleUpdateRuleSet : handleCreateRuleSet}
-					onCancel={() => { showRuleSetForm = false; editingRuleSet = null; }}
-				/>
-			</div>
-		</div>
-	</div>
-{/if}
-
-<!-- Rule Set View Modal -->
-{#if viewingRuleSet}
-	<div class="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4">
-		<div class="bg-[var(--ctp-base)] rounded-xl w-full max-w-md">
-			<div class="px-4 py-3 border-b border-[var(--ctp-surface2)] flex items-center justify-between">
-				<h2 class="text-lg font-medium text-[var(--ctp-text)]">{$t('routes.ruleSetDetails')}</h2>
-				<button
-					onclick={() => viewingRuleSet = null}
-					class="p-1 rounded-md hover:bg-[var(--ctp-surface1)] text-[var(--ctp-overlay1)]"
-					aria-label="Close"
-				>
-					<svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-						<path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12" />
-					</svg>
-				</button>
-			</div>
-			<div class="p-4 space-y-3">
-				<div>
-					<span class="text-sm text-[var(--ctp-overlay1)]">{$t('common.tag')}</span>
-					<p class="font-medium text-[var(--ctp-text)]">{viewingRuleSet.tag}</p>
-				</div>
-				<div>
-					<span class="text-sm text-[var(--ctp-overlay1)]">{$t('common.type')}</span>
-					<p class="text-[var(--ctp-text)]">{viewingRuleSet.type}</p>
-				</div>
-				<div>
-					<span class="text-sm text-[var(--ctp-overlay1)]">{$t('routes.ruleSetFormat')}</span>
-					<p class="text-[var(--ctp-text)]">{viewingRuleSet.format}</p>
-				</div>
-				{#if viewingRuleSet.url}
-					<div>
-						<span class="text-sm text-[var(--ctp-overlay1)]">{$t('routes.ruleSetUrl')}</span>
-						<a href={viewingRuleSet.url} target="_blank" rel="noopener" class="block text-[var(--ctp-primary)] hover:underline break-all text-sm">
-							{viewingRuleSet.url}
-						</a>
-					</div>
-				{/if}
-				{#if viewingRuleSet.path}
-					<div>
-						<span class="text-sm text-[var(--ctp-overlay1)]">{$t('routes.ruleSetPath')}</span>
-						<p class="text-[var(--ctp-text)] font-mono text-sm">{viewingRuleSet.path}</p>
-					</div>
-				{/if}
-				{#if ruleSetOutboundMap.get(viewingRuleSet.tag)}
-					{@const mapping = ruleSetOutboundMap.get(viewingRuleSet.tag)!}
-					<div>
-						<span class="text-sm text-[var(--ctp-overlay1)]">{$t('routes.routeTo')}</span>
-						<p class="font-medium {mapping.action === 'reject' ? 'text-[var(--ctp-red)]' : 'text-[var(--ctp-green)]'}">
-							{mapping.outbound}
-						</p>
-					</div>
-				{/if}
-			</div>
-			<div class="px-4 py-3 border-t border-[var(--ctp-surface2)] flex justify-end gap-2">
-				<button
-					onclick={() => { editingRuleSet = viewingRuleSet; viewingRuleSet = null; showRuleSetForm = true; }}
-					class="px-4 py-2 bg-[var(--ctp-primary)] text-white rounded-lg hover:opacity-90"
-				>
-					{$t('common.edit')}
-				</button>
-				<button
-					onclick={() => viewingRuleSet = null}
-					class="px-4 py-2 bg-[var(--ctp-surface1)] text-[var(--ctp-text)] rounded-lg hover:bg-[var(--ctp-surface2)]"
-				>
-					{$t('common.close')}
-				</button>
-			</div>
-		</div>
-	</div>
-{/if}
-
 <!-- Rule Form Modal -->
 {#if showRuleForm}
 	<div class="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4">
@@ -757,9 +653,9 @@
 					{ruleSets}
 					outbounds={allOutbounds}
 					{inbounds}
-					hiddenRuleSets={editingRuleIndex === null ? usedRuleSets : undefined}
 					onSave={editingRuleIndex !== null ? handleUpdateRule : handleCreateRule}
 					onCancel={() => { showRuleForm = false; editingRuleIndex = null; }}
+					onRuleSetCreated={handleRuleSetCreated}
 				/>
 			</div>
 		</div>
@@ -815,10 +711,10 @@
 					{ruleSets}
 					outbounds={allOutbounds}
 					{inbounds}
-					{usedRuleSets}
+					usedRuleSets={new Set(ruleSetOutboundMap.keys())}
 					onSave={handleWizardSave}
 					onCancel={() => showWizard = false}
-					onCreateRuleSet={() => { showWizard = false; showRuleSetForm = true; editingRuleSet = null; }}
+					onCreateRuleSet={() => { showWizard = false; }}
 				/>
 			</div>
 		</div>

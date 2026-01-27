@@ -13,6 +13,12 @@ export interface ApiResponse<T = unknown> {
 	error?: string;
 }
 
+// sing-box version and feature flags
+export interface SingBoxVersion {
+	version: string;
+	features: Record<string, boolean>;
+}
+
 // System requirements check
 export interface SystemChecks {
 	ipv4_forward: boolean;
@@ -181,6 +187,29 @@ export interface Outbound {
 	hop_interval?: string;  // Port hop interval (e.g., "30s")
 	up_mbps?: number;       // Upload limit
 	down_mbps?: number;     // Download limit
+	// Shadowsocks
+	method?: string;
+	password?: string;
+	plugin?: string;
+	plugin_opts?: string;
+	network?: string;
+	udp_over_tcp?: boolean;
+	multiplex?: {
+		enabled?: boolean;
+		protocol?: string;
+		max_connections?: number;
+		min_streams?: number;
+		max_streams?: number;
+		padding?: boolean;
+	};
+	// ShadowTLS
+	version?: number;
+	tls?: any;
+	detour?: string;
+	// AnyTLS
+	idle_session_check_interval?: string;
+	idle_session_timeout?: string;
+	min_idle_session?: number;
 }
 
 export interface Endpoint {
@@ -239,12 +268,35 @@ export interface RouteConfig {
 }
 
 export interface RouteRule {
-	// Action - outbound required only for 'route'
-	action?: 'route' | 'reject' | 'sniff' | 'hijack-dns';
+	// Action
+	action?: 'route' | 'reject' | 'sniff' | 'hijack-dns' | 'route-options' | 'resolve';
 	outbound?: string;
 
 	// Sniff action options
 	timeout?: string;  // e.g., "300ms"
+
+	// Reject action options
+	method?: 'default' | 'drop';
+	no_drop?: boolean;
+
+	// Resolve action options
+	server?: string;
+	strategy?: 'prefer_ipv4' | 'prefer_ipv6' | 'ipv4_only' | 'ipv6_only';
+
+	// Route / route-options action options
+	override_address?: string;
+	override_port?: number;
+	network_strategy?: string;
+	network_type?: string[];
+	fallback_network_type?: string[];
+	fallback_delay?: string;
+	udp_connect?: boolean;
+	udp_timeout?: string;
+	udp_disable_domain_unmapping?: boolean;
+
+	// TLS Fragment (≥1.12)
+	tls_fragment?: TlsFragment;
+	tls_record_fragment?: TlsRecordFragment;
 
 	// Logical rule support
 	type?: 'default' | 'logical';
@@ -252,42 +304,92 @@ export interface RouteRule {
 	rules?: RouteRule[];
 	invert?: boolean;
 
-	// Inbound filter - match traffic from specific inbounds
+	// Inbound filter
 	inbound?: string[];
 
-	// Match conditions
+	// Match conditions - destination
 	ip_is_private?: boolean;
-	domain?: string[];           // Exact domain match
+	source_ip_is_private?: boolean;
+	domain?: string[];
 	domain_suffix?: string[];
 	domain_keyword?: string[];
-	domain_regex?: string[];     // Regex patterns
+	domain_regex?: string[];
 	ip_cidr?: string[];
-	source_ip_cidr?: string[];   // Source IP match
+	source_ip_cidr?: string[];
 	port?: number[];
 	port_range?: string[];
 	source_port?: number[];
 	source_port_range?: string[];
-	protocol?: string[];         // http, tls, quic, dns, etc.
+	protocol?: string[];
 	rule_set?: string[];
 	process_name?: string[];
 	process_path?: string[];
-	network?: 'tcp' | 'udp';
+	process_path_regex?: string[];
+	network?: 'tcp' | 'udp' | 'icmp';
+	ip_version?: number;           // 4 | 6
+	clash_mode?: string;
+	rule_set_ip_cidr_match_source?: boolean;
+	client?: string[];
+	auth_user?: string[];
+	user?: string[];
+	user_id?: number[];
+}
+
+export interface TlsFragment {
+	enabled?: boolean;
+	size?: string;    // "min:max" e.g., "40:100"
+	sleep?: string;   // "min:max" e.g., "10:15"
+	fallback_delay?: string;
+}
+
+export interface TlsRecordFragment {
+	enabled?: boolean;
+	size?: string;    // "min:max"
 }
 
 export interface RouteSettings {
 	final: string;
 	auto_detect_interface?: boolean;
+	default_interface?: string;
+	default_mark?: number;
+	default_domain_resolver?: string;
+	default_network_strategy?: string;
+	default_network_type?: string[];
+	default_fallback_network_type?: string[];
+	default_fallback_delay?: string;
 }
 
 export interface RuleSet {
 	tag: string;
-	type: 'remote' | 'local';
+	type: 'remote' | 'local' | 'inline';
 	format?: 'binary' | 'source';
 	url?: string;
 	path?: string;
 	// Remote-specific options
 	download_detour?: string;    // Outbound for downloading
 	update_interval?: string;    // e.g., "24h"
+	// Inline-specific options (≥1.10)
+	rules?: HeadlessRule[];
+}
+
+// Headless rule: matching conditions only (no action/outbound)
+export interface HeadlessRule {
+	domain?: string[];
+	domain_suffix?: string[];
+	domain_keyword?: string[];
+	domain_regex?: string[];
+	ip_cidr?: string[];
+	source_ip_cidr?: string[];
+	port?: number[];
+	port_range?: string[];
+	process_name?: string[];
+	process_path?: string[];
+}
+
+// Rule set usage: which route/dns rules reference each rule set
+export interface RuleSetUsage {
+	route_rules: number[];
+	dns_rules: number[];
 }
 
 export interface CacheFileSettings {

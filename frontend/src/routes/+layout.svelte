@@ -3,7 +3,7 @@
 	import { onMount, type Snippet } from 'svelte';
 	import { goto } from '$app/navigation';
 	import { page } from '$app/stores';
-	import { theme, notifications } from '$lib/stores';
+	import { theme, notifications, loadVersion } from '$lib/stores';
 	import { api } from '$lib/api/client';
 	import UnsavedChangesBar from '$lib/components/shared/UnsavedChangesBar.svelte';
 	import { t, isLoading as i18nLoading } from 'svelte-i18n';
@@ -29,6 +29,9 @@
 	let needsSetup = $state(false);
 
 	onMount(async () => {
+		// Load version/feature flags in background
+		loadVersion();
+
 		// Skip check if already on setup page
 		if ($page.url.pathname === '/setup') {
 			setupChecked = true;
@@ -87,6 +90,16 @@
 				</div>
 
 				<div class="flex items-center gap-4">
+					<!-- App Settings -->
+					<a
+						href="/config/app"
+						class="p-2 rounded-lg hover:bg-[var(--ctp-surface0)] transition-colors"
+						title={$t('nav.appSettings')}
+					>
+						<svg class="w-5 h-5 text-[var(--ctp-subtext1)]" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+							<path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 6V4m0 2a2 2 0 100 4m0-4a2 2 0 110 4m-6 8a2 2 0 100-4m0 4a2 2 0 110-4m0 4v2m0-6V4m6 6v10m6-2a2 2 0 100-4m0 4a2 2 0 110-4m0 4v2m0-6V4" />
+						</svg>
+					</a>
 					<!-- Theme toggle -->
 					<button
 						onclick={() => theme.toggle()}
@@ -142,18 +155,25 @@
 					{$t('nav.outbounds')}
 				</a>
 
-				<a href="/config/routes" class="flex items-center gap-3 px-3 py-2 rounded-lg hover:bg-[var(--ctp-surface0)] text-[var(--ctp-subtext1)] hover:text-[var(--ctp-text)] transition-colors">
-					<svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-						<path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 20l-5.447-2.724A1 1 0 013 16.382V5.618a1 1 0 011.447-.894L9 7m0 13l6-3m-6 3V7m6 10l4.553 2.276A1 1 0 0021 18.382V7.618a1 1 0 00-.553-.894L15 4m0 13V4m0 0L9 7" />
-					</svg>
-					{$t('nav.routes')}
-				</a>
-
 				<a href="/config/inbounds" class="flex items-center gap-3 px-3 py-2 rounded-lg hover:bg-[var(--ctp-surface0)] text-[var(--ctp-subtext1)] hover:text-[var(--ctp-text)] transition-colors">
 					<svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
 						<path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M11 16l-4-4m0 0l4-4m-4 4h14m-5 4v1a3 3 0 01-3 3H6a3 3 0 01-3-3V7a3 3 0 013-3h7a3 3 0 013 3v1" />
 					</svg>
 					{$t('nav.inbounds')}
+				</a>
+
+				<a href="/config/rule-sets" class="flex items-center gap-3 px-3 py-2 rounded-lg hover:bg-[var(--ctp-surface0)] text-[var(--ctp-subtext1)] hover:text-[var(--ctp-text)] transition-colors">
+					<svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+						<path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 7v10c0 2.21 3.582 4 8 4s8-1.79 8-4V7M4 7c0 2.21 3.582 4 8 4s8-1.79 8-4M4 7c0-2.21 3.582-4 8-4s8 1.79 8 4m0 5c0 2.21-3.582 4-8 4s-8-1.79-8-4" />
+					</svg>
+					{$t('nav.ruleSets')}
+				</a>
+
+				<a href="/config/routes" class="flex items-center gap-3 px-3 py-2 rounded-lg hover:bg-[var(--ctp-surface0)] text-[var(--ctp-subtext1)] hover:text-[var(--ctp-text)] transition-colors">
+					<svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+						<path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 20l-5.447-2.724A1 1 0 013 16.382V5.618a1 1 0 011.447-.894L9 7m0 13l6-3m-6 3V7m6 10l4.553 2.276A1 1 0 0021 18.382V7.618a1 1 0 00-.553-.894L15 4m0 13V4m0 0L9 7" />
+					</svg>
+					{$t('nav.routes')}
 				</a>
 
 				<a href="/config/dns" class="flex items-center gap-3 px-3 py-2 rounded-lg hover:bg-[var(--ctp-surface0)] text-[var(--ctp-subtext1)] hover:text-[var(--ctp-text)] transition-colors">
@@ -169,27 +189,6 @@
 						<path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" />
 					</svg>
 					{$t('nav.experimental')}
-				</a>
-
-				<a href="/config/backup" class="flex items-center gap-3 px-3 py-2 rounded-lg hover:bg-[var(--ctp-surface0)] text-[var(--ctp-subtext1)] hover:text-[var(--ctp-text)] transition-colors">
-					<svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-						<path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-8l-4-4m0 0L8 8m4-4v12" />
-					</svg>
-					{$t('nav.backup')}
-				</a>
-
-				<a href="/config/editor" class="flex items-center gap-3 px-3 py-2 rounded-lg hover:bg-[var(--ctp-surface0)] text-[var(--ctp-subtext1)] hover:text-[var(--ctp-text)] transition-colors">
-					<svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-						<path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M10 20l4-16m4 4l4 4-4 4M6 16l-4-4 4-4" />
-					</svg>
-					{$t('nav.jsonEditor')}
-				</a>
-
-				<a href="/config/app" class="flex items-center gap-3 px-3 py-2 rounded-lg hover:bg-[var(--ctp-surface0)] text-[var(--ctp-subtext1)] hover:text-[var(--ctp-text)] transition-colors">
-					<svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-						<path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 6V4m0 2a2 2 0 100 4m0-4a2 2 0 110 4m-6 8a2 2 0 100-4m0 4a2 2 0 110-4m0 4v2m0-6V4m6 6v10m6-2a2 2 0 100-4m0 4a2 2 0 110-4m0 4v2m0-6V4" />
-					</svg>
-					{$t('nav.appSettings')}
 				</a>
 
 				<div class="pt-4 pb-2">

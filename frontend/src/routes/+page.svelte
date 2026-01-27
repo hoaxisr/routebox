@@ -3,6 +3,7 @@
 	import { t } from 'svelte-i18n';
 	import { api, createTrafficStream, createConnectionsStream } from '$lib/api/client';
 	import { notifications } from '$lib/stores';
+	import { singboxVersion, loadVersion } from '$lib/stores/version';
 	import PendingChanges from '$lib/components/shared/PendingChanges.svelte';
 	import type { ProcessStatus, DetectedConfig, ClashConnection } from '$lib/types';
 
@@ -29,6 +30,10 @@
 					detectedConfig = await api.getDetectedConfig();
 				} catch {
 					detectedConfig = null;
+				}
+				// Load sing-box version once
+				if (!$singboxVersion) {
+					loadVersion();
 				}
 			}
 		} catch (e) {
@@ -362,7 +367,7 @@
 					<div class="text-sm text-[var(--ctp-overlay1)]">Uptime</div>
 					<div class="text-xl font-mono text-[var(--ctp-text)]">{status.uptime || '-'}</div>
 				</div>
-				<div class="bg-[var(--ctp-surface1)] rounded-lg p-4">
+				<div class="bg-[var(--ctp-surface1)] rounded-lg p-4" title={$singboxVersion ? `sing-box ${$singboxVersion.version}` : ''}>
 					<div class="text-sm text-[var(--ctp-overlay1)]">Managed by</div>
 					<div class="text-lg font-mono text-[var(--ctp-text)]">
 						{#if status.managed_by === 'systemd'}
@@ -374,6 +379,9 @@
 							standalone
 						{/if}
 					</div>
+					{#if $singboxVersion}
+						<div class="text-xs text-[var(--ctp-overlay0)] mt-1">sing-box {$singboxVersion.version}</div>
+					{/if}
 				</div>
 				<div class="bg-[var(--ctp-surface1)] rounded-lg p-4">
 					<div class="text-sm text-[var(--ctp-overlay1)]">Connections</div>

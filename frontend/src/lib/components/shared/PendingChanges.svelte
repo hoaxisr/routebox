@@ -3,13 +3,13 @@
 	import { onMount } from 'svelte';
 	import { api } from '$lib/api/client';
 	import { notifications, unsavedChanges } from '$lib/stores';
+	import SideBySideDiff from '$lib/components/shared/SideBySideDiff.svelte';
 
 	let loading = $state(true);
 	let hasDraft = $state(false);
 	let changeCount = $state(0);
-	let diff = $state('');
-	let additions = $state(0);
-	let deletions = $state(0);
+	let activeText = $state('');
+	let draftText = $state('');
 	let showDiff = $state(false);
 	let applying = $state(false);
 	let discarding = $state(false);
@@ -21,10 +21,12 @@
 			changeCount = status.changeCount;
 
 			if (hasDraft) {
-				const diffResult = await api.getDraftDiff();
-				diff = diffResult.diff;
-				additions = diffResult.additions;
-				deletions = diffResult.deletions;
+				const [active, draft] = await Promise.all([
+					api.getActiveConfig(),
+					api.getConfig()
+				]);
+				activeText = JSON.stringify(active, null, 2);
+				draftText = JSON.stringify(draft, null, 2);
 			}
 		} catch (err) {
 			console.error('Failed to fetch draft status:', err);
@@ -40,7 +42,8 @@
 			notifications.success($t('changes.configApplied'));
 			unsavedChanges.clearChanges();
 			hasDraft = false;
-			diff = '';
+			activeText = '';
+			draftText = '';
 		} catch (err) {
 			notifications.error(`Failed to apply: ${err}`);
 		} finally {
@@ -55,7 +58,8 @@
 			notifications.success($t('changes.configDiscarded'));
 			unsavedChanges.clearChanges();
 			hasDraft = false;
-			diff = '';
+			activeText = '';
+			draftText = '';
 		} catch (err) {
 			notifications.error(`Failed to discard: ${err}`);
 		} finally {
@@ -84,13 +88,6 @@
 							{$t('changes.linesChanged', { values: { count: changeCount } })}
 						{/if}
 					</p>
-					{#if additions > 0 || deletions > 0}
-						<p class="text-xs text-[var(--ctp-overlay1)] mt-1">
-							<span class="text-[var(--ctp-green)]">+{additions}</span>
-							<span class="mx-1">/</span>
-							<span class="text-[var(--ctp-red)]">-{deletions}</span>
-						</p>
-					{/if}
 				</div>
 			</div>
 
@@ -100,7 +97,7 @@
 					onclick={() => showDiff = !showDiff}
 					class="px-3 py-1.5 text-sm bg-[var(--ctp-surface1)] text-[var(--ctp-text)] rounded-lg hover:bg-[var(--ctp-surface2)] transition-colors"
 				>
-					{showDiff ? $t('changes.hideDetails') : $t('changes.showDetails')}
+					{showDiff ? $t('changes.hideDiff') : $t('changes.viewDiff')}
 				</button>
 				<button
 					type="button"
@@ -121,10 +118,9 @@
 			</div>
 		</div>
 
-		{#if showDiff && diff}
-			<div class="mt-4 p-4 bg-[var(--ctp-mantle)] rounded-lg overflow-x-auto">
-				<pre class="text-xs font-mono text-[var(--ctp-text)] whitespace-pre">{#each diff.split('\n') as line}{#if line.startsWith('+')}<span class="text-[var(--ctp-green)]">{line}</span>{:else if line.startsWith('-')}<span class="text-[var(--ctp-red)]">{line}</span>{:else}{line}{/if}
-{/each}</pre>
+		{#if showDiff && activeText && draftText}
+			<div class="mt-4">
+				<SideBySideDiff oldText={activeText} newText={draftText} maxHeight="400px" />
 			</div>
 		{/if}
 	</div>

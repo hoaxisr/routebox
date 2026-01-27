@@ -126,12 +126,27 @@ func (h *Handler) TestRoute(w http.ResponseWriter, r *http.Request) {
 				action = a
 			}
 
-			if action == "route" {
+			switch action {
+			case "route":
 				if ob, ok := rule["outbound"].(string); ok {
 					destination = ob
 				}
-			} else if action == "reject" {
-				destination = "REJECT"
+			case "reject":
+				method := "default"
+				if m, ok := rule["method"].(string); ok {
+					method = m
+				}
+				if method == "drop" {
+					destination = "REJECT (drop)"
+				} else {
+					destination = "REJECT"
+				}
+			case "resolve":
+				// resolve is a non-final action — it resolves DNS then continues
+				matchedRule = -1 // reset so processing continues
+			case "route-options":
+				// route-options is a non-final action — it sets options then continues
+				matchedRule = -1 // reset so processing continues
 			}
 			// sniff and hijack-dns don't set final destination
 		}
@@ -397,6 +412,37 @@ func checkRuleMatch(input, inputType string, rule map[string]interface{}, ruleSe
 	if sourceCidrs, ok := getStringSlice(rule, "source_ip_cidr"); ok && len(sourceCidrs) > 0 {
 		conditions = append(conditions, fmt.Sprintf("source_ip_cidr(%d)", len(sourceCidrs)))
 		reasons = append(reasons, "source_ip_cidr: can't verify")
+	}
+	if _, ok := rule["source_ip_is_private"].(bool); ok {
+		conditions = append(conditions, "source_ip_is_private")
+		reasons = append(reasons, "source_ip_is_private: can't verify")
+	}
+	if _, ok := rule["ip_version"]; ok {
+		conditions = append(conditions, "ip_version")
+	}
+	if _, ok := rule["clash_mode"].(string); ok {
+		conditions = append(conditions, "clash_mode")
+		reasons = append(reasons, "clash_mode: can't verify")
+	}
+	if authUsers, ok := getStringSlice(rule, "auth_user"); ok && len(authUsers) > 0 {
+		conditions = append(conditions, fmt.Sprintf("auth_user(%d)", len(authUsers)))
+		reasons = append(reasons, "auth_user: can't verify")
+	}
+	if clients, ok := getStringSlice(rule, "client"); ok && len(clients) > 0 {
+		conditions = append(conditions, fmt.Sprintf("client(%d)", len(clients)))
+		reasons = append(reasons, "client: can't verify")
+	}
+	if users, ok := getStringSlice(rule, "user"); ok && len(users) > 0 {
+		conditions = append(conditions, fmt.Sprintf("user(%d)", len(users)))
+		reasons = append(reasons, "user: can't verify")
+	}
+	if processPaths, ok := getStringSlice(rule, "process_path"); ok && len(processPaths) > 0 {
+		conditions = append(conditions, fmt.Sprintf("process_path(%d)", len(processPaths)))
+		reasons = append(reasons, "process_path: can't verify")
+	}
+	if processPathRegex, ok := getStringSlice(rule, "process_path_regex"); ok && len(processPathRegex) > 0 {
+		conditions = append(conditions, fmt.Sprintf("process_path_regex(%d)", len(processPathRegex)))
+		reasons = append(reasons, "process_path_regex: can't verify")
 	}
 
 	// Handle invert

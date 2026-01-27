@@ -1,4 +1,4 @@
-import type { ApiResponse, ProcessStatus, DetectedConfig, NeedsSetupResponse, SingboxConfig, Endpoint, Outbound, Inbound, RuleSet, RouteRule, RouteSettings, DnsServer, DnsRule, DnsSettings, LogSettings, ExperimentalSettings, ConnectionsResponse, ProxiesResponse, ClashProxy, TestRouteResponse, SettingsResponse, RouteBoxSettings } from '$lib/types';
+import type { ApiResponse, ProcessStatus, DetectedConfig, NeedsSetupResponse, SingboxConfig, Endpoint, Outbound, Inbound, RuleSet, RuleSetUsage, RouteRule, RouteSettings, DnsServer, DnsRule, DnsSettings, LogSettings, ExperimentalSettings, ConnectionsResponse, ProxiesResponse, ClashProxy, TestRouteResponse, SettingsResponse, RouteBoxSettings, SingBoxVersion } from '$lib/types';
 
 const API_BASE = '/api';
 
@@ -175,6 +175,12 @@ export const api = {
 			method: 'POST',
 			body: JSON.stringify(ruleSet)
 		}),
+	getRuleSetsUsage: () => request<Record<string, RuleSetUsage>>('/route/rule-sets/usage'),
+	updateRuleSet: (tag: string, ruleSet: RuleSet) =>
+		request<RuleSet>(`/route/rule-sets/${encodeURIComponent(tag)}`, {
+			method: 'PUT',
+			body: JSON.stringify(ruleSet)
+		}),
 	deleteRuleSet: (tag: string) =>
 		request<{ message: string }>(`/route/rule-sets/${encodeURIComponent(tag)}`, {
 			method: 'DELETE'
@@ -279,6 +285,9 @@ export const api = {
 			method: 'PUT',
 			body: JSON.stringify(settings)
 		}),
+
+	// Version & Features
+	getVersion: () => request<SingBoxVersion>('/version'),
 
 	// Status & Control
 	getStatus: () => request<ProcessStatus>('/status'),

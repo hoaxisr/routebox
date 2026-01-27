@@ -129,9 +129,9 @@
 			await api.updateDnsRule(editingRuleIndex, rule);
 			dnsRules = dnsRules.map((r, i) => i === editingRuleIndex ? rule : r);
 			showRuleForm = false;
-			editingRuleIndex = null;
 			hasChanges = true;
 			unsavedChanges.markChanged('DNS', `Updated DNS rule #${editingRuleIndex + 1}`);
+			editingRuleIndex = null;
 			notifications.success($t('dns.ruleUpdated'));
 		} catch (e) {
 			notifications.error(`${e}`);
@@ -602,8 +602,14 @@
 					rule={editingRuleIndex !== null ? dnsRules[editingRuleIndex] : undefined}
 					{dnsServers}
 					{ruleSets}
+					{outbounds}
 					onSave={editingRuleIndex !== null ? handleUpdateRule : handleCreateRule}
 					onCancel={() => { showRuleForm = false; editingRuleIndex = null; }}
+					onRuleSetCreated={(ruleSet) => {
+						ruleSets = [...ruleSets, ruleSet];
+						hasChanges = true;
+						unsavedChanges.markChanged('DNS', `Created rule set "${ruleSet.tag}"`);
+					}}
 				/>
 			</div>
 		</div>

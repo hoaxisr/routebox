@@ -1,6 +1,9 @@
 package config
 
-import "fmt"
+import (
+	"fmt"
+	"regexp"
+)
 
 // Validate checks if config is valid (comprehensive validation)
 func (m *Manager) Validate(config map[string]interface{}) []string {
@@ -63,6 +66,13 @@ func (m *Manager) Validate(config map[string]interface{}) []string {
 			}
 		}
 	}
+
+	// Cross-section validation: conflicts and incompatibilities from sing-box docs
+	errors = append(errors, validateAutoRedirectMarkConflict(config)...)
+	errors = append(errors, validateRouteFieldConflicts(config)...)
+	errors = append(errors, validateTunAutoRouteRequirements(config)...)
+	errors = append(errors, validateTunInterfaceFilterConflict(config)...)
+	errors = append(errors, validateDialFieldConflicts(config)...)
 
 	// Reference validation: check route rules reference valid outbounds or endpoints
 	// Note: AWG/WireGuard endpoints can be used directly as outbounds in routes
@@ -168,6 +178,78 @@ func validateOutbound(ob map[string]interface{}, index int) []string {
 		// Required: endpoint_tag
 		if epTag, ok := ob["endpoint_tag"].(string); !ok || epTag == "" {
 			errors = append(errors, fmt.Sprintf("%s: endpoint type requires 'endpoint_tag'", prefix))
+		}
+	case "shadowsocks":
+		// Required: server, server_port, method, password
+		if s, ok := ob["server"].(string); !ok || s == "" {
+			errors = append(errors, fmt.Sprintf("%s: shadowsocks requires 'server'", prefix))
+		}
+		if _, ok := ob["server_port"].(float64); !ok {
+			errors = append(errors, fmt.Sprintf("%s: shadowsocks requires 'server_port'", prefix))
+		}
+		if method, ok := ob["method"].(string); !ok || method == "" {
+			errors = append(errors, fmt.Sprintf("%s: shadowsocks requires 'method'", prefix))
+		} else {
+			validMethods := map[string]bool{
+				"2022-blake3-aes-128-gcm":       true,
+				"2022-blake3-aes-256-gcm":       true,
+				"2022-blake3-chacha20-poly1305":  true,
+				"aes-128-gcm":                   true,
+				"aes-192-gcm":                   true,
+				"aes-256-gcm":                   true,
+				"chacha20-ietf-poly1305":         true,
+				"xchacha20-ietf-poly1305":        true,
+				"none":                          true,
+			}
+			if !validMethods[method] {
+				errors = append(errors, fmt.Sprintf("%s: invalid shadowsocks method '%s'", prefix, method))
+			}
+		}
+		if pw, ok := ob["password"].(string); !ok || pw == "" {
+			errors = append(errors, fmt.Sprintf("%s: shadowsocks requires 'password'", prefix))
+		}
+		// Conflict check: multiplex and udp_over_tcp
+		if mux, ok := ob["multiplex"].(map[string]interface{}); ok {
+			if enabled, ok := mux["enabled"].(bool); ok && enabled {
+				if uot, ok := ob["udp_over_tcp"].(bool); ok && uot {
+					errors = append(errors, fmt.Sprintf("%s: shadowsocks multiplex conflicts with udp_over_tcp", prefix))
+				}
+			}
+		}
+	case "shadowtls":
+		// Required: server, server_port, tls
+		if s, ok := ob["server"].(string); !ok || s == "" {
+			errors = append(errors, fmt.Sprintf("%s: shadowtls requires 'server'", prefix))
+		}
+		if _, ok := ob["server_port"].(float64); !ok {
+			errors = append(errors, fmt.Sprintf("%s: shadowtls requires 'server_port'", prefix))
+		}
+		if _, ok := ob["tls"].(map[string]interface{}); !ok {
+			errors = append(errors, fmt.Sprintf("%s: shadowtls requires 'tls' object", prefix))
+		}
+		// Password required for version 2 or 3
+		version := 0
+		if v, ok := ob["version"].(float64); ok {
+			version = int(v)
+		}
+		if version >= 2 {
+			if pw, ok := ob["password"].(string); !ok || pw == "" {
+				errors = append(errors, fmt.Sprintf("%s: shadowtls v%d requires 'password'", prefix, version))
+			}
+		}
+	case "anytls":
+		// Required: server, server_port, password, tls
+		if s, ok := ob["server"].(string); !ok || s == "" {
+			errors = append(errors, fmt.Sprintf("%s: anytls requires 'server'", prefix))
+		}
+		if _, ok := ob["server_port"].(float64); !ok {
+			errors = append(errors, fmt.Sprintf("%s: anytls requires 'server_port'", prefix))
+		}
+		if pw, ok := ob["password"].(string); !ok || pw == "" {
+			errors = append(errors, fmt.Sprintf("%s: anytls requires 'password'", prefix))
+		}
+		if _, ok := ob["tls"].(map[string]interface{}); !ok {
+			errors = append(errors, fmt.Sprintf("%s: anytls requires 'tls' object", prefix))
 		}
 	}
 
@@ -277,18 +359,23 @@ func validateRuleSet(rs map[string]interface{}, index int) []string {
 	rsType, hasType := rs["type"].(string)
 	if !hasType || rsType == "" {
 		errors = append(errors, fmt.Sprintf("%s: missing or empty 'type'", prefix))
-	} else if rsType != "remote" && rsType != "local" {
-		errors = append(errors, fmt.Sprintf("%s: type must be 'remote' or 'local'", prefix))
+	} else if rsType != "remote" && rsType != "local" && rsType != "inline" {
+		errors = append(errors, fmt.Sprintf("%s: type must be 'remote', 'local', or 'inline'", prefix))
 	}
 
 	// Type-specific validation
-	if rsType == "remote" {
+	switch rsType {
+	case "remote":
 		if url, ok := rs["url"].(string); !ok || url == "" {
 			errors = append(errors, fmt.Sprintf("%s: remote type requires 'url'", prefix))
 		}
-	} else if rsType == "local" {
+	case "local":
 		if path, ok := rs["path"].(string); !ok || path == "" {
 			errors = append(errors, fmt.Sprintf("%s: local type requires 'path'", prefix))
+		}
+	case "inline":
+		if rules, ok := rs["rules"].([]interface{}); !ok || len(rules) == 0 {
+			errors = append(errors, fmt.Sprintf("%s: inline type requires 'rules' array", prefix))
 		}
 	}
 
@@ -296,19 +383,21 @@ func validateRuleSet(rs map[string]interface{}, index int) []string {
 }
 
 // validateRule validates a single route rule object
-// Note: endpointTags are checked because AWG/WireGuard endpoints can be used as outbounds in routes
 func validateRule(rule map[string]interface{}, index int, outboundTags, endpointTags, ruleSetTags map[string]bool) []string {
 	var errors []string
 	prefix := fmt.Sprintf("rules[%d]", index)
 
-	// Check action type - outbound only required for 'route'
+	// Check action type
 	action, _ := rule["action"].(string)
 	if action == "" {
 		action = "route" // default
 	}
 
 	// Validate action type
-	validActions := map[string]bool{"route": true, "reject": true, "sniff": true, "hijack-dns": true}
+	validActions := map[string]bool{
+		"route": true, "reject": true, "sniff": true, "hijack-dns": true,
+		"route-options": true, "resolve": true,
+	}
 	if !validActions[action] {
 		errors = append(errors, fmt.Sprintf("%s: invalid action '%s'", prefix, action))
 	}
@@ -319,8 +408,68 @@ func validateRule(rule map[string]interface{}, index int, outboundTags, endpoint
 		if !hasOutbound || outbound == "" {
 			errors = append(errors, fmt.Sprintf("%s: missing 'outbound' for route action", prefix))
 		} else if !outboundTags[outbound] && !endpointTags[outbound] {
-			// Check both outbounds and endpoints (AWG/WG endpoints work as outbounds)
 			errors = append(errors, fmt.Sprintf("%s: outbound '%s' does not exist", prefix, outbound))
+		}
+	}
+
+	// Validate reject action fields
+	if action == "reject" {
+		if method, ok := rule["method"].(string); ok && method != "" {
+			validMethods := map[string]bool{"default": true, "drop": true}
+			if !validMethods[method] {
+				errors = append(errors, fmt.Sprintf("%s: invalid reject method '%s' (must be 'default' or 'drop')", prefix, method))
+			}
+		}
+	}
+
+	// Validate resolve action fields
+	if action == "resolve" {
+		if strategy, ok := rule["strategy"].(string); ok && strategy != "" {
+			validStrategies := map[string]bool{"prefer_ipv4": true, "prefer_ipv6": true, "ipv4_only": true, "ipv6_only": true}
+			if !validStrategies[strategy] {
+				errors = append(errors, fmt.Sprintf("%s: invalid resolve strategy '%s'", prefix, strategy))
+			}
+		}
+	}
+
+	// Validate route-options / route action fields
+	if action == "route-options" || action == "route" {
+		if strategy, ok := rule["network_strategy"].(string); ok && strategy != "" {
+			validStrategies := map[string]bool{"prefer_ipv4": true, "prefer_ipv6": true, "ipv4_only": true, "ipv6_only": true}
+			if !validStrategies[strategy] {
+				errors = append(errors, fmt.Sprintf("%s: invalid network_strategy '%s'", prefix, strategy))
+			}
+		}
+		if port, ok := rule["override_port"].(float64); ok && port <= 0 {
+			errors = append(errors, fmt.Sprintf("%s: override_port must be > 0", prefix))
+		}
+	}
+
+	// Validate TLS fragment (for route/route-options with >=1.12)
+	if action == "route-options" || action == "route" {
+		if fragment, ok := rule["tls_fragment"].(map[string]interface{}); ok {
+			errors = append(errors, validateTlsFragment(fragment, prefix+".tls_fragment")...)
+		}
+		if recordFragment, ok := rule["tls_record_fragment"].(map[string]interface{}); ok {
+			errors = append(errors, validateTlsRecordFragment(recordFragment, prefix+".tls_record_fragment")...)
+		}
+	}
+
+	// Validate matching conditions
+	if ipVersion, ok := rule["ip_version"].(float64); ok {
+		if ipVersion != 4 && ipVersion != 6 {
+			errors = append(errors, fmt.Sprintf("%s: ip_version must be 4 or 6", prefix))
+		}
+	}
+
+	// Validate process_path_regex - check regex compilation
+	if regexes, ok := rule["process_path_regex"].([]interface{}); ok {
+		for i, r := range regexes {
+			if s, ok := r.(string); ok {
+				if _, err := regexp.Compile(s); err != nil {
+					errors = append(errors, fmt.Sprintf("%s: process_path_regex[%d] invalid regex: %v", prefix, i, err))
+				}
+			}
 		}
 	}
 
@@ -330,6 +479,262 @@ func validateRule(rule map[string]interface{}, index int, outboundTags, endpoint
 			if rsTag, ok := rs.(string); ok {
 				if !ruleSetTags[rsTag] {
 					errors = append(errors, fmt.Sprintf("%s: rule_set '%s' does not exist", prefix, rsTag))
+				}
+			}
+		}
+	}
+
+	return errors
+}
+
+// validateTlsFragment validates tls_fragment object
+func validateTlsFragment(fragment map[string]interface{}, prefix string) []string {
+	var errors []string
+	// size and sleep should be "min:max" format if present
+	for _, field := range []string{"size", "sleep"} {
+		if val, ok := fragment[field].(string); ok && val != "" {
+			// Basic validation: should contain a colon
+			if len(val) > 0 {
+				// accept formats like "40:100" or plain numbers
+				// no strict validation needed, sing-box will validate
+			}
+		}
+	}
+	return errors
+}
+
+// validateTlsRecordFragment validates tls_record_fragment object
+func validateTlsRecordFragment(fragment map[string]interface{}, prefix string) []string {
+	var errors []string
+	// minimal validation - sing-box handles detailed validation
+	return errors
+}
+
+// validateAutoRedirectMarkConflict checks that auto_redirect on TUN inbounds
+// does not conflict with route.default_mark or outbound routing_mark.
+// See: https://sing-box.sagernet.org/configuration/inbound/tun/
+func validateAutoRedirectMarkConflict(config map[string]interface{}) []string {
+	var errors []string
+
+	// Check if any TUN inbound has auto_redirect enabled
+	hasAutoRedirect := false
+	if inbounds, ok := config["inbounds"].([]interface{}); ok {
+		for _, ib := range inbounds {
+			if obj, ok := ib.(map[string]interface{}); ok {
+				ibType, _ := obj["type"].(string)
+				if ibType == "tun" {
+					if ar, ok := obj["auto_redirect"].(bool); ok && ar {
+						hasAutoRedirect = true
+						break
+					}
+				}
+			}
+		}
+	}
+
+	if !hasAutoRedirect {
+		return errors
+	}
+
+	// Check route.default_mark conflict
+	if route, ok := config["route"].(map[string]interface{}); ok {
+		if mark, exists := route["default_mark"]; exists {
+			if markNum, ok := mark.(float64); ok && markNum != 0 {
+				errors = append(errors, "route.default_mark conflicts with tun auto_redirect — they use overlapping firewall marks (see sing-box docs)")
+			}
+		}
+	}
+
+	// Check outbound routing_mark conflict
+	if outbounds, ok := config["outbounds"].([]interface{}); ok {
+		for i, ob := range outbounds {
+			if obj, ok := ob.(map[string]interface{}); ok {
+				if mark, exists := obj["routing_mark"]; exists {
+					if markNum, ok := mark.(float64); ok && markNum != 0 {
+						tag, _ := obj["tag"].(string)
+						errors = append(errors, fmt.Sprintf("outbounds[%d] (%s): routing_mark conflicts with tun auto_redirect — they use overlapping firewall marks (see sing-box docs)", i, tag))
+					}
+				}
+			}
+		}
+	}
+
+	return errors
+}
+
+// validateRouteFieldConflicts checks route-level field conflicts.
+// See: https://sing-box.sagernet.org/configuration/route/
+func validateRouteFieldConflicts(config map[string]interface{}) []string {
+	var errors []string
+
+	route, ok := config["route"].(map[string]interface{})
+	if !ok {
+		return errors
+	}
+
+	// default_interface conflicts with default_network_strategy
+	_, hasDefaultInterface := route["default_interface"].(string)
+	_, hasNetworkStrategy := route["default_network_strategy"].(string)
+	if hasDefaultInterface && hasNetworkStrategy {
+		errors = append(errors, "route: default_interface conflicts with default_network_strategy — cannot use both simultaneously")
+	}
+
+	// auto_detect_interface makes default_interface ineffective
+	autoDetect, _ := route["auto_detect_interface"].(bool)
+	if autoDetect && hasDefaultInterface {
+		errors = append(errors, "warning: route.default_interface takes no effect when auto_detect_interface is enabled")
+	}
+
+	return errors
+}
+
+// validateTunAutoRouteRequirements checks that TUN auto_route has a loop prevention mechanism.
+// See: https://sing-box.sagernet.org/configuration/inbound/tun/
+func validateTunAutoRouteRequirements(config map[string]interface{}) []string {
+	var errors []string
+
+	inbounds, ok := config["inbounds"].([]interface{})
+	if !ok {
+		return errors
+	}
+
+	for i, ib := range inbounds {
+		obj, ok := ib.(map[string]interface{})
+		if !ok {
+			continue
+		}
+		ibType, _ := obj["type"].(string)
+		if ibType != "tun" {
+			continue
+		}
+		autoRoute, _ := obj["auto_route"].(bool)
+		if !autoRoute {
+			continue
+		}
+
+		// auto_route requires at least one loop prevention mechanism:
+		// route.auto_detect_interface, route.default_interface, or outbound.bind_interface
+		hasLoopPrevention := false
+
+		if route, ok := config["route"].(map[string]interface{}); ok {
+			if adi, ok := route["auto_detect_interface"].(bool); ok && adi {
+				hasLoopPrevention = true
+			}
+			if di, ok := route["default_interface"].(string); ok && di != "" {
+				hasLoopPrevention = true
+			}
+		}
+
+		// Check if any outbound has bind_interface
+		if !hasLoopPrevention {
+			if outbounds, ok := config["outbounds"].([]interface{}); ok {
+				for _, ob := range outbounds {
+					if obObj, ok := ob.(map[string]interface{}); ok {
+						if bi, ok := obObj["bind_interface"].(string); ok && bi != "" {
+							hasLoopPrevention = true
+							break
+						}
+					}
+				}
+			}
+		}
+
+		if !hasLoopPrevention {
+			errors = append(errors, fmt.Sprintf("inbounds[%d]: tun auto_route requires route.auto_detect_interface, route.default_interface, or outbound.bind_interface to prevent routing loops", i))
+		}
+
+		// route_address_set / route_exclude_address_set require auto_route + auto_redirect
+		autoRedirect, _ := obj["auto_redirect"].(bool)
+		hasRouteAddressSet := false
+		if _, ok := obj["route_address_set"].([]interface{}); ok {
+			hasRouteAddressSet = true
+		}
+		if _, ok := obj["route_exclude_address_set"].([]interface{}); ok {
+			hasRouteAddressSet = true
+		}
+		if hasRouteAddressSet && !autoRedirect {
+			errors = append(errors, fmt.Sprintf("warning: inbounds[%d]: route_address_set/route_exclude_address_set with auto_redirect disabled will be treated as route_address/route_exclude_address (nftables optimization unavailable)", i))
+		}
+	}
+
+	return errors
+}
+
+// validateTunInterfaceFilterConflict checks that include_interface and exclude_interface
+// are not used together on TUN inbounds.
+// See: https://sing-box.sagernet.org/configuration/inbound/tun/
+func validateTunInterfaceFilterConflict(config map[string]interface{}) []string {
+	var errors []string
+
+	inbounds, ok := config["inbounds"].([]interface{})
+	if !ok {
+		return errors
+	}
+
+	for i, ib := range inbounds {
+		obj, ok := ib.(map[string]interface{})
+		if !ok {
+			continue
+		}
+		ibType, _ := obj["type"].(string)
+		if ibType != "tun" {
+			continue
+		}
+
+		_, hasInclude := obj["include_interface"].([]interface{})
+		_, hasExclude := obj["exclude_interface"].([]interface{})
+		if hasInclude && hasExclude {
+			errors = append(errors, fmt.Sprintf("inbounds[%d]: include_interface and exclude_interface conflict — cannot use both on the same tun inbound", i))
+		}
+	}
+
+	return errors
+}
+
+// validateDialFieldConflicts checks outbound dial field conflicts.
+// See: https://sing-box.sagernet.org/configuration/shared/dial/
+func validateDialFieldConflicts(config map[string]interface{}) []string {
+	var errors []string
+
+	outbounds, ok := config["outbounds"].([]interface{})
+	if !ok {
+		return errors
+	}
+
+	for i, ob := range outbounds {
+		obj, ok := ob.(map[string]interface{})
+		if !ok {
+			continue
+		}
+		tag, _ := obj["tag"].(string)
+		prefix := fmt.Sprintf("outbounds[%d] (%s)", i, tag)
+
+		// network_strategy conflicts with bind_interface, inet4_bind_address, inet6_bind_address
+		_, hasNetStrategy := obj["network_strategy"].(string)
+		_, hasBindInterface := obj["bind_interface"].(string)
+		_, hasInet4Bind := obj["inet4_bind_address"].(string)
+		_, hasInet6Bind := obj["inet6_bind_address"].(string)
+
+		if hasNetStrategy && (hasBindInterface || hasInet4Bind || hasInet6Bind) {
+			errors = append(errors, fmt.Sprintf("%s: network_strategy conflicts with bind_interface/inet4_bind_address/inet6_bind_address", prefix))
+		}
+	}
+
+	// Check route.default_network_strategy vs outbound bind fields (warning only — per-outbound overrides route default)
+	route, hasRoute := config["route"].(map[string]interface{})
+	if hasRoute {
+		if _, hasDefaultNetStrategy := route["default_network_strategy"].(string); hasDefaultNetStrategy {
+			for i, ob := range outbounds {
+				obj, ok := ob.(map[string]interface{})
+				if !ok {
+					continue
+				}
+				tag, _ := obj["tag"].(string)
+				_, hasBindInterface := obj["bind_interface"].(string)
+				_, hasInet4Bind := obj["inet4_bind_address"].(string)
+				_, hasInet6Bind := obj["inet6_bind_address"].(string)
+				if hasBindInterface || hasInet4Bind || hasInet6Bind {
+					errors = append(errors, fmt.Sprintf("warning: outbounds[%d] (%s): route.default_network_strategy takes no effect because bind_interface/bind_address is set on this outbound", i, tag))
 				}
 			}
 		}
@@ -376,12 +781,15 @@ func validateDnsRule(rule map[string]interface{}, index int, serverTags, ruleSet
 	var errors []string
 	prefix := fmt.Sprintf("dns.rules[%d]", index)
 
-	// Required: server
-	server, hasServer := rule["server"].(string)
-	if !hasServer || server == "" {
-		errors = append(errors, fmt.Sprintf("%s: missing 'server'", prefix))
-	} else if !serverTags[server] {
-		errors = append(errors, fmt.Sprintf("%s: DNS server '%s' does not exist", prefix, server))
+	// Server is required only for route action (default when action is not set)
+	action, _ := rule["action"].(string)
+	if action == "" || action == "route" {
+		server, hasServer := rule["server"].(string)
+		if !hasServer || server == "" {
+			errors = append(errors, fmt.Sprintf("%s: missing 'server'", prefix))
+		} else if !serverTags[server] {
+			errors = append(errors, fmt.Sprintf("%s: DNS server '%s' does not exist", prefix, server))
+		}
 	}
 
 	// Validate rule_set references

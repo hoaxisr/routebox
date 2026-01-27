@@ -651,6 +651,74 @@ func (m *Manager) GetJournalLogs(lines int) (string, error) {
 	return string(output), nil
 }
 
+// ParseSemver extracts major, minor, patch from a version string like "sing-box version 1.12.17" or "1.12.17"
+func ParseSemver(versionStr string) (major, minor, patch int) {
+	parts := strings.Fields(versionStr)
+	ver := ""
+	for _, p := range parts {
+		if len(p) > 0 && p[0] >= '0' && p[0] <= '9' {
+			ver = p
+			break
+		}
+	}
+	if ver == "" {
+		return 0, 0, 0
+	}
+	if idx := strings.IndexAny(ver, "-+"); idx >= 0 {
+		ver = ver[:idx]
+	}
+	segments := strings.Split(ver, ".")
+	if len(segments) >= 1 {
+		major, _ = strconv.Atoi(segments[0])
+	}
+	if len(segments) >= 2 {
+		minor, _ = strconv.Atoi(segments[1])
+	}
+	if len(segments) >= 3 {
+		patch, _ = strconv.Atoi(segments[2])
+	}
+	return
+}
+
+// VersionAtLeast returns true if the parsed version is >= the given major.minor
+func VersionAtLeast(versionStr string, minMajor, minMinor int) bool {
+	major, minor, _ := ParseSemver(versionStr)
+	if major > minMajor {
+		return true
+	}
+	return major == minMajor && minor >= minMinor
+}
+
+// GetFeatureFlags returns feature flags based on the detected sing-box version
+func (m *Manager) GetFeatureFlags() map[string]bool {
+	version, err := m.GetVersion()
+	if err != nil {
+		return map[string]bool{
+			"inline_rule_sets":         false,
+			"client_sniff":             false,
+			"process_path_regex":       false,
+			"rule_set_ip_match_source": false,
+			"network_strategy":         false,
+			"tls_fragment":             false,
+			"default_domain_resolver":  false,
+			"bypass_action":            false,
+			"icmp_network":             false,
+		}
+	}
+
+	return map[string]bool{
+		"inline_rule_sets":         VersionAtLeast(version, 1, 10),
+		"client_sniff":             VersionAtLeast(version, 1, 10),
+		"process_path_regex":       VersionAtLeast(version, 1, 10),
+		"rule_set_ip_match_source": VersionAtLeast(version, 1, 10),
+		"network_strategy":         VersionAtLeast(version, 1, 11),
+		"tls_fragment":             VersionAtLeast(version, 1, 12),
+		"default_domain_resolver":  VersionAtLeast(version, 1, 12),
+		"bypass_action":            VersionAtLeast(version, 1, 13),
+		"icmp_network":             VersionAtLeast(version, 1, 13), // network field: 'icmp'
+	}
+}
+
 // GetSystemChecks checks system requirements for routing
 func GetSystemChecks() *SystemChecks {
 	checks := &SystemChecks{}

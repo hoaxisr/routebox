@@ -34,6 +34,17 @@ export interface ParsedHysteria2 {
 	obfsPassword?: string;
 }
 
+export interface ParsedShadowsocks {
+	type: 'ss';
+	name: string;
+	server: string;
+	port: number;
+	method: string;
+	password: string;
+	plugin?: string;
+	pluginOpts?: string;
+}
+
 export interface ParsedAWG {
 	type: 'awg';
 	name: string;
@@ -68,7 +79,7 @@ export interface ParsedAWG {
 	i5?: string;
 }
 
-export type ParsedConfig = ParsedVless | ParsedHysteria2 | ParsedAWG;
+export type ParsedConfig = ParsedVless | ParsedHysteria2 | ParsedShadowsocks | ParsedAWG;
 
 export interface ParseResult {
 	success: boolean;
@@ -216,6 +227,121 @@ export function parseHysteria2(uri: string): ParseResult {
 }
 
 /**
+ * Parse an ss:// URI (SIP002 format)
+ * Format: ss://BASE64(method:password)@server:port#name
+ * Also handles: ss://BASE64(method:password)@server:port/?plugin=xxx#name
+ */
+export function parseShadowsocks(uri: string): ParseResult {
+	try {
+		if (!uri.startsWith('ss://')) {
+			return { success: false, error: 'Invalid Shadowsocks URI: must start with ss://' };
+		}
+
+		const content = uri.slice(5);
+
+		// Split by # to get name
+		const [mainPart, ...nameParts] = content.split('#');
+		const name = nameParts.length > 0 ? decodeURIComponent(nameParts.join('#')) : 'Shadowsocks';
+
+		let server: string, port: number, method: string, password: string;
+		let plugin: string | undefined;
+		let pluginOpts: string | undefined;
+
+		// Two formats:
+		// 1. ss://BASE64(method:password)@server:port
+		// 2. ss://method:password@server:port (plain, less common)
+		const atIndex = mainPart.lastIndexOf('@');
+		if (atIndex === -1) {
+			// Entire userinfo+host might be base64 encoded
+			// Try decoding the whole thing (some clients encode everything)
+			try {
+				const decoded = atob(mainPart.split('?')[0].split('/')[0]);
+				const decodedAtIndex = decoded.lastIndexOf('@');
+				if (decodedAtIndex === -1) {
+					return { success: false, error: 'Invalid Shadowsocks URI: missing @' };
+				}
+				const userinfo = decoded.slice(0, decodedAtIndex);
+				const hostPart = decoded.slice(decodedAtIndex + 1);
+				const colonIdx = userinfo.indexOf(':');
+				if (colonIdx === -1) {
+					return { success: false, error: 'Invalid Shadowsocks URI: missing method:password' };
+				}
+				method = userinfo.slice(0, colonIdx);
+				password = userinfo.slice(colonIdx + 1);
+				const hostColonIdx = hostPart.lastIndexOf(':');
+				server = hostPart.slice(0, hostColonIdx);
+				port = parseInt(hostPart.slice(hostColonIdx + 1), 10);
+			} catch {
+				return { success: false, error: 'Invalid Shadowsocks URI: cannot decode base64' };
+			}
+		} else {
+			const userinfo = mainPart.slice(0, atIndex);
+			const serverPart = mainPart.slice(atIndex + 1);
+
+			// Parse server:port (may have query params)
+			const [hostPort, queryString] = serverPart.split('?');
+			// Remove trailing slash if present
+			const cleanHostPort = hostPort.replace(/\/$/, '');
+			const colonIndex = cleanHostPort.lastIndexOf(':');
+			if (colonIndex === -1) {
+				return { success: false, error: 'Invalid Shadowsocks URI: missing port' };
+			}
+			server = cleanHostPort.slice(0, colonIndex);
+			port = parseInt(cleanHostPort.slice(colonIndex + 1), 10);
+
+			// Parse query params for plugin
+			if (queryString) {
+				const params = new URLSearchParams(queryString);
+				if (params.get('plugin')) {
+					const pluginStr = decodeURIComponent(params.get('plugin')!);
+					const semiIdx = pluginStr.indexOf(';');
+					if (semiIdx !== -1) {
+						plugin = pluginStr.slice(0, semiIdx);
+						pluginOpts = pluginStr.slice(semiIdx + 1);
+					} else {
+						plugin = pluginStr;
+					}
+				}
+			}
+
+			// Decode userinfo (base64 or plain method:password)
+			let decoded: string;
+			try {
+				decoded = atob(userinfo);
+			} catch {
+				decoded = decodeURIComponent(userinfo);
+			}
+			const colonIdx = decoded.indexOf(':');
+			if (colonIdx === -1) {
+				return { success: false, error: 'Invalid Shadowsocks URI: missing method:password' };
+			}
+			method = decoded.slice(0, colonIdx);
+			password = decoded.slice(colonIdx + 1);
+		}
+
+		if (isNaN(port) || port < 1 || port > 65535) {
+			return { success: false, error: 'Invalid Shadowsocks URI: invalid port' };
+		}
+
+		const config: ParsedShadowsocks = {
+			type: 'ss',
+			name,
+			server,
+			port,
+			method,
+			password,
+		};
+
+		if (plugin) config.plugin = plugin;
+		if (pluginOpts) config.pluginOpts = pluginOpts;
+
+		return { success: true, config };
+	} catch (err) {
+		return { success: false, error: `Failed to parse Shadowsocks URI: ${err}` };
+	}
+}
+
+/**
  * Parse an AmneziaWG/WireGuard configuration
  * INI-like format with [Interface] and [Peer] sections
  */
@@ -358,6 +484,10 @@ export function parseConfig(input: string): ParseResult {
 		return parseHysteria2(trimmed);
 	}
 
+	if (trimmed.startsWith('ss://')) {
+		return parseShadowsocks(trimmed);
+	}
+
 	// Try AWG config (starts with [Interface])
 	if (trimmed.includes('[Interface]') || trimmed.includes('[interface]')) {
 		return parseAWG(trimmed);
@@ -365,7 +495,7 @@ export function parseConfig(input: string): ParseResult {
 
 	return {
 		success: false,
-		error: 'Unknown configuration format. Supported: vless://, hy2://, hysteria2://, or AmneziaWG config'
+		error: 'Unknown configuration format. Supported: vless://, hy2://, hysteria2://, ss://, or AmneziaWG config'
 	};
 }
 
@@ -459,6 +589,22 @@ export function toSingboxConfig(parsed: ParsedConfig): { endpoint?: object; outb
 					password: parsed.obfsPassword || '',
 				};
 			}
+
+			return { outbound, outboundTag: outbound.tag as string };
+		}
+
+		case 'ss': {
+			const outbound: Record<string, unknown> = {
+				type: 'shadowsocks',
+				tag: parsed.name.replace(/[^a-zA-Z0-9-_]/g, '-'),
+				server: parsed.server,
+				server_port: parsed.port,
+				method: parsed.method,
+				password: parsed.password,
+			};
+
+			if (parsed.plugin) outbound.plugin = parsed.plugin;
+			if (parsed.pluginOpts) outbound.plugin_opts = parsed.pluginOpts;
 
 			return { outbound, outboundTag: outbound.tag as string };
 		}

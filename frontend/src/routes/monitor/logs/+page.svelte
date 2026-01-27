@@ -1,5 +1,5 @@
 <script lang="ts">
-	import { onMount, onDestroy } from 'svelte';
+	import { onMount } from 'svelte';
 	import { t } from 'svelte-i18n';
 	import { createLogsStream } from '$lib/api/client';
 
@@ -10,18 +10,24 @@
 		time: Date;
 	}
 
-	let logs: LogEntry[] = [];
+	let logs = $state<LogEntry[]>([]);
 	let stream: { close: () => void } | null = null;
-	let connected = false;
+	let connected = $state(false);
 	let logId = 0;
-	let filter = 'all';
-	let search = '';
-	let autoScroll = true;
+	let filter = $state('all');
+	let search = $state('');
+	let autoScroll = $state(true);
+	let paused = $state(false);
 	let logContainer: HTMLDivElement;
 
 	const MAX_LOGS = 500;
+	const FLUSH_INTERVAL_MS = 150;
 
 	const LOG_LEVELS = ['all', 'trace', 'debug', 'info', 'warn', 'error'] as const;
+
+	// Batch buffer — incoming logs accumulate here between flushes
+	let pendingLogs: LogEntry[] = [];
+	let flushTimer: ReturnType<typeof setInterval> | null = null;
 
 	function getLogColor(type: string): string {
 		switch (type.toLowerCase()) {
@@ -41,6 +47,32 @@
 		}
 	}
 
+	function flushPending() {
+		if (pendingLogs.length === 0 || paused) return;
+		const batch = pendingLogs;
+		pendingLogs = [];
+		const merged = logs.concat(batch);
+		logs = merged.length > MAX_LOGS ? merged.slice(-MAX_LOGS) : merged;
+
+		if (autoScroll && logContainer) {
+			requestAnimationFrame(() => {
+				logContainer.scrollTop = logContainer.scrollHeight;
+			});
+		}
+	}
+
+	function startFlushTimer() {
+		if (flushTimer) return;
+		flushTimer = setInterval(flushPending, FLUSH_INTERVAL_MS);
+	}
+
+	function stopFlushTimer() {
+		if (flushTimer) {
+			clearInterval(flushTimer);
+			flushTimer = null;
+		}
+	}
+
 	function startStream(level = 'info') {
 		stopStream();
 		stream = createLogsStream((data) => {
@@ -51,15 +83,9 @@
 				payload: data.payload,
 				time: new Date()
 			};
-
-			logs = [...logs.slice(-(MAX_LOGS - 1)), entry];
-
-			if (autoScroll && logContainer) {
-				setTimeout(() => {
-					logContainer.scrollTop = logContainer.scrollHeight;
-				}, 0);
-			}
+			pendingLogs.push(entry);
 		}, level);
+		startFlushTimer();
 	}
 
 	function stopStream() {
@@ -68,10 +94,24 @@
 			stream = null;
 			connected = false;
 		}
+		stopFlushTimer();
+		flushPending();
 	}
 
 	function clearLogs() {
 		logs = [];
+		pendingLogs = [];
+	}
+
+	function togglePause() {
+		paused = !paused;
+		if (!paused) {
+			// Flush accumulated logs on unpause, but cap to MAX_LOGS
+			if (pendingLogs.length > MAX_LOGS) {
+				pendingLogs = pendingLogs.slice(-MAX_LOGS);
+			}
+			flushPending();
+		}
 	}
 
 	function formatTime(date: Date): string {
@@ -83,22 +123,25 @@
 		});
 	}
 
-	$: filteredLogs = logs.filter((log) => {
+	let filteredLogs = $derived(logs.filter((log) => {
 		if (filter !== 'all' && log.type.toLowerCase() !== filter) return false;
 		if (search && !log.payload.toLowerCase().includes(search.toLowerCase())) return false;
 		return true;
-	});
+	}));
 
-	$: if (filter !== 'all') {
-		startStream(filter);
-	}
+	let prevFilter = 'all';
+	$effect(() => {
+		if (filter !== prevFilter) {
+			prevFilter = filter;
+			startStream(filter === 'all' ? 'info' : filter);
+		}
+	});
 
 	onMount(() => {
 		startStream('info');
-	});
-
-	onDestroy(() => {
-		stopStream();
+		return () => {
+			stopStream();
+		};
 	});
 </script>
 
@@ -143,6 +186,13 @@
 			/>
 			{$t('logs.autoScroll')}
 		</label>
+
+		<button
+			onclick={togglePause}
+			class="px-3 py-2 rounded-lg transition-colors {paused ? 'bg-[var(--ctp-primary)] text-white' : 'bg-[var(--ctp-surface1)] text-[var(--ctp-text)] hover:bg-[var(--ctp-surface2)]'}"
+		>
+			{paused ? $t('logs.resume') : $t('logs.pause')}
+		</button>
 
 		<button
 			onclick={clearLogs}

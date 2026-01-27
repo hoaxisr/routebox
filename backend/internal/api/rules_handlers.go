@@ -33,6 +33,12 @@ func (h *Handler) CreateRuleSet(w http.ResponseWriter, r *http.Request) {
 	writeSuccess(w, ruleSet)
 }
 
+// GetRuleSetsUsage returns which route/dns rules reference each rule set
+func (h *Handler) GetRuleSetsUsage(w http.ResponseWriter, r *http.Request) {
+	usage := h.config.GetRuleSetsUsage()
+	writeSuccess(w, usage)
+}
+
 // DeleteRuleSet deletes a rule set by tag
 func (h *Handler) DeleteRuleSet(w http.ResponseWriter, r *http.Request) {
 	tag := chi.URLParam(r, "tag")
@@ -47,6 +53,28 @@ func (h *Handler) DeleteRuleSet(w http.ResponseWriter, r *http.Request) {
 	}
 
 	writeSuccess(w, map[string]string{"message": fmt.Sprintf("rule set '%s' deleted", tag)})
+}
+
+// UpdateRuleSet updates an existing rule set by tag
+func (h *Handler) UpdateRuleSet(w http.ResponseWriter, r *http.Request) {
+	tag := chi.URLParam(r, "tag")
+
+	var ruleSet map[string]interface{}
+	if err := json.NewDecoder(r.Body).Decode(&ruleSet); err != nil {
+		writeError(w, http.StatusBadRequest, fmt.Sprintf("Invalid JSON: %v", err))
+		return
+	}
+
+	if err := h.config.UpdateRuleSet(tag, ruleSet); err != nil {
+		if strings.Contains(err.Error(), "not found") {
+			writeError(w, http.StatusNotFound, err.Error())
+		} else {
+			writeError(w, http.StatusBadRequest, err.Error())
+		}
+		return
+	}
+
+	writeSuccess(w, ruleSet)
 }
 
 // --- Route Rules CRUD ---

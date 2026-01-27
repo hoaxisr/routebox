@@ -1,17 +1,23 @@
 <script lang="ts">
-	import type { DnsRule, DnsServer, RuleSet } from '$lib/types';
+	import type { DnsRule, DnsServer, RuleSet, Outbound } from '$lib/types';
 	import { notifications } from '$lib/stores';
+	import { api } from '$lib/api/client';
 	import { t } from 'svelte-i18n';
+	import RuleSetForm from './RuleSetForm.svelte';
 
 	interface Props {
 		rule?: DnsRule;
 		dnsServers: DnsServer[];
 		ruleSets: RuleSet[];
+		outbounds?: Outbound[];
 		onSave: (rule: DnsRule) => void;
 		onCancel: () => void;
+		onRuleSetCreated?: (ruleSet: RuleSet) => void;
 	}
 
-	let { rule, dnsServers, ruleSets, onSave, onCancel }: Props = $props();
+	let { rule, dnsServers, ruleSets, outbounds = [], onSave, onCancel, onRuleSetCreated }: Props = $props();
+
+	let showInlineRuleSetForm = $state(false);
 
 	// Form state - Match conditions
 	let domain = $state(rule?.domain?.join('\n') ?? '');
@@ -416,6 +422,16 @@
 						{/each}
 					</div>
 				{/if}
+				<button
+					type="button"
+					onclick={() => showInlineRuleSetForm = true}
+					class="mt-2 px-3 py-1.5 text-sm text-[var(--ctp-primary)] hover:bg-[var(--ctp-surface0)] rounded-lg transition-colors flex items-center gap-1"
+				>
+					<svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+						<path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 4v16m8-8H4" />
+					</svg>
+					{$t('ruleSets.newRuleSet')}
+				</button>
 			</div>
 		{/if}
 	</div>
@@ -447,3 +463,41 @@
 		</button>
 	</div>
 </form>
+
+<!-- Inline Rule Set Creation Modal -->
+{#if showInlineRuleSetForm}
+	<div class="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-[60] p-4">
+		<div class="bg-[var(--ctp-base)] rounded-xl w-full max-w-lg max-h-[90vh] overflow-y-auto">
+			<div class="px-4 py-3 border-b border-[var(--ctp-surface2)] flex items-center justify-between">
+				<h2 class="text-lg font-medium text-[var(--ctp-text)]">{$t('ruleSets.newRuleSet')}</h2>
+				<button
+					onclick={() => showInlineRuleSetForm = false}
+					class="p-1 rounded-md hover:bg-[var(--ctp-surface1)] text-[var(--ctp-overlay1)]"
+					aria-label="Close"
+				>
+					<svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+						<path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12" />
+					</svg>
+				</button>
+			</div>
+			<div class="p-4">
+				<RuleSetForm
+					existingTags={ruleSets.map(rs => rs.tag)}
+					{outbounds}
+					onSave={async (newRuleSet) => {
+						try {
+							await api.createRuleSet(newRuleSet);
+							selectedRuleSets = [...selectedRuleSets, newRuleSet.tag];
+							showInlineRuleSetForm = false;
+							onRuleSetCreated?.(newRuleSet);
+							notifications.success($t('ruleSets.ruleSetCreated'));
+						} catch (e) {
+							notifications.error(`${e}`);
+						}
+					}}
+					onCancel={() => showInlineRuleSetForm = false}
+				/>
+			</div>
+		</div>
+	</div>
+{/if}

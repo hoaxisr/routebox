@@ -447,41 +447,58 @@ func (m *Manager) GetDiff() (string, int, int, error) {
 		return "", 0, 0, err
 	}
 
-	activeLines := strings.Split(strings.TrimSpace(activeBuf.String()), "\n")
-	draftLines := strings.Split(strings.TrimSpace(draftBuf.String()), "\n")
+	// Write to temp files and use system diff for proper unified diff
+	activeFile, err := os.CreateTemp("", "routebox-active-*.json")
+	if err != nil {
+		return "", 0, 0, fmt.Errorf("failed to create temp file: %w", err)
+	}
+	defer os.Remove(activeFile.Name())
+	defer activeFile.Close()
 
-	// Simple line-by-line diff
-	var diff strings.Builder
+	draftFile, err := os.CreateTemp("", "routebox-draft-*.json")
+	if err != nil {
+		return "", 0, 0, fmt.Errorf("failed to create temp file: %w", err)
+	}
+	defer os.Remove(draftFile.Name())
+	defer draftFile.Close()
+
+	if _, err := activeFile.Write(activeBuf.Bytes()); err != nil {
+		return "", 0, 0, fmt.Errorf("failed to write temp file: %w", err)
+	}
+	activeFile.Close()
+
+	if _, err := draftFile.Write(draftBuf.Bytes()); err != nil {
+		return "", 0, 0, fmt.Errorf("failed to write temp file: %w", err)
+	}
+	draftFile.Close()
+
+	// Run unified diff; exit code 1 means differences found (not an error)
+	cmd := exec.Command("diff", "-u", "--label", "active", "--label", "draft", activeFile.Name(), draftFile.Name())
+	output, err := cmd.Output()
+	if err != nil {
+		if exitErr, ok := err.(*exec.ExitError); ok && exitErr.ExitCode() == 1 {
+			// Exit code 1 = differences found, output contains the diff
+			output = []byte(string(output))
+		} else {
+			return "", 0, 0, fmt.Errorf("diff command failed: %w", err)
+		}
+	}
+
+	// Count additions and deletions from diff output (skip header lines starting with ---, +++, @@)
 	additions := 0
 	deletions := 0
-
-	// Use a simple diff algorithm
-	activeSet := make(map[string]bool)
-	for _, line := range activeLines {
-		activeSet[line] = true
-	}
-	draftSet := make(map[string]bool)
-	for _, line := range draftLines {
-		draftSet[line] = true
-	}
-
-	// Find deletions (lines in active but not in draft)
-	for _, line := range activeLines {
-		if !draftSet[line] {
-			diff.WriteString("- " + line + "\n")
+	for _, line := range strings.Split(string(output), "\n") {
+		if strings.HasPrefix(line, "---") || strings.HasPrefix(line, "+++") || strings.HasPrefix(line, "@@") {
+			continue
+		}
+		if strings.HasPrefix(line, "+") {
+			additions++
+		} else if strings.HasPrefix(line, "-") {
 			deletions++
 		}
 	}
 
-	// Find additions (lines in draft but not in active)
-	for _, line := range draftLines {
-		if !activeSet[line] {
-			diff.WriteString("+ " + line + "\n")
-			additions++
-		}
-	}
-
-	return diff.String(), additions, deletions, nil
+	return string(output), additions, deletions, nil
 }
 
 // CheckConfig validates config using sing-box check command

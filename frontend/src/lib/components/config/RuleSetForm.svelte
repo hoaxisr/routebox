@@ -1,19 +1,17 @@
 <script lang="ts">
 	import { t } from 'svelte-i18n';
 	import type { RuleSet, Outbound } from '$lib/types';
-	import { notifications } from '$lib/stores';
+	import { notifications, featureFlags } from '$lib/stores';
 
 	interface Props {
 		existingTags: string[];
 		outbounds?: Outbound[];
 		ruleSet?: RuleSet | null;
-		currentOutbound?: string;
-		currentAction?: string;
-		onSave: (ruleSet: RuleSet, routeConfig?: { outbound?: string; action?: string }) => void;
+		onSave: (ruleSet: RuleSet) => void;
 		onCancel: () => void;
 	}
 
-	let { existingTags, outbounds = [], ruleSet = null, currentOutbound, currentAction, onSave, onCancel }: Props = $props();
+	let { existingTags, outbounds = [], ruleSet = null, onSave, onCancel }: Props = $props();
 
 	const isEditing = !!ruleSet;
 
@@ -27,19 +25,15 @@
 
 	// Form state - initialize from ruleSet if editing
 	let tag = $state(ruleSet?.tag || '');
-	let type = $state<'remote' | 'local'>(ruleSet?.type || 'remote');
+	let type = $state<'remote' | 'local' | 'inline'>(ruleSet?.type || 'remote');
 	let format = $state<'binary' | 'source'>(ruleSet?.format || 'binary');
 	let url = $state(ruleSet?.url || '');
 	let path = $state(ruleSet?.path || '');
 	// Remote-specific options
 	let downloadDetour = $state(ruleSet?.download_detour || '');
 	let updateInterval = $state(ruleSet?.update_interval || '24h');
-
-	// Route configuration
-	let routeAction = $state<'none' | 'route' | 'reject'>(
-		currentAction === 'reject' ? 'reject' : (currentOutbound ? 'route' : 'none')
-	);
-	let selectedOutbound = $state(currentOutbound || (outbounds[0]?.tag || ''));
+	// Inline-specific options
+	let inlineRulesJson = $state(ruleSet?.rules ? JSON.stringify(ruleSet.rules, null, 2) : '[\n  {\n    "domain_suffix": [".example.com"]\n  }\n]');
 
 	let errors = $state<Record<string, string>>({});
 
@@ -67,8 +61,15 @@
 			errors['path'] = $t('errors.requiredField');
 		}
 
-		if (routeAction === 'route' && !selectedOutbound) {
-			errors['outbound'] = $t('routes.outboundRequired');
+		if (type === 'inline') {
+			try {
+				const parsed = JSON.parse(inlineRulesJson);
+				if (!Array.isArray(parsed)) {
+					errors['rules'] = $t('routes.inlineRulesMustBeArray');
+				}
+			} catch {
+				errors['rules'] = $t('routes.inlineRulesInvalidJson');
+			}
 		}
 
 		const errorKeys = Object.keys(errors);
@@ -86,26 +87,20 @@
 		const newRuleSet: RuleSet = {
 			tag: tag.trim(),
 			type,
-			format
+			...(type !== 'inline' ? { format } : {})
 		};
 
 		if (type === 'remote') {
 			newRuleSet.url = url.trim();
 			if (downloadDetour) newRuleSet.download_detour = downloadDetour;
 			if (updateInterval && updateInterval !== '24h') newRuleSet.update_interval = updateInterval;
-		} else {
+		} else if (type === 'local') {
 			newRuleSet.path = path.trim();
+		} else if (type === 'inline') {
+			newRuleSet.rules = JSON.parse(inlineRulesJson);
 		}
 
-		// Build route config
-		let routeConfig: { outbound?: string; action?: string } | undefined;
-		if (routeAction === 'reject') {
-			routeConfig = { action: 'reject' };
-		} else if (routeAction === 'route' && selectedOutbound) {
-			routeConfig = { outbound: selectedOutbound };
-		}
-
-		onSave(newRuleSet, routeConfig);
+		onSave(newRuleSet);
 	}
 </script>
 
@@ -168,10 +163,20 @@
 				>
 					{$t('routes.ruleSetTypes.local')}
 				</button>
+				{#if $featureFlags['inline_rule_sets']}
+					<button
+						type="button"
+						onclick={() => type = 'inline'}
+						class="toggle-btn {type === 'inline' ? 'selected' : ''}"
+					>
+						{$t('routes.ruleSetTypes.inline')}
+					</button>
+				{/if}
 			</div>
 		</div>
 
-		<!-- Format -->
+		<!-- Format (not for inline) -->
+		{#if type !== 'inline'}
 		<div class="mb-4">
 			<label class="block text-sm font-medium text-[var(--ctp-subtext1)] mb-2">{$t('common.format')}</label>
 			<div class="flex gap-2">
@@ -191,6 +196,7 @@
 				</button>
 			</div>
 		</div>
+		{/if}
 
 		<!-- URL (for remote) -->
 		{#if type === 'remote'}
@@ -253,59 +259,22 @@
 				{/if}
 			</div>
 		{/if}
-	</div>
 
-	<!-- Route Configuration -->
-	<div class="border-t border-[var(--ctp-surface2)] pt-4">
-		<label class="block text-sm font-medium text-[var(--ctp-subtext1)] mb-2">{$t('routes.ruleAction')}</label>
-		<div class="flex gap-2 mb-3">
-			<button
-				type="button"
-				onclick={() => routeAction = 'none'}
-				class="toggle-btn {routeAction === 'none' ? 'selected' : ''}"
-			>
-				{$t('common.none')}
-			</button>
-			<button
-				type="button"
-				onclick={() => routeAction = 'route'}
-				class="toggle-btn {routeAction === 'route' ? 'selected' : ''}"
-			>
-				{$t('routes.routeTo')}...
-			</button>
-			<button
-				type="button"
-				onclick={() => routeAction = 'reject'}
-				class="toggle-btn {routeAction === 'reject' ? 'selected' : ''}"
-			>
-				{$t('routes.actionReject')}
-			</button>
-		</div>
-
-		{#if routeAction === 'route'}
-			<div>
-				<label for="outbound" class="block text-sm font-medium text-[var(--ctp-subtext1)] mb-1">{$t('routes.outbound')}</label>
-				<select
-					id="outbound"
-					bind:value={selectedOutbound}
-					class="w-full px-3 py-2 bg-[var(--ctp-surface0)] border border-[var(--ctp-surface2)] rounded-lg text-[var(--ctp-text)] focus:outline-none focus:ring-2 focus:ring-[var(--ctp-primary)]"
-				>
-					{#each outbounds as ob}
-						<option value={ob.tag}>{ob.tag}</option>
-					{/each}
-				</select>
-				{#if errors['outbound']}
-					<p class="mt-1 text-sm text-[var(--ctp-red)]">{errors['outbound']}</p>
+		<!-- Inline rules JSON editor -->
+		{#if type === 'inline'}
+			<div class="mb-4">
+				<label for="inline-rules" class="block text-sm font-medium text-[var(--ctp-subtext1)] mb-1">{$t('routes.inlineRules')} *</label>
+				<textarea
+					id="inline-rules"
+					bind:value={inlineRulesJson}
+					rows="10"
+					class="w-full px-3 py-2 bg-[var(--ctp-surface0)] border rounded-lg text-[var(--ctp-text)] placeholder-[var(--ctp-overlay0)] focus:outline-none focus:ring-2 focus:ring-[var(--ctp-primary)] font-mono text-sm {errors['rules'] ? 'border-[var(--ctp-red)]' : 'border-[var(--ctp-surface2)]'}"
+				></textarea>
+				<p class="mt-1 text-xs text-[var(--ctp-overlay0)]">{$t('routes.inlineRulesHint')}</p>
+				{#if errors['rules']}
+					<p class="mt-1 text-sm text-[var(--ctp-red)]">{errors['rules']}</p>
 				{/if}
 			</div>
-		{:else if routeAction === 'reject'}
-			<p class="text-sm text-[var(--ctp-overlay0)]">
-				{$t('routes.rejectHint')}
-			</p>
-		{:else}
-			<p class="text-sm text-[var(--ctp-overlay0)]">
-				{$t('routes.noRouteHint')}
-			</p>
 		{/if}
 	</div>
 

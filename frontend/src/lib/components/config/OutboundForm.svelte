@@ -1,7 +1,7 @@
 <script lang="ts">
 	import type { Outbound, Endpoint } from '$lib/types';
 	import { notifications } from '$lib/stores';
-	import { parseVless, parseHysteria2, toSingboxConfig, type ParsedVless, type ParsedHysteria2 } from '$lib/utils/parsers';
+	import { parseVless, parseHysteria2, parseShadowsocks, toSingboxConfig, type ParsedVless, type ParsedHysteria2, type ParsedShadowsocks } from '$lib/utils/parsers';
 	import { t } from 'svelte-i18n';
 
 	interface Props {
@@ -51,6 +51,37 @@
 	let hy2HopInterval = $state((outbound as any)?.hop_interval ?? '');
 	let hy2UpMbps = $state((outbound as any)?.up_mbps ?? 0);
 	let hy2DownMbps = $state((outbound as any)?.down_mbps ?? 0);
+
+	// Shadowsocks fields
+	let ssMethod = $state((outbound as any)?.method ?? '2022-blake3-aes-128-gcm');
+	let ssPassword = $state((outbound as any)?.password ?? '');
+	let ssPlugin = $state((outbound as any)?.plugin ?? '');
+	let ssPluginOpts = $state((outbound as any)?.plugin_opts ?? '');
+	let ssNetwork = $state((outbound as any)?.network ?? '');
+	let ssUdpOverTcp = $state((outbound as any)?.udp_over_tcp ?? false);
+	let ssMuxEnabled = $state((outbound as any)?.multiplex?.enabled ?? false);
+	let ssMuxProtocol = $state((outbound as any)?.multiplex?.protocol ?? 'h2mux');
+	let ssMuxMaxConns = $state((outbound as any)?.multiplex?.max_connections ?? 0);
+	let ssMuxMinStreams = $state((outbound as any)?.multiplex?.min_streams ?? 0);
+	let ssMuxMaxStreams = $state((outbound as any)?.multiplex?.max_streams ?? 0);
+	let ssMuxPadding = $state((outbound as any)?.multiplex?.padding ?? false);
+
+	// ShadowTLS fields
+	let stlsVersion = $state((outbound as any)?.version ?? 3);
+	let stlsPassword = $state((outbound as any)?.password ?? '');
+	let stlsDetour = $state((outbound as any)?.detour ?? '');
+	let stlsTlsSni = $state((outbound as any)?.tls?.server_name ?? '');
+	let stlsTlsFingerprint = $state((outbound as any)?.tls?.utls?.fingerprint ?? '');
+	let stlsInsecure = $state((outbound as any)?.tls?.insecure ?? false);
+
+	// AnyTLS fields
+	let atPassword = $state((outbound as any)?.password ?? '');
+	let atTlsSni = $state((outbound as any)?.tls?.server_name ?? '');
+	let atTlsFingerprint = $state((outbound as any)?.tls?.utls?.fingerprint ?? '');
+	let atInsecure = $state((outbound as any)?.tls?.insecure ?? false);
+	let atIdleCheckInterval = $state((outbound as any)?.idle_session_check_interval ?? '');
+	let atIdleTimeout = $state((outbound as any)?.idle_session_timeout ?? '');
+	let atMinIdleSession = $state((outbound as any)?.min_idle_session ?? 0);
 
 	// URLTest specific fields
 	let urltestUrl = $state(outbound?.url ?? '');
@@ -129,7 +160,21 @@
 			return;
 		}
 
-		importError = 'Unknown link format. Supported: vless://, hy2://, hysteria2://';
+		// Try Shadowsocks
+		if (text.startsWith('ss://')) {
+			const result = parseShadowsocks(text);
+			if (!result.success || !result.config) {
+				importError = result.error || 'Failed to parse Shadowsocks link';
+				return;
+			}
+			applyShadowsocksConfig(result.config as ParsedShadowsocks);
+			showImport = false;
+			importText = '';
+			notifications.success('Shadowsocks configuration imported');
+			return;
+		}
+
+		importError = 'Unknown link format. Supported: vless://, hy2://, hysteria2://, ss://';
 	}
 
 	function applyVlessConfig(config: ParsedVless) {
@@ -170,6 +215,17 @@
 		hy2ObfsPassword = config.obfsPassword || '';
 	}
 
+	function applyShadowsocksConfig(config: ParsedShadowsocks) {
+		type = 'shadowsocks';
+		tag = config.name.replace(/[^a-zA-Z0-9-_]/g, '-');
+		server = config.server;
+		serverPort = config.port;
+		ssMethod = config.method;
+		ssPassword = config.password;
+		ssPlugin = config.plugin || '';
+		ssPluginOpts = config.pluginOpts || '';
+	}
+
 	function validate(): boolean {
 		errors = {};
 
@@ -206,6 +262,45 @@
 				errors['serverPort'] = 'Valid port is required (1-65535)';
 			}
 			if (!hy2Password.trim()) {
+				errors['password'] = 'Password is required';
+			}
+		}
+
+		if (type === 'shadowsocks') {
+			if (!server.trim()) {
+				errors['server'] = 'Server is required';
+			}
+			if (!serverPort || serverPort < 1 || serverPort > 65535) {
+				errors['serverPort'] = 'Valid port is required (1-65535)';
+			}
+			if (!ssMethod) {
+				errors['method'] = 'Method is required';
+			}
+			if (!ssPassword.trim()) {
+				errors['password'] = 'Password is required';
+			}
+		}
+
+		if (type === 'shadowtls') {
+			if (!server.trim()) {
+				errors['server'] = 'Server is required';
+			}
+			if (!serverPort || serverPort < 1 || serverPort > 65535) {
+				errors['serverPort'] = 'Valid port is required (1-65535)';
+			}
+			if (stlsVersion >= 2 && !stlsPassword.trim()) {
+				errors['password'] = 'Password is required for ShadowTLS v2+';
+			}
+		}
+
+		if (type === 'anytls') {
+			if (!server.trim()) {
+				errors['server'] = 'Server is required';
+			}
+			if (!serverPort || serverPort < 1 || serverPort > 65535) {
+				errors['serverPort'] = 'Valid port is required (1-65535)';
+			}
+			if (!atPassword.trim()) {
 				errors['password'] = 'Password is required';
 			}
 		}
@@ -330,6 +425,58 @@
 			}
 		}
 
+		if (type === 'shadowsocks') {
+			(ob as any).server = server.trim();
+			(ob as any).server_port = serverPort;
+			(ob as any).method = ssMethod;
+			(ob as any).password = ssPassword.trim();
+			if (ssPlugin.trim()) (ob as any).plugin = ssPlugin.trim();
+			if (ssPluginOpts.trim()) (ob as any).plugin_opts = ssPluginOpts.trim();
+			if (ssNetwork) (ob as any).network = ssNetwork;
+			if (ssUdpOverTcp) (ob as any).udp_over_tcp = true;
+			if (ssMuxEnabled) {
+				const mux: Record<string, unknown> = { enabled: true, protocol: ssMuxProtocol };
+				if (ssMuxMaxConns > 0) mux.max_connections = ssMuxMaxConns;
+				if (ssMuxMinStreams > 0) mux.min_streams = ssMuxMinStreams;
+				if (ssMuxMaxStreams > 0) mux.max_streams = ssMuxMaxStreams;
+				if (ssMuxPadding) mux.padding = true;
+				(ob as any).multiplex = mux;
+			}
+		}
+
+		if (type === 'shadowtls') {
+			(ob as any).server = server.trim();
+			(ob as any).server_port = serverPort;
+			(ob as any).version = stlsVersion;
+			if (stlsPassword.trim()) (ob as any).password = stlsPassword.trim();
+			(ob as any).tls = {
+				enabled: true,
+				server_name: stlsTlsSni || server.trim(),
+				insecure: stlsInsecure
+			};
+			if (stlsTlsFingerprint) {
+				(ob as any).tls.utls = { enabled: true, fingerprint: stlsTlsFingerprint };
+			}
+			if (stlsDetour) (ob as any).detour = stlsDetour;
+		}
+
+		if (type === 'anytls') {
+			(ob as any).server = server.trim();
+			(ob as any).server_port = serverPort;
+			(ob as any).password = atPassword.trim();
+			(ob as any).tls = {
+				enabled: true,
+				server_name: atTlsSni || server.trim(),
+				insecure: atInsecure
+			};
+			if (atTlsFingerprint) {
+				(ob as any).tls.utls = { enabled: true, fingerprint: atTlsFingerprint };
+			}
+			if (atIdleCheckInterval.trim()) (ob as any).idle_session_check_interval = atIdleCheckInterval.trim();
+			if (atIdleTimeout.trim()) (ob as any).idle_session_timeout = atIdleTimeout.trim();
+			if (atMinIdleSession > 0) (ob as any).min_idle_session = atMinIdleSession;
+		}
+
 		onSave(ob);
 	}
 
@@ -339,7 +486,16 @@
 		{ value: 'selector', labelKey: 'outbounds.types.selector', descKey: 'outbounds.selectorDesc' },
 		{ value: 'urltest', labelKey: 'outbounds.types.urltest', descKey: 'outbounds.urltestDesc' },
 		{ value: 'vless', labelKey: 'outbounds.vless', descKey: 'outbounds.vlessDesc' },
-		{ value: 'hysteria2', labelKey: 'outbounds.hysteria2', descKey: 'outbounds.hysteria2Desc' }
+		{ value: 'hysteria2', labelKey: 'outbounds.hysteria2', descKey: 'outbounds.hysteria2Desc' },
+		{ value: 'shadowsocks', labelKey: 'outbounds.shadowsocks', descKey: 'outbounds.shadowsocksDesc' },
+		{ value: 'shadowtls', labelKey: 'outbounds.shadowtls', descKey: 'outbounds.shadowtlsDesc' },
+		{ value: 'anytls', labelKey: 'outbounds.anytls', descKey: 'outbounds.anytlsDesc' }
+	];
+
+	const ssMethods = [
+		'2022-blake3-aes-128-gcm', '2022-blake3-aes-256-gcm', '2022-blake3-chacha20-poly1305',
+		'aes-128-gcm', 'aes-192-gcm', 'aes-256-gcm',
+		'chacha20-ietf-poly1305', 'xchacha20-ietf-poly1305', 'none'
 	];
 
 	const fingerprints = ['chrome', 'firefox', 'safari', 'edge', 'ios', 'android', 'random', 'randomized'];
@@ -364,7 +520,7 @@
 	<!-- Type -->
 	<div>
 		<label class="block text-sm font-medium text-[var(--ctp-subtext1)] mb-2">{$t('common.type')}</label>
-		<div class="grid grid-cols-2 gap-2">
+		<div class="grid grid-cols-3 gap-2">
 			{#each outboundTypes as ot}
 				<button
 					type="button"
@@ -504,6 +660,7 @@
 			</svg>
 			{$t('outbounds.importFromVless')}
 		</button>
+
 
 		<!-- Server & Port -->
 		<div class="grid grid-cols-3 gap-4">
@@ -830,6 +987,277 @@
 		</div>
 	{/if}
 
+	{#if type === 'shadowsocks'}
+		<!-- Import Button -->
+		<button
+			type="button"
+			onclick={() => showImport = true}
+			class="w-full px-4 py-2 bg-[var(--ctp-surface0)] border border-dashed border-[var(--ctp-surface2)] rounded-lg text-[var(--ctp-subtext1)] hover:border-[var(--ctp-primary)] hover:text-[var(--ctp-primary)] transition-colors flex items-center justify-center gap-2"
+		>
+			<svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+				<path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-8l-4-4m0 0L8 8m4-4v12" />
+			</svg>
+			{$t('outbounds.importFromSs')}
+		</button>
+
+		<!-- Server & Port -->
+		<div class="grid grid-cols-3 gap-4">
+			<div class="col-span-2">
+				<label for="ssServer" class="block text-sm font-medium text-[var(--ctp-subtext1)] mb-1">{$t('common.server')} *</label>
+				<input id="ssServer" type="text" bind:value={server} placeholder="example.com"
+					class="w-full px-3 py-2 bg-[var(--ctp-surface0)] border rounded-lg text-[var(--ctp-text)] placeholder-[var(--ctp-overlay0)] focus:outline-none focus:ring-2 focus:ring-[var(--ctp-primary)] {errors['server'] ? 'border-[var(--ctp-red)]' : 'border-[var(--ctp-surface2)]'}" />
+			</div>
+			<div>
+				<label for="ssPort" class="block text-sm font-medium text-[var(--ctp-subtext1)] mb-1">{$t('common.port')} *</label>
+				<input id="ssPort" type="number" bind:value={serverPort} min="1" max="65535"
+					class="w-full px-3 py-2 bg-[var(--ctp-surface0)] border rounded-lg text-[var(--ctp-text)] focus:outline-none focus:ring-2 focus:ring-[var(--ctp-primary)] {errors['serverPort'] ? 'border-[var(--ctp-red)]' : 'border-[var(--ctp-surface2)]'}" />
+			</div>
+		</div>
+
+		<!-- Method -->
+		<div>
+			<label for="ssMethod" class="block text-sm font-medium text-[var(--ctp-subtext1)] mb-1">{$t('outbounds.method')} *</label>
+			<select id="ssMethod" bind:value={ssMethod}
+				class="w-full px-3 py-2 bg-[var(--ctp-surface0)] border rounded-lg text-[var(--ctp-text)] focus:outline-none focus:ring-2 focus:ring-[var(--ctp-primary)] {errors['method'] ? 'border-[var(--ctp-red)]' : 'border-[var(--ctp-surface2)]'}">
+				{#each ssMethods as m}
+					<option value={m}>{m}</option>
+				{/each}
+			</select>
+		</div>
+
+		<!-- Password -->
+		<div>
+			<label for="ssPassword" class="block text-sm font-medium text-[var(--ctp-subtext1)] mb-1">{$t('outbounds.password')} *</label>
+			<input id="ssPassword" type="password" bind:value={ssPassword} placeholder="Password"
+				class="w-full px-3 py-2 bg-[var(--ctp-surface0)] border rounded-lg text-[var(--ctp-text)] placeholder-[var(--ctp-overlay0)] focus:outline-none focus:ring-2 focus:ring-[var(--ctp-primary)] {errors['password'] ? 'border-[var(--ctp-red)]' : 'border-[var(--ctp-surface2)]'}" />
+		</div>
+
+		<!-- Plugin -->
+		<div class="grid grid-cols-2 gap-4">
+			<div>
+				<label for="ssPlugin" class="block text-sm font-medium text-[var(--ctp-subtext1)] mb-1">{$t('outbounds.plugin')}</label>
+				<input id="ssPlugin" type="text" bind:value={ssPlugin} placeholder="obfs-local"
+					class="w-full px-3 py-2 bg-[var(--ctp-surface0)] border border-[var(--ctp-surface2)] rounded-lg text-[var(--ctp-text)] placeholder-[var(--ctp-overlay0)] focus:outline-none focus:ring-2 focus:ring-[var(--ctp-primary)]" />
+			</div>
+			<div>
+				<label for="ssPluginOpts" class="block text-sm font-medium text-[var(--ctp-subtext1)] mb-1">{$t('outbounds.pluginOpts')}</label>
+				<input id="ssPluginOpts" type="text" bind:value={ssPluginOpts} placeholder="obfs=http;obfs-host=..."
+					class="w-full px-3 py-2 bg-[var(--ctp-surface0)] border border-[var(--ctp-surface2)] rounded-lg text-[var(--ctp-text)] placeholder-[var(--ctp-overlay0)] focus:outline-none focus:ring-2 focus:ring-[var(--ctp-primary)]" />
+			</div>
+		</div>
+
+		<!-- Network & UDP over TCP -->
+		<div class="grid grid-cols-2 gap-4">
+			<div>
+				<label for="ssNetwork" class="block text-sm font-medium text-[var(--ctp-subtext1)] mb-1">{$t('outbounds.networkType')}</label>
+				<select id="ssNetwork" bind:value={ssNetwork}
+					class="w-full px-3 py-2 bg-[var(--ctp-surface0)] border border-[var(--ctp-surface2)] rounded-lg text-[var(--ctp-text)] focus:outline-none focus:ring-2 focus:ring-[var(--ctp-primary)]">
+					<option value="">{$t('common.default')} (TCP + UDP)</option>
+					<option value="tcp">TCP</option>
+					<option value="udp">UDP</option>
+				</select>
+			</div>
+			<div class="flex items-end pb-2">
+				<label class="flex items-center gap-2 text-sm text-[var(--ctp-subtext1)]">
+					<input type="checkbox" bind:checked={ssUdpOverTcp} />
+					{$t('outbounds.udpOverTcp')}
+				</label>
+			</div>
+		</div>
+
+		<!-- Multiplexing -->
+		<div class="bg-[var(--ctp-surface0)] rounded-lg p-4 space-y-4">
+			<label class="flex items-center gap-2 text-sm font-medium text-[var(--ctp-subtext1)]">
+				<input type="checkbox" bind:checked={ssMuxEnabled} />
+				{$t('outbounds.multiplexing')}
+			</label>
+
+			{#if ssMuxEnabled}
+				<div class="grid grid-cols-2 gap-4">
+					<div>
+						<label for="ssMuxProtocol" class="block text-xs text-[var(--ctp-overlay0)] mb-1">{$t('outbounds.muxProtocol')}</label>
+						<select id="ssMuxProtocol" bind:value={ssMuxProtocol}
+							class="w-full px-3 py-2 bg-[var(--ctp-mantle)] border border-[var(--ctp-surface2)] rounded-lg text-[var(--ctp-text)] focus:outline-none focus:ring-2 focus:ring-[var(--ctp-primary)] text-sm">
+							<option value="h2mux">h2mux</option>
+							<option value="smux">smux</option>
+							<option value="yamux">yamux</option>
+						</select>
+					</div>
+					<div>
+						<label for="ssMuxMaxConns" class="block text-xs text-[var(--ctp-overlay0)] mb-1">{$t('outbounds.maxConnections')}</label>
+						<input id="ssMuxMaxConns" type="number" bind:value={ssMuxMaxConns} min="0"
+							class="w-full px-3 py-2 bg-[var(--ctp-mantle)] border border-[var(--ctp-surface2)] rounded-lg text-[var(--ctp-text)] focus:outline-none focus:ring-2 focus:ring-[var(--ctp-primary)] text-sm" />
+					</div>
+				</div>
+				<div class="grid grid-cols-2 gap-4">
+					<div>
+						<label for="ssMuxMinStreams" class="block text-xs text-[var(--ctp-overlay0)] mb-1">{$t('outbounds.minStreams')}</label>
+						<input id="ssMuxMinStreams" type="number" bind:value={ssMuxMinStreams} min="0"
+							class="w-full px-3 py-2 bg-[var(--ctp-mantle)] border border-[var(--ctp-surface2)] rounded-lg text-[var(--ctp-text)] focus:outline-none focus:ring-2 focus:ring-[var(--ctp-primary)] text-sm" />
+					</div>
+					<div>
+						<label for="ssMuxMaxStreams" class="block text-xs text-[var(--ctp-overlay0)] mb-1">{$t('outbounds.maxStreams')}</label>
+						<input id="ssMuxMaxStreams" type="number" bind:value={ssMuxMaxStreams} min="0"
+							class="w-full px-3 py-2 bg-[var(--ctp-mantle)] border border-[var(--ctp-surface2)] rounded-lg text-[var(--ctp-text)] focus:outline-none focus:ring-2 focus:ring-[var(--ctp-primary)] text-sm" />
+					</div>
+				</div>
+				<label class="flex items-center gap-2 text-sm text-[var(--ctp-subtext1)]">
+					<input type="checkbox" bind:checked={ssMuxPadding} />
+					{$t('outbounds.padding')}
+				</label>
+			{/if}
+		</div>
+	{/if}
+
+	{#if type === 'shadowtls'}
+		<!-- Server & Port -->
+		<div class="grid grid-cols-3 gap-4">
+			<div class="col-span-2">
+				<label for="stlsServer" class="block text-sm font-medium text-[var(--ctp-subtext1)] mb-1">{$t('common.server')} *</label>
+				<input id="stlsServer" type="text" bind:value={server} placeholder="example.com"
+					class="w-full px-3 py-2 bg-[var(--ctp-surface0)] border rounded-lg text-[var(--ctp-text)] placeholder-[var(--ctp-overlay0)] focus:outline-none focus:ring-2 focus:ring-[var(--ctp-primary)] {errors['server'] ? 'border-[var(--ctp-red)]' : 'border-[var(--ctp-surface2)]'}" />
+			</div>
+			<div>
+				<label for="stlsPort" class="block text-sm font-medium text-[var(--ctp-subtext1)] mb-1">{$t('common.port')} *</label>
+				<input id="stlsPort" type="number" bind:value={serverPort} min="1" max="65535"
+					class="w-full px-3 py-2 bg-[var(--ctp-surface0)] border rounded-lg text-[var(--ctp-text)] focus:outline-none focus:ring-2 focus:ring-[var(--ctp-primary)] {errors['serverPort'] ? 'border-[var(--ctp-red)]' : 'border-[var(--ctp-surface2)]'}" />
+			</div>
+		</div>
+
+		<!-- Version -->
+		<div>
+			<label class="block text-sm font-medium text-[var(--ctp-subtext1)] mb-2">{$t('outbounds.version')}</label>
+			<div class="grid grid-cols-3 gap-2">
+				{#each [1, 2, 3] as v}
+					<button type="button" onclick={() => stlsVersion = v}
+						class="toggle-btn text-sm {stlsVersion === v ? 'selected' : ''}">
+						v{v}
+					</button>
+				{/each}
+			</div>
+		</div>
+
+		<!-- Password (v2/v3) -->
+		{#if stlsVersion >= 2}
+			<div>
+				<label for="stlsPassword" class="block text-sm font-medium text-[var(--ctp-subtext1)] mb-1">{$t('outbounds.password')} *</label>
+				<input id="stlsPassword" type="password" bind:value={stlsPassword} placeholder="Password"
+					class="w-full px-3 py-2 bg-[var(--ctp-surface0)] border rounded-lg text-[var(--ctp-text)] placeholder-[var(--ctp-overlay0)] focus:outline-none focus:ring-2 focus:ring-[var(--ctp-primary)] {errors['password'] ? 'border-[var(--ctp-red)]' : 'border-[var(--ctp-surface2)]'}" />
+			</div>
+		{/if}
+
+		<!-- TLS -->
+		<div class="grid grid-cols-2 gap-4">
+			<div>
+				<label for="stlsSni" class="block text-sm font-medium text-[var(--ctp-subtext1)] mb-1">{$t('outbounds.sni')}</label>
+				<input id="stlsSni" type="text" bind:value={stlsTlsSni} placeholder="Server name"
+					class="w-full px-3 py-2 bg-[var(--ctp-surface0)] border border-[var(--ctp-surface2)] rounded-lg text-[var(--ctp-text)] placeholder-[var(--ctp-overlay0)] focus:outline-none focus:ring-2 focus:ring-[var(--ctp-primary)]" />
+			</div>
+			<div>
+				<label for="stlsFingerprint" class="block text-sm font-medium text-[var(--ctp-subtext1)] mb-1">{$t('outbounds.fingerprint')}</label>
+				<select id="stlsFingerprint" bind:value={stlsTlsFingerprint}
+					class="w-full px-3 py-2 bg-[var(--ctp-surface0)] border border-[var(--ctp-surface2)] rounded-lg text-[var(--ctp-text)] focus:outline-none focus:ring-2 focus:ring-[var(--ctp-primary)]">
+					<option value="">{$t('common.none')}</option>
+					{#each fingerprints as fp}
+						<option value={fp}>{fp}</option>
+					{/each}
+				</select>
+			</div>
+		</div>
+
+		<label class="flex items-center gap-2 text-sm text-[var(--ctp-subtext1)]">
+			<input type="checkbox" bind:checked={stlsInsecure} />
+			{$t('outbounds.skipCertVerification')}
+		</label>
+
+		<!-- Detour -->
+		<div>
+			<label for="stlsDetour" class="block text-sm font-medium text-[var(--ctp-subtext1)] mb-1">{$t('outbounds.detour')}</label>
+			<select id="stlsDetour" bind:value={stlsDetour}
+				class="w-full px-3 py-2 bg-[var(--ctp-surface0)] border border-[var(--ctp-surface2)] rounded-lg text-[var(--ctp-text)] focus:outline-none focus:ring-2 focus:ring-[var(--ctp-primary)]">
+				<option value="">{$t('common.none')}</option>
+				{#each outbounds.filter(o => o.tag !== outbound?.tag) as ob}
+					<option value={ob.tag}>{ob.tag}</option>
+				{/each}
+			</select>
+			<p class="mt-1 text-xs text-[var(--ctp-overlay0)]">{$t('outbounds.detourHint')}</p>
+		</div>
+
+		<!-- Chain hint -->
+		<div class="bg-[var(--ctp-surface0)] rounded-lg p-4 text-sm text-[var(--ctp-overlay1)]">
+			{$t('outbounds.shadowtlsChainHint')}
+		</div>
+	{/if}
+
+	{#if type === 'anytls'}
+		<!-- Server & Port -->
+		<div class="grid grid-cols-3 gap-4">
+			<div class="col-span-2">
+				<label for="atServer" class="block text-sm font-medium text-[var(--ctp-subtext1)] mb-1">{$t('common.server')} *</label>
+				<input id="atServer" type="text" bind:value={server} placeholder="example.com"
+					class="w-full px-3 py-2 bg-[var(--ctp-surface0)] border rounded-lg text-[var(--ctp-text)] placeholder-[var(--ctp-overlay0)] focus:outline-none focus:ring-2 focus:ring-[var(--ctp-primary)] {errors['server'] ? 'border-[var(--ctp-red)]' : 'border-[var(--ctp-surface2)]'}" />
+			</div>
+			<div>
+				<label for="atPort" class="block text-sm font-medium text-[var(--ctp-subtext1)] mb-1">{$t('common.port')} *</label>
+				<input id="atPort" type="number" bind:value={serverPort} min="1" max="65535"
+					class="w-full px-3 py-2 bg-[var(--ctp-surface0)] border rounded-lg text-[var(--ctp-text)] focus:outline-none focus:ring-2 focus:ring-[var(--ctp-primary)] {errors['serverPort'] ? 'border-[var(--ctp-red)]' : 'border-[var(--ctp-surface2)]'}" />
+			</div>
+		</div>
+
+		<!-- Password -->
+		<div>
+			<label for="atPassword" class="block text-sm font-medium text-[var(--ctp-subtext1)] mb-1">{$t('outbounds.password')} *</label>
+			<input id="atPassword" type="password" bind:value={atPassword} placeholder="Password"
+				class="w-full px-3 py-2 bg-[var(--ctp-surface0)] border rounded-lg text-[var(--ctp-text)] placeholder-[var(--ctp-overlay0)] focus:outline-none focus:ring-2 focus:ring-[var(--ctp-primary)] {errors['password'] ? 'border-[var(--ctp-red)]' : 'border-[var(--ctp-surface2)]'}" />
+		</div>
+
+		<!-- TLS -->
+		<div class="grid grid-cols-2 gap-4">
+			<div>
+				<label for="atSni" class="block text-sm font-medium text-[var(--ctp-subtext1)] mb-1">{$t('outbounds.sni')}</label>
+				<input id="atSni" type="text" bind:value={atTlsSni} placeholder="Server name"
+					class="w-full px-3 py-2 bg-[var(--ctp-surface0)] border border-[var(--ctp-surface2)] rounded-lg text-[var(--ctp-text)] placeholder-[var(--ctp-overlay0)] focus:outline-none focus:ring-2 focus:ring-[var(--ctp-primary)]" />
+			</div>
+			<div>
+				<label for="atFingerprint" class="block text-sm font-medium text-[var(--ctp-subtext1)] mb-1">{$t('outbounds.fingerprint')}</label>
+				<select id="atFingerprint" bind:value={atTlsFingerprint}
+					class="w-full px-3 py-2 bg-[var(--ctp-surface0)] border border-[var(--ctp-surface2)] rounded-lg text-[var(--ctp-text)] focus:outline-none focus:ring-2 focus:ring-[var(--ctp-primary)]">
+					<option value="">{$t('common.none')}</option>
+					{#each fingerprints as fp}
+						<option value={fp}>{fp}</option>
+					{/each}
+				</select>
+			</div>
+		</div>
+
+		<label class="flex items-center gap-2 text-sm text-[var(--ctp-subtext1)]">
+			<input type="checkbox" bind:checked={atInsecure} />
+			{$t('outbounds.skipCertVerification')}
+		</label>
+
+		<!-- Idle Session Settings -->
+		<div class="bg-[var(--ctp-surface0)] rounded-lg p-4 space-y-4">
+			<h3 class="text-sm font-medium text-[var(--ctp-subtext1)]">{$t('common.advanced')} ({$t('common.optional').toLowerCase()})</h3>
+			<div class="grid grid-cols-3 gap-4">
+				<div>
+					<label for="atIdleCheck" class="block text-xs text-[var(--ctp-overlay0)] mb-1">{$t('outbounds.idleSessionCheckInterval')}</label>
+					<input id="atIdleCheck" type="text" bind:value={atIdleCheckInterval} placeholder="30s"
+						class="w-full px-3 py-2 bg-[var(--ctp-mantle)] border border-[var(--ctp-surface2)] rounded-lg text-[var(--ctp-text)] placeholder-[var(--ctp-overlay0)] focus:outline-none focus:ring-2 focus:ring-[var(--ctp-primary)] text-sm" />
+				</div>
+				<div>
+					<label for="atIdleTimeout" class="block text-xs text-[var(--ctp-overlay0)] mb-1">{$t('outbounds.idleSessionTimeout')}</label>
+					<input id="atIdleTimeout" type="text" bind:value={atIdleTimeout} placeholder="30s"
+						class="w-full px-3 py-2 bg-[var(--ctp-mantle)] border border-[var(--ctp-surface2)] rounded-lg text-[var(--ctp-text)] placeholder-[var(--ctp-overlay0)] focus:outline-none focus:ring-2 focus:ring-[var(--ctp-primary)] text-sm" />
+				</div>
+				<div>
+					<label for="atMinIdle" class="block text-xs text-[var(--ctp-overlay0)] mb-1">{$t('outbounds.minIdleSession')}</label>
+					<input id="atMinIdle" type="number" bind:value={atMinIdleSession} min="0"
+						class="w-full px-3 py-2 bg-[var(--ctp-mantle)] border border-[var(--ctp-surface2)] rounded-lg text-[var(--ctp-text)] focus:outline-none focus:ring-2 focus:ring-[var(--ctp-primary)] text-sm" />
+				</div>
+			</div>
+		</div>
+	{/if}
+
 	{#if type === 'direct' || type === 'block'}
 		<div class="bg-[var(--ctp-surface0)] rounded-lg p-4 text-sm text-[var(--ctp-overlay1)]">
 			{#if type === 'direct'}
@@ -864,7 +1292,7 @@
 		<div class="bg-[var(--ctp-surface0)] rounded-xl p-6 w-full max-w-lg mx-4 shadow-xl">
 			<div class="flex items-center justify-between mb-4">
 				<h3 class="text-lg font-semibold text-[var(--ctp-text)]">
-					{$t('common.import')} {type === 'vless' ? 'VLESS' : 'Hysteria2'} {$t('outbounds.configuration')}
+					{$t('common.import')} {type === 'vless' ? 'VLESS' : type === 'hysteria2' ? 'Hysteria2' : 'Shadowsocks'} {$t('outbounds.configuration')}
 				</h3>
 				<button
 					onclick={() => { showImport = false; importText = ''; importError = ''; }}
@@ -877,12 +1305,12 @@
 			</div>
 
 			<p class="text-sm text-[var(--ctp-subtext0)] mb-4">
-				{$t('outbounds.pasteLink', { values: { protocol: type === 'vless' ? 'vless://' : 'hy2:// or hysteria2://' } })}
+				{$t('outbounds.pasteLink', { values: { protocol: type === 'vless' ? 'vless://' : type === 'hysteria2' ? 'hy2:// or hysteria2://' : 'ss://' } })}
 			</p>
 
 			<textarea
 				bind:value={importText}
-				placeholder="{type === 'vless' ? 'vless://uuid@server:port?params#name' : 'hy2://password@server:port?params#name'}"
+				placeholder="{type === 'vless' ? 'vless://uuid@server:port?params#name' : type === 'hysteria2' ? 'hy2://password@server:port?params#name' : 'ss://BASE64(method:password)@server:port#name'}"
 				rows="4"
 				class="w-full px-3 py-2 bg-[var(--ctp-mantle)] border border-[var(--ctp-surface2)] rounded-lg text-[var(--ctp-text)] placeholder-[var(--ctp-overlay0)] focus:outline-none focus:ring-2 focus:ring-[var(--ctp-primary)] font-mono text-sm resize-none"
 			></textarea>
