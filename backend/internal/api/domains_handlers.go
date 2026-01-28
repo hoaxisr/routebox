@@ -41,6 +41,15 @@ func (h *Handler) CreateDomainSet(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	// Check if tag conflicts with existing rule_set tags in sing-box config
+	existingRuleSets := h.config.ListRuleSets()
+	for _, rs := range existingRuleSets {
+		if t, ok := rs["tag"].(string); ok && t == body.Tag {
+			writeError(w, http.StatusConflict, fmt.Sprintf("tag '%s' is already used by an existing rule-set in config", body.Tag))
+			return
+		}
+	}
+
 	if err := h.domains.CreateSet(body.Tag); err != nil {
 		if strings.Contains(err.Error(), "already exists") {
 			writeError(w, http.StatusConflict, err.Error())

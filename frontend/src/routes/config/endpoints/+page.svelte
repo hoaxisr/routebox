@@ -3,11 +3,12 @@
 	import { t } from 'svelte-i18n';
 	import { api } from '$lib/api/client';
 	import { notifications, unsavedChanges } from '$lib/stores';
-	import type { Endpoint } from '$lib/types';
+	import type { Endpoint, Outbound } from '$lib/types';
 	import Modal from '$lib/components/shared/Modal.svelte';
 	import EndpointForm from '$lib/components/config/EndpointForm.svelte';
 
 	let endpoints = $state<Endpoint[]>([]);
+	let outbounds = $state<Outbound[]>([]);
 	let loading = $state(true);
 
 	// Modal state
@@ -15,9 +16,33 @@
 	let editingEndpoint = $state<Endpoint | undefined>(undefined);
 	let saving = $state(false);
 
+	// Service outbound types (groups/selectors)
+	const serviceTypes = ['selector', 'urltest'];
+
+	// Find which service outbounds (selector/urltest) contain each endpoint tag
+	let containedIn = $derived.by(() => {
+		const map = new Map<string, string[]>();
+		const serviceOutbounds = outbounds.filter(o => serviceTypes.includes(o.type));
+		for (const service of serviceOutbounds) {
+			if (service.outbounds) {
+				for (const memberTag of service.outbounds) {
+					const existing = map.get(memberTag) || [];
+					existing.push(service.tag);
+					map.set(memberTag, existing);
+				}
+			}
+		}
+		return map;
+	});
+
 	async function fetchEndpoints() {
 		try {
-			endpoints = await api.listEndpoints();
+			const [ep, ob] = await Promise.all([
+				api.listEndpoints(),
+				api.listOutbounds()
+			]);
+			endpoints = ep;
+			outbounds = ob;
 		} catch (e) {
 			notifications.error(`Failed to load endpoints: ${e}`);
 		} finally {
@@ -147,6 +172,7 @@
 	{:else}
 		<div class="space-y-4">
 			{#each endpoints as endpoint}
+				{@const groups = containedIn.get(endpoint.tag) || []}
 				<div class="bg-[var(--ctp-surface0)] rounded-xl p-4 hover:bg-[var(--ctp-surface1)] transition-colors">
 					<div class="flex items-start justify-between">
 						<div class="flex items-start gap-4">
@@ -156,11 +182,19 @@
 								</svg>
 							</div>
 							<div>
-								<div class="flex items-center gap-2">
+								<div class="flex items-center gap-2 flex-wrap">
 									<span class="font-semibold text-[var(--ctp-text)]">{endpoint.tag}</span>
 									<span class="px-2 py-0.5 text-xs bg-[var(--ctp-surface2)] rounded text-[var(--ctp-subtext1)]">
 										{endpoint.type.toUpperCase()}
 									</span>
+									{#if groups.length > 0}
+										<span class="px-2 py-0.5 text-xs rounded flex items-center gap-1" style="background-color: color-mix(in srgb, var(--ctp-blue) 15%, transparent); color: var(--ctp-blue)" title="{$t('outbounds.memberOf')}">
+											<svg class="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+												<path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13 7l5 5m0 0l-5 5m5-5H6" />
+											</svg>
+											{groups.join(', ')}
+										</span>
+									{/if}
 								</div>
 								{#if endpoint.peers && endpoint.peers.length > 0}
 									<div class="text-sm text-[var(--ctp-overlay1)] mt-1">

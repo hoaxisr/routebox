@@ -2,6 +2,19 @@
 
 All notable changes to RouteBox are documented here.
 
+## [0.9.13] - 2026-01-28
+
+### Endpoints Page Improvements
+
+**Frontend:**
+- Added group membership badges on endpoints showing which outbound groups (selector/urltest) use each endpoint
+- Endpoints now fetch outbounds data to compute group membership
+
+**Backend:**
+- Added validation when creating domain rule sets to prevent tag conflicts with existing rule-sets in sing-box config
+
+---
+
 ## [0.9.12] - 2026-01-28
 
 ### Outbounds Page Redesign
