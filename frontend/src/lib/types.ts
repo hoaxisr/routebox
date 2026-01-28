@@ -165,6 +165,65 @@ export interface Inbound {
 	tcp_fast_open?: boolean;
 }
 
+// TLS configuration for outbound proxies
+export interface TLSConfig {
+	enabled?: boolean;
+	server_name?: string;
+	insecure?: boolean;
+	alpn?: string[];
+	min_version?: string;
+	max_version?: string;
+	cipher_suites?: string[];
+	certificate_path?: string;
+	key_path?: string;
+	utls?: {
+		enabled?: boolean;
+		fingerprint?: string;
+	};
+	reality?: {
+		enabled?: boolean;
+		public_key?: string;
+		short_id?: string;
+	};
+	ech?: {
+		enabled?: boolean;
+		config?: string[];
+	};
+}
+
+// Multiplex configuration
+export interface MultiplexConfig {
+	enabled?: boolean;
+	protocol?: 'smux' | 'yamux' | 'h2mux';
+	max_connections?: number;
+	min_streams?: number;
+	max_streams?: number;
+	padding?: boolean;
+	brutal?: {
+		enabled?: boolean;
+		up_mbps?: number;
+		down_mbps?: number;
+	};
+}
+
+// Transport configuration for VLESS/VMess
+export interface TransportConfig {
+	type: 'tcp' | 'ws' | 'http' | 'grpc' | 'quic' | 'httpupgrade';
+	path?: string;
+	headers?: Record<string, string>;
+	host?: string[];
+	service_name?: string;
+	idle_timeout?: string;
+	ping_timeout?: string;
+}
+
+// Obfuscation configuration for Hysteria2
+export interface ObfsConfig {
+	type: 'salamander';
+	password: string;
+}
+
+// Base outbound interface (all outbounds share these)
 export interface Outbound {
 	type: string;
 	tag: string;
@@ -194,23 +253,123 @@ export interface Outbound {
 	plugin_opts?: string;
 	network?: string;
 	udp_over_tcp?: boolean;
-	multiplex?: {
-		enabled?: boolean;
-		protocol?: string;
-		max_connections?: number;
-		min_streams?: number;
-		max_streams?: number;
-		padding?: boolean;
-	};
+	multiplex?: MultiplexConfig;
 	// ShadowTLS
 	version?: number;
-	tls?: any;
+	tls?: TLSConfig;
 	detour?: string;
 	// AnyTLS
 	idle_session_check_interval?: string;
 	idle_session_timeout?: string;
 	min_idle_session?: number;
+	// VLESS specific
+	uuid?: string;
+	flow?: string;
+	packet_encoding?: string;
+	transport?: TransportConfig;
+	// Hysteria2 obfuscation
+	obfs?: ObfsConfig;
 }
+
+// Protocol-specific outbound types for type-safe access
+export interface OutboundDirect extends Outbound {
+	type: 'direct';
+}
+
+export interface OutboundBlock extends Outbound {
+	type: 'block';
+}
+
+export interface OutboundDns extends Outbound {
+	type: 'dns';
+}
+
+export interface OutboundSelector extends Outbound {
+	type: 'selector';
+	outbounds: string[];
+	default?: string;
+	interrupt_exist_connections?: boolean;
+}
+
+export interface OutboundUrltest extends Outbound {
+	type: 'urltest';
+	outbounds: string[];
+	url?: string;
+	interval?: string;
+	tolerance?: number;
+	idle_timeout?: string;
+}
+
+export interface OutboundVless extends Outbound {
+	type: 'vless';
+	server: string;
+	server_port: number;
+	uuid: string;
+	flow?: string;
+	packet_encoding?: string;
+	tls?: TLSConfig;
+	transport?: TransportConfig;
+}
+
+export interface OutboundHysteria2 extends Outbound {
+	type: 'hysteria2';
+	server: string;
+	server_port: number;
+	password: string;
+	up_mbps?: number;
+	down_mbps?: number;
+	server_ports?: string;
+	hop_interval?: string;
+	obfs?: ObfsConfig;
+	tls?: TLSConfig;
+}
+
+export interface OutboundShadowsocks extends Outbound {
+	type: 'shadowsocks';
+	server: string;
+	server_port: number;
+	method: string;
+	password: string;
+	plugin?: string;
+	plugin_opts?: string;
+	network?: string;
+	udp_over_tcp?: boolean;
+	multiplex?: MultiplexConfig;
+}
+
+export interface OutboundShadowtls extends Outbound {
+	type: 'shadowtls';
+	server: string;
+	server_port: number;
+	version: number;
+	password?: string;
+	tls?: TLSConfig;
+	detour?: string;
+}
+
+export interface OutboundAnytls extends Outbound {
+	type: 'anytls';
+	server: string;
+	server_port: number;
+	password: string;
+	tls?: TLSConfig;
+	idle_session_check_interval?: string;
+	idle_session_timeout?: string;
+	min_idle_session?: number;
+}
+
+// Discriminated union for all typed outbounds
+export type OutboundTyped =
+	| OutboundDirect
+	| OutboundBlock
+	| OutboundDns
+	| OutboundSelector
+	| OutboundUrltest
+	| OutboundVless
+	| OutboundHysteria2
+	| OutboundShadowsocks
+	| OutboundShadowtls
+	| OutboundAnytls;
 
 export interface Endpoint {
 	type: string;

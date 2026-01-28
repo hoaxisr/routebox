@@ -1159,5 +1159,41 @@
     "maxLength": "Maximum {count} characters",
     "minValue": "Minimum value is {value}",
     "maxValue": "Maximum value is {value}"
+  },
+  "validation": {
+    "tagRequired": "Tag is required",
+    "tagExists": "Tag already exists",
+    "privateKeyRequired": "Private key is required",
+    "privateKeyInvalid": "Invalid private key format (expected 44-char base64)",
+    "publicKeyRequired": "Public key is required",
+    "publicKeyInvalid": "Invalid public key format (expected 44-char base64)",
+    "addressRequired": "Address is required",
+    "addressesRequired": "At least one address is required",
+    "peersRequired": "At least one peer is required",
+    "peerAddressRequired": "Peer address is required",
+    "portRequired": "Port is required",
+    "portInvalid": "Port must be between 1 and 65535",
+    "portRangeInvalid": "Invalid port range format (use: 1000-2000 or 1000:2000)",
+    "cidrRequired": "CIDR is required",
+    "cidrInvalid": "Invalid CIDR notation (e.g., 192.168.0.0/24 or fd00::/8)",
+    "uuidRequired": "UUID is required",
+    "uuidInvalid": "Invalid UUID format",
+    "domainRequired": "Domain is required",
+    "domainInvalid": "Invalid domain format",
+    "urlRequired": "URL is required",
+    "urlInvalid": "Invalid URL format",
+    "ipRequired": "IP address is required",
+    "ipInvalid": "Invalid IP address format",
+    "serverRequired": "Server address is required",
+    "passwordRequired": "Password is required",
+    "methodRequired": "Encryption method is required",
+    "outboundsRequired": "Select at least one outbound",
+    "positiveIntRequired": "{field} must be a positive integer"
+  },
+  "import": {
+    "pasteLink": "Paste a VLESS, Hysteria2, or Shadowsocks link",
+    "parseFailed": "Failed to parse link",
+    "unknownFormat": "Unknown link format",
+    "supportedFormats": "Supported: vless://, hy2://, hysteria2://, ss://"
   }
 }

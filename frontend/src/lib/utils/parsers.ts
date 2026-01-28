@@ -658,3 +658,179 @@ export function toSingboxConfig(parsed: ParsedConfig): { endpoint?: object; outb
 		}
 	}
 }
+
+// ============================================================================
+// Generic text/form parsing utilities
+// ============================================================================
+
+/**
+ * Parse multiline text into array of trimmed non-empty strings
+ */
+export function parseLines(text: string | undefined | null): string[] {
+	if (!text) return [];
+	return text
+		.split('\n')
+		.map((s) => s.trim())
+		.filter((s) => s.length > 0);
+}
+
+/**
+ * Parse CSV (comma-separated) into array of trimmed non-empty strings
+ */
+export function parseCSV(text: string | undefined | null): string[] {
+	if (!text) return [];
+	return text
+		.split(',')
+		.map((s) => s.trim())
+		.filter((s) => s.length > 0);
+}
+
+/**
+ * Parse ports from CSV (e.g., "80, 443, 8080")
+ * Returns only valid port numbers (1-65535)
+ */
+export function parsePorts(text: string | undefined | null): number[] {
+	if (!text) return [];
+	return text
+		.split(',')
+		.map((s) => parseInt(s.trim(), 10))
+		.filter((n) => !isNaN(n) && n >= 1 && n <= 65535);
+}
+
+/**
+ * Parse integers from CSV (e.g., "1, 2, 3")
+ */
+export function parseIntArray(text: string | undefined | null): number[] {
+	if (!text) return [];
+	return text
+		.split(',')
+		.map((s) => parseInt(s.trim(), 10))
+		.filter((n) => !isNaN(n));
+}
+
+/**
+ * Parse addresses from text (supports comma and newline separators)
+ * Used for IP addresses, CIDR blocks, etc.
+ */
+export function parseAddresses(text: string | undefined | null): string[] {
+	if (!text) return [];
+	return text
+		.split(/[,\n]/)
+		.map((s) => s.trim())
+		.filter((s) => s.length > 0);
+}
+
+/**
+ * Format array to multiline text
+ */
+export function formatLines(arr: string[] | undefined | null): string {
+	if (!arr || arr.length === 0) return '';
+	return arr.join('\n');
+}
+
+/**
+ * Format array to CSV
+ */
+export function formatCSV(arr: (string | number)[] | undefined | null): string {
+	if (!arr || arr.length === 0) return '';
+	return arr.join(', ');
+}
+
+/**
+ * Format array to CSV (compact, no spaces)
+ */
+export function formatCSVCompact(arr: (string | number)[] | undefined | null): string {
+	if (!arr || arr.length === 0) return '';
+	return arr.join(',');
+}
+
+/**
+ * Parse duration string (e.g., "30s", "5m", "1h") to display format
+ * Returns the string as-is if valid, or empty string
+ */
+export function parseDuration(text: string | undefined | null): string {
+	if (!text) return '';
+	const trimmed = text.trim();
+	// Basic validation: number followed by s/m/h/d
+	if (/^\d+[smhd]$/.test(trimmed)) {
+		return trimmed;
+	}
+	return trimmed; // Return as-is, let backend validate
+}
+
+/**
+ * Parse key=value pairs from multiline text
+ * Returns Record<string, string>
+ */
+export function parseKeyValuePairs(text: string | undefined | null): Record<string, string> {
+	if (!text) return {};
+	const result: Record<string, string> = {};
+	const lines = text.split('\n');
+	for (const line of lines) {
+		const trimmed = line.trim();
+		if (!trimmed || !trimmed.includes('=')) continue;
+		const [key, ...valueParts] = trimmed.split('=');
+		const value = valueParts.join('='); // Handle values with = in them
+		if (key.trim()) {
+			result[key.trim()] = value.trim();
+		}
+	}
+	return result;
+}
+
+/**
+ * Format key=value pairs to multiline text
+ */
+export function formatKeyValuePairs(obj: Record<string, string> | undefined | null): string {
+	if (!obj) return '';
+	return Object.entries(obj)
+		.map(([k, v]) => `${k}=${v}`)
+		.join('\n');
+}
+
+/**
+ * Parse port ranges from CSV (e.g., "1000-2000, 3000-4000" or "1000:2000")
+ * Returns array of range strings normalized to "start:end" format
+ */
+export function parsePortRanges(text: string | undefined | null): string[] {
+	if (!text) return [];
+	return text
+		.split(',')
+		.map((s) => s.trim().replace('-', ':'))
+		.filter((s) => /^\d+:\d+$/.test(s));
+}
+
+/**
+ * Try to extract domain from URL or return as-is
+ */
+export function extractDomain(input: string | undefined | null): string {
+	if (!input) return '';
+	const trimmed = input.trim();
+
+	// Try to parse as URL
+	try {
+		const url = new URL(trimmed.startsWith('http') ? trimmed : `https://${trimmed}`);
+		return url.hostname;
+	} catch {
+		// Not a URL, return trimmed input (might be just domain)
+		return trimmed.replace(/^(https?:\/\/)?(www\.)?/, '').split('/')[0];
+	}
+}
+
+/**
+ * Parse reserved bytes for WireGuard (e.g., "0, 0, 0" or "[0, 0, 0]")
+ */
+export function parseReservedBytes(text: string | undefined | null): number[] {
+	if (!text) return [];
+	// Remove brackets if present
+	const cleaned = text.replace(/[\[\]]/g, '');
+	return parseIntArray(cleaned).slice(0, 3); // Max 3 bytes
+}
+
+/**
+ * Format reserved bytes to display string
+ */
+export function formatReservedBytes(arr: number[] | undefined | null): string {
+	if (!arr || arr.length === 0) return '';
+	return arr.join(', ');
+}

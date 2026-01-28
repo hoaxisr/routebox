@@ -2,6 +2,13 @@
 	import type { Endpoint, AWGPeer } from '$lib/types';
 	import { notifications } from '$lib/stores';
 	import { t } from 'svelte-i18n';
+	import {
+		validateRequired,
+		validateBase64Key,
+		validateOptionalPort,
+		parseCSV,
+		hasValidationErrors
+	} from '$lib/utils';
 
 	interface Props {
 		endpoint?: Endpoint;
@@ -157,32 +164,38 @@
 	function validate(): boolean {
 		errors = {};
 
-		if (!tag.trim()) {
-			errors['tag'] = 'Tag is required';
+		// Basic fields
+		const tagResult = validateRequired(tag, 'Tag');
+		if (!tagResult.valid) errors['tag'] = tagResult.error!;
+
+		const keyResult = validateBase64Key(privateKey, 'Private key');
+		if (!keyResult.valid) errors['privateKey'] = keyResult.error!;
+
+		const addressResult = validateRequired(addresses, 'Address');
+		if (!addressResult.valid) errors['addresses'] = addressResult.error!;
+
+		// Optional port validation
+		if (listenPort > 0) {
+			const portResult = validateOptionalPort(listenPort);
+			if (!portResult.valid) errors['listenPort'] = portResult.error!;
 		}
-		if (!privateKey.trim()) {
-			errors['privateKey'] = 'Private key is required';
-		}
-		if (!addresses.trim()) {
-			errors['addresses'] = 'At least one address is required';
-		}
+
+		// Peers
 		if (peers.length === 0) {
 			errors['peers'] = 'At least one peer is required';
 		}
 		peers.forEach((peer, i) => {
-			if (!peer.address.trim()) {
-				errors[`peer_${i}_address`] = 'Peer address is required';
-			}
-			if (!peer.public_key.trim()) {
-				errors[`peer_${i}_public_key`] = 'Peer public key is required';
-			}
+			const addrResult = validateRequired(peer.address, 'Server address');
+			if (!addrResult.valid) errors[`peer_${i}_address`] = addrResult.error!;
+
+			const pubKeyResult = validateBase64Key(peer.public_key, 'Public key');
+			if (!pubKeyResult.valid) errors[`peer_${i}_public_key`] = pubKeyResult.error!;
 		});
 
-		const errorKeys = Object.keys(errors);
-		if (errorKeys.length > 0) {
+		if (hasValidationErrors(errors)) {
 			// Switch to tab with first error
-			const firstError = errorKeys[0];
-			if (firstError === 'tag' || firstError === 'privateKey' || firstError === 'addresses') {
+			const firstError = Object.keys(errors)[0];
+			if (firstError === 'tag' || firstError === 'privateKey' || firstError === 'addresses' || firstError === 'listenPort') {
 				activeTab = 'basic';
 			} else if (firstError === 'peers' || firstError.startsWith('peer_')) {
 				activeTab = 'peers';
@@ -203,7 +216,7 @@
 			type,
 			tag: tag.trim(),
 			private_key: privateKey.trim(),
-			address: addresses.split(',').map((a) => a.trim()).filter(Boolean),
+			address: parseCSV(addresses),
 			mtu,
 			peers: peers.map((p) => ({
 				address: p.address.trim(),

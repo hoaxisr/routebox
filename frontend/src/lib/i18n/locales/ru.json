@@ -1159,5 +1159,41 @@
     "maxLength": "Максимум {count} символов",
     "minValue": "Минимальное значение: {value}",
     "maxValue": "Максимальное значение: {value}"
+  },
+  "validation": {
+    "tagRequired": "Тег обязателен",
+    "tagExists": "Тег уже существует",
+    "privateKeyRequired": "Приватный ключ обязателен",
+    "privateKeyInvalid": "Неверный формат приватного ключа (ожидается 44-символьный base64)",
+    "publicKeyRequired": "Публичный ключ обязателен",
+    "publicKeyInvalid": "Неверный формат публичного ключа (ожидается 44-символьный base64)",
+    "addressRequired": "Адрес обязателен",
+    "addressesRequired": "Необходим хотя бы один адрес",
+    "peersRequired": "Необходим хотя бы один пир",
+    "peerAddressRequired": "Адрес пира обязателен",
+    "portRequired": "Порт обязателен",
+    "portInvalid": "Порт должен быть от 1 до 65535",
+    "portRangeInvalid": "Неверный формат диапазона портов (используйте: 1000-2000 или 1000:2000)",
+    "cidrRequired": "CIDR обязателен",
+    "cidrInvalid": "Неверная CIDR нотация (например: 192.168.0.0/24 или fd00::/8)",
+    "uuidRequired": "UUID обязателен",
+    "uuidInvalid": "Неверный формат UUID",
+    "domainRequired": "Домен обязателен",
+    "domainInvalid": "Неверный формат домена",
+    "urlRequired": "URL обязателен",
+    "urlInvalid": "Неверный формат URL",
+    "ipRequired": "IP-адрес обязателен",
+    "ipInvalid": "Неверный формат IP-адреса",
+    "serverRequired": "Адрес сервера обязателен",
+    "passwordRequired": "Пароль обязателен",
+    "methodRequired": "Метод шифрования обязателен",
+    "outboundsRequired": "Выберите хотя бы один исходящий",
+    "positiveIntRequired": "{field} должен быть положительным числом"
+  },
+  "import": {
+    "pasteLink": "Вставьте ссылку VLESS, Hysteria2 или Shadowsocks",
+    "parseFailed": "Не удалось разобрать ссылку",
+    "unknownFormat": "Неизвестный формат ссылки",
+    "supportedFormats": "Поддерживаются: vless://, hy2://, hysteria2://, ss://"
   }
 }

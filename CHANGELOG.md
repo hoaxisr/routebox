@@ -2,6 +2,57 @@
 
 All notable changes to RouteBox are documented here.
 
+## [0.9.15] - 2026-01-28
+
+### Technical Debt Reduction
+
+Major refactoring to improve code quality, type safety, and maintainability.
+
+#### Phase 1: Utilities
+
+**Frontend:**
+- Created `validators.ts` with 13 validation functions (validatePort, validateRequired, validateTag, validateCIDR, validateBase64Key, validatePortRange, validateDomain, validateUUID, validateURL, validateIP, validateNonEmptyArray, validateOptionalPort, validatePositiveInt)
+- Created `errorHandler.ts` with error handling utilities (formatError, handleApiError, safeAsync, tryAsync, logError, createValidationErrors, hasValidationErrors, clearValidationErrors)
+- Added generic parsing utilities to `parsers.ts` (parseLines, parseCSV, parsePorts, parseIntArray, parseAddresses, formatLines, formatCSV, parseDuration, parseKeyValuePairs, parsePortRanges, extractDomain, parseReservedBytes)
+- Created barrel export `utils/index.ts`
+- Refactored EndpointForm to use new validators (proper base64 key validation)
+- Refactored OutboundForm to use new validators (proper UUID validation)
+
+#### Phase 2: i18n & Types
+
+**Frontend:**
+- Added `validation` i18n keys (30+ messages) for EN and RU locales
+- Added `import` i18n keys for proxy link import messages
+- Added `TLSConfig`, `MultiplexConfig`, `TransportConfig`, `ObfsConfig` interfaces to types.ts
+- Added protocol-specific outbound types: `OutboundVless`, `OutboundHysteria2`, `OutboundShadowsocks`, `OutboundShadowtls`, `OutboundAnytls`, `OutboundSelector`, `OutboundUrltest`
+- Added `OutboundTyped` discriminated union for type-safe outbound handling
+- Created `typeGuards.ts` with 12 type guard functions (isVlessOutbound, isHysteria2Outbound, isProxyOutbound, supportsTls, etc.)
+- Replaced 60+ `(outbound as any)` casts in OutboundForm with proper typed access
+
+#### Phase 3: Component Splitting
+
+**Frontend:**
+- Created `components/config/outbound/` directory with modular sub-components:
+  - `TlsConfig.svelte` - Shared TLS settings (SNI, fingerprint, Reality)
+  - `ServerConfig.svelte` - Shared server/port inputs
+  - `VlessForm.svelte` - VLESS protocol form
+  - `Hysteria2Form.svelte` - Hysteria2 protocol form
+  - `ShadowsocksForm.svelte` - Shadowsocks protocol form
+  - `SelectorForm.svelte` - Selector/URLTest form
+- Created barrel export `outbound/index.ts`
+
+#### Phase 4: Testing
+
+**Frontend:**
+- Added Vitest test infrastructure (`vitest.config.ts`)
+- Added test scripts to package.json (`test`, `test:watch`, `test:coverage`)
+- Created `validators.test.ts` with 45 tests
+- Created `parsers.test.ts` with 57 tests
+- Created `typeGuards.test.ts` with 33 tests
+- **Total: 135 tests, all passing**
+
+---
+
 ## [0.9.14] - 2026-01-28
 
 ### App Version Display

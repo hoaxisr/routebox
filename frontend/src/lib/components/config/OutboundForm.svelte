@@ -1,7 +1,14 @@
 <script lang="ts">
 	import type { Outbound, Endpoint } from '$lib/types';
 	import { notifications } from '$lib/stores';
-	import { parseVless, parseHysteria2, parseShadowsocks, toSingboxConfig, type ParsedVless, type ParsedHysteria2, type ParsedShadowsocks } from '$lib/utils/parsers';
+	import { parseVless, parseHysteria2, parseShadowsocks, type ParsedVless, type ParsedHysteria2, type ParsedShadowsocks } from '$lib/utils/parsers';
+	import {
+		validateRequired,
+		validatePort,
+		validateUUID,
+		validateNonEmptyArray,
+		hasValidationErrors
+	} from '$lib/utils';
 	import { t } from 'svelte-i18n';
 
 	interface Props {
@@ -22,66 +29,66 @@
 	let interruptExistConnections = $state(outbound?.interrupt_exist_connections ?? false);
 
 	// VLESS fields
-	let server = $state((outbound as any)?.server ?? '');
-	let serverPort = $state((outbound as any)?.server_port ?? 443);
-	let uuid = $state((outbound as any)?.uuid ?? '');
-	let flow = $state((outbound as any)?.flow ?? '');
+	let server = $state(outbound?.server ?? '');
+	let serverPort = $state(outbound?.server_port ?? 443);
+	let uuid = $state(outbound?.uuid ?? '');
+	let flow = $state(outbound?.flow ?? '');
 	// TLS
-	let tlsEnabled = $state((outbound as any)?.tls?.enabled ?? true);
-	let tlsSni = $state((outbound as any)?.tls?.server_name ?? '');
-	let tlsFingerprint = $state((outbound as any)?.tls?.utls?.fingerprint ?? 'chrome');
-	let tlsAlpn = $state<string[]>((outbound as any)?.tls?.alpn ?? []);
+	let tlsEnabled = $state(outbound?.tls?.enabled ?? true);
+	let tlsSni = $state(outbound?.tls?.server_name ?? '');
+	let tlsFingerprint = $state(outbound?.tls?.utls?.fingerprint ?? 'chrome');
+	let tlsAlpn = $state<string[]>(outbound?.tls?.alpn ?? []);
 	// Reality
-	let realityEnabled = $state((outbound as any)?.tls?.reality?.enabled ?? false);
-	let realityPublicKey = $state((outbound as any)?.tls?.reality?.public_key ?? '');
-	let realityShortId = $state((outbound as any)?.tls?.reality?.short_id ?? '');
+	let realityEnabled = $state(outbound?.tls?.reality?.enabled ?? false);
+	let realityPublicKey = $state(outbound?.tls?.reality?.public_key ?? '');
+	let realityShortId = $state(outbound?.tls?.reality?.short_id ?? '');
 	// Transport
-	let transportType = $state<'tcp' | 'ws' | 'grpc' | 'http'>((outbound as any)?.transport?.type ?? 'tcp');
-	let wsPath = $state((outbound as any)?.transport?.path ?? '/');
-	let wsHost = $state((outbound as any)?.transport?.headers?.Host ?? '');
-	let grpcServiceName = $state((outbound as any)?.transport?.service_name ?? '');
+	let transportType = $state<'tcp' | 'ws' | 'grpc' | 'http'>(outbound?.transport?.type as 'tcp' | 'ws' | 'grpc' | 'http' ?? 'tcp');
+	let wsPath = $state(outbound?.transport?.path ?? '/');
+	let wsHost = $state(outbound?.transport?.headers?.Host ?? '');
+	let grpcServiceName = $state(outbound?.transport?.service_name ?? '');
 
 	// Hysteria2 fields
-	let hy2Password = $state((outbound as any)?.password ?? '');
-	let hy2Insecure = $state((outbound as any)?.tls?.insecure ?? false);
-	let hy2ObfsType = $state((outbound as any)?.obfs?.type ?? '');
-	let hy2ObfsPassword = $state((outbound as any)?.obfs?.password ?? '');
+	let hy2Password = $state(outbound?.password ?? '');
+	let hy2Insecure = $state(outbound?.tls?.insecure ?? false);
+	let hy2ObfsType = $state(outbound?.obfs?.type ?? '');
+	let hy2ObfsPassword = $state(outbound?.obfs?.password ?? '');
 	// Hysteria2 port hopping
-	let hy2ServerPorts = $state((outbound as any)?.server_ports ?? '');
-	let hy2HopInterval = $state((outbound as any)?.hop_interval ?? '');
-	let hy2UpMbps = $state((outbound as any)?.up_mbps ?? 0);
-	let hy2DownMbps = $state((outbound as any)?.down_mbps ?? 0);
+	let hy2ServerPorts = $state(outbound?.server_ports ?? '');
+	let hy2HopInterval = $state(outbound?.hop_interval ?? '');
+	let hy2UpMbps = $state(outbound?.up_mbps ?? 0);
+	let hy2DownMbps = $state(outbound?.down_mbps ?? 0);
 
 	// Shadowsocks fields
-	let ssMethod = $state((outbound as any)?.method ?? '2022-blake3-aes-128-gcm');
-	let ssPassword = $state((outbound as any)?.password ?? '');
-	let ssPlugin = $state((outbound as any)?.plugin ?? '');
-	let ssPluginOpts = $state((outbound as any)?.plugin_opts ?? '');
-	let ssNetwork = $state((outbound as any)?.network ?? '');
-	let ssUdpOverTcp = $state((outbound as any)?.udp_over_tcp ?? false);
-	let ssMuxEnabled = $state((outbound as any)?.multiplex?.enabled ?? false);
-	let ssMuxProtocol = $state((outbound as any)?.multiplex?.protocol ?? 'h2mux');
-	let ssMuxMaxConns = $state((outbound as any)?.multiplex?.max_connections ?? 0);
-	let ssMuxMinStreams = $state((outbound as any)?.multiplex?.min_streams ?? 0);
-	let ssMuxMaxStreams = $state((outbound as any)?.multiplex?.max_streams ?? 0);
-	let ssMuxPadding = $state((outbound as any)?.multiplex?.padding ?? false);
+	let ssMethod = $state(outbound?.method ?? '2022-blake3-aes-128-gcm');
+	let ssPassword = $state(outbound?.password ?? '');
+	let ssPlugin = $state(outbound?.plugin ?? '');
+	let ssPluginOpts = $state(outbound?.plugin_opts ?? '');
+	let ssNetwork = $state(outbound?.network ?? '');
+	let ssUdpOverTcp = $state(outbound?.udp_over_tcp ?? false);
+	let ssMuxEnabled = $state(outbound?.multiplex?.enabled ?? false);
+	let ssMuxProtocol = $state(outbound?.multiplex?.protocol ?? 'h2mux');
+	let ssMuxMaxConns = $state(outbound?.multiplex?.max_connections ?? 0);
+	let ssMuxMinStreams = $state(outbound?.multiplex?.min_streams ?? 0);
+	let ssMuxMaxStreams = $state(outbound?.multiplex?.max_streams ?? 0);
+	let ssMuxPadding = $state(outbound?.multiplex?.padding ?? false);
 
 	// ShadowTLS fields
-	let stlsVersion = $state((outbound as any)?.version ?? 3);
-	let stlsPassword = $state((outbound as any)?.password ?? '');
-	let stlsDetour = $state((outbound as any)?.detour ?? '');
-	let stlsTlsSni = $state((outbound as any)?.tls?.server_name ?? '');
-	let stlsTlsFingerprint = $state((outbound as any)?.tls?.utls?.fingerprint ?? '');
-	let stlsInsecure = $state((outbound as any)?.tls?.insecure ?? false);
+	let stlsVersion = $state(outbound?.version ?? 3);
+	let stlsPassword = $state(outbound?.password ?? '');
+	let stlsDetour = $state(outbound?.detour ?? '');
+	let stlsTlsSni = $state(outbound?.tls?.server_name ?? '');
+	let stlsTlsFingerprint = $state(outbound?.tls?.utls?.fingerprint ?? '');
+	let stlsInsecure = $state(outbound?.tls?.insecure ?? false);
 
 	// AnyTLS fields
-	let atPassword = $state((outbound as any)?.password ?? '');
-	let atTlsSni = $state((outbound as any)?.tls?.server_name ?? '');
-	let atTlsFingerprint = $state((outbound as any)?.tls?.utls?.fingerprint ?? '');
-	let atInsecure = $state((outbound as any)?.tls?.insecure ?? false);
-	let atIdleCheckInterval = $state((outbound as any)?.idle_session_check_interval ?? '');
-	let atIdleTimeout = $state((outbound as any)?.idle_session_timeout ?? '');
-	let atMinIdleSession = $state((outbound as any)?.min_idle_session ?? 0);
+	let atPassword = $state(outbound?.password ?? '');
+	let atTlsSni = $state(outbound?.tls?.server_name ?? '');
+	let atTlsFingerprint = $state(outbound?.tls?.utls?.fingerprint ?? '');
+	let atInsecure = $state(outbound?.tls?.insecure ?? false);
+	let atIdleCheckInterval = $state(outbound?.idle_session_check_interval ?? '');
+	let atIdleTimeout = $state(outbound?.idle_session_timeout ?? '');
+	let atMinIdleSession = $state(outbound?.min_idle_session ?? 0);
 
 	// URLTest specific fields
 	let urltestUrl = $state(outbound?.url ?? '');
@@ -229,85 +236,62 @@
 	function validate(): boolean {
 		errors = {};
 
-		if (!tag.trim()) {
-			errors['tag'] = 'Tag is required';
-		}
+		// Tag is always required
+		const tagResult = validateRequired(tag, 'Tag');
+		if (!tagResult.valid) errors['tag'] = tagResult.error!;
 
+		// Selector/URLTest validation
 		if (type === 'selector' || type === 'urltest') {
-			if (selectedOutbounds.length === 0) {
-				errors['outbounds'] = 'Select at least one outbound';
-			}
+			const outboundsResult = validateNonEmptyArray(selectedOutbounds, 'Outbounds');
+			if (!outboundsResult.valid) errors['outbounds'] = outboundsResult.error!;
 		}
 
+		// Validate server-based outbound types
+		const serverBasedTypes = ['vless', 'hysteria2', 'shadowsocks', 'shadowtls', 'anytls'];
+		if (serverBasedTypes.includes(type)) {
+			const serverResult = validateRequired(server, 'Server');
+			if (!serverResult.valid) errors['server'] = serverResult.error!;
+
+			const portResult = validatePort(serverPort);
+			if (!portResult.valid) errors['serverPort'] = portResult.error!;
+		}
+
+		// Type-specific validation
 		if (type === 'vless') {
-			if (!server.trim()) {
-				errors['server'] = 'Server is required';
-			}
-			if (!serverPort || serverPort < 1 || serverPort > 65535) {
-				errors['serverPort'] = 'Valid port is required (1-65535)';
-			}
-			if (!uuid.trim()) {
-				errors['uuid'] = 'UUID is required';
-			}
-			if (realityEnabled && !realityPublicKey.trim()) {
-				errors['realityPublicKey'] = 'Reality public key is required';
+			const uuidResult = validateUUID(uuid);
+			if (!uuidResult.valid) errors['uuid'] = uuidResult.error!;
+
+			if (realityEnabled) {
+				const pbkResult = validateRequired(realityPublicKey, 'Reality public key');
+				if (!pbkResult.valid) errors['realityPublicKey'] = pbkResult.error!;
 			}
 		}
 
 		if (type === 'hysteria2') {
-			if (!server.trim()) {
-				errors['server'] = 'Server is required';
-			}
-			if (!serverPort || serverPort < 1 || serverPort > 65535) {
-				errors['serverPort'] = 'Valid port is required (1-65535)';
-			}
-			if (!hy2Password.trim()) {
-				errors['password'] = 'Password is required';
-			}
+			const pwResult = validateRequired(hy2Password, 'Password');
+			if (!pwResult.valid) errors['password'] = pwResult.error!;
 		}
 
 		if (type === 'shadowsocks') {
-			if (!server.trim()) {
-				errors['server'] = 'Server is required';
-			}
-			if (!serverPort || serverPort < 1 || serverPort > 65535) {
-				errors['serverPort'] = 'Valid port is required (1-65535)';
-			}
-			if (!ssMethod) {
-				errors['method'] = 'Method is required';
-			}
-			if (!ssPassword.trim()) {
-				errors['password'] = 'Password is required';
-			}
+			const methodResult = validateRequired(ssMethod, 'Method');
+			if (!methodResult.valid) errors['method'] = methodResult.error!;
+
+			const pwResult = validateRequired(ssPassword, 'Password');
+			if (!pwResult.valid) errors['password'] = pwResult.error!;
 		}
 
-		if (type === 'shadowtls') {
-			if (!server.trim()) {
-				errors['server'] = 'Server is required';
-			}
-			if (!serverPort || serverPort < 1 || serverPort > 65535) {
-				errors['serverPort'] = 'Valid port is required (1-65535)';
-			}
-			if (stlsVersion >= 2 && !stlsPassword.trim()) {
-				errors['password'] = 'Password is required for ShadowTLS v2+';
-			}
+		if (type === 'shadowtls' && stlsVersion >= 2) {
+			const pwResult = validateRequired(stlsPassword, 'Password');
+			if (!pwResult.valid) errors['password'] = pwResult.error!;
 		}
 
 		if (type === 'anytls') {
-			if (!server.trim()) {
-				errors['server'] = 'Server is required';
-			}
-			if (!serverPort || serverPort < 1 || serverPort > 65535) {
-				errors['serverPort'] = 'Valid port is required (1-65535)';
-			}
-			if (!atPassword.trim()) {
-				errors['password'] = 'Password is required';
-			}
+			const pwResult = validateRequired(atPassword, 'Password');
+			if (!pwResult.valid) errors['password'] = pwResult.error!;
 		}
 
-		const errorKeys = Object.keys(errors);
-		if (errorKeys.length > 0) {
-			notifications.error(errors[errorKeys[0]]);
+		if (hasValidationErrors(errors)) {
+			notifications.error(errors[Object.keys(errors)[0]]);
 			return false;
 		}
 
