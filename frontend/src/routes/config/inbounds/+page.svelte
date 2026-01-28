@@ -74,16 +74,6 @@
 		}
 	}
 
-	async function applyChanges() {
-		try {
-			const result = await api.applyConfig();
-			notifications.success(result.message);
-			unsavedChanges.clearChanges();
-		} catch (e) {
-			notifications.error($t('changes.failedApply'));
-		}
-	}
-
 	function getInboundColor(type: string) {
 		switch (type) {
 			case 'tun':
@@ -116,20 +106,12 @@
 <div class="space-y-6">
 	<div class="flex items-center justify-between">
 		<h1 class="text-2xl font-bold text-[var(--ctp-text)]">{$t('inbounds.title')}</h1>
-		<div class="flex items-center gap-2">
-			<button
-				onclick={applyChanges}
-				class="px-4 py-2 bg-[var(--ctp-primary)] text-white rounded-lg hover:opacity-90 transition-opacity"
-			>
-				{$t('changes.applyChanges')}
-			</button>
-			<button
-				onclick={openCreate}
-				class="px-4 py-2 bg-[var(--ctp-primary)] text-white rounded-lg hover:opacity-90 transition-opacity"
-			>
-				+ {$t('inbounds.addInbound')}
-			</button>
-		</div>
+		<button
+			onclick={openCreate}
+			class="px-4 py-2 bg-[var(--ctp-primary)] text-white rounded-lg hover:opacity-90 transition-opacity"
+		>
+			+ {$t('inbounds.addInbound')}
+		</button>
 	</div>
 
 	{#if loading}
