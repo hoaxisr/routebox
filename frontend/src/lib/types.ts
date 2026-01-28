@@ -392,6 +392,35 @@ export interface RuleSetUsage {
 	dns_rules: number[];
 }
 
+// Domain set (custom rule set source) info
+export interface DomainSetInfo {
+	tag: string;
+	domain_count: number;
+	rule_count: number;
+	has_compiled: boolean;
+	needs_recompile: boolean;
+}
+
+// Headless rule format for sing-box rule-set compilation
+export interface HeadlessRule {
+	domain?: string[];
+	domain_suffix?: string[];
+	domain_keyword?: string[];
+	domain_regex?: string[];
+	ip_cidr?: string[];
+	source_ip_cidr?: string[];
+	port?: number[];
+	port_range?: string[];
+	process_name?: string[];
+	process_path?: string[];
+}
+
+// Rule set source file (JSON format for sing-box compilation)
+export interface RuleSetSource {
+	version: number;
+	rules: HeadlessRule[];
+}
+
 export interface CacheFileSettings {
 	enabled?: boolean;
 	path?: string;

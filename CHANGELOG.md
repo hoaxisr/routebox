@@ -2,7 +2,25 @@
 
 All notable changes to RouteBox are documented here.
 
-## [Unreleased]
+## [0.9.12] - 2026-01-28
+
+### Outbounds Page Redesign
+
+#### Overview
+Redesigned Outbounds page with visual separation between service outbounds (groups) and real outbounds (proxies), plus usage badges showing route rule counts and group membership.
+
+#### Changed
+
+**Frontend:**
+- Split outbounds into two sections: "Groups" (selector/urltest) and "Proxies" (direct, vless, etc.)
+- Added colored left border and icons per outbound type
+- Added "N rules" badge showing how many route rules use each outbound
+- Added "→ group1, group2" badge showing which groups contain each proxy
+- Service outbounds show member list as compact badges
+- Removed "Apply Changes" button (use global status bar instead)
+- Added 7 new i18n keys for EN/RU
+
+---
 
 ### GeoIP & Settings (2026-01-25)
 

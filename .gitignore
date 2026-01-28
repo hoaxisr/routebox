@@ -6,7 +6,7 @@ frontend/build/
 frontend/.svelte-kit/
 backend/internal/embedded/dist/*
 !backend/internal/embedded/dist/.gitkeep
-routebox
+/routebox
 
 # IDE
 .idea/

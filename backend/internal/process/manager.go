@@ -287,6 +287,11 @@ func (m *Manager) IsBinaryInstalled() bool {
 	return err == nil
 }
 
+// GetBinaryPath returns the path to the sing-box/amnezia-box binary
+func (m *Manager) GetBinaryPath() string {
+	return findBinary()
+}
+
 // GetVersion returns the version of installed sing-box/amnezia-box binary
 func (m *Manager) GetVersion() (string, error) {
 	// Try the detected binary path first

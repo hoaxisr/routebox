@@ -1,4 +1,4 @@
-import type { ApiResponse, ProcessStatus, DetectedConfig, NeedsSetupResponse, SingboxConfig, Endpoint, Outbound, Inbound, RuleSet, RuleSetUsage, RouteRule, RouteSettings, DnsServer, DnsRule, DnsSettings, LogSettings, ExperimentalSettings, ConnectionsResponse, ProxiesResponse, ClashProxy, TestRouteResponse, SettingsResponse, RouteBoxSettings, SingBoxVersion } from '$lib/types';
+import type { ApiResponse, ProcessStatus, DetectedConfig, NeedsSetupResponse, SingboxConfig, Endpoint, Outbound, Inbound, RuleSet, RuleSetUsage, RouteRule, RouteSettings, DnsServer, DnsRule, DnsSettings, LogSettings, ExperimentalSettings, ConnectionsResponse, ProxiesResponse, ClashProxy, TestRouteResponse, SettingsResponse, RouteBoxSettings, SingBoxVersion, DomainSetInfo, RuleSetSource } from '$lib/types';
 
 const API_BASE = '/api';
 
@@ -358,6 +358,42 @@ export const api = {
 	reloadSettings: () =>
 		request<{ message: string; settings: RouteBoxSettings }>('/settings/reload', {
 			method: 'POST'
+		}),
+
+	// Domain Sets (custom rule set sources)
+	listDomainSets: () => request<DomainSetInfo[]>('/domains'),
+	createDomainSet: (tag: string) =>
+		request<{ tag: string; message: string }>('/domains', {
+			method: 'POST',
+			body: JSON.stringify({ tag })
+		}),
+	deleteDomainSet: (tag: string) =>
+		request<{ message: string }>(`/domains/${encodeURIComponent(tag)}`, {
+			method: 'DELETE'
+		}),
+	getDomainSet: (tag: string) => request<RuleSetSource>(`/domains/${encodeURIComponent(tag)}`),
+	saveDomainSet: (tag: string, data: RuleSetSource) =>
+		request<{ message: string }>(`/domains/${encodeURIComponent(tag)}`, {
+			method: 'PUT',
+			body: JSON.stringify(data)
+		}),
+	addDomain: (tag: string, domain: string) =>
+		request<{ message: string }>(`/domains/${encodeURIComponent(tag)}/domain`, {
+			method: 'POST',
+			body: JSON.stringify({ domain })
+		}),
+	removeDomain: (tag: string, domain: string) =>
+		request<{ message: string }>(`/domains/${encodeURIComponent(tag)}/domain/${encodeURIComponent(domain)}`, {
+			method: 'DELETE'
+		}),
+	compileDomains: (tag: string) =>
+		request<{ message: string }>(`/domains/${encodeURIComponent(tag)}/compile`, {
+			method: 'POST'
+		}),
+	importDomains: (tag: string, domains: string[]) =>
+		request<{ message: string; added: number }>(`/domains/${encodeURIComponent(tag)}/import`, {
+			method: 'POST',
+			body: JSON.stringify({ domains })
 		})
 };
 
