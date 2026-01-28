@@ -2,6 +2,16 @@
 
 All notable changes to RouteBox are documented here.
 
+## [0.9.14] - 2026-01-28
+
+### App Version Display
+
+**Frontend:**
+- Added version display in App Settings page (About section)
+- Version is injected at build time via Vite define
+
+---
+
 ## [0.9.13] - 2026-01-28
 
 ### Endpoints Page Improvements

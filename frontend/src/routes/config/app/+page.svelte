@@ -386,6 +386,34 @@
 					</div>
 				</div>
 			</section>
+
+			<!-- About Section -->
+			<section class="bg-[var(--ctp-mantle)] rounded-lg p-5 border border-[var(--ctp-surface0)]">
+				<div class="flex items-center gap-3 mb-4">
+					<svg class="w-5 h-5 text-[var(--ctp-primary)]" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+						<path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
+					</svg>
+					<h2 class="text-lg font-medium text-[var(--ctp-text)]">About</h2>
+				</div>
+
+				<div class="flex items-center justify-between">
+					<div>
+						<div class="text-[var(--ctp-text)] font-medium">RouteBox</div>
+						<div class="text-sm text-[var(--ctp-overlay1)]">WebUI for amnezia-box router</div>
+					</div>
+					<div class="text-right">
+						<div class="text-lg font-semibold text-[var(--ctp-primary)]">v{__APP_VERSION__}</div>
+						<a
+							href="https://github.com/hoaxisr/routebox"
+							target="_blank"
+							rel="noopener noreferrer"
+							class="text-sm text-[var(--ctp-blue)] hover:underline"
+						>
+							GitHub
+						</a>
+					</div>
+				</div>
+			</section>
 		</div>
 	{/if}
 </div>
