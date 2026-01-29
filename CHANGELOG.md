@@ -2,6 +2,15 @@
 
 All notable changes to RouteBox are documented here.
 
+## [0.10.1] - 2026-01-29
+
+### Fixes
+
+**Backend:**
+- Fixed 405 Method Not Allowed error when closing connections via Clash API proxy
+
+---
+
 ## [0.10.0] - 2026-01-29
 
 ### Mobile-First Responsive Design
