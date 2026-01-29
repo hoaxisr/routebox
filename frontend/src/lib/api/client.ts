@@ -56,7 +56,18 @@ async function requestRaw<T>(path: string, options: RequestInit = {}): Promise<T
 		throw new Error(errorMessage);
 	}
 
-	return await response.json();
+	// Handle empty responses (e.g., 204 No Content from DELETE)
+	const contentLength = response.headers.get('Content-Length');
+	if (response.status === 204 || contentLength === '0') {
+		return undefined as T;
+	}
+
+	const text = await response.text();
+	if (!text) {
+		return undefined as T;
+	}
+
+	return JSON.parse(text);
 }
 
 export const api = {
