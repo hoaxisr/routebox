@@ -316,6 +316,7 @@ func main() {
 		r.HandleFunc("/clash/logs", apiHandler.ProxyClashWebSocket)
 		r.HandleFunc("/clash/connections", apiHandler.ProxyClashWebSocket)
 		r.Get("/clash/*", apiHandler.ProxyClashAPI)
+		r.Delete("/clash/*", apiHandler.ProxyClashAPI)
 
 		// RouteBox Settings API
 		r.Get("/settings", apiHandler.GetSettings)
