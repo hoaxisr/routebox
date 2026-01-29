@@ -501,6 +501,8 @@
     "wizard": "Wizard",
     "inspector": {
       "title": "Route Inspector",
+      "routeTest": "Route Test",
+      "connectionTest": "Connection Test",
       "inputLabel": "Test domain or IP address",
       "inputPlaceholder": "google.com or 192.168.1.1",
       "quickTest": "Quick test",

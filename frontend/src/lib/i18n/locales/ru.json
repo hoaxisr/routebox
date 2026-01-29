@@ -501,6 +501,8 @@
     "wizard": "Мастер",
     "inspector": {
       "title": "Инспектор маршрутов",
+      "routeTest": "Тест маршрута",
+      "connectionTest": "Тест соединения",
       "inputLabel": "Тест домена или IP адреса",
       "inputPlaceholder": "google.com или 192.168.1.1",
       "quickTest": "Быстрый тест",

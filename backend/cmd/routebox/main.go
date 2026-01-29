@@ -262,6 +262,9 @@ func main() {
 		// Route Inspector
 		r.Post("/route/test", apiHandler.TestRoute)
 
+		// Connection Test (diagnostics)
+		r.Post("/diagnostics/connect", apiHandler.ConnectTest)
+
 		// DNS Servers CRUD
 		r.Route("/dns/servers", func(r chi.Router) {
 			r.Get("/", apiHandler.ListDnsServers)

@@ -1,4 +1,4 @@
-import type { ApiResponse, ProcessStatus, DetectedConfig, NeedsSetupResponse, SingboxConfig, Endpoint, Outbound, Inbound, RuleSet, RuleSetUsage, RouteRule, RouteSettings, DnsServer, DnsRule, DnsSettings, LogSettings, ExperimentalSettings, ConnectionsResponse, ProxiesResponse, ClashProxy, TestRouteResponse, SettingsResponse, RouteBoxSettings, SingBoxVersion, DomainSetInfo, RuleSetSource } from '$lib/types';
+import type { ApiResponse, ProcessStatus, DetectedConfig, NeedsSetupResponse, SingboxConfig, Endpoint, Outbound, Inbound, RuleSet, RuleSetUsage, RouteRule, RouteSettings, DnsServer, DnsRule, DnsSettings, LogSettings, ExperimentalSettings, ConnectionsResponse, ProxiesResponse, ClashProxy, TestRouteResponse, ConnectTestResponse, SettingsResponse, RouteBoxSettings, SingBoxVersion, DomainSetInfo, RuleSetSource } from '$lib/types';
 
 const API_BASE = '/api';
 
@@ -221,6 +221,13 @@ export const api = {
 		request<TestRouteResponse>('/route/test', {
 			method: 'POST',
 			body: JSON.stringify({ domain, port })
+		}),
+
+	// Connection Test (diagnostics)
+	connectionTest: (host: string, port = 443, timeout = 5) =>
+		request<ConnectTestResponse>('/diagnostics/connect', {
+			method: 'POST',
+			body: JSON.stringify({ host, port, timeout })
 		}),
 
 	// DNS Servers CRUD

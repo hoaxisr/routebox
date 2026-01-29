@@ -763,3 +763,18 @@ export interface TestRouteResponse {
 	matched_rule: number;
 	debug?: InspectorDebug;
 }
+
+export interface ConnectTestResponse {
+	success: boolean;
+	latency_ms?: number;
+	resolved_ip?: string;
+	error?: string;
+	country?: string;
+	country_code?: string;
+	matched_rule?: {
+		index: number;
+		action: string;
+		outbound?: string;
+		reason?: string;
+	};
+}
