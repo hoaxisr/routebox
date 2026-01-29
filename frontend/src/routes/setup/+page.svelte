@@ -6,6 +6,13 @@
 	import { notifications } from '$lib/stores';
 	import { parseConfig, toSingboxConfig, type ParsedConfig } from '$lib/utils/parsers';
 	import type { SystemChecks } from '$lib/types';
+	import ProgressIndicator from '$lib/components/shared/ProgressIndicator.svelte';
+	import InstallStep from '$lib/components/setup/InstallStep.svelte';
+	import VpnConfigStep from '$lib/components/setup/VpnConfigStep.svelte';
+	import UsageModeStep from '$lib/components/setup/UsageModeStep.svelte';
+	import RuleSetsStep from '$lib/components/setup/RuleSetsStep.svelte';
+	import RoutingModeStep from '$lib/components/setup/RoutingModeStep.svelte';
+	import ApplyStep from '$lib/components/setup/ApplyStep.svelte';
 
 	// System state
 	let loading = $state(true);
@@ -13,9 +20,7 @@
 	let checkingInstall = $state(false);
 	let systemChecks = $state<SystemChecks | null>(null);
 
-	// Wizard state - step 0 is install step (only shown if binary not installed)
-	// Router mode: VPN → Mode → RuleSets → Routing → Apply (5 steps, or 6 if install needed)
-	// Proxy mode:  VPN → Mode → Apply (3 steps, or 4 if install needed)
+	// Wizard state
 	let currentStep = $state(1);
 	let totalSteps = $derived.by(() => {
 		const baseSteps = usageMode === 'router' ? 5 : 3;
@@ -31,9 +36,24 @@
 	// Step 2: Usage Mode
 	let usageMode = $state<'router' | 'proxy'>('router');
 	let proxyPort = $state(1080);
-
-	// Get machine IP from current location (browser only)
 	let machineIP = $state('');
+
+	// Step 3: Rule Sets
+	let selectedRuleSets = $state<string[]>(['antizapret']);
+	const availableRuleSets = [
+		{ id: 'antizapret', name: 'Antizapret', desc: 'Russian blocked sites', url: 'https://github.com/savely-krasovsky/antizapret-sing-box/releases/latest/download/antizapret.srs' },
+		{ id: 'geosite-ru', name: 'GeoSite RU', desc: 'Russian domains', url: 'https://github.com/SagerNet/sing-geosite/releases/latest/download/geosite-category-ru.srs' },
+		{ id: 'geoip-ru', name: 'GeoIP RU', desc: 'Russian IPs', url: 'https://github.com/SagerNet/sing-geoip/releases/latest/download/geoip-ru.srs' },
+		{ id: 'adblock', name: 'AdBlock', desc: 'Block ads', url: 'https://github.com/SagerNet/sing-geosite/releases/latest/download/geosite-category-ads-all.srs' },
+	];
+
+	// Step 4: Routing Mode
+	let routingMode = $state<'split' | 'all'>('split');
+
+	// Step 5: Apply
+	let applying = $state(false);
+	let applied = $state(false);
+
 	$effect(() => {
 		if (typeof window !== 'undefined') {
 			machineIP = window.location.hostname || 'localhost';
@@ -48,7 +68,6 @@
 			]);
 			binaryInstalled = setupStatus.binary_installed;
 			systemChecks = processStatus.system_checks || null;
-			// If binary not installed, start at step 0 (install step)
 			if (!binaryInstalled) {
 				currentStep = 0;
 			}
@@ -77,22 +96,6 @@
 		}
 	}
 
-	// Step 2: Rule Sets
-	let selectedRuleSets = $state<string[]>(['antizapret']);
-	const availableRuleSets = [
-		{ id: 'antizapret', name: 'Antizapret', desc: 'Russian blocked sites', url: 'https://github.com/savely-krasovsky/antizapret-sing-box/releases/latest/download/antizapret.srs' },
-		{ id: 'geosite-ru', name: 'GeoSite RU', desc: 'Russian domains', url: 'https://github.com/SagerNet/sing-geosite/releases/latest/download/geosite-category-ru.srs' },
-		{ id: 'geoip-ru', name: 'GeoIP RU', desc: 'Russian IPs', url: 'https://github.com/SagerNet/sing-geoip/releases/latest/download/geoip-ru.srs' },
-		{ id: 'adblock', name: 'AdBlock', desc: 'Block ads', url: 'https://github.com/SagerNet/sing-geosite/releases/latest/download/geosite-category-ads-all.srs' },
-	];
-
-	// Step 3: Routing Mode
-	let routingMode = $state<'split' | 'all'>('split');
-
-	// Step 4: Apply
-	let applying = $state(false);
-	let applied = $state(false);
-
 	function parseVpnConfig() {
 		vpnError = '';
 		parsedVpn = null;
@@ -120,24 +123,21 @@
 	}
 
 	function canProceed(): boolean {
-		// Step 0 is install step (only when binary not installed)
 		if (currentStep === 0) return binaryInstalled;
 
 		if (usageMode === 'router') {
-			// Router: VPN(1) → Mode(2) → RuleSets(3) → Routing(4) → Apply(5)
 			switch (effectiveStep) {
 				case 1: return parsedVpn !== null;
-				case 2: return true; // Mode selection always valid
-				case 3: return true; // Rule sets are optional
-				case 4: return true; // Routing mode always valid
+				case 2: return true;
+				case 3: return true;
+				case 4: return true;
 				case 5: return applied;
 				default: return false;
 			}
 		} else {
-			// Proxy: VPN(1) → Mode(2) → Apply(3)
 			switch (effectiveStep) {
 				case 1: return parsedVpn !== null;
-				case 2: return true; // Mode selection always valid
+				case 2: return true;
 				case 3: return applied;
 				default: return false;
 			}
@@ -164,7 +164,6 @@
 			const singbox = toSingboxConfig(parsedVpn);
 			const vpnTag = singbox.outboundTag;
 
-			// Helper to safely create resources (ignore "already exists" errors)
 			async function safeCreate<T>(
 				createFn: () => Promise<T>,
 				resourceName: string
@@ -172,8 +171,8 @@
 				try {
 					await createFn();
 					return true;
-				} catch (err: any) {
-					const msg = err?.message || String(err);
+				} catch (err: unknown) {
+					const msg = err instanceof Error ? err.message : String(err);
 					if (msg.includes('already exists')) {
 						console.log(`${resourceName} already exists, skipping`);
 						return true;
@@ -182,7 +181,6 @@
 				}
 			}
 
-			// Create endpoint if present (AWG)
 			if (singbox.endpoint) {
 				await safeCreate(
 					() => api.createEndpoint(singbox.endpoint as any),
@@ -190,7 +188,6 @@
 				);
 			}
 
-			// Create VPN outbound (only for VLESS/Hy2, not AWG)
 			if (singbox.outbound) {
 				await safeCreate(
 					() => api.createOutbound(singbox.outbound as any),
@@ -199,8 +196,6 @@
 			}
 
 			if (usageMode === 'proxy') {
-				// ========== PROXY MODE ==========
-				// Create mixed inbound (SOCKS5 + HTTP)
 				await safeCreate(
 					() => api.createInbound({
 						type: 'mixed',
@@ -211,13 +206,11 @@
 					'Mixed inbound'
 				);
 
-				// Create direct outbound
 				await safeCreate(
 					() => api.createOutbound({ type: 'direct', tag: 'direct' }),
 					'direct outbound'
 				);
 
-				// Route rule: traffic from mixed-in inbound → VPN outbound
 				await safeCreate(
 					() => api.createRule({
 						inbound: ['mixed-in'],
@@ -226,15 +219,12 @@
 					'proxy route rule'
 				);
 
-				// Fallback for any other traffic goes direct
 				await api.updateRouteSettings({
 					final: 'direct',
 					auto_detect_interface: true
 				});
 
 			} else {
-				// ========== ROUTER MODE ==========
-				// Create TUN inbound
 				await safeCreate(
 					() => api.createInbound({
 						type: 'tun',
@@ -247,7 +237,6 @@
 					'TUN inbound'
 				);
 
-				// Create base outbounds
 				await safeCreate(
 					() => api.createOutbound({ type: 'direct', tag: 'direct' }),
 					'direct outbound'
@@ -257,7 +246,6 @@
 					'block outbound'
 				);
 
-				// Create DNS servers
 				await safeCreate(
 					() => api.createDnsServer({
 						tag: 'dns-direct',
@@ -268,7 +256,6 @@
 				);
 				await api.updateDnsSettings({ final: 'dns-direct', strategy: 'prefer_ipv4' });
 
-				// Create rule sets
 				for (const rsId of selectedRuleSets) {
 					const rs = availableRuleSets.find(r => r.id === rsId);
 					if (rs) {
@@ -284,7 +271,6 @@
 					}
 				}
 
-				// Create routing rules
 				await safeCreate(
 					() => api.createRule({ action: 'sniff' }),
 					'sniff rule'
@@ -324,7 +310,6 @@
 				}
 			}
 
-			// Configure Clash API (for monitoring)
 			await api.updateExperimental({
 				clash_api: {
 					external_controller: '127.0.0.1:9090',
@@ -332,13 +317,11 @@
 				}
 			});
 
-			// Configure log settings
 			await api.updateLogSettings({
 				level: 'info',
 				timestamp: true
 			});
 
-			// Save config to disk
 			await api.applyConfig();
 
 			applied = true;
@@ -354,66 +337,15 @@
 		goto('/');
 	}
 
-	function getTypeLabel(type: string): string {
-		switch (type) {
-			case 'vless': return 'VLESS';
-			case 'hy2': return 'Hysteria2';
-			case 'awg': return 'AmneziaWG';
-			default: return type;
-		}
+	function getStepNumber(step: number): number {
+		return binaryInstalled ? step : step + 1;
 	}
 
-	// File upload handling
-	let fileInput: HTMLInputElement;
-	let isDragging = $state(false);
-
-	function handleFileSelect(event: Event) {
-		const input = event.target as HTMLInputElement;
-		if (input.files && input.files.length > 0) {
-			readFile(input.files[0]);
-		}
-	}
-
-	function handleDrop(event: DragEvent) {
-		event.preventDefault();
-		isDragging = false;
-		if (event.dataTransfer?.files && event.dataTransfer.files.length > 0) {
-			readFile(event.dataTransfer.files[0]);
-		}
-	}
-
-	function handleDragOver(event: DragEvent) {
-		event.preventDefault();
-		isDragging = true;
-	}
-
-	function handleDragLeave() {
-		isDragging = false;
-	}
-
-	function readFile(file: File) {
-		// Check file extension
-		const validExtensions = ['.conf', '.txt', '.json'];
-		const hasValidExt = validExtensions.some(ext => file.name.toLowerCase().endsWith(ext));
-
-		if (!hasValidExt && file.size > 50000) {
-			vpnError = $t('setup.vpn.invalidFileType');
-			return;
-		}
-
-		const reader = new FileReader();
-		reader.onload = (e) => {
-			const content = e.target?.result as string;
-			if (content) {
-				vpnInput = content;
-				parseVpnConfig();
-			}
-		};
-		reader.onerror = () => {
-			vpnError = $t('setup.vpn.fileReadError');
-		};
-		reader.readAsText(file);
-	}
+	// Determine if we're on the final step
+	let isOnFinalStep = $derived(
+		(usageMode === 'router' && effectiveStep === 5) ||
+		(usageMode === 'proxy' && effectiveStep === 3)
+	);
 </script>
 
 <svelte:head>
@@ -462,419 +394,57 @@
 		{/if}
 
 		<!-- Progress -->
-		<div class="flex items-center justify-center mb-8">
-			{#each Array(totalSteps) as _, i}
-				<div class="flex items-center">
-					<div
-						class="w-10 h-10 rounded-full flex items-center justify-center font-medium transition-colors"
-						class:bg-[var(--ctp-primary)]={currentStep >= i}
-						class:text-white={currentStep >= i}
-						class:bg-[var(--ctp-surface1)]={currentStep < i}
-						class:text-[var(--ctp-overlay0)]={currentStep < i}
-					>
-						{#if currentStep > i}
-							<svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-								<path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 13l4 4L19 7" />
-							</svg>
-						{:else}
-							{i + 1}
-						{/if}
-					</div>
-					{#if i < totalSteps - 1}
-						<div
-							class="w-16 h-1 mx-2 rounded transition-colors"
-							class:bg-[var(--ctp-primary)]={currentStep > i}
-							class:bg-[var(--ctp-surface1)]={currentStep <= i}
-						></div>
-					{/if}
-				</div>
-			{/each}
+		<div class="mb-8">
+			<ProgressIndicator {currentStep} {totalSteps} />
 		</div>
 
 		<!-- Step Content -->
 		<div class="bg-[var(--ctp-mantle)] rounded-xl p-8 border border-[var(--ctp-surface0)]">
 			{#if currentStep === 0}
-				<!-- Step 0: Install amnezia-box (only shown if not installed) -->
-				<div class="space-y-6">
-					<div>
-						<h2 class="text-xl font-semibold text-[var(--ctp-text)]">1. {$t('setup.install.title')}</h2>
-						<p class="text-[var(--ctp-overlay1)] mt-1">
-							{$t('setup.install.description')}
-						</p>
-					</div>
-
-					<div class="alert-box warning">
-						<div class="flex items-center gap-2">
-							<svg class="w-5 h-5 text-[var(--ctp-yellow)]" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-								<path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z" />
-							</svg>
-							<span class="font-medium text-[var(--ctp-yellow)]">{$t('setup.install.notFound')}</span>
-						</div>
-					</div>
-
-					<div class="bg-[var(--ctp-surface0)] rounded-lg p-4 space-y-4">
-						<p class="text-sm text-[var(--ctp-text)]">{$t('setup.install.commandHint')}</p>
-
-						<code class="block p-3 bg-[var(--ctp-crust)] rounded text-sm text-[var(--ctp-green)] font-mono break-all">
-							curl -fsSL https://raw.githubusercontent.com/hoaxisr/amnezia-box/main/docs/installation/tools/install-amnezia-box.sh | sh
-						</code>
-
-						<p class="text-xs text-[var(--ctp-overlay1)]">
-							{$t('setup.install.afterInstall')}
-						</p>
-					</div>
-
-					<button
-						onclick={checkInstallation}
-						disabled={checkingInstall}
-						class="w-full px-6 py-3 bg-[var(--ctp-primary)] text-white rounded-lg hover:opacity-90 disabled:opacity-50 transition-opacity flex items-center justify-center gap-2"
-					>
-						{#if checkingInstall}
-							<svg class="w-5 h-5 animate-spin" fill="none" viewBox="0 0 24 24">
-								<circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle>
-								<path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z"></path>
-							</svg>
-							{$t('setup.install.checking')}
-						{:else}
-							<svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-								<path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" />
-							</svg>
-							{$t('setup.install.checkButton')}
-						{/if}
-					</button>
-				</div>
-
+				<InstallStep checking={checkingInstall} onCheck={checkInstallation} />
 			{:else if effectiveStep === 1}
-				<!-- Step: VPN Config -->
-				<div class="space-y-6">
-					<div>
-						<h2 class="text-xl font-semibold text-[var(--ctp-text)]">{binaryInstalled ? '1' : '2'}. {$t('setup.vpn.title')}</h2>
-						<p class="text-[var(--ctp-overlay1)] mt-1">
-							{$t('setup.vpn.description')}
-						</p>
-					</div>
-
-					<!-- File drop zone -->
-					<div
-						class="relative border-2 border-dashed rounded-lg p-4 transition-colors {isDragging ? 'border-[var(--ctp-primary)] bg-[var(--ctp-surface0)]' : 'border-[var(--ctp-surface2)]'}"
-						ondrop={handleDrop}
-						ondragover={handleDragOver}
-						ondragleave={handleDragLeave}
-						role="button"
-						tabindex="0"
-					>
-						<textarea
-							bind:value={vpnInput}
-							oninput={parseVpnConfig}
-							placeholder={$t('setup.vpn.placeholder')}
-							rows="6"
-							class="w-full px-4 py-3 bg-[var(--ctp-surface0)] border border-[var(--ctp-surface2)] rounded-lg text-[var(--ctp-text)] placeholder-[var(--ctp-overlay0)] font-mono text-sm focus:outline-none focus:ring-2 focus:ring-[var(--ctp-primary)] resize-none"
-						></textarea>
-
-						<!-- File upload button -->
-						<div class="mt-3 flex items-center justify-center gap-3">
-							<span class="text-sm text-[var(--ctp-overlay1)]">{$t('setup.vpn.or')}</span>
-							<button
-								type="button"
-								onclick={() => fileInput.click()}
-								class="px-4 py-2 bg-[var(--ctp-surface1)] text-[var(--ctp-text)] rounded-lg hover:bg-[var(--ctp-surface2)] transition-colors text-sm flex items-center gap-2"
-							>
-								<svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-									<path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M7 16a4 4 0 01-.88-7.903A5 5 0 1115.9 6L16 6a5 5 0 011 9.9M15 13l-3-3m0 0l-3 3m3-3v12" />
-								</svg>
-								{$t('setup.vpn.selectFile')}
-							</button>
-							<input
-								bind:this={fileInput}
-								type="file"
-								accept=".conf,.txt,.json"
-								onchange={handleFileSelect}
-								class="hidden"
-							/>
-						</div>
-					</div>
-
-					{#if vpnError}
-						<div class="alert-box error">
-							<p class="text-sm text-[var(--ctp-red)]">{vpnError}</p>
-						</div>
-					{/if}
-
-					{#if parsedVpn}
-						<div class="alert-box primary">
-							<div class="flex items-center gap-2">
-								<svg class="w-5 h-5 text-[var(--ctp-primary)]" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-									<path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 13l4 4L19 7" />
-								</svg>
-								<span class="font-medium text-[var(--ctp-primary)]">{$t('setup.vpn.parseSuccess')}</span>
-							</div>
-							<div class="mt-2 text-sm text-[var(--ctp-text)]">
-								<span class="text-[var(--ctp-overlay1)]">{$t('setup.vpn.type')}:</span> {getTypeLabel(parsedVpn.type)} —
-								<span class="text-[var(--ctp-overlay1)]">{$t('setup.vpn.name')}:</span> {parsedVpn.name}
-							</div>
-						</div>
-					{/if}
-				</div>
-
+				<VpnConfigStep
+					stepNumber={getStepNumber(1)}
+					bind:vpnInput
+					{parsedVpn}
+					bind:error={vpnError}
+					onInput={parseVpnConfig}
+				/>
 			{:else if effectiveStep === 2}
-				<!-- Step: Usage Mode -->
-				<div class="space-y-6">
-					<div>
-						<h2 class="text-xl font-semibold text-[var(--ctp-text)]">{binaryInstalled ? '2' : '3'}. {$t('setup.mode.title')}</h2>
-						<p class="text-[var(--ctp-overlay1)] mt-1">
-							{$t('setup.mode.description')}
-						</p>
-					</div>
-
-					<div class="space-y-3">
-						<button
-							onclick={() => usageMode = 'router'}
-							class="selectable-card selectable-card-lg {usageMode === 'router' ? 'selected' : ''}"
-						>
-							<div class="flex items-start gap-4">
-								<div
-									class="w-6 h-6 rounded-full border-2 flex items-center justify-center mt-0.5"
-									class:border-[var(--ctp-primary)]={usageMode === 'router'}
-									class:border-[var(--ctp-overlay0)]={usageMode !== 'router'}
-								>
-									{#if usageMode === 'router'}
-										<div class="w-3 h-3 rounded-full bg-[var(--ctp-primary)]"></div>
-									{/if}
-								</div>
-								<div>
-									<div class="font-semibold text-[var(--ctp-text)]">{$t('setup.mode.router.title')}</div>
-									<div class="text-sm text-[var(--ctp-overlay1)] mt-1">
-										{$t('setup.mode.router.description')}
-									</div>
-									<div class="mt-2 flex flex-wrap gap-2">
-										<span class="px-2 py-0.5 bg-[var(--ctp-surface1)] text-[var(--ctp-subtext0)] text-xs rounded">{$t('setup.mode.router.tunInterface')}</span>
-										<span class="px-2 py-0.5 bg-[var(--ctp-surface1)] text-[var(--ctp-subtext0)] text-xs rounded">{$t('setup.mode.router.splitTunneling')}</span>
-										<span class="px-2 py-0.5 bg-[var(--ctp-surface1)] text-[var(--ctp-subtext0)] text-xs rounded">{$t('setup.mode.router.ruleSets')}</span>
-									</div>
-								</div>
-							</div>
-						</button>
-
-						<button
-							onclick={() => usageMode = 'proxy'}
-							class="selectable-card selectable-card-lg {usageMode === 'proxy' ? 'selected' : ''}"
-						>
-							<div class="flex items-start gap-4">
-								<div
-									class="w-6 h-6 rounded-full border-2 flex items-center justify-center mt-0.5"
-									class:border-[var(--ctp-primary)]={usageMode === 'proxy'}
-									class:border-[var(--ctp-overlay0)]={usageMode !== 'proxy'}
-								>
-									{#if usageMode === 'proxy'}
-										<div class="w-3 h-3 rounded-full bg-[var(--ctp-primary)]"></div>
-									{/if}
-								</div>
-								<div>
-									<div class="font-semibold text-[var(--ctp-text)]">{$t('setup.mode.proxy.title')}</div>
-									<div class="text-sm text-[var(--ctp-overlay1)] mt-1">
-										{$t('setup.mode.proxy.description')}
-									</div>
-									<div class="mt-2 flex flex-wrap gap-2">
-										<span class="px-2 py-0.5 bg-[var(--ctp-surface1)] text-[var(--ctp-subtext0)] text-xs rounded">{$t('setup.mode.proxy.socks5')}</span>
-										<span class="px-2 py-0.5 bg-[var(--ctp-surface1)] text-[var(--ctp-subtext0)] text-xs rounded">{$t('setup.mode.proxy.httpProxy')}</span>
-										<span class="px-2 py-0.5 bg-[var(--ctp-surface1)] text-[var(--ctp-subtext0)] text-xs rounded">{$t('setup.mode.proxy.simpleSetup')}</span>
-									</div>
-								</div>
-							</div>
-						</button>
-					</div>
-
-					{#if usageMode === 'proxy'}
-						<div class="bg-[var(--ctp-surface0)] rounded-lg p-4">
-							<label for="proxy-port" class="block text-sm text-[var(--ctp-overlay1)] mb-2">{$t('setup.mode.proxyPort')}</label>
-							<input
-								id="proxy-port"
-								type="number"
-								bind:value={proxyPort}
-								min="1024"
-								max="65535"
-								class="w-32 px-3 py-2 bg-[var(--ctp-surface1)] border border-[var(--ctp-surface2)] rounded-lg text-[var(--ctp-text)] focus:outline-none focus:ring-2 focus:ring-[var(--ctp-primary)]"
-							/>
-							<p class="text-xs text-[var(--ctp-overlay0)] mt-2">
-								{$t('setup.mode.proxyAvailableAt')} <code class="bg-[var(--ctp-surface1)] px-1.5 py-0.5 rounded text-[var(--ctp-text)]">{machineIP}:{proxyPort}</code>
-							</p>
-						</div>
-					{/if}
-				</div>
-
+				<UsageModeStep
+					stepNumber={getStepNumber(2)}
+					bind:usageMode
+					bind:proxyPort
+					{machineIP}
+					onModeChange={() => {}}
+					onPortChange={() => {}}
+				/>
 			{:else if effectiveStep === 3 && usageMode === 'router'}
-				<!-- Step: Rule Sets (Router only) -->
-				<div class="space-y-6">
-					<div>
-						<h2 class="text-xl font-semibold text-[var(--ctp-text)]">{binaryInstalled ? '3' : '4'}. {$t('setup.ruleSets.title')}</h2>
-						<p class="text-[var(--ctp-overlay1)] mt-1">
-							{$t('setup.ruleSets.description')}
-						</p>
-					</div>
-
-					<div class="space-y-3">
-						{#each availableRuleSets as rs}
-							<button
-								onclick={() => toggleRuleSet(rs.id)}
-								class="selectable-card {selectedRuleSets.includes(rs.id) ? 'selected' : ''}"
-							>
-								<div class="flex items-center gap-3">
-									<div
-										class="w-5 h-5 rounded border-2 flex items-center justify-center transition-colors"
-										class:border-[var(--ctp-primary)]={selectedRuleSets.includes(rs.id)}
-										class:bg-[var(--ctp-primary)]={selectedRuleSets.includes(rs.id)}
-										class:border-[var(--ctp-overlay0)]={!selectedRuleSets.includes(rs.id)}
-									>
-										{#if selectedRuleSets.includes(rs.id)}
-											<svg class="w-3 h-3 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-												<path stroke-linecap="round" stroke-linejoin="round" stroke-width="3" d="M5 13l4 4L19 7" />
-											</svg>
-										{/if}
-									</div>
-									<div>
-										<div class="font-medium text-[var(--ctp-text)]">{rs.name}</div>
-										<div class="text-sm text-[var(--ctp-overlay1)]">{rs.desc}</div>
-									</div>
-								</div>
-							</button>
-						{/each}
-					</div>
-				</div>
-
+				<RuleSetsStep
+					stepNumber={getStepNumber(3)}
+					{availableRuleSets}
+					bind:selectedRuleSets
+					onToggle={toggleRuleSet}
+				/>
 			{:else if effectiveStep === 4 && usageMode === 'router'}
-				<!-- Step: Routing Mode (Router only) -->
-				<div class="space-y-6">
-					<div>
-						<h2 class="text-xl font-semibold text-[var(--ctp-text)]">{binaryInstalled ? '4' : '5'}. {$t('setup.routing.title')}</h2>
-						<p class="text-[var(--ctp-overlay1)] mt-1">
-							{$t('setup.routing.description')}
-						</p>
-					</div>
-
-					<div class="space-y-3">
-						<button
-							onclick={() => routingMode = 'split'}
-							class="selectable-card selectable-card-lg {routingMode === 'split' ? 'selected' : ''}"
-						>
-							<div class="flex items-start gap-4">
-								<div
-									class="w-6 h-6 rounded-full border-2 flex items-center justify-center mt-0.5"
-									class:border-[var(--ctp-primary)]={routingMode === 'split'}
-									class:border-[var(--ctp-overlay0)]={routingMode !== 'split'}
-								>
-									{#if routingMode === 'split'}
-										<div class="w-3 h-3 rounded-full bg-[var(--ctp-primary)]"></div>
-									{/if}
-								</div>
-								<div>
-									<div class="font-semibold text-[var(--ctp-text)]">{$t('setup.routing.split.title')}</div>
-									<div class="text-sm text-[var(--ctp-overlay1)] mt-1">
-										{$t('setup.routing.split.description')}
-									</div>
-								</div>
-							</div>
-						</button>
-
-						<button
-							onclick={() => routingMode = 'all'}
-							class="selectable-card selectable-card-lg {routingMode === 'all' ? 'selected' : ''}"
-						>
-							<div class="flex items-start gap-4">
-								<div
-									class="w-6 h-6 rounded-full border-2 flex items-center justify-center mt-0.5"
-									class:border-[var(--ctp-primary)]={routingMode === 'all'}
-									class:border-[var(--ctp-overlay0)]={routingMode !== 'all'}
-								>
-									{#if routingMode === 'all'}
-										<div class="w-3 h-3 rounded-full bg-[var(--ctp-primary)]"></div>
-									{/if}
-								</div>
-								<div>
-									<div class="font-semibold text-[var(--ctp-text)]">{$t('setup.routing.all.title')}</div>
-									<div class="text-sm text-[var(--ctp-overlay1)] mt-1">
-										{$t('setup.routing.all.description')}
-									</div>
-								</div>
-							</div>
-						</button>
-					</div>
-				</div>
-
-			{:else if (effectiveStep === 5 && usageMode === 'router') || (effectiveStep === 3 && usageMode === 'proxy')}
-				<!-- Step: Apply -->
-				<div class="space-y-6">
-					<div>
-						<h2 class="text-xl font-semibold text-[var(--ctp-text)]">
-							{#if usageMode === 'router'}
-								{binaryInstalled ? '5' : '6'}. {$t('setup.apply.title')}
-							{:else}
-								{binaryInstalled ? '3' : '4'}. {$t('setup.apply.title')}
-							{/if}
-						</h2>
-						<p class="text-[var(--ctp-overlay1)] mt-1">
-							{$t('setup.apply.description')}
-						</p>
-					</div>
-
-					{#if !applied}
-						<div class="bg-[var(--ctp-surface0)] rounded-lg p-4 space-y-3 text-sm">
-							<div class="flex justify-between">
-								<span class="text-[var(--ctp-overlay1)]">{$t('setup.apply.vpnLabel')}:</span>
-								<span class="text-[var(--ctp-text)]">{parsedVpn?.name} ({getTypeLabel(parsedVpn?.type || '')})</span>
-							</div>
-							<div class="flex justify-between">
-								<span class="text-[var(--ctp-overlay1)]">{$t('setup.apply.modeLabel')}:</span>
-								<span class="text-[var(--ctp-text)]">{usageMode === 'router' ? $t('setup.apply.modeRouter') : $t('setup.apply.modeProxy')}</span>
-							</div>
-							{#if usageMode === 'router'}
-								<div class="flex justify-between">
-									<span class="text-[var(--ctp-overlay1)]">{$t('setup.apply.ruleSetsLabel')}:</span>
-									<span class="text-[var(--ctp-text)]">{selectedRuleSets.length > 0 ? selectedRuleSets.join(', ') : $t('setup.apply.noneSelected')}</span>
-								</div>
-								<div class="flex justify-between">
-									<span class="text-[var(--ctp-overlay1)]">{$t('setup.apply.routingLabel')}:</span>
-									<span class="text-[var(--ctp-text)]">{routingMode === 'split' ? $t('setup.apply.routingSplit') : $t('setup.apply.routingAll')}</span>
-								</div>
-							{:else}
-								<div class="flex justify-between">
-									<span class="text-[var(--ctp-overlay1)]">{$t('setup.apply.addressLabel')}:</span>
-									<span class="text-[var(--ctp-text)]">{machineIP}:{proxyPort} (SOCKS5 + HTTP)</span>
-								</div>
-							{/if}
-						</div>
-
-						<button
-							onclick={applyConfiguration}
-							disabled={applying}
-							class="w-full px-6 py-4 bg-[var(--ctp-primary)] text-white rounded-lg hover:opacity-90 disabled:opacity-50 transition-opacity flex items-center justify-center gap-2 text-lg font-medium"
-						>
-							{#if applying}
-								<svg class="w-6 h-6 animate-spin" fill="none" viewBox="0 0 24 24">
-									<circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle>
-									<path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z"></path>
-								</svg>
-								{$t('setup.apply.applying')}
-							{:else}
-								<svg class="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-									<path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 13l4 4L19 7" />
-								</svg>
-								{$t('setup.apply.applyButton')}
-							{/if}
-						</button>
-					{:else}
-						<div class="text-center py-8">
-							<div class="w-20 h-20 mx-auto mb-4 rounded-full flex items-center justify-center" style="background-color: color-mix(in srgb, var(--ctp-primary) 20%, transparent);">
-								<svg class="w-10 h-10 text-[var(--ctp-primary)]" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-									<path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 13l4 4L19 7" />
-								</svg>
-							</div>
-							<h3 class="text-xl font-semibold text-[var(--ctp-text)]">{$t('setup.apply.complete')}</h3>
-							<p class="text-[var(--ctp-overlay1)] mt-2">
-								{$t('setup.apply.completeDescription')}
-							</p>
-						</div>
-					{/if}
-				</div>
+				<RoutingModeStep
+					stepNumber={getStepNumber(4)}
+					bind:routingMode
+					onModeChange={() => {}}
+				/>
+			{:else if isOnFinalStep}
+				<ApplyStep
+					stepNumber={getStepNumber(usageMode === 'router' ? 5 : 3)}
+					{parsedVpn}
+					{usageMode}
+					{selectedRuleSets}
+					{routingMode}
+					{proxyPort}
+					{machineIP}
+					{applying}
+					{applied}
+					onApply={applyConfiguration}
+				/>
 			{/if}
 		</div>
 
@@ -888,14 +458,14 @@
 				{$t('setup.navigation.back')}
 			</button>
 
-			{#if (usageMode === 'router' && effectiveStep === 5 && applied) || (usageMode === 'proxy' && effectiveStep === 3 && applied)}
+			{#if isOnFinalStep && applied}
 				<button
 					onclick={finish}
 					class="px-6 py-2 bg-[var(--ctp-primary)] text-white rounded-lg hover:opacity-90 transition-opacity"
 				>
 					{$t('setup.navigation.goToDashboard')}
 				</button>
-			{:else if currentStep > 0 && ((usageMode === 'router' && effectiveStep < 5) || (usageMode === 'proxy' && effectiveStep < 3))}
+			{:else if currentStep > 0 && !isOnFinalStep}
 				<button
 					onclick={nextStep}
 					disabled={!canProceed()}
