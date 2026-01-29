@@ -269,6 +269,8 @@ export interface Outbound {
 	transport?: TransportConfig;
 	// Hysteria2 obfuscation
 	obfs?: ObfsConfig;
+	// Domain resolver (sing-box 1.12+) - DNS for resolving server domain
+	domain_resolver?: string;
 }
 
 // Protocol-specific outbound types for type-safe access
@@ -406,6 +408,8 @@ export interface Endpoint {
 	bind_interface?: string;
 	routing_mark?: number;
 	connect_timeout?: string;
+	// Domain resolver (sing-box 1.12+) - DNS for resolving peer domains
+	domain_resolver?: string;
 }
 
 export interface AWGPeer {

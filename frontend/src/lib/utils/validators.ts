@@ -219,3 +219,30 @@ export function validatePositiveInt(
 	}
 	return { valid: true };
 }
+
+/**
+ * Check if a string is a domain name (not an IP address)
+ * Returns true for domains like "example.com", "vpn.server.org"
+ * Returns false for IPs like "192.168.1.1", "::1", "2001:db8::1"
+ */
+export function isDomain(value: string | undefined | null): boolean {
+	if (!value || !value.trim()) {
+		return false;
+	}
+	const trimmed = value.trim();
+
+	// Check for IPv4: digits and dots only, 4 octets
+	const ipv4Pattern = /^(\d{1,3}\.){3}\d{1,3}$/;
+	if (ipv4Pattern.test(trimmed)) {
+		return false;
+	}
+
+	// Check for IPv6: contains colons (::1, 2001:db8::1, etc.)
+	if (trimmed.includes(':')) {
+		return false;
+	}
+
+	// If it contains at least one letter, it's likely a domain
+	// This catches: localhost, example.com, vpn.server.org
+	return /[a-zA-Z]/.test(trimmed);
+}

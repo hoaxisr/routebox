@@ -1,13 +1,14 @@
 <script lang="ts">
-	import type { Outbound, Endpoint } from '$lib/types';
-	import { notifications } from '$lib/stores';
+	import type { Outbound, Endpoint, DnsServer } from '$lib/types';
+	import { notifications, featureFlags } from '$lib/stores';
 	import { parseVless, parseHysteria2, parseShadowsocks, type ParsedVless, type ParsedHysteria2, type ParsedShadowsocks } from '$lib/utils/parsers';
 	import {
 		validateRequired,
 		validatePort,
 		validateUUID,
 		validateNonEmptyArray,
-		hasValidationErrors
+		hasValidationErrors,
+		isDomain
 	} from '$lib/utils';
 	import { t } from 'svelte-i18n';
 
@@ -15,11 +16,13 @@
 		outbound?: Outbound;
 		endpoints: Endpoint[];
 		outbounds: Outbound[];
+		dnsServers?: DnsServer[];
+		hasDefaultResolver?: boolean;
 		onSave: (outbound: Outbound) => void;
 		onCancel: () => void;
 	}
 
-	let { outbound, endpoints, outbounds, onSave, onCancel }: Props = $props();
+	let { outbound, endpoints, outbounds, dnsServers = [], hasDefaultResolver = false, onSave, onCancel }: Props = $props();
 
 	// Form state
 	let tag = $state(outbound?.tag ?? '');
@@ -95,6 +98,16 @@
 	let urltestInterval = $state(outbound?.interval ?? '3m');
 	let urltestTolerance = $state(outbound?.tolerance ?? 150);
 	let urltestIdleTimeout = $state(outbound?.idle_timeout ?? '');
+
+	// Domain resolver (sing-box 1.12+)
+	let domainResolver = $state(outbound?.domain_resolver ?? '');
+
+	// Show domain resolver only when server is a domain and no default resolver
+	let showDomainResolver = $derived(
+		$featureFlags['domain_resolver'] &&
+		isDomain(server) &&
+		!hasDefaultResolver
+	);
 
 	// Import modal state
 	let showImport = $state(false);
@@ -461,6 +474,12 @@
 			if (atMinIdleSession > 0) (ob as any).min_idle_session = atMinIdleSession;
 		}
 
+		// Add domain_resolver for server-based outbounds (sing-box 1.12+)
+		const serverBasedTypes = ['vless', 'hysteria2', 'shadowsocks', 'shadowtls', 'anytls'];
+		if (serverBasedTypes.includes(type) && domainResolver.trim()) {
+			(ob as any).domain_resolver = domainResolver.trim();
+		}
+
 		onSave(ob);
 	}
 
@@ -671,6 +690,24 @@
 			</div>
 		</div>
 
+		<!-- Domain Resolver -->
+		{#if showDomainResolver}
+			<div>
+				<label for="domainResolver" class="block text-sm font-medium text-[var(--ctp-subtext1)] mb-1">{$t('outbounds.domainResolver')}</label>
+				<select
+					id="domainResolver"
+					bind:value={domainResolver}
+					class="w-full px-3 py-2 bg-[var(--ctp-surface0)] border border-[var(--ctp-surface2)] rounded-lg text-[var(--ctp-text)] focus:outline-none focus:ring-2 focus:ring-[var(--ctp-primary)]"
+				>
+					<option value="">{$t('common.none')}</option>
+					{#each dnsServers as dns}
+						<option value={dns.tag}>{dns.tag}</option>
+					{/each}
+				</select>
+				<p class="mt-1 text-xs text-[var(--ctp-overlay0)]">{$t('outbounds.domainResolverHint')}</p>
+			</div>
+		{/if}
+
 		<!-- UUID -->
 		<div>
 			<label for="uuid" class="block text-sm font-medium text-[var(--ctp-subtext1)] mb-1">{$t('outbounds.uuid')} *</label>
@@ -855,6 +892,24 @@
 			</div>
 		</div>
 
+		<!-- Domain Resolver -->
+		{#if showDomainResolver}
+			<div>
+				<label for="hy2DomainResolver" class="block text-sm font-medium text-[var(--ctp-subtext1)] mb-1">{$t('outbounds.domainResolver')}</label>
+				<select
+					id="hy2DomainResolver"
+					bind:value={domainResolver}
+					class="w-full px-3 py-2 bg-[var(--ctp-surface0)] border border-[var(--ctp-surface2)] rounded-lg text-[var(--ctp-text)] focus:outline-none focus:ring-2 focus:ring-[var(--ctp-primary)]"
+				>
+					<option value="">{$t('common.none')}</option>
+					{#each dnsServers as dns}
+						<option value={dns.tag}>{dns.tag}</option>
+					{/each}
+				</select>
+				<p class="mt-1 text-xs text-[var(--ctp-overlay0)]">{$t('outbounds.domainResolverHint')}</p>
+			</div>
+		{/if}
+
 		<!-- Password -->
 		<div>
 			<label for="hy2password" class="block text-sm font-medium text-[var(--ctp-subtext1)] mb-1">{$t('outbounds.password')} *</label>
@@ -998,6 +1053,24 @@
 			</div>
 		</div>
 
+		<!-- Domain Resolver -->
+		{#if showDomainResolver}
+			<div>
+				<label for="ssDomainResolver" class="block text-sm font-medium text-[var(--ctp-subtext1)] mb-1">{$t('outbounds.domainResolver')}</label>
+				<select
+					id="ssDomainResolver"
+					bind:value={domainResolver}
+					class="w-full px-3 py-2 bg-[var(--ctp-surface0)] border border-[var(--ctp-surface2)] rounded-lg text-[var(--ctp-text)] focus:outline-none focus:ring-2 focus:ring-[var(--ctp-primary)]"
+				>
+					<option value="">{$t('common.none')}</option>
+					{#each dnsServers as dns}
+						<option value={dns.tag}>{dns.tag}</option>
+					{/each}
+				</select>
+				<p class="mt-1 text-xs text-[var(--ctp-overlay0)]">{$t('outbounds.domainResolverHint')}</p>
+			</div>
+		{/if}
+
 		<!-- Method -->
 		<div>
 			<label for="ssMethod" class="block text-sm font-medium text-[var(--ctp-subtext1)] mb-1">{$t('outbounds.method')} *</label>
@@ -1108,6 +1181,24 @@
 			</div>
 		</div>
 
+		<!-- Domain Resolver -->
+		{#if showDomainResolver}
+			<div>
+				<label for="stlsDomainResolver" class="block text-sm font-medium text-[var(--ctp-subtext1)] mb-1">{$t('outbounds.domainResolver')}</label>
+				<select
+					id="stlsDomainResolver"
+					bind:value={domainResolver}
+					class="w-full px-3 py-2 bg-[var(--ctp-surface0)] border border-[var(--ctp-surface2)] rounded-lg text-[var(--ctp-text)] focus:outline-none focus:ring-2 focus:ring-[var(--ctp-primary)]"
+				>
+					<option value="">{$t('common.none')}</option>
+					{#each dnsServers as dns}
+						<option value={dns.tag}>{dns.tag}</option>
+					{/each}
+				</select>
+				<p class="mt-1 text-xs text-[var(--ctp-overlay0)]">{$t('outbounds.domainResolverHint')}</p>
+			</div>
+		{/if}
+
 		<!-- Version -->
 		<div>
 			<label class="block text-sm font-medium text-[var(--ctp-subtext1)] mb-2">{$t('outbounds.version')}</label>
@@ -1187,6 +1278,24 @@
 					class="w-full px-3 py-2 bg-[var(--ctp-surface0)] border rounded-lg text-[var(--ctp-text)] focus:outline-none focus:ring-2 focus:ring-[var(--ctp-primary)] {errors['serverPort'] ? 'border-[var(--ctp-red)]' : 'border-[var(--ctp-surface2)]'}" />
 			</div>
 		</div>
+
+		<!-- Domain Resolver -->
+		{#if showDomainResolver}
+			<div>
+				<label for="atDomainResolver" class="block text-sm font-medium text-[var(--ctp-subtext1)] mb-1">{$t('outbounds.domainResolver')}</label>
+				<select
+					id="atDomainResolver"
+					bind:value={domainResolver}
+					class="w-full px-3 py-2 bg-[var(--ctp-surface0)] border border-[var(--ctp-surface2)] rounded-lg text-[var(--ctp-text)] focus:outline-none focus:ring-2 focus:ring-[var(--ctp-primary)]"
+				>
+					<option value="">{$t('common.none')}</option>
+					{#each dnsServers as dns}
+						<option value={dns.tag}>{dns.tag}</option>
+					{/each}
+				</select>
+				<p class="mt-1 text-xs text-[var(--ctp-overlay0)]">{$t('outbounds.domainResolverHint')}</p>
+			</div>
+		{/if}
 
 		<!-- Password -->
 		<div>

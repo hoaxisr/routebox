@@ -1,22 +1,25 @@
 <script lang="ts">
-	import type { Endpoint, AWGPeer } from '$lib/types';
-	import { notifications } from '$lib/stores';
+	import type { Endpoint, AWGPeer, DnsServer } from '$lib/types';
+	import { notifications, featureFlags } from '$lib/stores';
 	import { t } from 'svelte-i18n';
 	import {
 		validateRequired,
 		validateBase64Key,
 		validateOptionalPort,
 		parseCSV,
-		hasValidationErrors
+		hasValidationErrors,
+		isDomain
 	} from '$lib/utils';
 
 	interface Props {
 		endpoint?: Endpoint;
+		dnsServers?: DnsServer[];
+		hasDefaultResolver?: boolean;
 		onSave: (endpoint: Endpoint) => void;
 		onCancel: () => void;
 	}
 
-	let { endpoint, onSave, onCancel }: Props = $props();
+	let { endpoint, dnsServers = [], hasDefaultResolver = false, onSave, onCancel }: Props = $props();
 
 	// Form state
 	let tag = $state(endpoint?.tag ?? '');
@@ -60,6 +63,16 @@
 		...p,
 		pre_shared_key: p.pre_shared_key ?? (p as any).preshared_key
 	})) ?? [{ address: '', port: 51820, public_key: '', allowed_ips: ['0.0.0.0/0', '::/0'] }]);
+
+	// Domain resolver (sing-box 1.12+)
+	let domainResolver = $state(endpoint?.domain_resolver ?? '');
+
+	// Show domain resolver if any peer address is a domain and no default resolver
+	let showDomainResolver = $derived(
+		$featureFlags['domain_resolver'] &&
+		!hasDefaultResolver &&
+		peers.some(p => isDomain(p.address))
+	);
 
 	// UI state
 	let activeTab = $state<'basic' | 'obfuscation' | 'peers' | 'advanced'>('basic');
@@ -254,6 +267,9 @@
 		if (interfaceName.trim()) ep.name = interfaceName.trim();
 		if (udpTimeout.trim()) ep.udp_timeout = udpTimeout.trim();
 		if (workers > 0) ep.workers = workers;
+
+		// Domain resolver (sing-box 1.12+)
+		if (domainResolver.trim()) ep.domain_resolver = domainResolver.trim();
 
 		onSave(ep);
 	}
@@ -734,6 +750,24 @@
 					/>
 					<p class="mt-1 text-xs text-[var(--ctp-overlay0)]">{$t('endpoints.durationFormatHint')}</p>
 				</div>
+
+				<!-- Domain Resolver -->
+				{#if showDomainResolver}
+					<div>
+						<label for="domainResolver" class="block text-xs text-[var(--ctp-overlay0)] mb-1">{$t('endpoints.domainResolver')}</label>
+						<select
+							id="domainResolver"
+							bind:value={domainResolver}
+							class="w-full px-3 py-2 bg-[var(--ctp-mantle)] border border-[var(--ctp-surface2)] rounded-lg text-[var(--ctp-text)] focus:outline-none focus:ring-2 focus:ring-[var(--ctp-primary)]"
+						>
+							<option value="">{$t('common.none')}</option>
+							{#each dnsServers as dns}
+								<option value={dns.tag}>{dns.tag}</option>
+							{/each}
+						</select>
+						<p class="mt-1 text-xs text-[var(--ctp-overlay0)]">{$t('endpoints.domainResolverHint')}</p>
+					</div>
+				{/if}
 			</div>
 		</div>
 	{/if}

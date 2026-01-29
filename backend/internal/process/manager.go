@@ -712,6 +712,7 @@ func (m *Manager) GetFeatureFlags() map[string]bool {
 			"network_strategy":         false,
 			"tls_fragment":             false,
 			"default_domain_resolver":  false,
+			"domain_resolver":          false,
 			"bypass_action":            false,
 			"icmp_network":             false,
 		}
@@ -725,6 +726,7 @@ func (m *Manager) GetFeatureFlags() map[string]bool {
 		"network_strategy":         VersionAtLeast(version, 1, 11),
 		"tls_fragment":             VersionAtLeast(version, 1, 12),
 		"default_domain_resolver":  VersionAtLeast(version, 1, 12),
+		"domain_resolver":          VersionAtLeast(version, 1, 12), // for outbounds/endpoints
 		"bypass_action":            VersionAtLeast(version, 1, 13),
 		"icmp_network":             VersionAtLeast(version, 1, 13), // network field: 'icmp'
 	}

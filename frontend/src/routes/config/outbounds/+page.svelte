@@ -3,14 +3,19 @@
 	import { t } from 'svelte-i18n';
 	import { api } from '$lib/api/client';
 	import { notifications, unsavedChanges } from '$lib/stores';
-	import type { Outbound, Endpoint, RouteRule } from '$lib/types';
+	import type { Outbound, Endpoint, RouteRule, DnsServer, RouteSettings } from '$lib/types';
 	import Modal from '$lib/components/shared/Modal.svelte';
 	import OutboundForm from '$lib/components/config/OutboundForm.svelte';
 
 	let outbounds = $state<Outbound[]>([]);
 	let endpoints = $state<Endpoint[]>([]);
 	let rules = $state<RouteRule[]>([]);
+	let dnsServers = $state<DnsServer[]>([]);
+	let routeSettings = $state<RouteSettings | null>(null);
 	let loading = $state(true);
+
+	// Check if default_domain_resolver is configured
+	let hasDefaultResolver = $derived(!!routeSettings?.default_domain_resolver);
 
 	// Modal state
 	let showModal = $state(false);
@@ -52,14 +57,18 @@
 
 	async function fetchData() {
 		try {
-			const [ob, ep, rl] = await Promise.all([
+			const [ob, ep, rl, dns, rs] = await Promise.all([
 				api.listOutbounds(),
 				api.listEndpoints(),
-				api.listRules()
+				api.listRules(),
+				api.listDnsServers(),
+				api.getRouteSettings()
 			]);
 			outbounds = ob;
 			endpoints = ep;
 			rules = rl;
+			dnsServers = dns;
+			routeSettings = rs;
 		} catch (e) {
 			notifications.error($t('errors.loadFailed') + `: ${e}`);
 		} finally {
@@ -329,5 +338,5 @@
 
 <!-- Modal -->
 <Modal open={showModal} title={editingOutbound ? $t('outbounds.editOutbound') : $t('outbounds.addOutbound')} size="lg" onClose={closeModal}>
-	<OutboundForm outbound={editingOutbound} {endpoints} {outbounds} onSave={handleSave} onCancel={closeModal} />
+	<OutboundForm outbound={editingOutbound} {endpoints} {outbounds} {dnsServers} {hasDefaultResolver} onSave={handleSave} onCancel={closeModal} />
 </Modal>

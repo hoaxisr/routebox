@@ -1,7 +1,8 @@
 <script lang="ts">
-	import type { TLSConfig, ObfsConfig } from '$lib/types';
+	import type { TLSConfig, ObfsConfig, DnsServer } from '$lib/types';
 	import { t } from 'svelte-i18n';
 	import ServerConfig from './ServerConfig.svelte';
+	import DomainResolverField from './DomainResolverField.svelte';
 
 	interface Props {
 		server: string;
@@ -13,6 +14,9 @@
 		hopInterval: string;
 		upMbps: number;
 		downMbps: number;
+		domainResolver: string;
+		dnsServers: DnsServer[];
+		hasDefaultResolver: boolean;
 		errors?: Record<string, string>;
 		onImport?: () => void;
 	}
@@ -27,6 +31,9 @@
 		hopInterval = $bindable(),
 		upMbps = $bindable(),
 		downMbps = $bindable(),
+		domainResolver = $bindable(''),
+		dnsServers = [],
+		hasDefaultResolver = false,
 		errors = {},
 		onImport
 	}: Props = $props();
@@ -64,6 +71,14 @@
 
 	<!-- Server & Port -->
 	<ServerConfig bind:server bind:serverPort {errors} />
+
+	<!-- Domain Resolver -->
+	<DomainResolverField
+		bind:value={domainResolver}
+		serverAddress={server}
+		{dnsServers}
+		{hasDefaultResolver}
+	/>
 
 	<!-- Password -->
 	<div>

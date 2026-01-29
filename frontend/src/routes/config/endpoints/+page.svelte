@@ -3,13 +3,18 @@
 	import { t } from 'svelte-i18n';
 	import { api } from '$lib/api/client';
 	import { notifications, unsavedChanges } from '$lib/stores';
-	import type { Endpoint, Outbound } from '$lib/types';
+	import type { Endpoint, Outbound, DnsServer, RouteSettings } from '$lib/types';
 	import Modal from '$lib/components/shared/Modal.svelte';
 	import EndpointForm from '$lib/components/config/EndpointForm.svelte';
 
 	let endpoints = $state<Endpoint[]>([]);
 	let outbounds = $state<Outbound[]>([]);
+	let dnsServers = $state<DnsServer[]>([]);
+	let routeSettings = $state<RouteSettings | null>(null);
 	let loading = $state(true);
+
+	// Check if default_domain_resolver is configured
+	let hasDefaultResolver = $derived(!!routeSettings?.default_domain_resolver);
 
 	// Modal state
 	let showModal = $state(false);
@@ -37,12 +42,16 @@
 
 	async function fetchEndpoints() {
 		try {
-			const [ep, ob] = await Promise.all([
+			const [ep, ob, dns, rs] = await Promise.all([
 				api.listEndpoints(),
-				api.listOutbounds()
+				api.listOutbounds(),
+				api.listDnsServers(),
+				api.getRouteSettings()
 			]);
 			endpoints = ep;
 			outbounds = ob;
+			dnsServers = dns;
+			routeSettings = rs;
 		} catch (e) {
 			notifications.error(`Failed to load endpoints: ${e}`);
 		} finally {
@@ -253,5 +262,5 @@
 
 <!-- Modal -->
 <Modal open={showModal} title={editingEndpoint ? $t('endpoints.editEndpoint') : $t('endpoints.addEndpoint')} size="lg" onClose={closeModal}>
-	<EndpointForm endpoint={editingEndpoint} onSave={handleSave} onCancel={closeModal} />
+	<EndpointForm endpoint={editingEndpoint} {dnsServers} {hasDefaultResolver} onSave={handleSave} onCancel={closeModal} />
 </Modal>

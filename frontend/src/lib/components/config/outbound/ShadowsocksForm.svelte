@@ -1,7 +1,8 @@
 <script lang="ts">
-	import type { MultiplexConfig } from '$lib/types';
+	import type { MultiplexConfig, DnsServer } from '$lib/types';
 	import { t } from 'svelte-i18n';
 	import ServerConfig from './ServerConfig.svelte';
+	import DomainResolverField from './DomainResolverField.svelte';
 
 	interface Props {
 		server: string;
@@ -13,6 +14,9 @@
 		network: string;
 		udpOverTcp: boolean;
 		multiplex: MultiplexConfig;
+		domainResolver: string;
+		dnsServers: DnsServer[];
+		hasDefaultResolver: boolean;
 		errors?: Record<string, string>;
 		onImport?: () => void;
 	}
@@ -27,6 +31,9 @@
 		network = $bindable(),
 		udpOverTcp = $bindable(),
 		multiplex = $bindable(),
+		domainResolver = $bindable(''),
+		dnsServers = [],
+		hasDefaultResolver = false,
 		errors = {},
 		onImport
 	}: Props = $props();
@@ -57,6 +64,14 @@
 
 	<!-- Server & Port -->
 	<ServerConfig bind:server bind:serverPort {errors} />
+
+	<!-- Domain Resolver -->
+	<DomainResolverField
+		bind:value={domainResolver}
+		serverAddress={server}
+		{dnsServers}
+		{hasDefaultResolver}
+	/>
 
 	<!-- Method & Password -->
 	<div class="grid grid-cols-2 gap-4">

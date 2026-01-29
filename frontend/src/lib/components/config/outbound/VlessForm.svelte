@@ -1,8 +1,9 @@
 <script lang="ts">
-	import type { TLSConfig, TransportConfig } from '$lib/types';
+	import type { TLSConfig, TransportConfig, DnsServer } from '$lib/types';
 	import { t } from 'svelte-i18n';
 	import ServerConfig from './ServerConfig.svelte';
 	import TlsConfig from './TlsConfig.svelte';
+	import DomainResolverField from './DomainResolverField.svelte';
 
 	interface Props {
 		server: string;
@@ -11,6 +12,9 @@
 		flow: string;
 		tls: TLSConfig;
 		transport: TransportConfig;
+		domainResolver: string;
+		dnsServers: DnsServer[];
+		hasDefaultResolver: boolean;
 		errors?: Record<string, string>;
 		onImport?: () => void;
 	}
@@ -22,6 +26,9 @@
 		flow = $bindable(),
 		tls = $bindable(),
 		transport = $bindable(),
+		domainResolver = $bindable(''),
+		dnsServers = [],
+		hasDefaultResolver = false,
 		errors = {},
 		onImport
 	}: Props = $props();
@@ -47,6 +54,14 @@
 
 	<!-- Server & Port -->
 	<ServerConfig bind:server bind:serverPort {errors} />
+
+	<!-- Domain Resolver (only shown when server is a domain and no default resolver) -->
+	<DomainResolverField
+		bind:value={domainResolver}
+		serverAddress={server}
+		{dnsServers}
+		{hasDefaultResolver}
+	/>
 
 	<!-- UUID -->
 	<div>
