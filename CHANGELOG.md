@@ -2,6 +2,32 @@
 
 All notable changes to RouteBox are documented here.
 
+## [0.10.0] - 2026-01-29
+
+### Mobile-First Responsive Design
+
+Major UX overhaul bringing full mobile support to RouteBox.
+
+**Frontend:**
+- Responsive mobile sidebar with hamburger menu toggle
+- Forms and tables now adapt to mobile screen sizes
+- Smooth animations for modal dialogs and toast notifications
+
+### New Features
+
+**Frontend:**
+- **Connection Test** in Route Inspector - test connectivity to any destination and see which outbound handles it
+- **Rule Templates** expansion - added gaming platforms (Steam, Epic, Discord) and regional categories with full i18n support (EN/RU)
+- **HelpTooltip** component - contextual help icons for complex configuration fields
+- **domain_resolver** support for outbounds and endpoints (sing-box 1.12+ feature)
+
+### Fixes
+
+**Frontend:**
+- Fixed duplicate "sing-box" prefix in version display
+
+---
+
 ## [0.9.15] - 2026-01-28
 
 ### Technical Debt Reduction
