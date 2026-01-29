@@ -328,12 +328,18 @@ func (m *Manager) runVersion(binaryPath string) (string, error) {
 		return "", fmt.Errorf("failed to run %s version: %w", binaryPath, err)
 	}
 
-	// Parse version from output (usually first line contains "sing-box version X.X.X")
+	// Parse version from output (first line contains "sing-box version X.X.X" or similar)
 	version := strings.TrimSpace(string(output))
 	// Take first line only
 	if idx := strings.Index(version, "\n"); idx > 0 {
 		version = version[:idx]
 	}
+
+	// Extract just the version number (strip "sing-box version " or "amnezia-box version " prefix)
+	if idx := strings.LastIndex(version, " "); idx > 0 {
+		version = version[idx+1:]
+	}
+
 	return version, nil
 }
 
