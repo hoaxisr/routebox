@@ -11,7 +11,8 @@
 		RejectOptions,
 		ResolveOptions,
 		SniffOptions,
-		RouteOptions
+		RouteOptions,
+		RuleCombiner
 	} from './rules';
 
 	interface Props {
@@ -43,44 +44,65 @@
 		}
 	}
 
+	// Check if editing a logical rule
+	function isLogicalRule(): boolean {
+		return rule?.type === 'logical' && Array.isArray(rule.rules);
+	}
+
+	// Extract conditions from a rule (for simple mode)
+	function extractConditions(r: RouteRule): RuleConditions {
+		return {
+			ip_is_private: r.ip_is_private,
+			source_ip_is_private: r.source_ip_is_private,
+			invert: r.invert,
+			inbound: r.inbound,
+			domain: r.domain,
+			domain_suffix: r.domain_suffix,
+			domain_keyword: r.domain_keyword,
+			domain_regex: r.domain_regex,
+			ip_cidr: r.ip_cidr,
+			source_ip_cidr: r.source_ip_cidr,
+			port: r.port,
+			port_range: r.port_range,
+			source_port: r.source_port,
+			source_port_range: r.source_port_range,
+			protocol: r.protocol,
+			rule_set: r.rule_set,
+			rule_set_ip_cidr_match_source: r.rule_set_ip_cidr_match_source,
+			process_name: r.process_name,
+			process_path: r.process_path,
+			process_path_regex: r.process_path_regex,
+			network: r.network,
+			ip_version: r.ip_version,
+			clash_mode: r.clash_mode,
+			client: r.client,
+			auth_user: r.auth_user,
+			user: r.user,
+			user_id: r.user_id
+		};
+	}
+
 	// Initialize conditions from existing rule
 	function initConditions(): RuleConditions {
-		if (!rule) return {};
-		return {
-			ip_is_private: rule.ip_is_private,
-			source_ip_is_private: rule.source_ip_is_private,
-			invert: rule.invert,
-			inbound: rule.inbound,
-			domain: rule.domain,
-			domain_suffix: rule.domain_suffix,
-			domain_keyword: rule.domain_keyword,
-			domain_regex: rule.domain_regex,
-			ip_cidr: rule.ip_cidr,
-			source_ip_cidr: rule.source_ip_cidr,
-			port: rule.port,
-			port_range: rule.port_range,
-			source_port: rule.source_port,
-			source_port_range: rule.source_port_range,
-			protocol: rule.protocol,
-			rule_set: rule.rule_set,
-			rule_set_ip_cidr_match_source: rule.rule_set_ip_cidr_match_source,
-			process_name: rule.process_name,
-			process_path: rule.process_path,
-			process_path_regex: rule.process_path_regex,
-			network: rule.network,
-			ip_version: rule.ip_version,
-			clash_mode: rule.clash_mode,
-			client: rule.client,
-			auth_user: rule.auth_user,
-			user: rule.user,
-			user_id: rule.user_id
-		};
+		if (!rule || isLogicalRule()) return {};
+		return extractConditions(rule);
+	}
+
+	// Initialize combined conditions from logical rule
+	function initCombinedConditions(): RuleConditions[] {
+		if (!rule || !isLogicalRule()) return [{}];
+		return rule.rules?.map(r => extractConditions(r)) ?? [{}];
 	}
 
 	// Form state
 	let action = $state<RouteRule['action']>(rule?.action ?? 'route');
 	let outbound = $state(rule?.outbound ?? '');
 	let conditions = $state<RuleConditions>(initConditions());
+
+	// Rule mode: simple (single conditions) vs combined (logical AND/OR)
+	let ruleMode = $state<'simple' | 'combined'>(isLogicalRule() ? 'combined' : 'simple');
+	let logicalMode = $state<'and' | 'or'>(rule?.mode ?? 'and');
+	let combinedConditions = $state<RuleConditions[]>(initCombinedConditions());
 
 	// Sniff options
 	let sniffTimeout = $state(rule?.timeout ?? '300ms');
@@ -131,8 +153,22 @@
 			errors['outbound'] = $t('routes.outboundRequired');
 		}
 
-		if (showConditions && !hasAnyCondition(conditions)) {
-			errors['conditions'] = $t('routes.conditionRequired');
+		if (showConditions) {
+			if (ruleMode === 'simple') {
+				if (!hasAnyCondition(conditions)) {
+					errors['conditions'] = $t('routes.conditionRequired');
+				}
+			} else {
+				// Combined mode: need at least 2 conditions, each with content
+				if (combinedConditions.length < 2) {
+					errors['conditions'] = $t('routes.combiner.needTwoConditions');
+				} else {
+					const emptyIndex = combinedConditions.findIndex(c => !hasAnyCondition(c));
+					if (emptyIndex !== -1) {
+						errors['conditions'] = $t('routes.combiner.emptyCondition', { values: { number: emptyIndex + 1 } });
+					}
+				}
+			}
 		}
 
 		const errorKeys = Object.keys(errors);
@@ -186,7 +222,14 @@
 
 		// Conditions
 		if (showConditions) {
-			Object.assign(newRule, conditions);
+			if (ruleMode === 'simple') {
+				Object.assign(newRule, conditions);
+			} else {
+				// Combined mode: output logical rule
+				newRule.type = 'logical';
+				newRule.mode = logicalMode;
+				newRule.rules = combinedConditions.map(c => ({ ...c }));
+			}
 		}
 
 		// Hijack-dns: add protocol: dns
@@ -267,16 +310,47 @@
 
 	<!-- Conditions -->
 	{#if showConditions}
+		<!-- Simple/Combined mode toggle -->
+		<div class="flex items-center gap-3 pb-2">
+			<span class="text-sm text-[var(--ctp-subtext1)]">{$t('routes.combiner.ruleType')}:</span>
+			<div class="flex rounded-lg overflow-hidden border border-[var(--ctp-surface2)]">
+				<button type="button" onclick={() => ruleMode = 'simple'}
+					class="px-3 py-1.5 text-sm font-medium transition-colors {ruleMode === 'simple'
+						? 'bg-[var(--ctp-primary)] text-white'
+						: 'bg-[var(--ctp-surface0)] text-[var(--ctp-text)] hover:bg-[var(--ctp-surface1)]'}">
+					{$t('routes.combiner.simple')}
+				</button>
+				<button type="button" onclick={() => ruleMode = 'combined'}
+					class="px-3 py-1.5 text-sm font-medium transition-colors {ruleMode === 'combined'
+						? 'bg-[var(--ctp-primary)] text-white'
+						: 'bg-[var(--ctp-surface0)] text-[var(--ctp-text)] hover:bg-[var(--ctp-surface1)]'}">
+					{$t('routes.combiner.combined')}
+				</button>
+			</div>
+		</div>
+
 		{#if errors['conditions']}
 			<p class="text-sm text-[var(--ctp-red)]">{errors['conditions']}</p>
 		{/if}
-		<ConditionsForm
-			bind:conditions
-			{ruleSets}
-			{inbounds}
-			{hiddenRuleSets}
-			onCreateRuleSet={handleCreateRuleSet}
-		/>
+
+		{#if ruleMode === 'simple'}
+			<ConditionsForm
+				bind:conditions
+				{ruleSets}
+				{inbounds}
+				{hiddenRuleSets}
+				onCreateRuleSet={handleCreateRuleSet}
+			/>
+		{:else}
+			<RuleCombiner
+				bind:conditions={combinedConditions}
+				bind:mode={logicalMode}
+				{ruleSets}
+				{inbounds}
+				{hiddenRuleSets}
+				onCreateRuleSet={handleCreateRuleSet}
+			/>
+		{/if}
 	{/if}
 
 	<!-- Form actions -->

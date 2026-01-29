@@ -651,6 +651,21 @@
       "reviewHint": "Click \"Create Rule\" to add this rule. You can edit it later or drag to reorder.",
       "back": "Back",
       "next": "Next"
+    },
+    "combiner": {
+      "ruleType": "Rule type",
+      "simple": "Simple",
+      "combined": "Combined",
+      "combineWith": "Combine conditions with",
+      "and": "AND",
+      "or": "OR",
+      "andHint": "All conditions must match",
+      "orHint": "Any condition must match",
+      "addCondition": "Add condition",
+      "removeCondition": "Remove condition",
+      "noConditions": "No conditions set",
+      "needTwoConditions": "Combined rules require at least 2 conditions",
+      "emptyCondition": "Condition #{number} is empty"
     }
   },
   "inbounds": {
