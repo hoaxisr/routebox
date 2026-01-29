@@ -7,6 +7,8 @@
 		type Node,
 		type Edge,
 		type NodeTypes,
+		type Connection,
+		type IsValidConnection,
 		Position,
 		BackgroundVariant
 	} from '@xyflow/svelte';
@@ -22,10 +24,10 @@
 		rules: RouteRule[];
 		outbounds: Outbound[];
 		onRuleSelect?: (ruleIndex: number | null) => void;
-		onRuleUpdate?: (ruleIndex: number, rule: RouteRule) => void;
+		onRuleOutboundChange?: (ruleIndex: number, newOutbound: string) => void;
 	}
 
-	let { rules, outbounds, onRuleSelect, onRuleUpdate }: Props = $props();
+	let { rules, outbounds, onRuleSelect, onRuleOutboundChange }: Props = $props();
 
 	const nodeTypes: NodeTypes = {
 		rule: RuleNode,
@@ -73,6 +75,29 @@
 			onRuleSelect(null);
 		}
 	}
+
+	// Validate connections: only allow rule → outbound
+	const isValidConnection: IsValidConnection = (connection) => {
+		const sourceNode = nodes.find((n) => n.id === connection.source);
+		const targetNode = nodes.find((n) => n.id === connection.target);
+
+		// Only allow: rule (source) → outbound (target)
+		return sourceNode?.type === 'rule' && targetNode?.type === 'outbound';
+	};
+
+	// Handle new connection
+	function handleConnect(connection: Connection) {
+		if (!onRuleOutboundChange) return;
+
+		// Extract rule index from source id (format: "rule-{index}")
+		const ruleIndex = parseInt(connection.source.replace('rule-', ''), 10);
+		// Extract outbound tag from target id (format: "outbound-{tag}")
+		const outboundTag = connection.target.replace('outbound-', '');
+
+		if (!isNaN(ruleIndex) && outboundTag) {
+			onRuleOutboundChange(ruleIndex, outboundTag);
+		}
+	}
 </script>
 
 <div class="visual-builder">
@@ -82,8 +107,11 @@
 		{nodeTypes}
 		fitView
 		nodesDraggable={false}
-		nodesConnectable={false}
+		nodesConnectable={true}
 		elementsSelectable={true}
+		clickConnect={true}
+		{isValidConnection}
+		onconnect={handleConnect}
 		onnodeclick={handleNodeClick}
 		onpaneclick={handlePaneClick}
 	>
@@ -136,5 +164,41 @@
 
 	:global(.visual-builder .svelte-flow__edge.selected .svelte-flow__edge-path) {
 		stroke: var(--ctp-primary);
+	}
+
+	/* Connection line while dragging */
+	:global(.visual-builder .svelte-flow__connection-path) {
+		stroke: var(--ctp-primary);
+		stroke-width: 2;
+		stroke-dasharray: 5 5;
+	}
+
+	/* Handles */
+	:global(.visual-builder .svelte-flow__handle) {
+		width: 12px;
+		height: 12px;
+		background: var(--ctp-surface2);
+		border: 2px solid var(--ctp-overlay0);
+		transition: all 0.15s ease;
+	}
+
+	:global(.visual-builder .svelte-flow__handle:hover) {
+		background: var(--ctp-primary);
+		border-color: var(--ctp-primary);
+		transform: scale(1.2);
+	}
+
+	:global(.visual-builder .svelte-flow__handle.connecting) {
+		background: var(--ctp-primary);
+	}
+
+	:global(.visual-builder .svelte-flow__handle-valid) {
+		background: var(--ctp-green);
+		border-color: var(--ctp-green);
+	}
+
+	:global(.visual-builder .svelte-flow__handle-invalid) {
+		background: var(--ctp-red);
+		border-color: var(--ctp-red);
 	}
 </style>

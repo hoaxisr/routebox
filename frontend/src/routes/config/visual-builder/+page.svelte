@@ -98,6 +98,22 @@
 		selectedRuleIndex = null;
 	}
 
+	async function handleRuleOutboundChange(index: number, newOutbound: string) {
+		const rule = rules[index];
+		if (!rule || rule.outbound === newOutbound) return;
+
+		const updatedRule: RouteRule = { ...rule, outbound: newOutbound };
+		try {
+			await api.updateRule(index, updatedRule);
+			rules[index] = updatedRule;
+			rules = [...rules];
+			unsavedChanges.refresh();
+			notifications.success($t('routes.ruleUpdated'));
+		} catch (e) {
+			notifications.error(`Failed to update rule: ${e}`);
+		}
+	}
+
 	onMount(() => {
 		fetchData();
 	});
@@ -160,7 +176,12 @@
 
 		<div class="builder-container" class:with-panel={selectedRule !== null}>
 			<div class="builder-main">
-				<VisualBuilder {rules} outbounds={allOutbounds} onRuleSelect={handleRuleSelect} />
+				<VisualBuilder
+					{rules}
+					outbounds={allOutbounds}
+					onRuleSelect={handleRuleSelect}
+					onRuleOutboundChange={handleRuleOutboundChange}
+				/>
 			</div>
 
 			{#if selectedRule !== null && selectedRuleIndex !== null}
