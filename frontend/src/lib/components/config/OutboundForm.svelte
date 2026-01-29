@@ -11,6 +11,7 @@
 		isDomain
 	} from '$lib/utils';
 	import { t } from 'svelte-i18n';
+	import HelpTooltip from '$lib/components/shared/HelpTooltip.svelte';
 
 	interface Props {
 		outbound?: Outbound;
@@ -616,7 +617,10 @@
 				</div>
 				<div class="grid grid-cols-3 gap-4">
 					<div>
-						<label for="urltestInterval" class="block text-xs text-[var(--ctp-overlay0)] mb-1">{$t('outbounds.testInterval')}</label>
+						<label for="urltestInterval" class="flex items-center gap-1 text-xs text-[var(--ctp-overlay0)] mb-1">
+							{$t('outbounds.testInterval')}
+							<HelpTooltip text={$t('help.interval')} />
+						</label>
 						<input
 							id="urltestInterval"
 							type="text"
@@ -626,7 +630,10 @@
 						/>
 					</div>
 					<div>
-						<label for="urltestTolerance" class="block text-xs text-[var(--ctp-overlay0)] mb-1">{$t('outbounds.tolerance')} (ms)</label>
+						<label for="urltestTolerance" class="flex items-center gap-1 text-xs text-[var(--ctp-overlay0)] mb-1">
+							{$t('outbounds.tolerance')} (ms)
+							<HelpTooltip text={$t('help.tolerance')} />
+						</label>
 						<input
 							id="urltestTolerance"
 							type="number"
@@ -637,7 +644,10 @@
 						/>
 					</div>
 					<div>
-						<label for="urltestIdleTimeout" class="block text-xs text-[var(--ctp-overlay0)] mb-1">{$t('outbounds.idleTimeout')}</label>
+						<label for="urltestIdleTimeout" class="flex items-center gap-1 text-xs text-[var(--ctp-overlay0)] mb-1">
+							{$t('outbounds.idleTimeout')}
+							<HelpTooltip text={$t('help.idleTimeout')} />
+						</label>
 						<input
 							id="urltestIdleTimeout"
 							type="text"
@@ -693,7 +703,10 @@
 		<!-- Domain Resolver -->
 		{#if showDomainResolver}
 			<div>
-				<label for="domainResolver" class="block text-sm font-medium text-[var(--ctp-subtext1)] mb-1">{$t('outbounds.domainResolver')}</label>
+				<label for="domainResolver" class="flex items-center gap-1 text-sm font-medium text-[var(--ctp-subtext1)] mb-1">
+				{$t('outbounds.domainResolver')}
+				<HelpTooltip text={$t('help.domainResolver')} />
+			</label>
 				<select
 					id="domainResolver"
 					bind:value={domainResolver}
@@ -722,7 +735,10 @@
 
 		<!-- Flow -->
 		<div>
-			<label for="flow" class="block text-sm font-medium text-[var(--ctp-subtext1)] mb-1">{$t('outbounds.flow')}</label>
+			<label for="flow" class="flex items-center gap-1 text-sm font-medium text-[var(--ctp-subtext1)] mb-1">
+				{$t('outbounds.flow')}
+				<HelpTooltip text={$t('help.flow')} />
+			</label>
 			<select
 				id="flow"
 				bind:value={flow}
@@ -770,6 +786,7 @@
 				<label class="flex items-center gap-2 text-sm text-[var(--ctp-subtext1)]">
 					<input type="checkbox" bind:checked={realityEnabled} />
 					{$t('outbounds.enableReality')}
+					<HelpTooltip text={$t('help.reality')} />
 				</label>
 
 				{#if realityEnabled}
@@ -895,7 +912,10 @@
 		<!-- Domain Resolver -->
 		{#if showDomainResolver}
 			<div>
-				<label for="hy2DomainResolver" class="block text-sm font-medium text-[var(--ctp-subtext1)] mb-1">{$t('outbounds.domainResolver')}</label>
+				<label for="hy2DomainResolver" class="flex items-center gap-1 text-sm font-medium text-[var(--ctp-subtext1)] mb-1">
+				{$t('outbounds.domainResolver')}
+				<HelpTooltip text={$t('help.domainResolver')} />
+			</label>
 				<select
 					id="hy2DomainResolver"
 					bind:value={domainResolver}
@@ -1056,7 +1076,10 @@
 		<!-- Domain Resolver -->
 		{#if showDomainResolver}
 			<div>
-				<label for="ssDomainResolver" class="block text-sm font-medium text-[var(--ctp-subtext1)] mb-1">{$t('outbounds.domainResolver')}</label>
+				<label for="ssDomainResolver" class="flex items-center gap-1 text-sm font-medium text-[var(--ctp-subtext1)] mb-1">
+				{$t('outbounds.domainResolver')}
+				<HelpTooltip text={$t('help.domainResolver')} />
+			</label>
 				<select
 					id="ssDomainResolver"
 					bind:value={domainResolver}
@@ -1127,6 +1150,7 @@
 			<label class="flex items-center gap-2 text-sm font-medium text-[var(--ctp-subtext1)]">
 				<input type="checkbox" bind:checked={ssMuxEnabled} />
 				{$t('outbounds.multiplexing')}
+				<HelpTooltip text={$t('help.multiplex')} />
 			</label>
 
 			{#if ssMuxEnabled}
@@ -1184,7 +1208,10 @@
 		<!-- Domain Resolver -->
 		{#if showDomainResolver}
 			<div>
-				<label for="stlsDomainResolver" class="block text-sm font-medium text-[var(--ctp-subtext1)] mb-1">{$t('outbounds.domainResolver')}</label>
+				<label for="stlsDomainResolver" class="flex items-center gap-1 text-sm font-medium text-[var(--ctp-subtext1)] mb-1">
+				{$t('outbounds.domainResolver')}
+				<HelpTooltip text={$t('help.domainResolver')} />
+			</label>
 				<select
 					id="stlsDomainResolver"
 					bind:value={domainResolver}
@@ -1282,7 +1309,10 @@
 		<!-- Domain Resolver -->
 		{#if showDomainResolver}
 			<div>
-				<label for="atDomainResolver" class="block text-sm font-medium text-[var(--ctp-subtext1)] mb-1">{$t('outbounds.domainResolver')}</label>
+				<label for="atDomainResolver" class="flex items-center gap-1 text-sm font-medium text-[var(--ctp-subtext1)] mb-1">
+				{$t('outbounds.domainResolver')}
+				<HelpTooltip text={$t('help.domainResolver')} />
+			</label>
 				<select
 					id="atDomainResolver"
 					bind:value={domainResolver}

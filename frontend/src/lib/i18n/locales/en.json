@@ -1199,5 +1199,29 @@
     "parseFailed": "Failed to parse link",
     "unknownFormat": "Unknown link format",
     "supportedFormats": "Supported: vless://, hy2://, hysteria2://, ss://"
+  },
+  "help": {
+    "domainResolver": "DNS server used to resolve the server's domain name to an IP address. Only needed when server address is a domain, not an IP.",
+    "ruleSet": "Pre-built lists of domains or IP addresses. Use these instead of manually entering hundreds of addresses.",
+    "tlsFragment": "Splits TLS ClientHello into smaller fragments to bypass DPI (Deep Packet Inspection) blocking.",
+    "tlsRecordFragment": "Splits TLS records into smaller fragments for additional DPI evasion.",
+    "multiplex": "Combines multiple connections into one. Reduces latency and server resource usage.",
+    "sniffAction": "Detects the actual protocol by inspecting packet contents (HTTP, TLS, QUIC). Enables routing by real protocol.",
+    "detour": "Which proxy to use for downloading this rule set.",
+    "tolerance": "Latency difference (in ms) that triggers switching to a faster proxy.",
+    "interval": "How often to check proxy availability.",
+    "idleTimeout": "Close connection after this period of inactivity.",
+    "finalOutbound": "Traffic that doesn't match any rule goes to this outbound.",
+    "rulesOrder": "Rules are evaluated top to bottom. First matching rule determines the route.",
+    "downloadDetour": "Outbound to use when downloading remote rule sets.",
+    "updateInterval": "How often to check for rule set updates (e.g., 24h, 7d).",
+    "clientSubnet": "EDNS Client Subnet - tells DNS server your approximate location for geo-aware responses.",
+    "strategy": "DNS resolution strategy: prefer IPv4/IPv6, or use only one IP version.",
+    "autoRoute": "Automatically configure system routes to direct traffic through the TUN interface.",
+    "strictRoute": "Prevents traffic leaks by ensuring all traffic goes through configured routes.",
+    "tcpFastOpen": "Reduces connection latency by sending data in the initial TCP handshake.",
+    "udpOverTcp": "Tunnels UDP traffic over TCP. Useful when UDP is blocked or unreliable.",
+    "reality": "Reality protocol provides additional TLS camouflage to avoid detection.",
+    "flow": "VLESS flow control. xtls-rprx-vision provides better performance for proxied TLS traffic."
   }
 }

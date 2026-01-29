@@ -5,6 +5,7 @@
 	import { t } from 'svelte-i18n';
 	import RuleSetForm from './RuleSetForm.svelte';
 	import TlsFragmentForm from './TlsFragmentForm.svelte';
+	import HelpTooltip from '$lib/components/shared/HelpTooltip.svelte';
 
 	interface Props {
 		rule?: RouteRule;
@@ -726,7 +727,10 @@
 			<div class="space-y-4">
 				<!-- Rule Sets -->
 				<div>
-					<label class="block text-sm font-medium text-[var(--ctp-subtext1)] mb-2">{$t('routes.ruleSets')}</label>
+					<label class="flex items-center gap-1 text-sm font-medium text-[var(--ctp-subtext1)] mb-2">
+						{$t('routes.ruleSets')}
+						<HelpTooltip text={$t('help.ruleSet')} />
+					</label>
 					{#if availableRuleSets.length === 0}
 						<div class="p-4 bg-[var(--ctp-surface0)] rounded-lg text-center text-[var(--ctp-overlay0)]">
 							<p>{$t('routes.noRuleSetsAvailable')}</p>

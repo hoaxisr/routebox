@@ -9,6 +9,7 @@
 	import RuleWizard from '$lib/components/config/RuleWizard.svelte';
 	import RouteInspector from '$lib/components/config/RouteInspector.svelte';
 	import DraggableRuleList from '$lib/components/config/DraggableRuleList.svelte';
+	import HelpTooltip from '$lib/components/shared/HelpTooltip.svelte';
 
 	type Tab = 'rules' | 'inspector';
 	let activeTab = $state<Tab>('rules');
@@ -391,7 +392,10 @@
 			<h2 class="font-medium text-[var(--ctp-subtext1)]">{$t('routes.routeSettings')}</h2>
 			<div class="grid grid-cols-1 md:grid-cols-2 gap-4">
 				<div>
-					<label for="final" class="block text-sm text-[var(--ctp-overlay1)] mb-1">{$t('routes.finalOutbound')}</label>
+					<label for="final" class="flex items-center gap-1 text-sm text-[var(--ctp-overlay1)] mb-1">
+						{$t('routes.finalOutbound')}
+						<HelpTooltip text={$t('help.finalOutbound')} />
+					</label>
 					<select
 						id="final"
 						bind:value={settings.final}

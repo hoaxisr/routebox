@@ -2,6 +2,7 @@
 	import type { DnsServer, Outbound } from '$lib/types';
 	import { notifications } from '$lib/stores';
 	import { t } from 'svelte-i18n';
+	import HelpTooltip from '$lib/components/shared/HelpTooltip.svelte';
 
 	interface Props {
 		server?: DnsServer;
@@ -284,8 +285,9 @@
 
 			<!-- Domain Strategy (optional) -->
 			<div>
-				<label for="domain_strategy" class="block text-sm font-medium text-[var(--ctp-subtext1)] mb-1">
+				<label for="domain_strategy" class="flex items-center gap-1 text-sm font-medium text-[var(--ctp-subtext1)] mb-1">
 					{$t('dns.domainStrategy')}
+					<HelpTooltip text={$t('help.strategy')} />
 					<span class="font-normal text-[var(--ctp-overlay0)]">({$t('common.optional')})</span>
 				</label>
 				<select

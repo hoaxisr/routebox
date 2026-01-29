@@ -10,6 +10,7 @@
 		hasValidationErrors,
 		isDomain
 	} from '$lib/utils';
+	import HelpTooltip from '$lib/components/shared/HelpTooltip.svelte';
 
 	interface Props {
 		endpoint?: Endpoint;
@@ -754,7 +755,10 @@
 				<!-- Domain Resolver -->
 				{#if showDomainResolver}
 					<div>
-						<label for="domainResolver" class="block text-xs text-[var(--ctp-overlay0)] mb-1">{$t('endpoints.domainResolver')}</label>
+						<label for="domainResolver" class="flex items-center gap-1 text-xs text-[var(--ctp-overlay0)] mb-1">
+							{$t('endpoints.domainResolver')}
+							<HelpTooltip text={$t('help.domainResolver')} />
+						</label>
 						<select
 							id="domainResolver"
 							bind:value={domainResolver}
