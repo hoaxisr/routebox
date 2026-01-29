@@ -11,6 +11,9 @@
 		isDomain
 	} from '$lib/utils';
 	import HelpTooltip from '$lib/components/shared/HelpTooltip.svelte';
+	import ObfuscationFields from './endpoint/ObfuscationFields.svelte';
+	import PeerList from './endpoint/PeerList.svelte';
+	import ImportDialog from './endpoint/ImportDialog.svelte';
 
 	interface Props {
 		endpoint?: Endpoint;
@@ -29,30 +32,25 @@
 	let addresses = $state(endpoint?.address?.join(', ') ?? '');
 	let mtu = $state(endpoint?.mtu ?? 1280);
 	let listenPort = $state(endpoint?.listen_port ?? 0);
+
 	// Advanced options
 	let systemInterface = $state(endpoint?.system ?? false);
 	let interfaceName = $state(endpoint?.name ?? '');
 	let udpTimeout = $state(endpoint?.udp_timeout ?? '');
 	let workers = $state(endpoint?.workers ?? 0);
 
-	// AWG obfuscation - Junk packets
+	// AWG obfuscation
 	let jc = $state(endpoint?.jc ?? 0);
 	let jmin = $state(endpoint?.jmin ?? 0);
 	let jmax = $state(endpoint?.jmax ?? 0);
-
-	// AWG obfuscation - Init packet sizes (S1-S4)
 	let s1 = $state(endpoint?.s1 ?? 0);
 	let s2 = $state(endpoint?.s2 ?? 0);
 	let s3 = $state(endpoint?.s3 ?? 0);
 	let s4 = $state(endpoint?.s4 ?? 0);
-
-	// AWG obfuscation - Header parameters (H1-H4) - strings
 	let h1 = $state(endpoint?.h1 ?? '');
 	let h2 = $state(endpoint?.h2 ?? '');
 	let h3 = $state(endpoint?.h3 ?? '');
 	let h4 = $state(endpoint?.h4 ?? '');
-
-	// AWG obfuscation - Init parameters (I1-I5) - advanced packet manipulation
 	let i1 = $state(endpoint?.i1 ?? '');
 	let i2 = $state(endpoint?.i2 ?? '');
 	let i3 = $state(endpoint?.i3 ?? '');
@@ -79,28 +77,6 @@
 	let activeTab = $state<'basic' | 'obfuscation' | 'peers' | 'advanced'>('basic');
 	let errors = $state<Record<string, string>>({});
 	let showImport = $state(false);
-	let importText = $state('');
-	let fileInput: HTMLInputElement;
-
-	function handleFileSelect(e: Event) {
-		const input = e.target as HTMLInputElement;
-		const file = input.files?.[0];
-		if (!file) return;
-
-		const reader = new FileReader();
-		reader.onload = (event) => {
-			importText = event.target?.result as string || '';
-		};
-		reader.readAsText(file);
-	}
-
-	function addPeer() {
-		peers = [...peers, { address: '', port: 51820, public_key: '', pre_shared_key: undefined, allowed_ips: ['0.0.0.0/0', '::/0'] }];
-	}
-
-	function removePeer(index: number) {
-		peers = peers.filter((_, i) => i !== index);
-	}
 
 	function parseAwgConfig(text: string) {
 		const lines = text.split('\n').map(l => l.trim());
@@ -172,13 +148,11 @@
 		}
 
 		showImport = false;
-		importText = '';
 	}
 
 	function validate(): boolean {
 		errors = {};
 
-		// Basic fields
 		const tagResult = validateRequired(tag, 'Tag');
 		if (!tagResult.valid) errors['tag'] = tagResult.error!;
 
@@ -188,13 +162,11 @@
 		const addressResult = validateRequired(addresses, 'Address');
 		if (!addressResult.valid) errors['addresses'] = addressResult.error!;
 
-		// Optional port validation
 		if (listenPort > 0) {
 			const portResult = validateOptionalPort(listenPort);
 			if (!portResult.valid) errors['listenPort'] = portResult.error!;
 		}
 
-		// Peers
 		if (peers.length === 0) {
 			errors['peers'] = 'At least one peer is required';
 		}
@@ -207,15 +179,12 @@
 		});
 
 		if (hasValidationErrors(errors)) {
-			// Switch to tab with first error
 			const firstError = Object.keys(errors)[0];
 			if (firstError === 'tag' || firstError === 'privateKey' || firstError === 'addresses' || firstError === 'listenPort') {
 				activeTab = 'basic';
 			} else if (firstError === 'peers' || firstError.startsWith('peer_')) {
 				activeTab = 'peers';
 			}
-
-			// Show notification with first error
 			notifications.error(errors[firstError]);
 			return false;
 		}
@@ -242,7 +211,6 @@
 			}))
 		};
 
-		// Add optional fields
 		if (listenPort > 0) ep.listen_port = listenPort;
 
 		// AWG obfuscation - only add non-zero/non-empty values
@@ -298,13 +266,8 @@
 	<!-- Basic Tab -->
 	{#if activeTab === 'basic'}
 		<div class="space-y-4">
-			<!-- Import button -->
 			{#if !endpoint}
-				<button
-					type="button"
-					onclick={() => showImport = true}
-					class="import-btn"
-				>
+				<button type="button" onclick={() => showImport = true} class="import-btn">
 					<svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
 						<path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-8l-4-4m0 0L8 8m4-4v12" />
 					</svg>
@@ -397,301 +360,17 @@
 
 	<!-- Obfuscation Tab -->
 	{#if activeTab === 'obfuscation'}
-		<div class="space-y-4">
-			<div class="bg-[var(--ctp-surface0)] rounded-lg p-4">
-				<h3 class="text-sm font-medium text-[var(--ctp-subtext1)] mb-3">{$t('endpoints.obfuscation.junkPackets')}</h3>
-				<div class="grid grid-cols-3 gap-4">
-					<div>
-						<label for="jc" class="block text-xs text-[var(--ctp-overlay0)] mb-1">{$t('endpoints.jc')}</label>
-						<input
-							id="jc"
-							type="number"
-							bind:value={jc}
-							min="0"
-							class="w-full px-3 py-2 bg-[var(--ctp-mantle)] border border-[var(--ctp-surface2)] rounded-lg text-[var(--ctp-text)] focus:outline-none focus:ring-2 focus:ring-[var(--ctp-primary)]"
-						/>
-					</div>
-					<div>
-						<label for="jmin" class="block text-xs text-[var(--ctp-overlay0)] mb-1">{$t('endpoints.jmin')}</label>
-						<input
-							id="jmin"
-							type="number"
-							bind:value={jmin}
-							min="0"
-							class="w-full px-3 py-2 bg-[var(--ctp-mantle)] border border-[var(--ctp-surface2)] rounded-lg text-[var(--ctp-text)] focus:outline-none focus:ring-2 focus:ring-[var(--ctp-primary)]"
-						/>
-					</div>
-					<div>
-						<label for="jmax" class="block text-xs text-[var(--ctp-overlay0)] mb-1">{$t('endpoints.jmax')}</label>
-						<input
-							id="jmax"
-							type="number"
-							bind:value={jmax}
-							min="0"
-							class="w-full px-3 py-2 bg-[var(--ctp-mantle)] border border-[var(--ctp-surface2)] rounded-lg text-[var(--ctp-text)] focus:outline-none focus:ring-2 focus:ring-[var(--ctp-primary)]"
-						/>
-					</div>
-				</div>
-			</div>
-
-			<div class="bg-[var(--ctp-surface0)] rounded-lg p-4">
-				<h3 class="text-sm font-medium text-[var(--ctp-subtext1)] mb-3">{$t('endpoints.obfuscation.initPacketParams')}</h3>
-				<div class="grid grid-cols-4 gap-4">
-					<div>
-						<label for="s1" class="block text-xs text-[var(--ctp-overlay0)] mb-1">S1</label>
-						<input
-							id="s1"
-							type="number"
-							bind:value={s1}
-							min="0"
-							class="w-full px-3 py-2 bg-[var(--ctp-mantle)] border border-[var(--ctp-surface2)] rounded-lg text-[var(--ctp-text)] focus:outline-none focus:ring-2 focus:ring-[var(--ctp-primary)]"
-						/>
-					</div>
-					<div>
-						<label for="s2" class="block text-xs text-[var(--ctp-overlay0)] mb-1">S2</label>
-						<input
-							id="s2"
-							type="number"
-							bind:value={s2}
-							min="0"
-							class="w-full px-3 py-2 bg-[var(--ctp-mantle)] border border-[var(--ctp-surface2)] rounded-lg text-[var(--ctp-text)] focus:outline-none focus:ring-2 focus:ring-[var(--ctp-primary)]"
-						/>
-					</div>
-					<div>
-						<label for="s3" class="block text-xs text-[var(--ctp-overlay0)] mb-1">S3</label>
-						<input
-							id="s3"
-							type="number"
-							bind:value={s3}
-							min="0"
-							class="w-full px-3 py-2 bg-[var(--ctp-mantle)] border border-[var(--ctp-surface2)] rounded-lg text-[var(--ctp-text)] focus:outline-none focus:ring-2 focus:ring-[var(--ctp-primary)]"
-						/>
-					</div>
-					<div>
-						<label for="s4" class="block text-xs text-[var(--ctp-overlay0)] mb-1">S4</label>
-						<input
-							id="s4"
-							type="number"
-							bind:value={s4}
-							min="0"
-							class="w-full px-3 py-2 bg-[var(--ctp-mantle)] border border-[var(--ctp-surface2)] rounded-lg text-[var(--ctp-text)] focus:outline-none focus:ring-2 focus:ring-[var(--ctp-primary)]"
-						/>
-					</div>
-				</div>
-			</div>
-
-			<div class="bg-[var(--ctp-surface0)] rounded-lg p-4">
-				<h3 class="text-sm font-medium text-[var(--ctp-subtext1)] mb-3">{$t('endpoints.obfuscation.headerParams')}</h3>
-				<div class="grid grid-cols-4 gap-4">
-					<div>
-						<label for="h1" class="block text-xs text-[var(--ctp-overlay0)] mb-1">H1</label>
-						<input
-							id="h1"
-							type="text"
-							bind:value={h1}
-							placeholder="0"
-							class="w-full px-3 py-2 bg-[var(--ctp-mantle)] border border-[var(--ctp-surface2)] rounded-lg text-[var(--ctp-text)] placeholder-[var(--ctp-overlay0)] focus:outline-none focus:ring-2 focus:ring-[var(--ctp-primary)] font-mono text-sm"
-						/>
-					</div>
-					<div>
-						<label for="h2" class="block text-xs text-[var(--ctp-overlay0)] mb-1">H2</label>
-						<input
-							id="h2"
-							type="text"
-							bind:value={h2}
-							placeholder="0"
-							class="w-full px-3 py-2 bg-[var(--ctp-mantle)] border border-[var(--ctp-surface2)] rounded-lg text-[var(--ctp-text)] placeholder-[var(--ctp-overlay0)] focus:outline-none focus:ring-2 focus:ring-[var(--ctp-primary)] font-mono text-sm"
-						/>
-					</div>
-					<div>
-						<label for="h3" class="block text-xs text-[var(--ctp-overlay0)] mb-1">H3</label>
-						<input
-							id="h3"
-							type="text"
-							bind:value={h3}
-							placeholder="0"
-							class="w-full px-3 py-2 bg-[var(--ctp-mantle)] border border-[var(--ctp-surface2)] rounded-lg text-[var(--ctp-text)] placeholder-[var(--ctp-overlay0)] focus:outline-none focus:ring-2 focus:ring-[var(--ctp-primary)] font-mono text-sm"
-						/>
-					</div>
-					<div>
-						<label for="h4" class="block text-xs text-[var(--ctp-overlay0)] mb-1">H4</label>
-						<input
-							id="h4"
-							type="text"
-							bind:value={h4}
-							placeholder="0"
-							class="w-full px-3 py-2 bg-[var(--ctp-mantle)] border border-[var(--ctp-surface2)] rounded-lg text-[var(--ctp-text)] placeholder-[var(--ctp-overlay0)] focus:outline-none focus:ring-2 focus:ring-[var(--ctp-primary)] font-mono text-sm"
-						/>
-					</div>
-				</div>
-			</div>
-
-			<div class="bg-[var(--ctp-surface0)] rounded-lg p-4">
-				<h3 class="text-sm font-medium text-[var(--ctp-subtext1)] mb-3">{$t('endpoints.obfuscation.initParams')}</h3>
-				<div class="grid grid-cols-5 gap-3">
-					<div>
-						<label for="i1" class="block text-xs text-[var(--ctp-overlay0)] mb-1">I1</label>
-						<input
-							id="i1"
-							type="text"
-							bind:value={i1}
-							placeholder="0"
-							class="w-full px-3 py-2 bg-[var(--ctp-mantle)] border border-[var(--ctp-surface2)] rounded-lg text-[var(--ctp-text)] placeholder-[var(--ctp-overlay0)] focus:outline-none focus:ring-2 focus:ring-[var(--ctp-primary)] font-mono text-sm"
-						/>
-					</div>
-					<div>
-						<label for="i2" class="block text-xs text-[var(--ctp-overlay0)] mb-1">I2</label>
-						<input
-							id="i2"
-							type="text"
-							bind:value={i2}
-							placeholder="0"
-							class="w-full px-3 py-2 bg-[var(--ctp-mantle)] border border-[var(--ctp-surface2)] rounded-lg text-[var(--ctp-text)] placeholder-[var(--ctp-overlay0)] focus:outline-none focus:ring-2 focus:ring-[var(--ctp-primary)] font-mono text-sm"
-						/>
-					</div>
-					<div>
-						<label for="i3" class="block text-xs text-[var(--ctp-overlay0)] mb-1">I3</label>
-						<input
-							id="i3"
-							type="text"
-							bind:value={i3}
-							placeholder="0"
-							class="w-full px-3 py-2 bg-[var(--ctp-mantle)] border border-[var(--ctp-surface2)] rounded-lg text-[var(--ctp-text)] placeholder-[var(--ctp-overlay0)] focus:outline-none focus:ring-2 focus:ring-[var(--ctp-primary)] font-mono text-sm"
-						/>
-					</div>
-					<div>
-						<label for="i4" class="block text-xs text-[var(--ctp-overlay0)] mb-1">I4</label>
-						<input
-							id="i4"
-							type="text"
-							bind:value={i4}
-							placeholder="0"
-							class="w-full px-3 py-2 bg-[var(--ctp-mantle)] border border-[var(--ctp-surface2)] rounded-lg text-[var(--ctp-text)] placeholder-[var(--ctp-overlay0)] focus:outline-none focus:ring-2 focus:ring-[var(--ctp-primary)] font-mono text-sm"
-						/>
-					</div>
-					<div>
-						<label for="i5" class="block text-xs text-[var(--ctp-overlay0)] mb-1">I5</label>
-						<input
-							id="i5"
-							type="text"
-							bind:value={i5}
-							placeholder="0"
-							class="w-full px-3 py-2 bg-[var(--ctp-mantle)] border border-[var(--ctp-surface2)] rounded-lg text-[var(--ctp-text)] placeholder-[var(--ctp-overlay0)] focus:outline-none focus:ring-2 focus:ring-[var(--ctp-primary)] font-mono text-sm"
-						/>
-					</div>
-				</div>
-			</div>
-
-			<p class="text-sm text-[var(--ctp-overlay0)]">
-				{$t('endpoints.obfuscation.hint')}
-			</p>
-		</div>
+		<ObfuscationFields
+			bind:jc bind:jmin bind:jmax
+			bind:s1 bind:s2 bind:s3 bind:s4
+			bind:h1 bind:h2 bind:h3 bind:h4
+			bind:i1 bind:i2 bind:i3 bind:i4 bind:i5
+		/>
 	{/if}
 
 	<!-- Peers Tab -->
 	{#if activeTab === 'peers'}
-		<div class="space-y-4">
-			{#if errors['peers']}
-				<p class="text-sm text-[var(--ctp-red)]">{errors['peers']}</p>
-			{/if}
-
-			{#each peers as peer, i}
-				<div class="bg-[var(--ctp-surface0)] rounded-lg p-4 space-y-4">
-					<div class="flex items-center justify-between">
-						<h3 class="text-sm font-medium text-[var(--ctp-subtext1)]">{$t('endpoints.peer')} {i + 1}</h3>
-						{#if peers.length > 1}
-							<button
-								type="button"
-								onclick={() => removePeer(i)}
-								class="action-btn-danger"
-							>
-								<svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-									<path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
-								</svg>
-							</button>
-						{/if}
-					</div>
-
-					<div class="grid grid-cols-3 gap-4">
-						<div class="col-span-2">
-							<label for="peer_{i}_address" class="block text-xs text-[var(--ctp-overlay0)] mb-1">{$t('endpoints.serverAddress')} *</label>
-							<input
-								id="peer_{i}_address"
-								type="text"
-								bind:value={peer.address}
-								placeholder="vpn.example.com"
-								class="w-full px-3 py-2 bg-[var(--ctp-mantle)] border rounded-lg text-[var(--ctp-text)] placeholder-[var(--ctp-overlay0)] focus:outline-none focus:ring-2 focus:ring-[var(--ctp-primary)] {errors[`peer_${i}_address`] ? 'border-[var(--ctp-red)]' : 'border-[var(--ctp-surface2)]'}"
-							/>
-						</div>
-						<div>
-							<label for="peer_{i}_port" class="block text-xs text-[var(--ctp-overlay0)] mb-1">{$t('common.port')}</label>
-							<input
-								id="peer_{i}_port"
-								type="number"
-								bind:value={peer.port}
-								min="1"
-								max="65535"
-								class="w-full px-3 py-2 bg-[var(--ctp-mantle)] border border-[var(--ctp-surface2)] rounded-lg text-[var(--ctp-text)] focus:outline-none focus:ring-2 focus:ring-[var(--ctp-primary)]"
-							/>
-						</div>
-					</div>
-
-					<div>
-						<label for="peer_{i}_public_key" class="block text-xs text-[var(--ctp-overlay0)] mb-1">{$t('endpoints.publicKey')} *</label>
-						<input
-							id="peer_{i}_public_key"
-							type="text"
-							bind:value={peer.public_key}
-							placeholder={$t('endpoints.placeholders.publicKey')}
-							class="w-full px-3 py-2 bg-[var(--ctp-mantle)] border rounded-lg text-[var(--ctp-text)] placeholder-[var(--ctp-overlay0)] focus:outline-none focus:ring-2 focus:ring-[var(--ctp-primary)] font-mono text-sm {errors[`peer_${i}_public_key`] ? 'border-[var(--ctp-red)]' : 'border-[var(--ctp-surface2)]'}"
-						/>
-					</div>
-
-					<div>
-						<label for="peer_{i}_psk" class="block text-xs text-[var(--ctp-overlay0)] mb-1">{$t('endpoints.presharedKey')} ({$t('common.optional')})</label>
-						<input
-							id="peer_{i}_psk"
-							type="password"
-							bind:value={peer.pre_shared_key}
-							placeholder={$t('endpoints.placeholders.psk')}
-							class="w-full px-3 py-2 bg-[var(--ctp-mantle)] border border-[var(--ctp-surface2)] rounded-lg text-[var(--ctp-text)] placeholder-[var(--ctp-overlay0)] focus:outline-none focus:ring-2 focus:ring-[var(--ctp-primary)] font-mono text-sm"
-						/>
-					</div>
-
-					<div class="grid grid-cols-1 sm:grid-cols-2 gap-4">
-						<div>
-							<label for="peer_{i}_allowed_ips" class="block text-xs text-[var(--ctp-overlay0)] mb-1">{$t('endpoints.allowedIPs')}</label>
-							<input
-								id="peer_{i}_allowed_ips"
-								type="text"
-								value={peer.allowed_ips.join(', ')}
-								oninput={(e) => peer.allowed_ips = (e.target as HTMLInputElement).value.split(',').map(s => s.trim()).filter(Boolean)}
-								class="w-full px-3 py-2 bg-[var(--ctp-mantle)] border border-[var(--ctp-surface2)] rounded-lg text-[var(--ctp-text)] focus:outline-none focus:ring-2 focus:ring-[var(--ctp-primary)] text-sm"
-							/>
-						</div>
-						<div>
-							<label for="peer_{i}_keepalive" class="block text-xs text-[var(--ctp-overlay0)] mb-1">{$t('endpoints.keepalive')}</label>
-							<input
-								id="peer_{i}_keepalive"
-								type="number"
-								bind:value={peer.persistent_keepalive_interval}
-								min="0"
-								placeholder="25"
-								class="w-full px-3 py-2 bg-[var(--ctp-mantle)] border border-[var(--ctp-surface2)] rounded-lg text-[var(--ctp-text)] placeholder-[var(--ctp-overlay0)] focus:outline-none focus:ring-2 focus:ring-[var(--ctp-primary)]"
-							/>
-						</div>
-					</div>
-				</div>
-			{/each}
-
-			<button
-				type="button"
-				onclick={addPeer}
-				class="w-full py-2 border-2 border-dashed border-[var(--ctp-surface2)] rounded-lg text-[var(--ctp-overlay1)] hover:border-[var(--ctp-primary)] hover:text-[var(--ctp-primary)] transition-colors"
-			>
-				+ {$t('endpoints.addPeer')}
-			</button>
-		</div>
+		<PeerList bind:peers {errors} />
 	{/if}
 
 	<!-- Advanced Tab -->
@@ -752,7 +431,6 @@
 					<p class="mt-1 text-xs text-[var(--ctp-overlay0)]">{$t('endpoints.durationFormatHint')}</p>
 				</div>
 
-				<!-- Domain Resolver -->
 				{#if showDomainResolver}
 					<div>
 						<label for="domainResolver" class="flex items-center gap-1 text-xs text-[var(--ctp-overlay0)] mb-1">
@@ -796,90 +474,8 @@
 
 <!-- Import Dialog -->
 {#if showImport}
-	<div
-		class="fixed inset-0 z-50 flex items-center justify-center bg-black/50 backdrop-blur-sm"
-		onclick={(e) => { if (e.target === e.currentTarget) showImport = false; }}
-		role="dialog"
-		aria-modal="true"
-	>
-		<div class="bg-[var(--ctp-base)] rounded-xl shadow-xl w-full max-w-2xl mx-4 max-h-[90vh] flex flex-col">
-			<div class="flex items-center justify-between px-6 py-4 border-b border-[var(--ctp-surface2)]">
-				<h2 class="text-lg font-semibold text-[var(--ctp-text)]">{$t('endpoints.importDialogTitle')}</h2>
-				<button
-					onclick={() => showImport = false}
-					class="p-1 hover:bg-[var(--ctp-surface1)] rounded-lg transition-colors"
-					aria-label={$t('common.close')}
-				>
-					<svg class="w-5 h-5 text-[var(--ctp-overlay1)]" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-						<path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12" />
-					</svg>
-				</button>
-			</div>
-
-			<div class="flex-1 overflow-y-auto p-6 space-y-4">
-				<p class="text-sm text-[var(--ctp-overlay1)]">
-					{$t('endpoints.importDialogHint')}
-				</p>
-
-				<!-- File upload -->
-				<input
-					type="file"
-					accept=".conf,.txt"
-					bind:this={fileInput}
-					onchange={handleFileSelect}
-					class="hidden"
-				/>
-				<button
-					type="button"
-					onclick={() => fileInput.click()}
-					class="import-btn"
-				>
-					<svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-						<path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 13h6m-3-3v6m5 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
-					</svg>
-					{$t('endpoints.selectConfFile')}
-				</button>
-
-				<div class="relative flex items-center">
-					<div class="flex-1 border-t border-[var(--ctp-surface2)]"></div>
-					<span class="px-3 text-sm text-[var(--ctp-overlay0)]">{$t('endpoints.orPasteConfig')}</span>
-					<div class="flex-1 border-t border-[var(--ctp-surface2)]"></div>
-				</div>
-
-				<textarea
-					bind:value={importText}
-					placeholder="[Interface]
-PrivateKey = ...
-Address = 10.0.0.2/32
-MTU = 1280
-Jc = 4
-Jmin = 50
-Jmax = 1000
-...
-
-[Peer]
-PublicKey = ...
-Endpoint = vpn.example.com:51820
-AllowedIPs = 0.0.0.0/0, ::/0"
-					class="w-full h-48 px-3 py-2 bg-[var(--ctp-surface0)] border border-[var(--ctp-surface2)] rounded-lg text-[var(--ctp-text)] placeholder-[var(--ctp-overlay0)] focus:outline-none focus:ring-2 focus:ring-[var(--ctp-primary)] font-mono text-sm resize-none"
-				></textarea>
-			</div>
-
-			<div class="px-6 py-4 border-t border-[var(--ctp-surface2)] flex justify-end gap-3">
-				<button
-					onclick={() => showImport = false}
-					class="px-4 py-2 bg-[var(--ctp-surface1)] text-[var(--ctp-text)] rounded-lg hover:bg-[var(--ctp-surface2)] transition-colors"
-				>
-					{$t('common.cancel')}
-				</button>
-				<button
-					onclick={() => parseAwgConfig(importText)}
-					disabled={!importText.trim()}
-					class="px-4 py-2 bg-[var(--ctp-primary)] text-white rounded-lg hover:opacity-90 transition-opacity disabled:opacity-50 disabled:cursor-not-allowed"
-				>
-					{$t('common.import')}
-				</button>
-			</div>
-		</div>
-	</div>
+	<ImportDialog
+		onImport={parseAwgConfig}
+		onClose={() => showImport = false}
+	/>
 {/if}

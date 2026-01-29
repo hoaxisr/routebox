@@ -1,9 +1,17 @@
 <script lang="ts">
-	import type { TLSConfig, TransportConfig, DnsServer } from '$lib/types';
+	import type { TLSConfig, DnsServer } from '$lib/types';
 	import { t } from 'svelte-i18n';
 	import ServerConfig from './ServerConfig.svelte';
 	import TlsConfig from './TlsConfig.svelte';
 	import DomainResolverField from './DomainResolverField.svelte';
+
+	// Local transport interface with host as string for form binding
+	interface VlessTransport {
+		type: 'tcp' | 'ws' | 'http' | 'grpc' | 'quic' | 'httpupgrade';
+		path?: string;
+		host?: string;
+		service_name?: string;
+	}
 
 	interface Props {
 		server: string;
@@ -11,7 +19,7 @@
 		uuid: string;
 		flow: string;
 		tls: TLSConfig;
-		transport: TransportConfig;
+		transport: VlessTransport;
 		domainResolver: string;
 		dnsServers: DnsServer[];
 		hasDefaultResolver: boolean;
@@ -34,7 +42,7 @@
 	}: Props = $props();
 
 	const flows = ['', 'xtls-rprx-vision'];
-	const transports = ['tcp', 'ws', 'grpc', 'http'];
+	const transports: VlessTransport['type'][] = ['tcp', 'ws', 'grpc', 'http'];
 </script>
 
 <div class="space-y-4">
@@ -110,7 +118,7 @@
 			{#each transports as tr}
 				<button
 					type="button"
-					onclick={() => transport.type = tr as TransportConfig['type']}
+					onclick={() => transport.type = tr}
 					class="px-3 py-1 rounded-lg text-sm transition-colors {transport.type === tr ? 'bg-[var(--ctp-primary)] text-white' : 'bg-[var(--ctp-mantle)] text-[var(--ctp-subtext1)] hover:bg-[var(--ctp-surface1)]'}"
 				>
 					{tr.toUpperCase()}
