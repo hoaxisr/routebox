@@ -2,6 +2,26 @@
 
 All notable changes to RouteBox are documented here.
 
+## [0.11.0] - 2026-01-29
+
+### New Features
+
+**Frontend:**
+- **Rule Combiner** - Create logical AND/OR rules by combining multiple condition sets. Toggle between Simple and Combined modes in the rule form.
+
+### Refactoring
+
+**Frontend:**
+- Complete decomposition of RuleForm.svelte (920 → 328 lines) into reusable components
+- Extracted ActionSelector, OutboundSelector, ConditionsForm, and ActionOptions components
+
+### Removed
+
+**Frontend:**
+- Russian localization removed (translation quality needs rework)
+
+---
+
 ## [0.10.2] - 2026-01-29
 
 ### Fixes
