@@ -400,7 +400,7 @@
 	{#if action === 'route-options'}
 		<div class="bg-[var(--ctp-surface0)] rounded-lg p-4 space-y-3">
 			<p class="text-sm text-[var(--ctp-overlay1)]">{$t('routes.routeOptionsDesc')}</p>
-			<div class="grid grid-cols-2 gap-4">
+			<div class="grid grid-cols-1 sm:grid-cols-2 gap-4">
 				<div>
 					<label for="override-address" class="block text-sm font-medium text-[var(--ctp-subtext1)] mb-1">{$t('routes.overrideAddress')}</label>
 					<input id="override-address" type="text" bind:value={overrideAddress} placeholder="1.1.1.1"
@@ -483,7 +483,7 @@
 				{$t('routes.routeOptionsTitle')}
 			</summary>
 			<div class="mt-3 bg-[var(--ctp-surface0)] rounded-lg p-4 space-y-3">
-				<div class="grid grid-cols-2 gap-4">
+				<div class="grid grid-cols-1 sm:grid-cols-2 gap-4">
 					<div>
 						<label for="ro-override-address" class="block text-sm font-medium text-[var(--ctp-subtext1)] mb-1">{$t('routes.overrideAddress')}</label>
 						<input id="ro-override-address" type="text" bind:value={overrideAddress} placeholder="1.1.1.1"
@@ -608,7 +608,7 @@
 				</div>
 
 				<!-- Ports + Network + IP Version -->
-				<div class="grid grid-cols-2 gap-4">
+				<div class="grid grid-cols-1 sm:grid-cols-2 gap-4">
 					<div>
 						<label for="ports" class="block text-sm font-medium text-[var(--ctp-subtext1)] mb-1">{$t('routes.port')}</label>
 						<input id="ports" type="text" bind:value={ports} placeholder="80, 443, 8080"
@@ -698,7 +698,7 @@
 				</div>
 
 				<!-- Source Ports -->
-				<div class="grid grid-cols-2 gap-4">
+				<div class="grid grid-cols-1 sm:grid-cols-2 gap-4">
 					<div>
 						<label for="source-ports" class="block text-sm font-medium text-[var(--ctp-subtext1)] mb-1">{$t('routes.sourcePort')}</label>
 						<input id="source-ports" type="text" bind:value={sourcePorts} placeholder="1024, 8080"

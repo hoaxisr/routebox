@@ -121,7 +121,7 @@
 	<!-- Type -->
 	<div>
 		<label class="block text-sm font-medium text-[var(--ctp-subtext1)] mb-2">{$t('common.type')}</label>
-		<div class="grid grid-cols-2 gap-2">
+		<div class="grid grid-cols-1 sm:grid-cols-2 gap-2">
 			{#each inboundTypes as inboundType}
 				<button
 					type="button"

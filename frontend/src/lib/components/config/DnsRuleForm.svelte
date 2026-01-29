@@ -236,7 +236,7 @@
 		<!-- Predefined options -->
 		<div class="bg-[var(--ctp-surface0)] rounded-lg p-4">
 			<label for="rcode" class="block text-sm font-medium text-[var(--ctp-subtext1)] mb-2">{$t('dns.responseCode')}</label>
-			<div class="grid grid-cols-2 gap-2">
+			<div class="grid grid-cols-1 sm:grid-cols-2 gap-2">
 				{#each rcodeOptions as opt}
 					<button
 						type="button"

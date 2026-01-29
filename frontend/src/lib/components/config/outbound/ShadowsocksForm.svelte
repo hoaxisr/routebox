@@ -74,7 +74,7 @@
 	/>
 
 	<!-- Method & Password -->
-	<div class="grid grid-cols-2 gap-4">
+	<div class="grid grid-cols-1 sm:grid-cols-2 gap-4">
 		<div>
 			<label for="ss-method" class="block text-sm font-medium text-[var(--ctp-subtext1)] mb-1">
 				{$t('outbounds.method')} *
@@ -110,7 +110,7 @@
 	</div>
 
 	<!-- Plugin -->
-	<div class="grid grid-cols-2 gap-4">
+	<div class="grid grid-cols-1 sm:grid-cols-2 gap-4">
 		<div>
 			<label for="ss-plugin" class="block text-sm font-medium text-[var(--ctp-subtext1)] mb-1">
 				{$t('outbounds.plugin')}
@@ -138,7 +138,7 @@
 	</div>
 
 	<!-- Network & UDP over TCP -->
-	<div class="grid grid-cols-2 gap-4">
+	<div class="grid grid-cols-1 sm:grid-cols-2 gap-4">
 		<div>
 			<label for="ss-network" class="block text-sm font-medium text-[var(--ctp-subtext1)] mb-1">
 				{$t('outbounds.networkType')}
@@ -177,7 +177,7 @@
 		</label>
 
 		{#if multiplex.enabled}
-			<div class="grid grid-cols-2 gap-4">
+			<div class="grid grid-cols-1 sm:grid-cols-2 gap-4">
 				<div>
 					<label for="ss-mux-proto" class="block text-sm font-medium text-[var(--ctp-subtext1)] mb-1">
 						{$t('outbounds.muxProtocol')}

@@ -119,7 +119,7 @@
 		</div>
 
 		{#if transport.type === 'ws'}
-			<div class="grid grid-cols-2 gap-4">
+			<div class="grid grid-cols-1 sm:grid-cols-2 gap-4">
 				<div>
 					<label for="ws-path" class="block text-sm font-medium text-[var(--ctp-subtext1)] mb-1">
 						{$t('outbounds.path')}

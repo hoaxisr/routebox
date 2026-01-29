@@ -55,7 +55,7 @@
 
 		{#if fragmentEnabled}
 			<div class="mt-3 space-y-3 pl-7">
-				<div class="grid grid-cols-2 gap-3">
+				<div class="grid grid-cols-1 sm:grid-cols-2 gap-3">
 					<div>
 						<label for="tls-frag-size" class="block text-sm font-medium text-[var(--ctp-subtext1)] mb-1">{$t('routes.tlsFragmentSize')}</label>
 						<input id="tls-frag-size" type="text" bind:value={fragmentSize}

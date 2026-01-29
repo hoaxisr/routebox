@@ -757,7 +757,7 @@
 			</label>
 
 			{#if tlsEnabled}
-				<div class="grid grid-cols-2 gap-4">
+				<div class="grid grid-cols-1 sm:grid-cols-2 gap-4">
 					<div>
 						<label for="sni" class="block text-sm font-medium text-[var(--ctp-subtext1)] mb-1">{$t('outbounds.sni')}</label>
 						<input
@@ -790,7 +790,7 @@
 				</label>
 
 				{#if realityEnabled}
-					<div class="grid grid-cols-2 gap-4">
+					<div class="grid grid-cols-1 sm:grid-cols-2 gap-4">
 						<div>
 							<label for="pbk" class="block text-sm font-medium text-[var(--ctp-subtext1)] mb-1">{$t('outbounds.publicKey')} *</label>
 							<input
@@ -832,7 +832,7 @@
 			</div>
 
 			{#if transportType === 'ws' || transportType === 'http'}
-				<div class="grid grid-cols-2 gap-4">
+				<div class="grid grid-cols-1 sm:grid-cols-2 gap-4">
 					<div>
 						<label for="wsPath" class="block text-sm font-medium text-[var(--ctp-subtext1)] mb-1">{$t('outbounds.path')}</label>
 						<input
@@ -963,7 +963,7 @@
 		<!-- Port Hopping -->
 		<div class="bg-[var(--ctp-surface0)] rounded-lg p-4 space-y-4">
 			<h3 class="text-sm font-medium text-[var(--ctp-subtext1)]">{$t('outbounds.portHopping')} ({$t('common.optional').toLowerCase()})</h3>
-			<div class="grid grid-cols-2 gap-4">
+			<div class="grid grid-cols-1 sm:grid-cols-2 gap-4">
 				<div>
 					<label for="hy2ServerPorts" class="block text-xs text-[var(--ctp-overlay0)] mb-1">{$t('outbounds.serverPorts')}</label>
 					<input
@@ -991,7 +991,7 @@
 		<!-- Bandwidth Limits -->
 		<div class="bg-[var(--ctp-surface0)] rounded-lg p-4 space-y-4">
 			<h3 class="text-sm font-medium text-[var(--ctp-subtext1)]">{$t('outbounds.bandwidthLimits')} ({$t('common.optional').toLowerCase()})</h3>
-			<div class="grid grid-cols-2 gap-4">
+			<div class="grid grid-cols-1 sm:grid-cols-2 gap-4">
 				<div>
 					<label for="hy2UpMbps" class="block text-xs text-[var(--ctp-overlay0)] mb-1">{$t('outbounds.uploadMbps')}</label>
 					<input
@@ -1113,7 +1113,7 @@
 		</div>
 
 		<!-- Plugin -->
-		<div class="grid grid-cols-2 gap-4">
+		<div class="grid grid-cols-1 sm:grid-cols-2 gap-4">
 			<div>
 				<label for="ssPlugin" class="block text-sm font-medium text-[var(--ctp-subtext1)] mb-1">{$t('outbounds.plugin')}</label>
 				<input id="ssPlugin" type="text" bind:value={ssPlugin} placeholder="obfs-local"
@@ -1127,7 +1127,7 @@
 		</div>
 
 		<!-- Network & UDP over TCP -->
-		<div class="grid grid-cols-2 gap-4">
+		<div class="grid grid-cols-1 sm:grid-cols-2 gap-4">
 			<div>
 				<label for="ssNetwork" class="block text-sm font-medium text-[var(--ctp-subtext1)] mb-1">{$t('outbounds.networkType')}</label>
 				<select id="ssNetwork" bind:value={ssNetwork}
@@ -1154,7 +1154,7 @@
 			</label>
 
 			{#if ssMuxEnabled}
-				<div class="grid grid-cols-2 gap-4">
+				<div class="grid grid-cols-1 sm:grid-cols-2 gap-4">
 					<div>
 						<label for="ssMuxProtocol" class="block text-xs text-[var(--ctp-overlay0)] mb-1">{$t('outbounds.muxProtocol')}</label>
 						<select id="ssMuxProtocol" bind:value={ssMuxProtocol}
@@ -1170,7 +1170,7 @@
 							class="w-full px-3 py-2 bg-[var(--ctp-mantle)] border border-[var(--ctp-surface2)] rounded-lg text-[var(--ctp-text)] focus:outline-none focus:ring-2 focus:ring-[var(--ctp-primary)] text-sm" />
 					</div>
 				</div>
-				<div class="grid grid-cols-2 gap-4">
+				<div class="grid grid-cols-1 sm:grid-cols-2 gap-4">
 					<div>
 						<label for="ssMuxMinStreams" class="block text-xs text-[var(--ctp-overlay0)] mb-1">{$t('outbounds.minStreams')}</label>
 						<input id="ssMuxMinStreams" type="number" bind:value={ssMuxMinStreams} min="0"
@@ -1249,7 +1249,7 @@
 		{/if}
 
 		<!-- TLS -->
-		<div class="grid grid-cols-2 gap-4">
+		<div class="grid grid-cols-1 sm:grid-cols-2 gap-4">
 			<div>
 				<label for="stlsSni" class="block text-sm font-medium text-[var(--ctp-subtext1)] mb-1">{$t('outbounds.sni')}</label>
 				<input id="stlsSni" type="text" bind:value={stlsTlsSni} placeholder="Server name"
@@ -1335,7 +1335,7 @@
 		</div>
 
 		<!-- TLS -->
-		<div class="grid grid-cols-2 gap-4">
+		<div class="grid grid-cols-1 sm:grid-cols-2 gap-4">
 			<div>
 				<label for="atSni" class="block text-sm font-medium text-[var(--ctp-subtext1)] mb-1">{$t('outbounds.sni')}</label>
 				<input id="atSni" type="text" bind:value={atTlsSni} placeholder="Server name"

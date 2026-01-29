@@ -367,7 +367,7 @@
 				{/if}
 			</div>
 
-			<div class="grid grid-cols-2 gap-4">
+			<div class="grid grid-cols-1 sm:grid-cols-2 gap-4">
 				<div>
 					<label for="mtu" class="block text-sm font-medium text-[var(--ctp-subtext1)] mb-1">{$t('endpoints.mtu')}</label>
 					<input
@@ -658,7 +658,7 @@
 						/>
 					</div>
 
-					<div class="grid grid-cols-2 gap-4">
+					<div class="grid grid-cols-1 sm:grid-cols-2 gap-4">
 						<div>
 							<label for="peer_{i}_allowed_ips" class="block text-xs text-[var(--ctp-overlay0)] mb-1">{$t('endpoints.allowedIPs')}</label>
 							<input
@@ -716,7 +716,7 @@
 					</div>
 				</label>
 
-				<div class="grid grid-cols-2 gap-4">
+				<div class="grid grid-cols-1 sm:grid-cols-2 gap-4">
 					<div>
 						<label for="interfaceName" class="block text-xs text-[var(--ctp-overlay0)] mb-1">{$t('inbounds.interfaceName')}</label>
 						<input

@@ -29,7 +29,7 @@
 	</label>
 
 	{#if tls.enabled}
-		<div class="grid grid-cols-2 gap-4">
+		<div class="grid grid-cols-1 sm:grid-cols-2 gap-4">
 			<!-- SNI -->
 			<div>
 				<label for="tls-sni" class="block text-sm font-medium text-[var(--ctp-subtext1)] mb-1">
@@ -84,7 +84,7 @@
 			</label>
 
 			{#if tls.reality?.enabled}
-				<div class="grid grid-cols-2 gap-4 pl-6">
+				<div class="grid grid-cols-1 sm:grid-cols-2 gap-4 pl-6">
 					<!-- Reality Public Key -->
 					<div>
 						<label for="reality-pk" class="block text-sm font-medium text-[var(--ctp-subtext1)] mb-1">

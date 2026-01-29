@@ -101,7 +101,7 @@
 	<div class="bg-[var(--ctp-surface0)] rounded-lg p-4 space-y-4">
 		<h3 class="text-sm font-medium text-[var(--ctp-subtext1)]">TLS</h3>
 
-		<div class="grid grid-cols-2 gap-4">
+		<div class="grid grid-cols-1 sm:grid-cols-2 gap-4">
 			<div>
 				<label for="hy2-sni" class="block text-sm font-medium text-[var(--ctp-subtext1)] mb-1">
 					{$t('outbounds.sni')}
@@ -145,7 +145,7 @@
 	<div class="bg-[var(--ctp-surface0)] rounded-lg p-4 space-y-4">
 		<h3 class="text-sm font-medium text-[var(--ctp-subtext1)]">{$t('outbounds.portHopping')}</h3>
 
-		<div class="grid grid-cols-2 gap-4">
+		<div class="grid grid-cols-1 sm:grid-cols-2 gap-4">
 			<div>
 				<label for="hy2-ports" class="block text-sm font-medium text-[var(--ctp-subtext1)] mb-1">
 					{$t('outbounds.serverPorts')}
@@ -178,7 +178,7 @@
 	<div class="bg-[var(--ctp-surface0)] rounded-lg p-4 space-y-4">
 		<h3 class="text-sm font-medium text-[var(--ctp-subtext1)]">{$t('outbounds.bandwidthLimits')}</h3>
 
-		<div class="grid grid-cols-2 gap-4">
+		<div class="grid grid-cols-1 sm:grid-cols-2 gap-4">
 			<div>
 				<label for="hy2-up" class="block text-sm font-medium text-[var(--ctp-subtext1)] mb-1">
 					{$t('outbounds.uploadMbps')}
@@ -220,7 +220,7 @@
 		</label>
 
 		{#if obfsEnabled}
-			<div class="grid grid-cols-2 gap-4">
+			<div class="grid grid-cols-1 sm:grid-cols-2 gap-4">
 				<div>
 					<label for="hy2-obfs-type" class="block text-sm font-medium text-[var(--ctp-subtext1)] mb-1">
 						{$t('common.type')}

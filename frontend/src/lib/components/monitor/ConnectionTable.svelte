@@ -151,7 +151,8 @@
 
 	<!-- Table -->
 	<div class="bg-[var(--ctp-surface0)] rounded-lg border border-[var(--ctp-surface2)] overflow-hidden">
-		<table class="w-full">
+		<div class="overflow-x-auto">
+		<table class="w-full min-w-[700px]">
 			<thead>
 				<tr class="bg-[var(--ctp-mantle)] text-[var(--ctp-subtext1)] text-sm">
 					<th class="px-4 py-3 text-left font-medium">
@@ -307,6 +308,7 @@
 				{/each}
 			</tbody>
 		</table>
+		</div>
 	</div>
 
 	{#if hasGeoIPData}
