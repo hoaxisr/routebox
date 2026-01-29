@@ -24,7 +24,8 @@
     "logs": "Logs",
     "connections": "Connections",
     "proxies": "Proxies",
-    "routeInspector": "Route Inspector"
+    "routeInspector": "Route Inspector",
+    "visualBuilder": "Visual Builder"
   },
   "common": {
     "save": "Save",
@@ -1302,5 +1303,16 @@
     "categoryUaDesc": "All Ukrainian domain zones",
     "ads": "Block Ads",
     "adsDesc": "Block advertising domains"
+  },
+  "visualBuilder": {
+    "title": "Visual Builder",
+    "description": "Visual representation of routing rules",
+    "beta": "Beta",
+    "rules": "Rules",
+    "outbounds": "Outbounds",
+    "noRules": "No routing rules",
+    "noRulesHint": "Create routing rules first to visualize them here",
+    "goToRules": "Go to Routes",
+    "helpText": "Click on a rule to view details. Connections show rule → outbound relationships."
   }
 }
