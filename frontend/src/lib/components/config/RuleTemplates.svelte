@@ -18,178 +18,63 @@
 
 	interface Template {
 		id: string;
-		name: string;
-		description: string;
+		nameKey: string;      // i18n key for name
+		descKey: string;      // i18n key for description
 		icon: string;
-		category: 'services' | 'social' | 'streaming' | 'ads';
-		geosite: string; // geosite category name
+		category: 'services' | 'social' | 'streaming' | 'gaming' | 'regional' | 'ads';
+		geosite: string;      // geosite category name
 		action: 'route' | 'reject';
+		customUrl?: string;   // custom URL for non-standard sources
 	}
 
 	const templates: Template[] = [
 		// Services
-		{
-			id: 'google',
-			name: 'Google',
-			description: 'Google Search, Maps, Gmail, Drive, etc.',
-			icon: '🔍',
-			category: 'services',
-			geosite: 'google',
-			action: 'route'
-		},
-		{
-			id: 'github',
-			name: 'GitHub',
-			description: 'GitHub repositories, gists, actions',
-			icon: '🐙',
-			category: 'services',
-			geosite: 'github',
-			action: 'route'
-		},
-		{
-			id: 'openai',
-			name: 'OpenAI / ChatGPT',
-			description: 'ChatGPT, OpenAI API, DALL-E',
-			icon: '🤖',
-			category: 'services',
-			geosite: 'openai',
-			action: 'route'
-		},
-		{
-			id: 'amazon',
-			name: 'Amazon',
-			description: 'Amazon shopping, AWS services',
-			icon: '📦',
-			category: 'services',
-			geosite: 'amazon',
-			action: 'route'
-		},
+		{ id: 'google', nameKey: 'templates.google', descKey: 'templates.googleDesc', icon: '🔍', category: 'services', geosite: 'google', action: 'route' },
+		{ id: 'github', nameKey: 'templates.github', descKey: 'templates.githubDesc', icon: '🐙', category: 'services', geosite: 'github', action: 'route' },
+		{ id: 'openai', nameKey: 'templates.openai', descKey: 'templates.openaiDesc', icon: '🤖', category: 'services', geosite: 'openai', action: 'route' },
+		{ id: 'amazon', nameKey: 'templates.amazon', descKey: 'templates.amazonDesc', icon: '📦', category: 'services', geosite: 'amazon', action: 'route' },
+		{ id: 'microsoft', nameKey: 'templates.microsoft', descKey: 'templates.microsoftDesc', icon: '🪟', category: 'services', geosite: 'microsoft', action: 'route' },
+		{ id: 'apple', nameKey: 'templates.apple', descKey: 'templates.appleDesc', icon: '🍎', category: 'services', geosite: 'apple', action: 'route' },
+
 		// Social
-		{
-			id: 'telegram',
-			name: 'Telegram',
-			description: 'Telegram messenger',
-			icon: '✈️',
-			category: 'social',
-			geosite: 'telegram',
-			action: 'route'
-		},
-		{
-			id: 'facebook',
-			name: 'Facebook',
-			description: 'Facebook social network',
-			icon: '👤',
-			category: 'social',
-			geosite: 'facebook',
-			action: 'route'
-		},
-		{
-			id: 'instagram',
-			name: 'Instagram',
-			description: 'Instagram photos and stories',
-			icon: '📷',
-			category: 'social',
-			geosite: 'instagram',
-			action: 'route'
-		},
-		{
-			id: 'twitter',
-			name: 'Twitter / X',
-			description: 'Twitter (X) social network',
-			icon: '🐦',
-			category: 'social',
-			geosite: 'twitter',
-			action: 'route'
-		},
-		{
-			id: 'tiktok',
-			name: 'TikTok',
-			description: 'TikTok short videos',
-			icon: '🎵',
-			category: 'social',
-			geosite: 'tiktok',
-			action: 'route'
-		},
-		{
-			id: 'discord',
-			name: 'Discord',
-			description: 'Discord voice and text chat',
-			icon: '🎮',
-			category: 'social',
-			geosite: 'discord',
-			action: 'route'
-		},
-		{
-			id: 'whatsapp',
-			name: 'WhatsApp',
-			description: 'WhatsApp messenger',
-			icon: '💬',
-			category: 'social',
-			geosite: 'whatsapp',
-			action: 'route'
-		},
+		{ id: 'telegram', nameKey: 'templates.telegram', descKey: 'templates.telegramDesc', icon: '✈️', category: 'social', geosite: 'telegram', action: 'route' },
+		{ id: 'facebook', nameKey: 'templates.facebook', descKey: 'templates.facebookDesc', icon: '👤', category: 'social', geosite: 'facebook', action: 'route' },
+		{ id: 'instagram', nameKey: 'templates.instagram', descKey: 'templates.instagramDesc', icon: '📷', category: 'social', geosite: 'instagram', action: 'route' },
+		{ id: 'twitter', nameKey: 'templates.twitter', descKey: 'templates.twitterDesc', icon: '🐦', category: 'social', geosite: 'twitter', action: 'route' },
+		{ id: 'tiktok', nameKey: 'templates.tiktok', descKey: 'templates.tiktokDesc', icon: '🎵', category: 'social', geosite: 'tiktok', action: 'route' },
+		{ id: 'discord', nameKey: 'templates.discord', descKey: 'templates.discordDesc', icon: '💬', category: 'social', geosite: 'discord', action: 'route' },
+		{ id: 'whatsapp', nameKey: 'templates.whatsapp', descKey: 'templates.whatsappDesc', icon: '📱', category: 'social', geosite: 'whatsapp', action: 'route' },
+		{ id: 'linkedin', nameKey: 'templates.linkedin', descKey: 'templates.linkedinDesc', icon: '💼', category: 'social', geosite: 'linkedin', action: 'route' },
+
 		// Streaming
-		{
-			id: 'youtube',
-			name: 'YouTube',
-			description: 'YouTube videos and music',
-			icon: '▶️',
-			category: 'streaming',
-			geosite: 'youtube',
-			action: 'route'
-		},
-		{
-			id: 'netflix',
-			name: 'Netflix',
-			description: 'Netflix streaming',
-			icon: '🎬',
-			category: 'streaming',
-			geosite: 'netflix',
-			action: 'route'
-		},
-		{
-			id: 'spotify',
-			name: 'Spotify',
-			description: 'Spotify music streaming',
-			icon: '🎧',
-			category: 'streaming',
-			geosite: 'spotify',
-			action: 'route'
-		},
-		{
-			id: 'twitch',
-			name: 'Twitch',
-			description: 'Twitch live streaming',
-			icon: '📺',
-			category: 'streaming',
-			geosite: 'twitch',
-			action: 'route'
-		},
-		{
-			id: 'disney',
-			name: 'Disney+',
-			description: 'Disney+ streaming',
-			icon: '🏰',
-			category: 'streaming',
-			geosite: 'disney',
-			action: 'route'
-		},
+		{ id: 'youtube', nameKey: 'templates.youtube', descKey: 'templates.youtubeDesc', icon: '▶️', category: 'streaming', geosite: 'youtube', action: 'route' },
+		{ id: 'netflix', nameKey: 'templates.netflix', descKey: 'templates.netflixDesc', icon: '🎬', category: 'streaming', geosite: 'netflix', action: 'route' },
+		{ id: 'spotify', nameKey: 'templates.spotify', descKey: 'templates.spotifyDesc', icon: '🎧', category: 'streaming', geosite: 'spotify', action: 'route' },
+		{ id: 'twitch', nameKey: 'templates.twitch', descKey: 'templates.twitchDesc', icon: '📺', category: 'streaming', geosite: 'twitch', action: 'route' },
+		{ id: 'disney', nameKey: 'templates.disney', descKey: 'templates.disneyDesc', icon: '🏰', category: 'streaming', geosite: 'disney', action: 'route' },
+		{ id: 'primevideo', nameKey: 'templates.primevideo', descKey: 'templates.primevideoDesc', icon: '📽️', category: 'streaming', geosite: 'primevideo', action: 'route' },
+
+		// Gaming
+		{ id: 'steam', nameKey: 'templates.steam', descKey: 'templates.steamDesc', icon: '🎮', category: 'gaming', geosite: 'steam', action: 'route' },
+		{ id: 'epicgames', nameKey: 'templates.epicgames', descKey: 'templates.epicgamesDesc', icon: '🎯', category: 'gaming', geosite: 'epicgames', action: 'route' },
+		{ id: 'playstation', nameKey: 'templates.playstation', descKey: 'templates.playstationDesc', icon: '🕹️', category: 'gaming', geosite: 'playstation', action: 'route' },
+		{ id: 'xbox', nameKey: 'templates.xbox', descKey: 'templates.xboxDesc', icon: '🎲', category: 'gaming', geosite: 'xbox', action: 'route' },
+		{ id: 'nintendo', nameKey: 'templates.nintendo', descKey: 'templates.nintendoDesc', icon: '🍄', category: 'gaming', geosite: 'nintendo', action: 'route' },
+
+		// Regional
+		{ id: 'category-ru', nameKey: 'templates.categoryRu', descKey: 'templates.categoryRuDesc', icon: '🇷🇺', category: 'regional', geosite: 'category-ru', action: 'route' },
+		{ id: 'category-ua', nameKey: 'templates.categoryUa', descKey: 'templates.categoryUaDesc', icon: '🇺🇦', category: 'regional', geosite: 'category-ua', action: 'route' },
+
 		// Ads blocking
-		{
-			id: 'ads',
-			name: 'Block Ads',
-			description: 'Block advertising domains',
-			icon: '🚫',
-			category: 'ads',
-			geosite: 'category-ads-all',
-			action: 'reject'
-		}
+		{ id: 'ads', nameKey: 'templates.ads', descKey: 'templates.adsDesc', icon: '🚫', category: 'ads', geosite: 'category-ads-all', action: 'reject' }
 	];
 
 	const categories = [
+		{ id: 'regional', labelKey: 'routes.categories.regional', descKey: 'routes.categories.regionalDesc' },
 		{ id: 'services', labelKey: 'routes.categories.services', descKey: 'routes.categories.servicesDesc' },
 		{ id: 'social', labelKey: 'routes.categories.social', descKey: 'routes.categories.socialDesc' },
 		{ id: 'streaming', labelKey: 'routes.categories.streaming', descKey: 'routes.categories.streamingDesc' },
+		{ id: 'gaming', labelKey: 'routes.categories.gaming', descKey: 'routes.categories.gamingDesc' },
 		{ id: 'ads', labelKey: 'routes.categories.ads', descKey: 'routes.categories.adsDesc' }
 	] as const;
 
@@ -261,7 +146,7 @@
 							<span class="text-xl">{template.icon}</span>
 							<div class="flex-1 min-w-0">
 								<div class="flex items-center gap-2">
-									<span class="font-medium text-[var(--ctp-text)]">{template.name}</span>
+									<span class="font-medium text-[var(--ctp-text)]">{$t(template.nameKey)}</span>
 									{#if alreadyAdded}
 										<span class="text-xs text-[var(--ctp-overlay0)]">{$t('routes.alreadyAdded')}</span>
 									{:else if template.action === 'reject'}
@@ -270,7 +155,7 @@
 										<span class="text-xs text-[var(--ctp-overlay0)]">→ {selectedOutbound}</span>
 									{/if}
 								</div>
-								<p class="text-sm text-[var(--ctp-overlay1)] mt-0.5">{template.description}</p>
+								<p class="text-sm text-[var(--ctp-overlay1)] mt-0.5">{$t(template.descKey)}</p>
 							</div>
 							{#if !alreadyAdded}
 								<svg class="w-5 h-5 text-[var(--ctp-overlay0)] group-hover:text-[var(--ctp-primary)] transition-colors flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
