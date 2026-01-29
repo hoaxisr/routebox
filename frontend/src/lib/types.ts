@@ -536,6 +536,7 @@ export interface RuleSet {
 }
 
 // Headless rule: matching conditions only (no action/outbound)
+// Used for inline rule-sets compilation - limited set of fields
 export interface HeadlessRule {
 	domain?: string[];
 	domain_suffix?: string[];
@@ -547,6 +548,43 @@ export interface HeadlessRule {
 	port_range?: string[];
 	process_name?: string[];
 	process_path?: string[];
+}
+
+// Full rule conditions for route rules UI
+// Extends HeadlessRule with additional fields not supported in rule-sets
+export interface RuleConditions extends HeadlessRule {
+	// Inbound filter
+	inbound?: string[];
+
+	// Boolean flags
+	ip_is_private?: boolean;
+	source_ip_is_private?: boolean;
+	invert?: boolean;
+
+	// Source conditions
+	source_port?: number[];
+	source_port_range?: string[];
+
+	// Protocol & network
+	protocol?: string[];
+	network?: 'tcp' | 'udp' | 'icmp';
+	ip_version?: number; // 4 | 6
+
+	// Rule sets
+	rule_set?: string[];
+	rule_set_ip_cidr_match_source?: boolean;
+
+	// Process (additional)
+	process_path_regex?: string[];
+
+	// Clash integration
+	clash_mode?: string;
+	client?: string[];
+
+	// User matching (Linux)
+	auth_user?: string[];
+	user?: string[];
+	user_id?: number[];
 }
 
 // Rule set usage: which route/dns rules reference each rule set
@@ -562,20 +600,6 @@ export interface DomainSetInfo {
 	rule_count: number;
 	has_compiled: boolean;
 	needs_recompile: boolean;
-}
-
-// Headless rule format for sing-box rule-set compilation
-export interface HeadlessRule {
-	domain?: string[];
-	domain_suffix?: string[];
-	domain_keyword?: string[];
-	domain_regex?: string[];
-	ip_cidr?: string[];
-	source_ip_cidr?: string[];
-	port?: number[];
-	port_range?: string[];
-	process_name?: string[];
-	process_path?: string[];
 }
 
 // Rule set source file (JSON format for sing-box compilation)

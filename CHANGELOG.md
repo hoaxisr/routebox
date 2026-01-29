@@ -2,6 +2,15 @@
 
 All notable changes to RouteBox are documented here.
 
+## [0.10.2] - 2026-01-29
+
+### Fixes
+
+**Frontend:**
+- Fixed JSON parse error when closing connections (DELETE requests now handle empty 204 responses)
+
+---
+
 ## [0.10.1] - 2026-01-29
 
 ### Fixes
