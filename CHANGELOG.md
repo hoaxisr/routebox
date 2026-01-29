@@ -2,6 +2,34 @@
 
 All notable changes to RouteBox are documented here.
 
+## [0.12.0] - 2026-01-29
+
+### Refactoring
+
+**Frontend:**
+- Major component extraction reducing large file complexity
+- OutboundForm.svelte: 1461 → 589 lines (60% reduction)
+- EndpointForm.svelte: 885 → 481 lines (46% reduction)
+- setup/+page.svelte: 917 → 487 lines (47% reduction)
+- config/+page.svelte: 755 → 421 lines (44% reduction)
+
+**New Shared Components:**
+- `CollapsibleSection` - Expandable section with arrow toggle
+- `ListItemActions` - Hover-reveal edit/delete buttons
+- `SelectableCard` - Radio/checkbox card wrapper
+- `ProgressIndicator` - Step dots with connecting lines
+- `FileDropZone` - Drag-drop textarea combo
+
+**New Setup Components:**
+- Extracted wizard steps: InstallStep, VpnConfigStep, UsageModeStep, RuleSetsStep, RoutingModeStep, ApplyStep
+
+**New Config Components:**
+- StatsGrid, BackupSection for config overview
+- ShadowtlsForm, AnytlsForm, ImportModal for outbound forms
+- ObfuscationFields, PeerCard, PeerList, ImportDialog for endpoint forms
+
+---
+
 ## [0.11.0] - 2026-01-29
 
 ### New Features
