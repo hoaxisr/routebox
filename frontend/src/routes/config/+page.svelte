@@ -5,6 +5,8 @@
 	import { notifications, unsavedChanges } from '$lib/stores';
 	import type { SingboxConfig } from '$lib/types';
 	import SideBySideDiff from '$lib/components/shared/SideBySideDiff.svelte';
+	import StatsGrid from '$lib/components/config/overview/StatsGrid.svelte';
+	import BackupSection from '$lib/components/config/overview/BackupSection.svelte';
 
 	let config: SingboxConfig | null = $state(null);
 	let loading = $state(true);
@@ -20,13 +22,6 @@
 		return 'overview';
 	}
 	let activeTab = $state<Tab>(getInitialTab());
-
-	// Backup state
-	let importing = $state(false);
-	let applying = $state(false);
-	let dragOver = $state(false);
-	let importedConfig = $state<object | null>(null);
-	let validationResult = $state<{ valid: boolean; errors: string[] } | null>(null);
 
 	// For diff view
 	let savedConfig: string = $state('');
@@ -111,7 +106,6 @@
 		editing = true;
 		validationErrors = [];
 
-		// Wait for DOM to render the container
 		await new Promise(r => requestAnimationFrame(r));
 		await new Promise(r => requestAnimationFrame(r));
 
@@ -128,24 +122,14 @@
 				themeCompartment.of(mod.oneDark),
 				mod.EditorView.lineWrapping,
 				mod.EditorView.theme({
-					'&': {
-						height: '100%',
-						fontSize: '13px'
-					},
-					'.cm-scroller': {
-						overflow: 'auto'
-					},
-					'.cm-content': {
-						fontFamily: 'ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace'
-					}
+					'&': { height: '100%', fontSize: '13px' },
+					'.cm-scroller': { overflow: 'auto' },
+					'.cm-content': { fontFamily: 'ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace' }
 				})
 			]
 		});
 
-		editorView = new mod.EditorView({
-			state,
-			parent: editorContainer
-		});
+		editorView = new mod.EditorView({ state, parent: editorContainer });
 	}
 
 	function stopEditing() {
@@ -222,11 +206,7 @@
 		try {
 			const formatted = JSON.stringify(JSON.parse(content), null, 2);
 			editorView.dispatch({
-				changes: {
-					from: 0,
-					to: editorView.state.doc.length,
-					insert: formatted
-				}
+				changes: { from: 0, to: editorView.state.doc.length, insert: formatted }
 			});
 		} catch (err) {
 			notifications.error(`Cannot format: invalid JSON`);
@@ -237,78 +217,9 @@
 		if (!editorView || !originalContent) return;
 
 		editorView.dispatch({
-			changes: {
-				from: 0,
-				to: editorView.state.doc.length,
-				insert: originalContent
-			}
+			changes: { from: 0, to: editorView.state.doc.length, insert: originalContent }
 		});
 		validationErrors = [];
-	}
-
-	// Backup functions
-	function handleExport() {
-		api.exportConfig();
-		notifications.success('Config download started');
-	}
-
-	function handleFileDrop(event: DragEvent) {
-		event.preventDefault();
-		dragOver = false;
-		const file = event.dataTransfer?.files[0];
-		if (file) processFile(file);
-	}
-
-	function handleFileSelect(event: Event) {
-		const input = event.target as HTMLInputElement;
-		const file = input.files?.[0];
-		if (file) processFile(file);
-	}
-
-	async function processFile(file: File) {
-		if (!file.name.endsWith('.json')) {
-			notifications.error('Please select a JSON file');
-			return;
-		}
-		importing = true;
-		try {
-			const text = await file.text();
-			const parsed = JSON.parse(text);
-			const result = await api.importConfig(parsed);
-			importedConfig = result.config;
-			validationResult = { valid: result.valid, errors: result.errors };
-			if (result.valid) {
-				notifications.success('Config validated successfully');
-			} else {
-				notifications.warning(`Config has ${result.errors.length} validation error(s)`);
-			}
-		} catch (err) {
-			notifications.error(`Failed to parse config: ${err}`);
-			importedConfig = null;
-			validationResult = null;
-		} finally {
-			importing = false;
-		}
-	}
-
-	async function applyImportedConfig() {
-		if (!importedConfig || !validationResult?.valid) return;
-		applying = true;
-		try {
-			await api.saveConfig(importedConfig as any);
-			notifications.success('Config applied successfully');
-			importedConfig = null;
-			validationResult = null;
-		} catch (err) {
-			notifications.error(`Failed to apply config: ${err}`);
-		} finally {
-			applying = false;
-		}
-	}
-
-	function clearImport() {
-		importedConfig = null;
-		validationResult = null;
 	}
 
 	onMount(fetchConfig);
@@ -370,7 +281,7 @@
 		</div>
 	</div>
 
-	<!-- Tabs (hidden in edit mode) -->
+	<!-- Tabs -->
 	{#if !editing}
 		<div class="flex gap-1 p-1 bg-[var(--ctp-surface0)] rounded-lg w-fit">
 			<button
@@ -417,62 +328,7 @@
 	{:else}
 		<!-- Overview Tab -->
 		{#if activeTab === 'overview' && !editing}
-			<div class="grid grid-cols-2 md:grid-cols-4 gap-4">
-				<a href="/config/endpoints" class="bg-[var(--ctp-surface0)] rounded-xl p-4 hover:bg-[var(--ctp-surface1)] transition-colors">
-					<div class="text-sm text-[var(--ctp-overlay1)]">{$t('nav.endpoints')}</div>
-					<div class="text-2xl font-bold text-[var(--ctp-primary)]">
-						{config.endpoints?.length ?? 0}
-					</div>
-				</a>
-				<a href="/config/outbounds" class="bg-[var(--ctp-surface0)] rounded-xl p-4 hover:bg-[var(--ctp-surface1)] transition-colors">
-					<div class="text-sm text-[var(--ctp-overlay1)]">{$t('nav.outbounds')}</div>
-					<div class="text-2xl font-bold text-[var(--ctp-primary)]">
-						{config.outbounds?.length ?? 0}
-					</div>
-				</a>
-				<a href="/config/inbounds" class="bg-[var(--ctp-surface0)] rounded-xl p-4 hover:bg-[var(--ctp-surface1)] transition-colors">
-					<div class="text-sm text-[var(--ctp-overlay1)]">{$t('nav.inbounds')}</div>
-					<div class="text-2xl font-bold text-[var(--ctp-text)]">
-						{config.inbounds?.length ?? 0}
-					</div>
-				</a>
-				<a href="/config/routes" class="bg-[var(--ctp-surface0)] rounded-xl p-4 hover:bg-[var(--ctp-surface1)] transition-colors">
-					<div class="text-sm text-[var(--ctp-overlay1)]">{$t('routes.rules')}</div>
-					<div class="text-2xl font-bold text-[var(--ctp-primary)]">
-						{config.route?.rules?.length ?? 0}
-					</div>
-				</a>
-			</div>
-
-			<!-- Quick stats -->
-			<div class="grid grid-cols-1 md:grid-cols-2 gap-4">
-				<div class="bg-[var(--ctp-surface0)] rounded-xl p-4">
-					<h3 class="text-sm font-medium text-[var(--ctp-overlay1)] mb-3">{$t('dns.title')}</h3>
-					<div class="space-y-2 text-sm">
-						<div class="flex justify-between">
-							<span class="text-[var(--ctp-subtext1)]">{$t('dns.servers')}</span>
-							<span class="text-[var(--ctp-text)]">{config.dns?.servers?.length ?? 0}</span>
-						</div>
-						<div class="flex justify-between">
-							<span class="text-[var(--ctp-subtext1)]">{$t('dns.rules')}</span>
-							<span class="text-[var(--ctp-text)]">{config.dns?.rules?.length ?? 0}</span>
-						</div>
-					</div>
-				</div>
-				<div class="bg-[var(--ctp-surface0)] rounded-xl p-4">
-					<h3 class="text-sm font-medium text-[var(--ctp-overlay1)] mb-3">{$t('routes.title')}</h3>
-					<div class="space-y-2 text-sm">
-						<div class="flex justify-between">
-							<span class="text-[var(--ctp-subtext1)]">{$t('routes.ruleSets')}</span>
-							<span class="text-[var(--ctp-text)]">{config.route?.rule_set?.length ?? 0}</span>
-						</div>
-						<div class="flex justify-between">
-							<span class="text-[var(--ctp-subtext1)]">{$t('routes.finalOutbound')}</span>
-							<span class="text-[var(--ctp-text)]">{config.route?.final ?? 'direct'}</span>
-						</div>
-					</div>
-				</div>
-			</div>
+			<StatsGrid {config} />
 		{/if}
 
 		<!-- JSON Tab: View mode -->
@@ -491,53 +347,28 @@
 		<!-- JSON Tab: Edit mode -->
 		{#if editing}
 			<div class="bg-[var(--ctp-surface0)] rounded-xl overflow-hidden">
-				<!-- Editor toolbar -->
 				<div class="flex items-center justify-between px-4 py-2 bg-[var(--ctp-surface1)] border-b border-[var(--ctp-surface2)]">
 					<div class="flex items-center gap-2">
-						<button
-							type="button"
-							onclick={handleFormat}
-							class="px-3 py-1.5 text-sm bg-[var(--ctp-surface0)] text-[var(--ctp-text)] rounded-lg hover:bg-[var(--ctp-surface2)] transition-colors"
-						>
+						<button type="button" onclick={handleFormat} class="px-3 py-1.5 text-sm bg-[var(--ctp-surface0)] text-[var(--ctp-text)] rounded-lg hover:bg-[var(--ctp-surface2)] transition-colors">
 							{$t('common.format')}
 						</button>
-						<button
-							type="button"
-							onclick={handleValidate}
-							disabled={validating}
-							class="px-3 py-1.5 text-sm bg-[var(--ctp-surface0)] text-[var(--ctp-text)] rounded-lg hover:bg-[var(--ctp-surface2)] transition-colors disabled:opacity-50"
-						>
+						<button type="button" onclick={handleValidate} disabled={validating} class="px-3 py-1.5 text-sm bg-[var(--ctp-surface0)] text-[var(--ctp-text)] rounded-lg hover:bg-[var(--ctp-surface2)] transition-colors disabled:opacity-50">
 							{validating ? $t('common.validate') + '...' : $t('common.validate')}
 						</button>
-						<button
-							type="button"
-							onclick={handleReset}
-							class="px-3 py-1.5 text-sm bg-[var(--ctp-surface0)] text-[var(--ctp-text)] rounded-lg hover:bg-[var(--ctp-surface2)] transition-colors"
-						>
+						<button type="button" onclick={handleReset} class="px-3 py-1.5 text-sm bg-[var(--ctp-surface0)] text-[var(--ctp-text)] rounded-lg hover:bg-[var(--ctp-surface2)] transition-colors">
 							{$t('common.reset')}
 						</button>
 					</div>
-
 					<div class="flex items-center gap-2">
-						<button
-							type="button"
-							onclick={stopEditing}
-							class="px-3 py-1.5 text-sm bg-[var(--ctp-surface0)] text-[var(--ctp-text)] rounded-lg hover:bg-[var(--ctp-surface2)] transition-colors"
-						>
+						<button type="button" onclick={stopEditing} class="px-3 py-1.5 text-sm bg-[var(--ctp-surface0)] text-[var(--ctp-text)] rounded-lg hover:bg-[var(--ctp-surface2)] transition-colors">
 							{$t('common.cancel')}
 						</button>
-						<button
-							type="button"
-							onclick={handleSave}
-							disabled={saving}
-							class="px-4 py-1.5 text-sm bg-[var(--ctp-primary)] text-white rounded-lg hover:opacity-90 transition-opacity disabled:opacity-50"
-						>
+						<button type="button" onclick={handleSave} disabled={saving} class="px-4 py-1.5 text-sm bg-[var(--ctp-primary)] text-white rounded-lg hover:opacity-90 transition-opacity disabled:opacity-50">
 							{saving ? $t('common.saving') + '...' : $t('jsonEditor.saveToDraft')}
 						</button>
 					</div>
 				</div>
 
-				<!-- Validation errors -->
 				{#if validationErrors.length > 0}
 					<div class="p-3 bg-[var(--ctp-red)]/10 border-b border-[var(--ctp-red)]/30">
 						<div class="text-sm text-[var(--ctp-red)] font-medium mb-1">{$t('jsonEditor.validationErrors')}:</div>
@@ -549,154 +380,13 @@
 					</div>
 				{/if}
 
-				<!-- CodeMirror container -->
 				<div bind:this={editorContainer} class="editor-container overflow-auto max-h-[calc(100vh-320px)]"></div>
 			</div>
 		{/if}
 
 		<!-- Backup Tab -->
 		{#if activeTab === 'backup' && !editing}
-			<div class="space-y-6">
-				<!-- Export Section -->
-				<section class="bg-[var(--ctp-surface0)] rounded-xl p-6">
-					<div class="flex items-start gap-4">
-						<div class="p-3 bg-[var(--ctp-surface1)] rounded-lg">
-							<svg class="w-6 h-6 text-[var(--ctp-primary)]" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-								<path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4" />
-							</svg>
-						</div>
-						<div class="flex-1">
-							<h2 class="text-lg font-medium text-[var(--ctp-text)]">{$t('backup.exportConfig')}</h2>
-							<p class="text-sm text-[var(--ctp-overlay1)] mt-1">{$t('backup.exportDescription')}</p>
-							<button
-								onclick={handleExport}
-								class="mt-4 px-4 py-2 bg-[var(--ctp-primary)] text-white rounded-lg hover:opacity-90 transition-opacity flex items-center gap-2"
-							>
-								<svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-									<path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4" />
-								</svg>
-								{$t('backup.exportConfig')}
-							</button>
-						</div>
-					</div>
-				</section>
-
-				<!-- Import Section -->
-				<section class="bg-[var(--ctp-surface0)] rounded-xl p-6">
-					<div class="flex items-start gap-4 mb-4">
-						<div class="p-3 bg-[var(--ctp-surface1)] rounded-lg">
-							<svg class="w-6 h-6 text-[var(--ctp-primary)]" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-								<path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-8l-4-4m0 0L8 8m4-4v12" />
-							</svg>
-						</div>
-						<div class="flex-1">
-							<h2 class="text-lg font-medium text-[var(--ctp-text)]">{$t('backup.importConfig')}</h2>
-							<p class="text-sm text-[var(--ctp-overlay1)] mt-1">{$t('backup.importDescription')}</p>
-						</div>
-					</div>
-
-					<!-- Drop Zone -->
-					<div
-						role="button"
-						tabindex="0"
-						ondrop={handleFileDrop}
-						ondragover={(e) => { e.preventDefault(); dragOver = true; }}
-						ondragleave={() => dragOver = false}
-						onclick={() => document.getElementById('backup-file-input')?.click()}
-						onkeypress={(e) => { if (e.key === 'Enter') document.getElementById('backup-file-input')?.click(); }}
-						class="dropzone {dragOver ? 'active' : ''}"
-					>
-						<input
-							id="backup-file-input"
-							type="file"
-							accept=".json"
-							onchange={handleFileSelect}
-							class="hidden"
-						/>
-						{#if importing}
-							<svg class="w-12 h-12 mx-auto text-[var(--ctp-primary)] animate-spin" fill="none" viewBox="0 0 24 24">
-								<circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle>
-								<path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z"></path>
-							</svg>
-							<p class="mt-2 text-[var(--ctp-text)]">{$t('common.validating')}</p>
-						{:else}
-							<svg class="w-12 h-12 mx-auto text-[var(--ctp-overlay0)]" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-								<path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M7 16a4 4 0 01-.88-7.903A5 5 0 1115.9 6L16 6a5 5 0 011 9.9M15 13l-3-3m0 0l-3 3m3-3v12" />
-							</svg>
-							<p class="mt-2 text-[var(--ctp-text)]">{$t('backup.dropFile')}</p>
-							<p class="text-sm text-[var(--ctp-overlay0)]">{$t('backup.selectFile')}</p>
-						{/if}
-					</div>
-
-					<!-- Validation Results -->
-					{#if validationResult}
-						<div class="mt-4 result-card {validationResult.valid ? 'success' : 'error'}">
-							<div class="flex items-center gap-2 mb-2">
-								{#if validationResult.valid}
-									<svg class="w-5 h-5 text-[var(--ctp-primary)]" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-										<path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 13l4 4L19 7" />
-									</svg>
-									<span class="font-medium text-[var(--ctp-primary)]">{$t('jsonEditor.configValid')}</span>
-								{:else}
-									<svg class="w-5 h-5 text-[var(--ctp-red)]" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-										<path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12" />
-									</svg>
-									<span class="font-medium text-[var(--ctp-red)]">{$t('backup.invalidConfig')}</span>
-								{/if}
-							</div>
-							{#if !validationResult.valid && validationResult.errors.length > 0}
-								<ul class="mt-2 space-y-1 text-sm text-[var(--ctp-red)]">
-									{#each validationResult.errors as error}
-										<li class="flex items-start gap-2">
-											<span class="text-[var(--ctp-overlay0)]">•</span>
-											{error}
-										</li>
-									{/each}
-								</ul>
-							{/if}
-						</div>
-
-						<div class="mt-4 flex gap-3">
-							<button
-								onclick={clearImport}
-								class="px-4 py-2 bg-[var(--ctp-surface1)] text-[var(--ctp-text)] rounded-lg hover:bg-[var(--ctp-surface2)] transition-colors"
-							>
-								{$t('common.discard')}
-							</button>
-							{#if validationResult.valid}
-								<button
-									onclick={applyImportedConfig}
-									disabled={applying}
-									class="px-4 py-2 bg-[var(--ctp-primary)] text-white rounded-lg hover:opacity-90 disabled:opacity-50 transition-opacity flex items-center gap-2"
-								>
-									{#if applying}
-										<svg class="w-4 h-4 animate-spin" fill="none" viewBox="0 0 24 24">
-											<circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle>
-											<path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z"></path>
-										</svg>
-										{$t('common.applying')}
-									{:else}
-										{$t('common.apply')}
-									{/if}
-								</button>
-							{/if}
-						</div>
-					{/if}
-				</section>
-
-				<!-- Warning -->
-				<div class="p-4 bg-[var(--ctp-surface1)] border border-[var(--ctp-surface2)] rounded-lg">
-					<div class="flex items-start gap-3">
-						<svg class="w-5 h-5 text-[var(--ctp-overlay1)] flex-shrink-0 mt-0.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-							<path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z" />
-						</svg>
-						<div>
-							<p class="text-sm font-medium text-[var(--ctp-text)]">{$t('common.warning')}</p>
-							<p class="text-sm text-[var(--ctp-subtext1)] mt-1">{$t('backup.importWarning')}</p>
-						</div>
-					</div>
-				</div>
-			</div>
+			<BackupSection />
 		{/if}
 
 		<!-- Diff Tab -->
@@ -719,36 +409,13 @@
 </div>
 
 <style>
-	/* JSON syntax highlighting */
-	:global(.json-viewer .json-key) {
-		color: var(--ctp-primary);
-	}
-	:global(.json-viewer .json-string) {
-		color: #a6e3a1;
-	}
-	:global(.json-viewer .json-number) {
-		color: #f9e2af;
-	}
-	:global(.json-viewer .json-boolean) {
-		color: #89b4fa;
-	}
-	:global(.json-viewer .json-null) {
-		color: var(--ctp-overlay0);
-	}
-
-	/* Light theme overrides */
-	:global(:root.light .json-viewer .json-string) {
-		color: #40a02b;
-	}
-	:global(:root.light .json-viewer .json-number) {
-		color: #df8e1d;
-	}
-	:global(:root.light .json-viewer .json-boolean) {
-		color: #1e66f5;
-	}
-
-	/* CodeMirror container */
-	.editor-container :global(.cm-editor) {
-		height: 100%;
-	}
+	:global(.json-viewer .json-key) { color: var(--ctp-primary); }
+	:global(.json-viewer .json-string) { color: #a6e3a1; }
+	:global(.json-viewer .json-number) { color: #f9e2af; }
+	:global(.json-viewer .json-boolean) { color: #89b4fa; }
+	:global(.json-viewer .json-null) { color: var(--ctp-overlay0); }
+	:global(:root.light .json-viewer .json-string) { color: #40a02b; }
+	:global(:root.light .json-viewer .json-number) { color: #df8e1d; }
+	:global(:root.light .json-viewer .json-boolean) { color: #1e66f5; }
+	.editor-container :global(.cm-editor) { height: 100%; }
 </style>
