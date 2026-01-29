@@ -256,7 +256,7 @@
 	<div class="fixed bottom-20 right-4 z-50 space-y-2">
 		{#each $notifications as toast (toast.id)}
 			<div
-				class="px-4 py-3 rounded-lg shadow-lg max-w-sm flex items-start gap-3 text-white"
+				class="toast px-4 py-3 rounded-lg shadow-lg max-w-sm flex items-start gap-3 text-white"
 				class:bg-[var(--ctp-primary)]={toast.type === 'success' || toast.type === 'info'}
 				class:bg-[var(--ctp-red)]={toast.type === 'error'}
 				class:bg-[var(--ctp-surface2)]={toast.type === 'warning'}

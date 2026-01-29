@@ -43,7 +43,7 @@
 {#if open}
 	<!-- svelte-ignore a11y_no_noninteractive_element_interactions -->
 	<div
-		class="fixed inset-0 z-50 flex items-center justify-center bg-black/50 backdrop-blur-sm"
+		class="fixed inset-0 z-50 flex items-center justify-center bg-black/50 backdrop-blur-sm modal-backdrop"
 		onclick={handleBackdropClick}
 		onkeydown={handleKeydown}
 		role="dialog"
@@ -52,7 +52,7 @@
 		tabindex="-1"
 	>
 		<div
-			class="bg-[var(--ctp-base)] rounded-xl shadow-xl w-full {sizeClasses[size]} mx-4 max-h-[90vh] flex flex-col"
+			class="bg-[var(--ctp-base)] rounded-xl shadow-xl w-full {sizeClasses[size]} mx-4 max-h-[90vh] flex flex-col modal-content"
 		>
 			<!-- Header -->
 			<div class="flex items-center justify-between px-6 py-4 border-b border-[var(--ctp-surface2)]">
