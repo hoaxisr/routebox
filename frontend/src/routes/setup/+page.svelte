@@ -183,14 +183,14 @@
 
 			if (singbox.endpoint) {
 				await safeCreate(
-					() => api.createEndpoint(singbox.endpoint as any),
+					() => api.createEndpoint(singbox.endpoint!),
 					'VPN endpoint'
 				);
 			}
 
 			if (singbox.outbound) {
 				await safeCreate(
-					() => api.createOutbound(singbox.outbound as any),
+					() => api.createOutbound(singbox.outbound!),
 					'VPN outbound'
 				);
 			}

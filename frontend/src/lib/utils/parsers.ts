@@ -1,5 +1,7 @@
 // Link parsers for VPN configuration import
 
+import type { Endpoint, OutboundTyped } from '$lib/types';
+
 export interface ParsedVless {
 	type: 'vless';
 	name: string;
@@ -502,7 +504,7 @@ export function parseConfig(input: string): ParseResult {
 /**
  * Convert parsed config to sing-box endpoint/outbound format
  */
-export function toSingboxConfig(parsed: ParsedConfig): { endpoint?: object; outbound?: object; outboundTag: string } {
+export function toSingboxConfig(parsed: ParsedConfig): { endpoint?: Endpoint; outbound?: OutboundTyped; outboundTag: string } {
 	switch (parsed.type) {
 		case 'vless': {
 			const outbound: Record<string, unknown> = {
@@ -563,7 +565,7 @@ export function toSingboxConfig(parsed: ParsedConfig): { endpoint?: object; outb
 				};
 			}
 
-			return { outbound, outboundTag: outbound.tag as string };
+			return { outbound: outbound as unknown as OutboundTyped, outboundTag: outbound.tag as string };
 		}
 
 		case 'hy2': {
@@ -590,7 +592,7 @@ export function toSingboxConfig(parsed: ParsedConfig): { endpoint?: object; outb
 				};
 			}
 
-			return { outbound, outboundTag: outbound.tag as string };
+			return { outbound: outbound as unknown as OutboundTyped, outboundTag: outbound.tag as string };
 		}
 
 		case 'ss': {
@@ -606,7 +608,7 @@ export function toSingboxConfig(parsed: ParsedConfig): { endpoint?: object; outb
 			if (parsed.plugin) outbound.plugin = parsed.plugin;
 			if (parsed.pluginOpts) outbound.plugin_opts = parsed.pluginOpts;
 
-			return { outbound, outboundTag: outbound.tag as string };
+			return { outbound: outbound as unknown as OutboundTyped, outboundTag: outbound.tag as string };
 		}
 
 		case 'awg': {
@@ -654,7 +656,7 @@ export function toSingboxConfig(parsed: ParsedConfig): { endpoint?: object; outb
 
 			// AWG endpoint can be used directly by tag in selector/urltest
 			// No separate outbound needed - return endpoint tag as outboundTag for reference
-			return { endpoint, outboundTag: tag };
+			return { endpoint: endpoint as unknown as Endpoint, outboundTag: tag };
 		}
 	}
 }
