@@ -5,12 +5,14 @@
 		tag: string;
 		type: string;
 		index: number;
+		isFinal?: boolean;
 	}
 
 	let { data, selected }: NodeProps = $props();
 
 	// Cast data to proper type
 	const outboundData = data as unknown as OutboundNodeData;
+	const isFinal = $derived(outboundData.isFinal ?? false);
 
 	function getTypeColor(): string {
 		switch (outboundData.type) {
@@ -49,7 +51,7 @@
 	const typeIcon = $derived(getTypeIcon());
 </script>
 
-<div class="outbound-node" class:selected>
+<div class="outbound-node" class:selected class:is-final={isFinal}>
 	<Handle type="target" position={Position.Left} />
 
 	<div class="outbound-content">
@@ -57,7 +59,12 @@
 			{typeIcon}
 		</div>
 		<div class="outbound-info">
-			<div class="outbound-tag">{outboundData.tag}</div>
+			<div class="outbound-tag-row">
+				<span class="outbound-tag">{outboundData.tag}</span>
+				{#if isFinal}
+					<span class="default-badge">default</span>
+				{/if}
+			</div>
 			<div class="outbound-type">{outboundData.type}</div>
 		</div>
 	</div>
@@ -124,8 +131,19 @@
 		background: var(--ctp-primary);
 	}
 
+	.outbound-node.is-final {
+		border-color: var(--ctp-yellow);
+		box-shadow: 0 0 0 1px color-mix(in srgb, var(--ctp-yellow) 20%, transparent);
+	}
+
 	.outbound-info {
 		min-width: 0;
+	}
+
+	.outbound-tag-row {
+		display: flex;
+		align-items: center;
+		gap: 0.375rem;
 	}
 
 	.outbound-tag {
@@ -134,6 +152,16 @@
 		white-space: nowrap;
 		overflow: hidden;
 		text-overflow: ellipsis;
+	}
+
+	.default-badge {
+		padding: 0.0625rem 0.25rem;
+		border-radius: 0.1875rem;
+		font-size: 0.5rem;
+		font-weight: 600;
+		text-transform: uppercase;
+		background: var(--ctp-yellow);
+		color: var(--ctp-base);
 	}
 
 	.outbound-type {

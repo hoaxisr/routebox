@@ -2,17 +2,26 @@ import type { Node, Edge } from '@xyflow/svelte';
 import { Position } from '@xyflow/svelte';
 import type { RouteRule } from '$lib/types';
 
+interface RuleNodeCallbacks {
+	onMoveUp?: (index: number) => void;
+	onMoveDown?: (index: number) => void;
+}
+
 /**
  * Convert route rules to Svelte Flow nodes
  */
-export function rulesToNodes(rules: RouteRule[]): Node[] {
+export function rulesToNodes(rules: RouteRule[], callbacks?: RuleNodeCallbacks): Node[] {
+	const totalRules = rules.length;
 	return rules.map((rule, index) => ({
 		id: `rule-${index}`,
 		type: 'rule',
 		position: { x: 0, y: 0 }, // Will be set by layoutEngine
 		data: {
 			...rule,
-			index
+			index,
+			totalRules,
+			onMoveUp: callbacks?.onMoveUp,
+			onMoveDown: callbacks?.onMoveDown
 		},
 		sourcePosition: Position.Right
 	}));

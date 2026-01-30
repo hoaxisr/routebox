@@ -2,15 +2,45 @@
 	import { Handle, Position, type NodeProps } from '@xyflow/svelte';
 	import type { RouteRule } from '$lib/types';
 
-	// Extended rule data with index
-	type RuleNodeData = RouteRule & { index: number };
+	// Extended rule data with index and callbacks
+	type RuleNodeData = RouteRule & {
+		index: number;
+		totalRules: number;
+		onMoveUp?: (index: number) => void;
+		onMoveDown?: (index: number) => void;
+	};
 
 	let { data, selected }: NodeProps = $props();
 
 	// Cast data to proper type
 	const ruleData = data as unknown as RuleNodeData;
 
-	// Get a summary of the rule conditions
+	// Check if rule is logical type
+	const isLogical = $derived(ruleData.type === 'logical');
+	const logicalMode = $derived(isLogical ? ruleData.mode?.toUpperCase() : null);
+
+	// Move handlers
+	function handleMoveUp(e: MouseEvent) {
+		e.stopPropagation();
+		ruleData.onMoveUp?.(ruleData.index);
+	}
+
+	function handleMoveDown(e: MouseEvent) {
+		e.stopPropagation();
+		ruleData.onMoveDown?.(ruleData.index);
+	}
+
+	// Get rule_set badges
+	function getRuleSetBadges(): string[] {
+		return ruleData.rule_set ?? [];
+	}
+
+	// Get inbound badges
+	function getInboundBadges(): string[] {
+		return ruleData.inbound ?? [];
+	}
+
+	// Get a summary of the rule conditions (excluding rule_set and inbound - shown as badges)
 	function getConditionsSummary(): string[] {
 		const summary: string[] = [];
 
@@ -19,15 +49,13 @@
 		if (ruleData.domain_keyword?.length) summary.push(`keyword: ${ruleData.domain_keyword.length}`);
 		if (ruleData.ip_cidr?.length) summary.push(`ip: ${ruleData.ip_cidr.length}`);
 		if (ruleData.port?.length) summary.push(`port: ${ruleData.port.join(', ')}`);
-		if (ruleData.rule_set?.length) summary.push(`rule_set: ${ruleData.rule_set.length}`);
 		if (ruleData.protocol?.length) summary.push(`protocol: ${ruleData.protocol.join(', ')}`);
 		if (ruleData.network) summary.push(`network: ${ruleData.network}`);
-		if (ruleData.inbound?.length) summary.push(`inbound: ${ruleData.inbound.length}`);
 		if (ruleData.process_name?.length) summary.push(`process: ${ruleData.process_name.length}`);
 
 		// For logical rules
 		if (ruleData.type === 'logical' && ruleData.rules?.length) {
-			summary.push(`${ruleData.mode?.toUpperCase()}: ${ruleData.rules.length} conditions`);
+			summary.push(`${ruleData.rules.length} conditions`);
 		}
 
 		return summary.length > 0 ? summary : ['(any)'];
@@ -51,13 +79,37 @@
 	const conditions = $derived(getConditionsSummary());
 	const actionLabel = $derived(getActionLabel());
 	const actionClass = $derived(getActionClass());
+	const ruleSetBadges = $derived(getRuleSetBadges());
+	const inboundBadges = $derived(getInboundBadges());
+	const canMoveUp = $derived(ruleData.index > 0);
+	const canMoveDown = $derived(ruleData.index < ruleData.totalRules - 1);
 </script>
 
-<div class="rule-node" class:selected>
+<div class="rule-node" class:selected class:logical={isLogical}>
 	<div class="rule-header">
-		<span class="rule-index">#{ruleData.index + 1}</span>
+		<div class="rule-index-wrapper">
+			<span class="rule-index">#{ruleData.index + 1}</span>
+			{#if isLogical}
+				<span class="rule-type-badge logical">{logicalMode}</span>
+			{/if}
+		</div>
 		<span class="rule-action {actionClass}">{actionLabel}</span>
 	</div>
+
+	<!-- Badges section -->
+	{#if ruleSetBadges.length > 0 || inboundBadges.length > 0}
+		<div class="badges-section">
+			{#each inboundBadges as inbound}
+				<span class="badge inbound-badge">{inbound}</span>
+			{/each}
+			{#each ruleSetBadges.slice(0, 2) as ruleSet}
+				<span class="badge ruleset-badge">{ruleSet}</span>
+			{/each}
+			{#if ruleSetBadges.length > 2}
+				<span class="badge more-badge">+{ruleSetBadges.length - 2}</span>
+			{/if}
+		</div>
+	{/if}
 
 	<div class="rule-conditions">
 		{#each conditions.slice(0, 3) as condition}
@@ -67,6 +119,32 @@
 			<div class="condition-more">+{conditions.length - 3} more</div>
 		{/if}
 	</div>
+
+	<!-- Reorder buttons (shown when selected) -->
+	{#if selected}
+		<div class="reorder-buttons">
+			<button
+				class="reorder-btn"
+				disabled={!canMoveUp}
+				onclick={handleMoveUp}
+				title="Move up"
+			>
+				<svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+					<path d="M18 15l-6-6-6 6"/>
+				</svg>
+			</button>
+			<button
+				class="reorder-btn"
+				disabled={!canMoveDown}
+				onclick={handleMoveDown}
+				title="Move down"
+			>
+				<svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+					<path d="M6 9l6 6 6-6"/>
+				</svg>
+			</button>
+		</div>
+	{/if}
 
 	<Handle type="source" position={Position.Right} />
 </div>
@@ -81,6 +159,7 @@
 		max-width: 220px;
 		font-size: 0.75rem;
 		transition: all 0.15s ease;
+		position: relative;
 	}
 
 	.rule-node:hover {
@@ -94,6 +173,10 @@
 		box-shadow: 0 0 0 2px color-mix(in srgb, var(--ctp-primary) 25%, transparent);
 	}
 
+	.rule-node.logical {
+		border-left: 3px solid var(--ctp-blue);
+	}
+
 	.rule-header {
 		display: flex;
 		justify-content: space-between;
@@ -103,9 +186,28 @@
 		border-bottom: 1px solid var(--ctp-surface0);
 	}
 
+	.rule-index-wrapper {
+		display: flex;
+		align-items: center;
+		gap: 0.375rem;
+	}
+
 	.rule-index {
 		color: var(--ctp-overlay1);
 		font-weight: 500;
+	}
+
+	.rule-type-badge {
+		padding: 0.0625rem 0.25rem;
+		border-radius: 0.1875rem;
+		font-size: 0.5625rem;
+		font-weight: 600;
+		text-transform: uppercase;
+	}
+
+	.rule-type-badge.logical {
+		background: var(--ctp-blue);
+		color: white;
 	}
 
 	.rule-action {
@@ -131,6 +233,42 @@
 		color: var(--ctp-text);
 	}
 
+	/* Badges section */
+	.badges-section {
+		display: flex;
+		flex-wrap: wrap;
+		gap: 0.25rem;
+		margin-bottom: 0.5rem;
+	}
+
+	.badge {
+		padding: 0.0625rem 0.375rem;
+		border-radius: 0.25rem;
+		font-size: 0.5625rem;
+		font-weight: 500;
+		white-space: nowrap;
+		overflow: hidden;
+		text-overflow: ellipsis;
+		max-width: 80px;
+	}
+
+	.ruleset-badge {
+		background: var(--ctp-surface2);
+		color: var(--ctp-subtext0);
+		border: 1px solid var(--ctp-surface1);
+	}
+
+	.inbound-badge {
+		background: color-mix(in srgb, var(--ctp-teal) 20%, transparent);
+		color: var(--ctp-teal);
+		border: 1px solid var(--ctp-teal);
+	}
+
+	.more-badge {
+		background: var(--ctp-surface1);
+		color: var(--ctp-overlay1);
+	}
+
 	.rule-conditions {
 		color: var(--ctp-subtext1);
 		line-height: 1.4;
@@ -146,6 +284,42 @@
 		color: var(--ctp-overlay1);
 		font-style: italic;
 		margin-top: 0.25rem;
+	}
+
+	/* Reorder buttons */
+	.reorder-buttons {
+		position: absolute;
+		left: -28px;
+		top: 50%;
+		transform: translateY(-50%);
+		display: flex;
+		flex-direction: column;
+		gap: 2px;
+	}
+
+	.reorder-btn {
+		width: 20px;
+		height: 20px;
+		display: flex;
+		align-items: center;
+		justify-content: center;
+		background: var(--ctp-surface1);
+		border: 1px solid var(--ctp-surface2);
+		border-radius: 0.25rem;
+		color: var(--ctp-subtext1);
+		cursor: pointer;
+		transition: all 0.15s ease;
+	}
+
+	.reorder-btn:hover:not(:disabled) {
+		background: var(--ctp-primary);
+		border-color: var(--ctp-primary);
+		color: white;
+	}
+
+	.reorder-btn:disabled {
+		opacity: 0.3;
+		cursor: not-allowed;
 	}
 
 	:global(.rule-node .svelte-flow__handle) {

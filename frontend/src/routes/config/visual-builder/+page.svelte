@@ -3,7 +3,7 @@
 	import { t } from 'svelte-i18n';
 	import { api } from '$lib/api/client';
 	import { notifications, unsavedChanges } from '$lib/stores';
-	import type { RouteRule, Outbound, Endpoint, RuleSet, Inbound } from '$lib/types';
+	import type { RouteRule, Outbound, Endpoint, RuleSet, Inbound, RouteSettings } from '$lib/types';
 	import { VisualBuilder } from '$lib/components/visual-builder';
 	import RuleEditPanel from '$lib/components/visual-builder/panels/RuleEditPanel.svelte';
 
@@ -12,8 +12,12 @@
 	let endpoints = $state<Endpoint[]>([]);
 	let ruleSets = $state<RuleSet[]>([]);
 	let inbounds = $state<Inbound[]>([]);
+	let routeSettings = $state<RouteSettings | null>(null);
 	let loading = $state(true);
 	let operating = $state(false); // For save/delete/create operations
+
+	// Final outbound from route settings
+	let finalOutbound = $derived(routeSettings?.final);
 
 	// Combined outbounds: outbounds + endpoints
 	let allOutbounds = $derived([
@@ -31,18 +35,20 @@
 
 	async function fetchData() {
 		try {
-			const [rulesData, outboundsData, endpointsData, ruleSetsData, inboundsData] = await Promise.all([
+			const [rulesData, outboundsData, endpointsData, ruleSetsData, inboundsData, routeSettingsData] = await Promise.all([
 				api.listRules(),
 				api.listOutbounds(),
 				api.listEndpoints(),
 				api.listRuleSets(),
-				api.listInbounds()
+				api.listInbounds(),
+				api.getRouteSettings()
 			]);
 			rules = rulesData;
 			outbounds = outboundsData;
 			endpoints = endpointsData;
 			ruleSets = ruleSetsData;
 			inbounds = inboundsData;
+			routeSettings = routeSettingsData;
 		} catch (e) {
 			notifications.error(`Failed to load: ${e}`);
 		} finally {
@@ -122,6 +128,38 @@
 			notifications.success($t('routes.ruleUpdated'));
 		} catch (e) {
 			notifications.error(`Failed to update rule: ${e}`);
+		} finally {
+			operating = false;
+		}
+	}
+
+	async function handleRuleMove(fromIndex: number, toIndex: number) {
+		if (fromIndex === toIndex) return;
+
+		operating = true;
+		try {
+			await api.reorderRules(fromIndex, toIndex);
+
+			// Update local state
+			const [movedRule] = rules.splice(fromIndex, 1);
+			rules.splice(toIndex, 0, movedRule);
+			rules = [...rules];
+
+			// Update selected index if needed
+			if (selectedRuleIndex === fromIndex) {
+				selectedRuleIndex = toIndex;
+			} else if (selectedRuleIndex !== null) {
+				// Adjust selection if it was between the moved positions
+				if (fromIndex < toIndex && selectedRuleIndex > fromIndex && selectedRuleIndex <= toIndex) {
+					selectedRuleIndex--;
+				} else if (fromIndex > toIndex && selectedRuleIndex >= toIndex && selectedRuleIndex < fromIndex) {
+					selectedRuleIndex++;
+				}
+			}
+
+			unsavedChanges.refresh();
+		} catch (e) {
+			notifications.error(`Failed to reorder rule: ${e}`);
 		} finally {
 			operating = false;
 		}
@@ -222,8 +260,12 @@
 				<VisualBuilder
 					{rules}
 					outbounds={allOutbounds}
+					{finalOutbound}
 					onRuleSelect={handleRuleSelect}
 					onRuleOutboundChange={handleRuleOutboundChange}
+					onRuleMove={handleRuleMove}
+					onRuleCreate={handleCreateRule}
+					onRuleDelete={handleRuleDelete}
 				/>
 			</div>
 
