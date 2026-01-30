@@ -48,8 +48,14 @@
 		if (ruleData.domain_suffix?.length) summary.push(`suffix: ${ruleData.domain_suffix.length}`);
 		if (ruleData.domain_keyword?.length) summary.push(`keyword: ${ruleData.domain_keyword.length}`);
 		if (ruleData.ip_cidr?.length) summary.push(`ip: ${ruleData.ip_cidr.length}`);
-		if (ruleData.port?.length) summary.push(`port: ${ruleData.port.join(', ')}`);
-		if (ruleData.protocol?.length) summary.push(`protocol: ${ruleData.protocol.join(', ')}`);
+		if (ruleData.port) {
+			const ports = Array.isArray(ruleData.port) ? ruleData.port : [ruleData.port];
+			summary.push(`port: ${ports.join(', ')}`);
+		}
+		if (ruleData.protocol) {
+			const proto = Array.isArray(ruleData.protocol) ? ruleData.protocol : [ruleData.protocol];
+			summary.push(`protocol: ${proto.join(', ')}`);
+		}
 		if (ruleData.network) summary.push(`network: ${ruleData.network}`);
 		if (ruleData.process_name?.length) summary.push(`process: ${ruleData.process_name.length}`);
 

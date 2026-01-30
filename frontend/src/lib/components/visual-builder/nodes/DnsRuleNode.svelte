@@ -35,7 +35,10 @@
 		if (ruleData.domain_keyword?.length) summary.push(`keyword: ${ruleData.domain_keyword.length}`);
 		if (ruleData.domain_regex?.length) summary.push(`regex: ${ruleData.domain_regex.length}`);
 		if (ruleData.ip_cidr?.length) summary.push(`ip: ${ruleData.ip_cidr.length}`);
-		if (ruleData.query_type?.length) summary.push(`type: ${ruleData.query_type.join(', ')}`);
+		if (ruleData.query_type) {
+			const types = Array.isArray(ruleData.query_type) ? ruleData.query_type : [ruleData.query_type];
+			summary.push(`type: ${types.join(', ')}`);
+		}
 
 		return summary.length > 0 ? summary : ['(any)'];
 	}

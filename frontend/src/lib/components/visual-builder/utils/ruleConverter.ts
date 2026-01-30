@@ -82,9 +82,15 @@ export function getRuleConditionsSummary(rule: RouteRule): string {
 	if (rule.domain_suffix?.length) parts.push(`suffix:${rule.domain_suffix.length}`);
 	if (rule.domain_keyword?.length) parts.push(`keyword:${rule.domain_keyword.length}`);
 	if (rule.ip_cidr?.length) parts.push(`ip:${rule.ip_cidr.length}`);
-	if (rule.port?.length) parts.push(`port:${rule.port.join(',')}`);
+	if (rule.port) {
+		const ports = Array.isArray(rule.port) ? rule.port : [rule.port];
+		parts.push(`port:${ports.join(',')}`);
+	}
 	if (rule.rule_set?.length) parts.push(`ruleset:${rule.rule_set.length}`);
-	if (rule.protocol?.length) parts.push(`proto:${rule.protocol.join(',')}`);
+	if (rule.protocol) {
+		const proto = Array.isArray(rule.protocol) ? rule.protocol : [rule.protocol];
+		parts.push(`proto:${proto.join(',')}`);
+	}
 	if (rule.network) parts.push(`net:${rule.network}`);
 
 	if (rule.type === 'logical' && rule.rules?.length) {
