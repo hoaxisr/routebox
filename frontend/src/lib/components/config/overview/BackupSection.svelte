@@ -2,11 +2,12 @@
 	import { t } from 'svelte-i18n';
 	import { api } from '$lib/api/client';
 	import { notifications } from '$lib/stores';
+	import type { SingboxConfig } from '$lib/types';
 
 	let importing = $state(false);
 	let applying = $state(false);
 	let dragOver = $state(false);
-	let importedConfig = $state<object | null>(null);
+	let importedConfig = $state<SingboxConfig | null>(null);
 	let validationResult = $state<{ valid: boolean; errors: string[] } | null>(null);
 
 	function handleExport() {
@@ -57,7 +58,7 @@
 		if (!importedConfig || !validationResult?.valid) return;
 		applying = true;
 		try {
-			await api.saveConfig(importedConfig as any);
+			await api.saveConfig(importedConfig!);
 			notifications.success('Config applied successfully');
 			importedConfig = null;
 			validationResult = null;

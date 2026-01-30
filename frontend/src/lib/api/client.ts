@@ -96,7 +96,7 @@ export const api = {
 		window.location.href = '/api/config/export';
 	},
 	importConfig: (config: object) =>
-		request<{ valid: boolean; errors: string[]; config: object }>('/config/import', {
+		request<{ valid: boolean; errors: string[]; config: SingboxConfig }>('/config/import', {
 			method: 'POST',
 			body: JSON.stringify(config)
 		}),
