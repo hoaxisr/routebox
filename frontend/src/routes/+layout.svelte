@@ -32,6 +32,24 @@
 	let sidebarOpen = $state(false);
 	let isMobile = $state(false);
 
+	// Collapsible nav groups
+	const networkPaths = ['/config/endpoints', '/config/outbounds', '/config/inbounds', '/config/dns'];
+	const routingPaths = ['/config/rule-sets', '/config/domains', '/config/routes'];
+
+	let networkExpanded = $state(false);
+	let routingExpanded = $state(false);
+
+	// Auto-expand based on current path
+	$effect(() => {
+		const path = $page.url.pathname;
+		if (networkPaths.some(p => path.startsWith(p))) {
+			networkExpanded = true;
+		}
+		if (routingPaths.some(p => path.startsWith(p))) {
+			routingExpanded = true;
+		}
+	});
+
 	function checkMobile() {
 		isMobile = window.innerWidth < 768;
 		if (!isMobile) sidebarOpen = false;
@@ -184,6 +202,7 @@
 				{isMobile && !sidebarOpen ? 'closed' : ''}"
 		>
 			<nav class="p-4 space-y-1 overflow-y-auto h-full">
+				<!-- Dashboard -->
 				<a href="/" onclick={handleNavClick} class="flex items-center gap-3 px-3 py-2 rounded-lg hover:bg-[var(--ctp-surface0)] text-[var(--ctp-subtext1)] hover:text-[var(--ctp-text)] transition-colors">
 					<svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
 						<path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M3 12l2-2m0 0l7-7 7 7M5 10v10a1 1 0 001 1h3m10-11l2 2m-2-2v10a1 1 0 01-1 1h-3m-6 0a1 1 0 001-1v-4a1 1 0 011-1h2a1 1 0 011 1v4a1 1 0 001 1m-6 0h6" />
@@ -191,10 +210,12 @@
 					{$t('nav.dashboard')}
 				</a>
 
+				<!-- Config Section -->
 				<div class="pt-4 pb-2">
 					<span class="px-3 text-xs font-medium text-[var(--ctp-overlay1)] uppercase tracking-wider">{$t('nav.config')}</span>
 				</div>
 
+				<!-- Overview -->
 				<a href="/config" onclick={handleNavClick} class="flex items-center gap-3 px-3 py-2 rounded-lg hover:bg-[var(--ctp-surface0)] text-[var(--ctp-subtext1)] hover:text-[var(--ctp-text)] transition-colors">
 					<svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
 						<path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 6h16M4 12h16M4 18h7" />
@@ -202,48 +223,72 @@
 					{$t('nav.overview')}
 				</a>
 
-				<a href="/config/endpoints" onclick={handleNavClick} class="flex items-center gap-3 px-3 py-2 rounded-lg hover:bg-[var(--ctp-surface0)] text-[var(--ctp-subtext1)] hover:text-[var(--ctp-text)] transition-colors">
-					<svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-						<path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 12h14M5 12a2 2 0 01-2-2V6a2 2 0 012-2h14a2 2 0 012 2v4a2 2 0 01-2 2M5 12a2 2 0 00-2 2v4a2 2 0 002 2h14a2 2 0 002-2v-4a2 2 0 00-2-2m-2-4h.01M17 16h.01" />
-					</svg>
-					{$t('nav.endpoints')}
-				</a>
+				<!-- Network Group -->
+				<div>
+					<button
+						onclick={() => networkExpanded = !networkExpanded}
+						class="w-full flex items-center justify-between px-3 py-2 rounded-lg hover:bg-[var(--ctp-surface0)] text-[var(--ctp-subtext1)] hover:text-[var(--ctp-text)] transition-colors"
+					>
+						<div class="flex items-center gap-3">
+							<svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+								<path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 12h14M5 12a2 2 0 01-2-2V6a2 2 0 012-2h14a2 2 0 012 2v4a2 2 0 01-2 2M5 12a2 2 0 00-2 2v4a2 2 0 002 2h14a2 2 0 002-2v-4a2 2 0 00-2-2m-2-4h.01M17 16h.01" />
+							</svg>
+							{$t('nav.network')}
+						</div>
+						<svg class="w-4 h-4 transition-transform {networkExpanded ? 'rotate-90' : ''}" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+							<path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 5l7 7-7 7" />
+						</svg>
+					</button>
+					{#if networkExpanded}
+						<div class="ml-4 mt-1 space-y-1 border-l border-[var(--ctp-surface1)] pl-3">
+							<a href="/config/endpoints" onclick={handleNavClick} class="flex items-center gap-3 px-3 py-1.5 rounded-lg hover:bg-[var(--ctp-surface0)] text-[var(--ctp-subtext1)] hover:text-[var(--ctp-text)] transition-colors text-sm">
+								{$t('nav.endpoints')}
+							</a>
+							<a href="/config/outbounds" onclick={handleNavClick} class="flex items-center gap-3 px-3 py-1.5 rounded-lg hover:bg-[var(--ctp-surface0)] text-[var(--ctp-subtext1)] hover:text-[var(--ctp-text)] transition-colors text-sm">
+								{$t('nav.outbounds')}
+							</a>
+							<a href="/config/inbounds" onclick={handleNavClick} class="flex items-center gap-3 px-3 py-1.5 rounded-lg hover:bg-[var(--ctp-surface0)] text-[var(--ctp-subtext1)] hover:text-[var(--ctp-text)] transition-colors text-sm">
+								{$t('nav.inbounds')}
+							</a>
+							<a href="/config/dns" onclick={handleNavClick} class="flex items-center gap-3 px-3 py-1.5 rounded-lg hover:bg-[var(--ctp-surface0)] text-[var(--ctp-subtext1)] hover:text-[var(--ctp-text)] transition-colors text-sm">
+								{$t('nav.dns')}
+							</a>
+						</div>
+					{/if}
+				</div>
 
-				<a href="/config/outbounds" onclick={handleNavClick} class="flex items-center gap-3 px-3 py-2 rounded-lg hover:bg-[var(--ctp-surface0)] text-[var(--ctp-subtext1)] hover:text-[var(--ctp-text)] transition-colors">
-					<svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-						<path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M17 16l4-4m0 0l-4-4m4 4H7m6 4v1a3 3 0 01-3 3H6a3 3 0 01-3-3V7a3 3 0 013-3h4a3 3 0 013 3v1" />
-					</svg>
-					{$t('nav.outbounds')}
-				</a>
+				<!-- Routing Group -->
+				<div>
+					<button
+						onclick={() => routingExpanded = !routingExpanded}
+						class="w-full flex items-center justify-between px-3 py-2 rounded-lg hover:bg-[var(--ctp-surface0)] text-[var(--ctp-subtext1)] hover:text-[var(--ctp-text)] transition-colors"
+					>
+						<div class="flex items-center gap-3">
+							<svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+								<path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 20l-5.447-2.724A1 1 0 013 16.382V5.618a1 1 0 011.447-.894L9 7m0 13l6-3m-6 3V7m6 10l4.553 2.276A1 1 0 0021 18.382V7.618a1 1 0 00-.553-.894L15 4m0 13V4m0 0L9 7" />
+							</svg>
+							{$t('nav.routing')}
+						</div>
+						<svg class="w-4 h-4 transition-transform {routingExpanded ? 'rotate-90' : ''}" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+							<path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 5l7 7-7 7" />
+						</svg>
+					</button>
+					{#if routingExpanded}
+						<div class="ml-4 mt-1 space-y-1 border-l border-[var(--ctp-surface1)] pl-3">
+							<a href="/config/rule-sets" onclick={handleNavClick} class="flex items-center gap-3 px-3 py-1.5 rounded-lg hover:bg-[var(--ctp-surface0)] text-[var(--ctp-subtext1)] hover:text-[var(--ctp-text)] transition-colors text-sm">
+								{$t('nav.ruleSets')}
+							</a>
+							<a href="/config/domains" onclick={handleNavClick} class="flex items-center gap-3 px-3 py-1.5 rounded-lg hover:bg-[var(--ctp-surface0)] text-[var(--ctp-subtext1)] hover:text-[var(--ctp-text)] transition-colors text-sm">
+								{$t('nav.domains')}
+							</a>
+							<a href="/config/routes" onclick={handleNavClick} class="flex items-center gap-3 px-3 py-1.5 rounded-lg hover:bg-[var(--ctp-surface0)] text-[var(--ctp-subtext1)] hover:text-[var(--ctp-text)] transition-colors text-sm">
+								{$t('nav.routes')}
+							</a>
+						</div>
+					{/if}
+				</div>
 
-				<a href="/config/inbounds" onclick={handleNavClick} class="flex items-center gap-3 px-3 py-2 rounded-lg hover:bg-[var(--ctp-surface0)] text-[var(--ctp-subtext1)] hover:text-[var(--ctp-text)] transition-colors">
-					<svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-						<path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M11 16l-4-4m0 0l4-4m-4 4h14m-5 4v1a3 3 0 01-3 3H6a3 3 0 01-3-3V7a3 3 0 013-3h7a3 3 0 013 3v1" />
-					</svg>
-					{$t('nav.inbounds')}
-				</a>
-
-				<a href="/config/rule-sets" onclick={handleNavClick} class="flex items-center gap-3 px-3 py-2 rounded-lg hover:bg-[var(--ctp-surface0)] text-[var(--ctp-subtext1)] hover:text-[var(--ctp-text)] transition-colors">
-					<svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-						<path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 7v10c0 2.21 3.582 4 8 4s8-1.79 8-4V7M4 7c0 2.21 3.582 4 8 4s8-1.79 8-4M4 7c0-2.21 3.582-4 8-4s8 1.79 8 4m0 5c0 2.21-3.582 4-8 4s-8-1.79-8-4" />
-					</svg>
-					{$t('nav.ruleSets')}
-				</a>
-
-				<a href="/config/domains" onclick={handleNavClick} class="flex items-center gap-3 px-3 py-2 rounded-lg hover:bg-[var(--ctp-surface0)] text-[var(--ctp-subtext1)] hover:text-[var(--ctp-text)] transition-colors">
-					<svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-						<path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M3.055 11H5a2 2 0 012 2v1a2 2 0 002 2 2 2 0 012 2v2.945M8 3.935V5.5A2.5 2.5 0 0010.5 8h.5a2 2 0 012 2 2 2 0 104 0 2 2 0 012-2h1.064M15 20.488V18a2 2 0 012-2h3.064M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
-					</svg>
-					{$t('nav.domains')}
-				</a>
-
-				<a href="/config/routes" onclick={handleNavClick} class="flex items-center gap-3 px-3 py-2 rounded-lg hover:bg-[var(--ctp-surface0)] text-[var(--ctp-subtext1)] hover:text-[var(--ctp-text)] transition-colors">
-					<svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-						<path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 20l-5.447-2.724A1 1 0 013 16.382V5.618a1 1 0 011.447-.894L9 7m0 13l6-3m-6 3V7m6 10l4.553 2.276A1 1 0 0021 18.382V7.618a1 1 0 00-.553-.894L15 4m0 13V4m0 0L9 7" />
-					</svg>
-					{$t('nav.routes')}
-				</a>
-
+				<!-- Visual Builder (desktop only) -->
 				{#if !isMobile}
 				<a href="/config/visual-builder" onclick={handleNavClick} class="flex items-center gap-3 px-3 py-2 rounded-lg hover:bg-[var(--ctp-surface0)] text-[var(--ctp-subtext1)] hover:text-[var(--ctp-text)] transition-colors">
 					<svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -253,13 +298,7 @@
 				</a>
 				{/if}
 
-				<a href="/config/dns" onclick={handleNavClick} class="flex items-center gap-3 px-3 py-2 rounded-lg hover:bg-[var(--ctp-surface0)] text-[var(--ctp-subtext1)] hover:text-[var(--ctp-text)] transition-colors">
-					<svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-						<path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M21 12a9 9 0 01-9 9m9-9a9 9 0 00-9-9m9 9H3m9 9a9 9 0 01-9-9m9 9c1.657 0 3-4.03 3-9s-1.343-9-3-9m0 18c-1.657 0-3-4.03-3-9s1.343-9 3-9m-9 9a9 9 0 019-9" />
-					</svg>
-					{$t('nav.dns')}
-				</a>
-
+				<!-- Experimental -->
 				<a href="/config/settings" onclick={handleNavClick} class="flex items-center gap-3 px-3 py-2 rounded-lg hover:bg-[var(--ctp-surface0)] text-[var(--ctp-subtext1)] hover:text-[var(--ctp-text)] transition-colors">
 					<svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
 						<path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M10.325 4.317c.426-1.756 2.924-1.756 3.35 0a1.724 1.724 0 002.573 1.066c1.543-.94 3.31.826 2.37 2.37a1.724 1.724 0 001.065 2.572c1.756.426 1.756 2.924 0 3.35a1.724 1.724 0 00-1.066 2.573c.94 1.543-.826 3.31-2.37 2.37a1.724 1.724 0 00-2.572 1.065c-.426 1.756-2.924 1.756-3.35 0a1.724 1.724 0 00-2.573-1.066c-1.543.94-3.31-.826-2.37-2.37a1.724 1.724 0 00-1.065-2.572c-1.756-.426-1.756-2.924 0-3.35a1.724 1.724 0 001.066-2.573c-.94-1.543.826-3.31 2.37-2.37.996.608 2.296.07 2.572-1.065z" />
@@ -268,6 +307,7 @@
 					{$t('nav.experimental')}
 				</a>
 
+				<!-- Monitor Section -->
 				<div class="pt-4 pb-2">
 					<span class="px-3 text-xs font-medium text-[var(--ctp-overlay1)] uppercase tracking-wider">{$t('nav.monitor')}</span>
 				</div>

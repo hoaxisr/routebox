@@ -25,7 +25,9 @@
     "connections": "Connections",
     "proxies": "Proxies",
     "routeInspector": "Route Inspector",
-    "visualBuilder": "Visual Builder"
+    "visualBuilder": "Visual Builder",
+    "network": "Network",
+    "routing": "Routing"
   },
   "common": {
     "save": "Save",
