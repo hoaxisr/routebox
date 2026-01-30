@@ -3,45 +3,66 @@
 	import { t } from 'svelte-i18n';
 	import { api } from '$lib/api/client';
 	import { notifications, unsavedChanges } from '$lib/stores';
-	import type { RouteRule, Outbound, Endpoint, RuleSet, Inbound, RouteSettings } from '$lib/types';
-	import { VisualBuilder } from '$lib/components/visual-builder';
+	import type { RouteRule, Outbound, Endpoint, RuleSet, Inbound, RouteSettings, DnsRule, DnsServer, DnsSettings } from '$lib/types';
+	import { VisualBuilder, DnsVisualBuilder } from '$lib/components/visual-builder';
 	import RuleEditPanel from '$lib/components/visual-builder/panels/RuleEditPanel.svelte';
+	import DnsRuleEditPanel from '$lib/components/visual-builder/panels/DnsRuleEditPanel.svelte';
 
+	// Tab state
+	type Tab = 'routes' | 'dns';
+	let activeTab = $state<Tab>('routes');
+
+	// Routes state
 	let rules = $state<RouteRule[]>([]);
 	let outbounds = $state<Outbound[]>([]);
 	let endpoints = $state<Endpoint[]>([]);
 	let ruleSets = $state<RuleSet[]>([]);
 	let inbounds = $state<Inbound[]>([]);
 	let routeSettings = $state<RouteSettings | null>(null);
+
+	// DNS state
+	let dnsRules = $state<DnsRule[]>([]);
+	let dnsServers = $state<DnsServer[]>([]);
+	let dnsSettings = $state<DnsSettings | null>(null);
+
 	let loading = $state(true);
-	let operating = $state(false); // For save/delete/create operations
+	let operating = $state(false);
 
-	// Final outbound from route settings
+	// Derived values
 	let finalOutbound = $derived(routeSettings?.final);
+	let finalDnsServer = $derived(dnsSettings?.final);
 
-	// Combined outbounds: outbounds + endpoints
 	let allOutbounds = $derived([
 		...outbounds,
 		...endpoints.map((e) => ({ tag: e.tag, type: e.type }) as Outbound)
 	]);
 
-	// Selected rule index for side panel
+	// Selected rule index for side panels
 	let selectedRuleIndex = $state<number | null>(null);
+	let selectedDnsRuleIndex = $state<number | null>(null);
 
-	// Get selected rule
 	let selectedRule = $derived(
 		selectedRuleIndex !== null ? rules[selectedRuleIndex] : null
+	);
+	let selectedDnsRule = $derived(
+		selectedDnsRuleIndex !== null ? dnsRules[selectedDnsRuleIndex] : null
 	);
 
 	async function fetchData() {
 		try {
-			const [rulesData, outboundsData, endpointsData, ruleSetsData, inboundsData, routeSettingsData] = await Promise.all([
+			const [
+				rulesData, outboundsData, endpointsData, ruleSetsData, inboundsData, routeSettingsData,
+				dnsRulesData, dnsServersData, dnsSettingsData
+			] = await Promise.all([
 				api.listRules(),
 				api.listOutbounds(),
 				api.listEndpoints(),
 				api.listRuleSets(),
 				api.listInbounds(),
-				api.getRouteSettings()
+				api.getRouteSettings(),
+				api.listDnsRules(),
+				api.listDnsServers(),
+				api.getDnsSettings()
 			]);
 			rules = rulesData;
 			outbounds = outboundsData;
@@ -49,6 +70,9 @@
 			ruleSets = ruleSetsData;
 			inbounds = inboundsData;
 			routeSettings = routeSettingsData;
+			dnsRules = dnsRulesData;
+			dnsServers = dnsServersData;
+			dnsSettings = dnsSettingsData;
 		} catch (e) {
 			notifications.error(`Failed to load: ${e}`);
 		} finally {
@@ -56,6 +80,7 @@
 		}
 	}
 
+	// === Routes handlers ===
 	function handleRuleSelect(index: number | null) {
 		selectedRuleIndex = index;
 	}
@@ -65,7 +90,7 @@
 		try {
 			await api.updateRule(index, updatedRule);
 			rules[index] = updatedRule;
-			rules = [...rules]; // Trigger reactivity
+			rules = [...rules];
 			unsavedChanges.refresh();
 			notifications.success($t('routes.ruleUpdated'));
 		} catch (e) {
@@ -80,7 +105,7 @@
 		try {
 			await api.deleteRule(index);
 			rules.splice(index, 1);
-			rules = [...rules]; // Trigger reactivity
+			rules = [...rules];
 			selectedRuleIndex = null;
 			unsavedChanges.refresh();
 			notifications.success($t('routes.ruleDeleted'));
@@ -139,24 +164,19 @@
 		operating = true;
 		try {
 			await api.reorderRules(fromIndex, toIndex);
-
-			// Update local state
 			const [movedRule] = rules.splice(fromIndex, 1);
 			rules.splice(toIndex, 0, movedRule);
 			rules = [...rules];
 
-			// Update selected index if needed
 			if (selectedRuleIndex === fromIndex) {
 				selectedRuleIndex = toIndex;
 			} else if (selectedRuleIndex !== null) {
-				// Adjust selection if it was between the moved positions
 				if (fromIndex < toIndex && selectedRuleIndex > fromIndex && selectedRuleIndex <= toIndex) {
 					selectedRuleIndex--;
 				} else if (fromIndex > toIndex && selectedRuleIndex >= toIndex && selectedRuleIndex < fromIndex) {
 					selectedRuleIndex++;
 				}
 			}
-
 			unsavedChanges.refresh();
 		} catch (e) {
 			notifications.error(`Failed to reorder rule: ${e}`);
@@ -165,20 +185,138 @@
 		}
 	}
 
+	// === DNS handlers ===
+	function handleDnsRuleSelect(index: number | null) {
+		selectedDnsRuleIndex = index;
+	}
+
+	async function handleDnsRuleSave(index: number, updatedRule: DnsRule) {
+		operating = true;
+		try {
+			await api.updateDnsRule(index, updatedRule);
+			dnsRules[index] = updatedRule;
+			dnsRules = [...dnsRules];
+			unsavedChanges.refresh();
+			notifications.success($t('dns.ruleUpdated'));
+		} catch (e) {
+			notifications.error(`Failed to update DNS rule: ${e}`);
+		} finally {
+			operating = false;
+		}
+	}
+
+	async function handleDnsRuleDelete(index: number) {
+		operating = true;
+		try {
+			await api.deleteDnsRule(index);
+			dnsRules.splice(index, 1);
+			dnsRules = [...dnsRules];
+			selectedDnsRuleIndex = null;
+			unsavedChanges.refresh();
+			notifications.success($t('dns.ruleDeleted'));
+		} catch (e) {
+			notifications.error(`Failed to delete DNS rule: ${e}`);
+		} finally {
+			operating = false;
+		}
+	}
+
+	async function handleCreateDnsRule() {
+		operating = true;
+		const newRule: DnsRule = {
+			action: 'route',
+			server: dnsServers[0]?.tag || ''
+		};
+		try {
+			await api.createDnsRule(newRule);
+			dnsRules = [...dnsRules, newRule];
+			selectedDnsRuleIndex = dnsRules.length - 1;
+			unsavedChanges.refresh();
+			notifications.success($t('dns.ruleCreated'));
+		} catch (e) {
+			notifications.error(`Failed to create DNS rule: ${e}`);
+		} finally {
+			operating = false;
+		}
+	}
+
+	function handleCloseDnsPanel() {
+		selectedDnsRuleIndex = null;
+	}
+
+	async function handleDnsRuleServerChange(index: number, newServer: string) {
+		const rule = dnsRules[index];
+		if (!rule || rule.server === newServer) return;
+
+		operating = true;
+		const updatedRule: DnsRule = { ...rule, server: newServer };
+		try {
+			await api.updateDnsRule(index, updatedRule);
+			dnsRules[index] = updatedRule;
+			dnsRules = [...dnsRules];
+			unsavedChanges.refresh();
+			notifications.success($t('dns.ruleUpdated'));
+		} catch (e) {
+			notifications.error(`Failed to update DNS rule: ${e}`);
+		} finally {
+			operating = false;
+		}
+	}
+
+	async function handleDnsRuleMove(fromIndex: number, toIndex: number) {
+		if (fromIndex === toIndex) return;
+
+		operating = true;
+		try {
+			await api.reorderDnsRules(fromIndex, toIndex);
+			const [movedRule] = dnsRules.splice(fromIndex, 1);
+			dnsRules.splice(toIndex, 0, movedRule);
+			dnsRules = [...dnsRules];
+
+			if (selectedDnsRuleIndex === fromIndex) {
+				selectedDnsRuleIndex = toIndex;
+			} else if (selectedDnsRuleIndex !== null) {
+				if (fromIndex < toIndex && selectedDnsRuleIndex > fromIndex && selectedDnsRuleIndex <= toIndex) {
+					selectedDnsRuleIndex--;
+				} else if (fromIndex > toIndex && selectedDnsRuleIndex >= toIndex && selectedDnsRuleIndex < fromIndex) {
+					selectedDnsRuleIndex++;
+				}
+			}
+			unsavedChanges.refresh();
+		} catch (e) {
+			notifications.error(`Failed to reorder DNS rule: ${e}`);
+		} finally {
+			operating = false;
+		}
+	}
+
+	// Keyboard handlers
 	function handleKeydown(event: KeyboardEvent) {
-		// Escape: close panel
-		if (event.key === 'Escape' && selectedRuleIndex !== null) {
-			selectedRuleIndex = null;
+		if (event.key === 'Escape') {
+			if (activeTab === 'routes' && selectedRuleIndex !== null) {
+				selectedRuleIndex = null;
+			} else if (activeTab === 'dns' && selectedDnsRuleIndex !== null) {
+				selectedDnsRuleIndex = null;
+			}
 			return;
 		}
 
-		// Delete: delete selected rule (with confirmation)
-		if ((event.key === 'Delete' || event.key === 'Backspace') && selectedRuleIndex !== null) {
-			// Only if not focused on an input
+		if ((event.key === 'Delete' || event.key === 'Backspace')) {
 			if (document.activeElement?.tagName !== 'INPUT' && document.activeElement?.tagName !== 'TEXTAREA') {
-				handleRuleDelete(selectedRuleIndex);
+				if (activeTab === 'routes' && selectedRuleIndex !== null) {
+					handleRuleDelete(selectedRuleIndex);
+				} else if (activeTab === 'dns' && selectedDnsRuleIndex !== null) {
+					handleDnsRuleDelete(selectedDnsRuleIndex);
+				}
 			}
 		}
+	}
+
+	// Clear selection when switching tabs
+	function switchTab(tab: Tab) {
+		activeTab = tab;
+		selectedRuleIndex = null;
+		selectedDnsRuleIndex = null;
 	}
 
 	onMount(() => {
@@ -198,16 +336,16 @@
 			<h1 class="text-2xl font-semibold text-[var(--ctp-text)]">{$t('visualBuilder.title')}</h1>
 			<span class="status-badge info">{$t('visualBuilder.beta')}</span>
 		</div>
-		{#if !loading && rules.length > 0}
-			<button class="btn-primary" onclick={handleCreateRule} disabled={operating}>
-				{#if operating}
-					<svg class="w-4 h-4 animate-spin inline mr-1" fill="none" viewBox="0 0 24 24">
-						<circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle>
-						<path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z"></path>
-					</svg>
-				{/if}
-				+ {$t('routes.addRule')}
-			</button>
+		{#if !loading}
+			{#if activeTab === 'routes' && rules.length > 0}
+				<button class="btn-primary" onclick={handleCreateRule} disabled={operating}>
+					+ {$t('routes.addRule')}
+				</button>
+			{:else if activeTab === 'dns' && dnsRules.length > 0}
+				<button class="btn-primary btn-dns" onclick={handleCreateDnsRule} disabled={operating}>
+					+ {$t('dns.addRule')}
+				</button>
+			{/if}
 		{/if}
 	</div>
 	<p class="text-[var(--ctp-subtext1)] mt-1">{$t('visualBuilder.description')}</p>
@@ -220,71 +358,153 @@
 			<path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z"></path>
 		</svg>
 	</div>
-{:else if rules.length === 0}
-	<div class="empty-state">
-		<svg class="w-12 h-12 text-[var(--ctp-overlay1)] mx-auto" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-			<path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 20l-5.447-2.724A1 1 0 013 16.382V5.618a1 1 0 011.447-.894L9 7m0 13l6-3m-6 3V7m6 10l4.553 2.276A1 1 0 0021 18.382V7.618a1 1 0 00-.553-.894L15 4m0 13V4m0 0L9 7" />
-		</svg>
-		<h3 class="mt-4 text-lg font-medium text-[var(--ctp-text)]">{$t('visualBuilder.noRules')}</h3>
-		<p class="mt-2 text-[var(--ctp-subtext1)]">{$t('visualBuilder.noRulesHint')}</p>
-		<div class="mt-4 flex gap-3 justify-center">
-			<button class="btn-primary" onclick={handleCreateRule} disabled={operating}>
-				{#if operating}
-					<svg class="w-4 h-4 animate-spin inline mr-1" fill="none" viewBox="0 0 24 24">
-						<circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle>
-						<path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z"></path>
-					</svg>
-				{/if}
-				+ {$t('routes.addRule')}
-			</button>
-			<a href="/config/routes" class="btn-secondary">
-				{$t('visualBuilder.goToRules')}
-			</a>
-		</div>
-	</div>
 {:else}
-	<div class="mt-6">
-		<div class="stats-bar">
-			<div class="stat">
-				<span class="stat-value">{rules.length}</span>
-				<span class="stat-label">{$t('visualBuilder.rules')}</span>
-			</div>
-			<div class="stat">
-				<span class="stat-value">{allOutbounds.length}</span>
-				<span class="stat-label">{$t('visualBuilder.outbounds')}</span>
-			</div>
+	<div class="mt-4">
+		<!-- Tabs -->
+		<div class="tabs-header">
+			<button
+				class="tab-btn"
+				class:active={activeTab === 'routes'}
+				onclick={() => switchTab('routes')}
+			>
+				<span class="tab-label">{$t('nav.routes')}</span>
+				<span class="tab-count">{rules.length}</span>
+			</button>
+			<button
+				class="tab-btn tab-dns"
+				class:active={activeTab === 'dns'}
+				onclick={() => switchTab('dns')}
+			>
+				<span class="tab-label">DNS</span>
+				<span class="tab-count">{dnsRules.length}</span>
+			</button>
 		</div>
 
-		<div class="builder-container" class:with-panel={selectedRule !== null}>
-			<div class="builder-main">
-				<VisualBuilder
-					{rules}
-					outbounds={allOutbounds}
-					{finalOutbound}
-					onRuleSelect={handleRuleSelect}
-					onRuleOutboundChange={handleRuleOutboundChange}
-					onRuleMove={handleRuleMove}
-					onRuleCreate={handleCreateRule}
-					onRuleDelete={handleRuleDelete}
-				/>
-			</div>
+		<!-- Routes Tab -->
+		{#if activeTab === 'routes'}
+			{#if rules.length === 0}
+				<div class="empty-state">
+					<svg class="w-12 h-12 text-[var(--ctp-overlay1)] mx-auto" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+						<path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 20l-5.447-2.724A1 1 0 013 16.382V5.618a1 1 0 011.447-.894L9 7m0 13l6-3m-6 3V7m6 10l4.553 2.276A1 1 0 0021 18.382V7.618a1 1 0 00-.553-.894L15 4m0 13V4m0 0L9 7" />
+					</svg>
+					<h3 class="mt-4 text-lg font-medium text-[var(--ctp-text)]">{$t('visualBuilder.noRules')}</h3>
+					<p class="mt-2 text-[var(--ctp-subtext1)]">{$t('visualBuilder.noRulesHint')}</p>
+					<div class="mt-4 flex gap-3 justify-center">
+						<button class="btn-primary" onclick={handleCreateRule} disabled={operating}>
+							+ {$t('routes.addRule')}
+						</button>
+						<a href="/config/routes" class="btn-secondary">
+							{$t('visualBuilder.goToRules')}
+						</a>
+					</div>
+				</div>
+			{:else}
+				<div class="stats-bar">
+					<div class="stat">
+						<span class="stat-value">{rules.length}</span>
+						<span class="stat-label">{$t('visualBuilder.rules')}</span>
+					</div>
+					<div class="stat">
+						<span class="stat-value">{allOutbounds.length}</span>
+						<span class="stat-label">{$t('visualBuilder.outbounds')}</span>
+					</div>
+				</div>
 
-			{#if selectedRule !== null && selectedRuleIndex !== null}
-				<div class="builder-panel">
-					<RuleEditPanel
-						rule={selectedRule}
-						ruleIndex={selectedRuleIndex}
-						outbounds={allOutbounds}
-						{ruleSets}
-						{inbounds}
-						{operating}
-						onSave={handleRuleSave}
-						onDelete={handleRuleDelete}
-						onClose={handleClosePanel}
-					/>
+				<div class="builder-container" class:with-panel={selectedRule !== null}>
+					<div class="builder-main">
+						<VisualBuilder
+							{rules}
+							outbounds={allOutbounds}
+							{finalOutbound}
+							onRuleSelect={handleRuleSelect}
+							onRuleOutboundChange={handleRuleOutboundChange}
+							onRuleMove={handleRuleMove}
+							onRuleCreate={handleCreateRule}
+							onRuleDelete={handleRuleDelete}
+						/>
+					</div>
+
+					{#if selectedRule !== null && selectedRuleIndex !== null}
+						<div class="builder-panel">
+							<RuleEditPanel
+								rule={selectedRule}
+								ruleIndex={selectedRuleIndex}
+								outbounds={allOutbounds}
+								{ruleSets}
+								{inbounds}
+								{operating}
+								onSave={handleRuleSave}
+								onDelete={handleRuleDelete}
+								onClose={handleClosePanel}
+							/>
+						</div>
+					{/if}
 				</div>
 			{/if}
-		</div>
+		{/if}
+
+		<!-- DNS Tab -->
+		{#if activeTab === 'dns'}
+			{#if dnsRules.length === 0 && dnsServers.length === 0}
+				<div class="empty-state">
+					<svg class="w-12 h-12 text-[var(--ctp-overlay1)] mx-auto" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+						<path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M21 12a9 9 0 01-9 9m9-9a9 9 0 00-9-9m9 9H3m9 9a9 9 0 01-9-9m9 9c1.657 0 3-4.03 3-9s-1.343-9-3-9m0 18c-1.657 0-3-4.03-3-9s1.343-9 3-9m-9 9a9 9 0 019-9" />
+					</svg>
+					<h3 class="mt-4 text-lg font-medium text-[var(--ctp-text)]">{$t('dns.noRules')}</h3>
+					<p class="mt-2 text-[var(--ctp-subtext1)]">{$t('dns.noRulesHint')}</p>
+					<div class="mt-4 flex gap-3 justify-center">
+						<button class="btn-primary btn-dns" onclick={handleCreateDnsRule} disabled={operating || dnsServers.length === 0}>
+							+ {$t('dns.addRule')}
+						</button>
+						<a href="/config/dns" class="btn-secondary">
+							{$t('dns.goToConfig')}
+						</a>
+					</div>
+				</div>
+			{:else}
+				<div class="stats-bar">
+					<div class="stat">
+						<span class="stat-value">{dnsRules.length}</span>
+						<span class="stat-label">{$t('dns.rules')}</span>
+					</div>
+					<div class="stat">
+						<span class="stat-value">{dnsServers.length}</span>
+						<span class="stat-label">{$t('dns.servers')}</span>
+					</div>
+				</div>
+
+				<div class="builder-container" class:with-panel={selectedDnsRule !== null}>
+					<div class="builder-main">
+						<DnsVisualBuilder
+							rules={dnsRules}
+							servers={dnsServers}
+							finalServer={finalDnsServer}
+							onRuleSelect={handleDnsRuleSelect}
+							onRuleServerChange={handleDnsRuleServerChange}
+							onRuleMove={handleDnsRuleMove}
+							onRuleCreate={handleCreateDnsRule}
+							onRuleDelete={handleDnsRuleDelete}
+						/>
+					</div>
+
+					{#if selectedDnsRule !== null && selectedDnsRuleIndex !== null}
+						<div class="builder-panel">
+							<DnsRuleEditPanel
+								rule={selectedDnsRule}
+								ruleIndex={selectedDnsRuleIndex}
+								{dnsServers}
+								{ruleSets}
+								outbounds={allOutbounds}
+								{operating}
+								onSave={handleDnsRuleSave}
+								onDelete={handleDnsRuleDelete}
+								onClose={handleCloseDnsPanel}
+							/>
+						</div>
+					{/if}
+				</div>
+			{/if}
+		{/if}
 
 		<div class="help-text mt-4">
 			<p>{$t('visualBuilder.helpText')}</p>
@@ -296,6 +516,52 @@
 <style>
 	.page-header {
 		margin-bottom: 1.5rem;
+	}
+
+	.tabs-header {
+		display: flex;
+		gap: 0.5rem;
+		margin-bottom: 1rem;
+	}
+
+	.tab-btn {
+		display: flex;
+		align-items: center;
+		gap: 0.5rem;
+		padding: 0.625rem 1rem;
+		background: var(--ctp-surface0);
+		border: 1px solid var(--ctp-surface1);
+		border-radius: 0.5rem;
+		color: var(--ctp-subtext1);
+		font-weight: 500;
+		transition: all 0.15s ease;
+	}
+
+	.tab-btn:hover {
+		background: var(--ctp-surface1);
+		color: var(--ctp-text);
+	}
+
+	.tab-btn.active {
+		background: var(--ctp-primary);
+		border-color: var(--ctp-primary);
+		color: white;
+	}
+
+	.tab-btn.tab-dns.active {
+		background: var(--ctp-sapphire);
+		border-color: var(--ctp-sapphire);
+	}
+
+	.tab-count {
+		padding: 0.125rem 0.5rem;
+		background: rgba(255, 255, 255, 0.2);
+		border-radius: 0.25rem;
+		font-size: 0.75rem;
+	}
+
+	.tab-btn:not(.active) .tab-count {
+		background: var(--ctp-surface1);
 	}
 
 	.empty-state {
@@ -347,7 +613,8 @@
 		min-width: 0;
 	}
 
-	.builder-main :global(.visual-builder) {
+	.builder-main :global(.visual-builder),
+	.builder-main :global(.dns-visual-builder) {
 		border: none;
 		border-radius: 0;
 		height: 100%;
@@ -358,7 +625,6 @@
 		flex-shrink: 0;
 		border-left: 1px solid var(--ctp-surface0);
 	}
-
 
 	.help-text {
 		color: var(--ctp-overlay1);
@@ -389,6 +655,10 @@
 	.btn-primary:disabled {
 		opacity: 0.6;
 		cursor: not-allowed;
+	}
+
+	.btn-primary.btn-dns {
+		background: var(--ctp-sapphire);
 	}
 
 	.btn-secondary {
