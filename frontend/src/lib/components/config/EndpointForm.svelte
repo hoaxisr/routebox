@@ -57,11 +57,9 @@
 	let i4 = $state(endpoint?.i4 ?? '');
 	let i5 = $state(endpoint?.i5 ?? '');
 
-	// Peers - migrate legacy preshared_key to pre_shared_key
-	let peers = $state<AWGPeer[]>(endpoint?.peers?.map(p => ({
-		...p,
-		pre_shared_key: p.pre_shared_key ?? (p as any).preshared_key
-	})) ?? [{ address: '', port: 51820, public_key: '', allowed_ips: ['0.0.0.0/0', '::/0'] }]);
+	let peers = $state<AWGPeer[]>(endpoint?.peers ?? [
+		{ address: '', port: 51820, public_key: '', allowed_ips: ['0.0.0.0/0', '::/0'] }
+	]);
 
 	// Domain resolver (sing-box 1.12+)
 	let domainResolver = $state(endpoint?.domain_resolver ?? '');
