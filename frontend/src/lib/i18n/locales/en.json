@@ -1313,6 +1313,7 @@
     "noRules": "No routing rules",
     "noRulesHint": "Create routing rules first to visualize them here",
     "goToRules": "Go to Routes",
-    "helpText": "Click a rule to edit. Drag from rule handle to outbound to change routing, or click rule then click outbound."
+    "helpText": "Click a rule to edit. Drag from rule handle to outbound to change routing, or click rule then click outbound.",
+    "shortcuts": "Shortcuts: Esc - close panel, Delete - remove selected rule"
   }
 }

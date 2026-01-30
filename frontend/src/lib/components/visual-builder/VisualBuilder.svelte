@@ -160,10 +160,22 @@
 	:global(.visual-builder .svelte-flow__edge-path) {
 		stroke: var(--ctp-overlay1);
 		stroke-width: 2;
+		transition: stroke 0.2s ease, stroke-width 0.2s ease;
+	}
+
+	:global(.visual-builder .svelte-flow__edge:hover .svelte-flow__edge-path) {
+		stroke: var(--ctp-primary);
+		stroke-width: 3;
 	}
 
 	:global(.visual-builder .svelte-flow__edge.selected .svelte-flow__edge-path) {
 		stroke: var(--ctp-primary);
+		stroke-width: 3;
+	}
+
+	/* Animated edge marker */
+	:global(.visual-builder .svelte-flow__edge-path) {
+		marker-end: url(#arrowhead);
 	}
 
 	/* Connection line while dragging */
@@ -171,6 +183,13 @@
 		stroke: var(--ctp-primary);
 		stroke-width: 2;
 		stroke-dasharray: 5 5;
+		animation: dash 0.5s linear infinite;
+	}
+
+	@keyframes dash {
+		to {
+			stroke-dashoffset: -10;
+		}
 	}
 
 	/* Handles */

@@ -9,12 +9,13 @@
 		outbounds: Outbound[];
 		ruleSets: RuleSet[];
 		inbounds: Inbound[];
+		operating?: boolean;
 		onSave: (index: number, rule: RouteRule) => void;
 		onDelete: (index: number) => void;
 		onClose: () => void;
 	}
 
-	let { rule, ruleIndex, outbounds, ruleSets, inbounds, onSave, onDelete, onClose }: Props =
+	let { rule, ruleIndex, outbounds, ruleSets, inbounds, operating = false, onSave, onDelete, onClose }: Props =
 		$props();
 
 	// Local copy for editing
@@ -115,14 +116,20 @@
 	</div>
 
 	<div class="panel-footer">
-		<button class="btn-danger" onclick={handleDelete}>
+		<button class="btn-danger" onclick={handleDelete} disabled={operating}>
 			{$t('common.delete')}
 		</button>
 		<div class="footer-right">
-			<button class="btn-secondary" onclick={onClose}>
+			<button class="btn-secondary" onclick={onClose} disabled={operating}>
 				{$t('common.cancel')}
 			</button>
-			<button class="btn-primary" onclick={handleSave}>
+			<button class="btn-primary" onclick={handleSave} disabled={operating}>
+				{#if operating}
+					<svg class="w-4 h-4 animate-spin inline mr-1" fill="none" viewBox="0 0 24 24">
+						<circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle>
+						<path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z"></path>
+					</svg>
+				{/if}
 				{$t('common.save')}
 			</button>
 		</div>
@@ -204,8 +211,15 @@
 		transition: filter 0.15s ease;
 	}
 
-	.btn-primary:hover {
+	.btn-primary:hover:not(:disabled) {
 		filter: brightness(1.1);
+	}
+
+	.btn-primary:disabled,
+	.btn-secondary:disabled,
+	.btn-danger:disabled {
+		opacity: 0.6;
+		cursor: not-allowed;
 	}
 
 	.btn-secondary {

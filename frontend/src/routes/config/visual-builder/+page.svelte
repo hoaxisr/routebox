@@ -13,6 +13,7 @@
 	let ruleSets = $state<RuleSet[]>([]);
 	let inbounds = $state<Inbound[]>([]);
 	let loading = $state(true);
+	let operating = $state(false); // For save/delete/create operations
 
 	// Combined outbounds: outbounds + endpoints
 	let allOutbounds = $derived([
@@ -54,6 +55,7 @@
 	}
 
 	async function handleRuleSave(index: number, updatedRule: RouteRule) {
+		operating = true;
 		try {
 			await api.updateRule(index, updatedRule);
 			rules[index] = updatedRule;
@@ -62,10 +64,13 @@
 			notifications.success($t('routes.ruleUpdated'));
 		} catch (e) {
 			notifications.error(`Failed to update rule: ${e}`);
+		} finally {
+			operating = false;
 		}
 	}
 
 	async function handleRuleDelete(index: number) {
+		operating = true;
 		try {
 			await api.deleteRule(index);
 			rules.splice(index, 1);
@@ -75,10 +80,13 @@
 			notifications.success($t('routes.ruleDeleted'));
 		} catch (e) {
 			notifications.error(`Failed to delete rule: ${e}`);
+		} finally {
+			operating = false;
 		}
 	}
 
 	async function handleCreateRule() {
+		operating = true;
 		const newRule: RouteRule = {
 			action: 'route',
 			outbound: allOutbounds[0]?.tag || 'direct'
@@ -91,6 +99,8 @@
 			notifications.success($t('routes.ruleCreated'));
 		} catch (e) {
 			notifications.error(`Failed to create rule: ${e}`);
+		} finally {
+			operating = false;
 		}
 	}
 
@@ -102,6 +112,7 @@
 		const rule = rules[index];
 		if (!rule || rule.outbound === newOutbound) return;
 
+		operating = true;
 		const updatedRule: RouteRule = { ...rule, outbound: newOutbound };
 		try {
 			await api.updateRule(index, updatedRule);
@@ -111,6 +122,24 @@
 			notifications.success($t('routes.ruleUpdated'));
 		} catch (e) {
 			notifications.error(`Failed to update rule: ${e}`);
+		} finally {
+			operating = false;
+		}
+	}
+
+	function handleKeydown(event: KeyboardEvent) {
+		// Escape: close panel
+		if (event.key === 'Escape' && selectedRuleIndex !== null) {
+			selectedRuleIndex = null;
+			return;
+		}
+
+		// Delete: delete selected rule (with confirmation)
+		if ((event.key === 'Delete' || event.key === 'Backspace') && selectedRuleIndex !== null) {
+			// Only if not focused on an input
+			if (document.activeElement?.tagName !== 'INPUT' && document.activeElement?.tagName !== 'TEXTAREA') {
+				handleRuleDelete(selectedRuleIndex);
+			}
 		}
 	}
 
@@ -118,6 +147,8 @@
 		fetchData();
 	});
 </script>
+
+<svelte:window onkeydown={handleKeydown} />
 
 <svelte:head>
 	<title>{$t('visualBuilder.title')} - RouteBox</title>
@@ -130,7 +161,13 @@
 			<span class="status-badge info">{$t('visualBuilder.beta')}</span>
 		</div>
 		{#if !loading && rules.length > 0}
-			<button class="btn-primary" onclick={handleCreateRule}>
+			<button class="btn-primary" onclick={handleCreateRule} disabled={operating}>
+				{#if operating}
+					<svg class="w-4 h-4 animate-spin inline mr-1" fill="none" viewBox="0 0 24 24">
+						<circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle>
+						<path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z"></path>
+					</svg>
+				{/if}
 				+ {$t('routes.addRule')}
 			</button>
 		{/if}
@@ -153,7 +190,13 @@
 		<h3 class="mt-4 text-lg font-medium text-[var(--ctp-text)]">{$t('visualBuilder.noRules')}</h3>
 		<p class="mt-2 text-[var(--ctp-subtext1)]">{$t('visualBuilder.noRulesHint')}</p>
 		<div class="mt-4 flex gap-3 justify-center">
-			<button class="btn-primary" onclick={handleCreateRule}>
+			<button class="btn-primary" onclick={handleCreateRule} disabled={operating}>
+				{#if operating}
+					<svg class="w-4 h-4 animate-spin inline mr-1" fill="none" viewBox="0 0 24 24">
+						<circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle>
+						<path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z"></path>
+					</svg>
+				{/if}
 				+ {$t('routes.addRule')}
 			</button>
 			<a href="/config/routes" class="btn-secondary">
@@ -192,6 +235,7 @@
 						outbounds={allOutbounds}
 						{ruleSets}
 						{inbounds}
+						{operating}
 						onSave={handleRuleSave}
 						onDelete={handleRuleDelete}
 						onClose={handleClosePanel}
@@ -202,6 +246,7 @@
 
 		<div class="help-text mt-4">
 			<p>{$t('visualBuilder.helpText')}</p>
+			<p class="shortcuts-hint">{$t('visualBuilder.shortcuts')}</p>
 		</div>
 	</div>
 {/if}
@@ -279,6 +324,12 @@
 		text-align: center;
 	}
 
+	.help-text .shortcuts-hint {
+		margin-top: 0.25rem;
+		font-size: 0.75rem;
+		opacity: 0.7;
+	}
+
 	.btn-primary {
 		padding: 0.5rem 1rem;
 		background: var(--ctp-primary);
@@ -289,8 +340,13 @@
 		transition: filter 0.15s ease;
 	}
 
-	.btn-primary:hover {
+	.btn-primary:hover:not(:disabled) {
 		filter: brightness(1.1);
+	}
+
+	.btn-primary:disabled {
+		opacity: 0.6;
+		cursor: not-allowed;
 	}
 
 	.btn-secondary {
