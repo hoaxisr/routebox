@@ -2,6 +2,33 @@
 
 All notable changes to RouteBox are documented here.
 
+## [0.13.0] - 2026-01-30
+
+### New Features
+
+**Frontend:**
+- **Visual Builder Phase 2** - Complete visual routing editor
+  - Rule ordering with numbered nodes and reorder buttons (↑↓)
+  - Badges for rule_set, inbound filters, and logical rules
+  - "Default" badge on final outbound
+  - Context menu (right-click) for creating/deleting rules
+  - **DNS tab** - Visual editor for DNS rules and servers
+    - DNS rule nodes with server connections
+    - DNS server nodes with detour badges
+    - Side panel for editing DNS rules
+
+**UI Improvements:**
+- Collapsible navigation groups (Network, Routing) for cleaner sidebar
+
+### Refactoring
+
+**Frontend:**
+- Removed unnecessary `as any` type casts for better type safety
+- Typed `toSingboxConfig` and `importConfig` return values properly
+- Removed dead `preshared_key` fallback code
+
+---
+
 ## [0.12.0] - 2026-01-29
 
 ### Refactoring
