@@ -23,8 +23,8 @@
 			return inbound.address.join(', ');
 		}
 		const parts: string[] = [];
-		if ((inbound as any)?.inet4_address) parts.push((inbound as any).inet4_address);
-		if ((inbound as any)?.inet6_address) parts.push((inbound as any).inet6_address);
+		if (inbound?.inet4_address) parts.push(inbound.inet4_address);
+		if (inbound?.inet6_address) parts.push(inbound.inet6_address);
 		return parts.length > 0 ? parts.join(', ') : '172.19.0.1/30';
 	}
 	let addresses = $state(getInitialAddresses());

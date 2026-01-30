@@ -149,7 +149,7 @@
 								</div>
 								<div class="text-sm text-[var(--ctp-overlay1)] mt-1">
 									{#if inbound.type === 'tun'}
-										{(inbound as any).interface_name ?? 'sing0'}
+										{inbound.interface_name ?? 'sing0'}
 										{#if inbound.auto_route}
 											<span class="text-[var(--ctp-primary)]">• auto_route</span>
 										{/if}
