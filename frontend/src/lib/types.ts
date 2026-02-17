@@ -242,7 +242,7 @@ export interface Outbound {
 	server?: string;
 	server_port?: number;
 	// Hysteria2 specific
-	server_ports?: string;  // Port hopping range (e.g., "1000-2000,3000-4000")
+	server_ports?: string[];  // Port hopping ranges (e.g., ["2080:3000", "4000:5000"])
 	hop_interval?: string;  // Port hop interval (e.g., "30s")
 	up_mbps?: number;       // Upload limit
 	down_mbps?: number;     // Download limit
@@ -320,7 +320,7 @@ export interface OutboundHysteria2 extends Outbound {
 	password: string;
 	up_mbps?: number;
 	down_mbps?: number;
-	server_ports?: string;
+	server_ports?: string[];
 	hop_interval?: string;
 	obfs?: ObfsConfig;
 	tls?: TLSConfig;
@@ -416,7 +416,7 @@ export interface AWGPeer {
 	address: string;
 	port: number;
 	public_key: string;
-	pre_shared_key?: string;  // sing-box uses pre_shared_key (with underscores)
+	preshared_key?: string;
 	allowed_ips: string[];
 	persistent_keepalive_interval?: number;
 	reserved?: number[];      // 3-byte reserved field for WARP

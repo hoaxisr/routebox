@@ -69,7 +69,7 @@
 		<input
 			id="peer_{index}_psk"
 			type="password"
-			bind:value={peer.pre_shared_key}
+			bind:value={peer.preshared_key}
 			placeholder={$t('endpoints.placeholders.psk')}
 			class="w-full px-3 py-2 bg-[var(--ctp-mantle)] border border-[var(--ctp-surface2)] rounded-lg text-[var(--ctp-text)] placeholder-[var(--ctp-overlay0)] focus:outline-none focus:ring-2 focus:ring-[var(--ctp-primary)] font-mono text-sm"
 		/>

@@ -67,7 +67,7 @@
 					>
 						<span class="text-[var(--ctp-text)]">{tag}</span>
 						<span class="flex items-center gap-2">
-							{#if defaultOutbound === tag}
+							{#if type === 'selector' && defaultOutbound === tag}
 								<span class="status-badge">{$t('common.default').toLowerCase()}</span>
 							{/if}
 							{#if selectedOutbounds.includes(tag)}
@@ -83,21 +83,23 @@
 	</div>
 
 	{#if selectedOutbounds.length > 0}
-		<!-- Default Outbound -->
-		<div>
-			<label for="default" class="block text-sm font-medium text-[var(--ctp-subtext1)] mb-1">
-				{$t('outbounds.defaultOutbound')}
-			</label>
-			<select
-				id="default"
-				bind:value={defaultOutbound}
-				class="w-full px-3 py-2 bg-[var(--ctp-surface0)] border border-[var(--ctp-surface2)] rounded-lg text-[var(--ctp-text)] focus:outline-none focus:ring-2 focus:ring-[var(--ctp-primary)]"
-			>
-				{#each selectedOutbounds as tag}
-					<option value={tag}>{tag}</option>
-				{/each}
-			</select>
-		</div>
+		{#if type === 'selector'}
+			<!-- Default Outbound (selector only) -->
+			<div>
+				<label for="default" class="block text-sm font-medium text-[var(--ctp-subtext1)] mb-1">
+					{$t('outbounds.defaultOutbound')}
+				</label>
+				<select
+					id="default"
+					bind:value={defaultOutbound}
+					class="w-full px-3 py-2 bg-[var(--ctp-surface0)] border border-[var(--ctp-surface2)] rounded-lg text-[var(--ctp-text)] focus:outline-none focus:ring-2 focus:ring-[var(--ctp-primary)]"
+				>
+					{#each selectedOutbounds as tag}
+						<option value={tag}>{tag}</option>
+					{/each}
+				</select>
+			</div>
+		{/if}
 
 		<!-- Interrupt Existing -->
 		<label class="flex items-center gap-2 text-sm text-[var(--ctp-subtext1)]">

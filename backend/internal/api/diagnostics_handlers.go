@@ -80,7 +80,7 @@ func (h *Handler) ConnectTest(w http.ResponseWriter, r *http.Request) {
 	resp.ResolvedIP = ip
 
 	// 2. TCP Connect
-	addr := fmt.Sprintf("%s:%d", ip, req.Port)
+	addr := net.JoinHostPort(ip, fmt.Sprintf("%d", req.Port))
 	conn, err := net.DialTimeout("tcp", addr, time.Duration(req.Timeout)*time.Second)
 	resp.LatencyMs = time.Since(start).Milliseconds()
 

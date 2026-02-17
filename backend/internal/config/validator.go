@@ -326,10 +326,12 @@ func validateOutboundReferences(ob map[string]interface{}, index int, endpointTa
 				}
 			}
 		}
-		// Check default outbound
-		if def, ok := ob["default"].(string); ok && def != "" {
-			if !endpointTags[def] && !outboundTags[def] {
-				errors = append(errors, fmt.Sprintf("%s: default outbound '%s' does not exist", prefix, def))
+		// Check default outbound (selector only — urltest has no default field)
+		if obType == "selector" {
+			if def, ok := ob["default"].(string); ok && def != "" {
+				if !endpointTags[def] && !outboundTags[def] {
+					errors = append(errors, fmt.Sprintf("%s: default outbound '%s' does not exist", prefix, def))
+				}
 			}
 		}
 	case "endpoint":

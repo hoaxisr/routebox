@@ -1,6 +1,7 @@
 <script lang="ts">
 	import type { Outbound, Endpoint, DnsServer, TLSConfig, TransportConfig, MultiplexConfig, ObfsConfig } from '$lib/types';
 	import { notifications } from '$lib/stores';
+	import { parsePortRanges } from '$lib/utils/parsers';
 	import type { ParsedVless, ParsedHysteria2, ParsedShadowsocks } from '$lib/utils/parsers';
 	import {
 		validateRequired,
@@ -87,7 +88,7 @@
 		utls: { fingerprint: outbound?.tls?.utls?.fingerprint ?? '' }
 	});
 	let hy2Obfs = $state<ObfsConfig | undefined>(outbound?.obfs);
-	let hy2ServerPorts = $state(outbound?.server_ports ?? '');
+	let hy2ServerPorts = $state(outbound?.server_ports?.map(s => s.replace(':', '-')).join(', ') ?? '');
 	let hy2HopInterval = $state(outbound?.hop_interval ?? '');
 	let hy2UpMbps = $state(outbound?.up_mbps ?? 0);
 	let hy2DownMbps = $state(outbound?.down_mbps ?? 0);
@@ -271,7 +272,7 @@
 
 		if (type === 'selector' || type === 'urltest') {
 			ob.outbounds = selectedOutbounds;
-			if (defaultOutbound) ob.default = defaultOutbound;
+			if (type === 'selector' && defaultOutbound) ob.default = defaultOutbound;
 			if (interruptExistConnections) ob.interrupt_exist_connections = true;
 		}
 
@@ -327,7 +328,8 @@
 			ob.server = server.trim();
 			ob.server_port = serverPort;
 			ob.password = hy2Password.trim();
-			if (hy2ServerPorts.trim()) ob.server_ports = hy2ServerPorts.trim();
+			const parsedPorts = parsePortRanges(hy2ServerPorts);
+			if (parsedPorts.length > 0) ob.server_ports = parsedPorts;
 			if (hy2HopInterval.trim()) ob.hop_interval = hy2HopInterval.trim();
 			if (hy2UpMbps > 0) ob.up_mbps = hy2UpMbps;
 			if (hy2DownMbps > 0) ob.down_mbps = hy2DownMbps;

@@ -15,7 +15,7 @@
 			address: '',
 			port: 51820,
 			public_key: '',
-			pre_shared_key: undefined,
+			preshared_key: undefined,
 			allowed_ips: ['0.0.0.0/0', '::/0']
 		}];
 	}

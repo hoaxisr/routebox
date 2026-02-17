@@ -139,7 +139,7 @@
 				address: p['endpoint']?.split(':')[0] ?? '',
 				port: parseInt(p['endpoint']?.split(':')[1] ?? '51820') || 51820,
 				public_key: p['publickey'] ?? '',
-				pre_shared_key: p['presharedkey'] || undefined,
+				preshared_key: p['presharedkey'] || undefined,
 				allowed_ips: (p['allowedips'] ?? '0.0.0.0/0, ::/0').split(',').map(s => s.trim()),
 				persistent_keepalive_interval: parseInt(p['persistentkeepalive'] ?? '0') || undefined
 			}));
@@ -203,7 +203,7 @@
 				address: p.address.trim(),
 				port: p.port,
 				public_key: p.public_key.trim(),
-				pre_shared_key: p.pre_shared_key?.trim() || undefined,
+				preshared_key: p.preshared_key?.trim() || undefined,
 				allowed_ips: p.allowed_ips,
 				persistent_keepalive_interval: p.persistent_keepalive_interval || undefined
 			}))

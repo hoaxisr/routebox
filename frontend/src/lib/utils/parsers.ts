@@ -622,7 +622,7 @@ export function toSingboxConfig(parsed: ParsedConfig): { endpoint?: Endpoint; ou
 				allowed_ips: parsed.allowedIps,
 			};
 			// Optional peer fields - only add if defined
-			if (parsed.presharedKey) peer.pre_shared_key = parsed.presharedKey;
+			if (parsed.presharedKey) peer.preshared_key = parsed.presharedKey;
 			if (parsed.persistentKeepalive) peer.persistent_keepalive_interval = parsed.persistentKeepalive;
 
 			const endpoint: Record<string, unknown> = {
