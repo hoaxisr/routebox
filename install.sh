@@ -16,11 +16,14 @@ BLUE='\033[0;34m'
 NC='\033[0m' # No Color
 
 REPO="hoaxisr/routebox"
+AMNEZIABOX_REPO="hoaxisr/amnezia-box"
 BINARY_NAME="routebox"
+AMNEZIABOX_BINARY="amnezia-box"
 INSTALL_DIR="/usr/local/bin"
 CONFIG_DIR="/etc/routebox"
 SINGBOX_CONFIG_DIR="/etc/amnezia-box"
 SERVICE_NAME="routebox"
+AMNEZIABOX_SERVICE="amnezia-box"
 SETTINGS_FILE="routebox.toml"
 GEOIP_FILE="geoip.mmdb"
 GEOIP_URL="https://github.com/iplocate/ip-address-databases/raw/main/ip-to-country/ip-to-country.mmdb"
@@ -58,14 +61,35 @@ do_uninstall() {
         fi
     fi
 
-    # Remove binary
+    # Stop and disable amnezia-box service
+    if command -v systemctl &> /dev/null; then
+        if systemctl is-active --quiet ${AMNEZIABOX_SERVICE} 2>/dev/null; then
+            echo "Stopping ${AMNEZIABOX_SERVICE} service..."
+            systemctl stop ${AMNEZIABOX_SERVICE}
+        fi
+        if systemctl is-enabled --quiet ${AMNEZIABOX_SERVICE} 2>/dev/null; then
+            echo "Disabling ${AMNEZIABOX_SERVICE} service..."
+            systemctl disable ${AMNEZIABOX_SERVICE}
+        fi
+        if [ -f /etc/systemd/system/${AMNEZIABOX_SERVICE}.service ]; then
+            echo "Removing ${AMNEZIABOX_SERVICE} systemd service file..."
+            rm -f /etc/systemd/system/${AMNEZIABOX_SERVICE}.service
+            systemctl daemon-reload
+        fi
+    fi
+
+    # Remove binaries
     if [ -f ${INSTALL_DIR}/${BINARY_NAME} ]; then
         echo "Removing ${INSTALL_DIR}/${BINARY_NAME}..."
         rm -f ${INSTALL_DIR}/${BINARY_NAME}
     fi
+    if [ -f ${INSTALL_DIR}/${AMNEZIABOX_BINARY} ]; then
+        echo "Removing ${INSTALL_DIR}/${AMNEZIABOX_BINARY}..."
+        rm -f ${INSTALL_DIR}/${AMNEZIABOX_BINARY}
+    fi
 
     echo ""
-    echo -e "${GREEN}RouteBox uninstalled.${NC}"
+    echo -e "${GREEN}RouteBox and amnezia-box uninstalled.${NC}"
     echo ""
     echo -e "${YELLOW}Note: Config directories were kept:${NC}"
     echo "      ${CONFIG_DIR}"
@@ -134,6 +158,33 @@ fi
 echo "Installing to ${INSTALL_DIR}/${BINARY_NAME}..."
 mv /tmp/${BINARY_NAME} ${INSTALL_DIR}/${BINARY_NAME}
 chmod +x ${INSTALL_DIR}/${BINARY_NAME}
+
+# Download amnezia-box from GitHub Releases (latest)
+echo ""
+echo "Downloading amnezia-box (latest release)..."
+
+# Get download URL for the right architecture from GitHub API
+AMNEZIABOX_API="https://api.github.com/repos/${AMNEZIABOX_REPO}/releases/latest"
+if command -v curl &> /dev/null; then
+    AMNEZIABOX_URL=$(curl -fsSL "${AMNEZIABOX_API}" | grep -o "https://[^\"]*linux-${ARCH}\"" | tr -d '"' | head -1)
+elif command -v wget &> /dev/null; then
+    AMNEZIABOX_URL=$(wget -qO- "${AMNEZIABOX_API}" | grep -o "https://[^\"]*linux-${ARCH}\"" | tr -d '"' | head -1)
+fi
+
+if [ -z "${AMNEZIABOX_URL}" ]; then
+    echo -e "${YELLOW}Warning: Could not find amnezia-box release for linux-${ARCH}${NC}"
+    echo -e "${YELLOW}You can install amnezia-box manually to ${INSTALL_DIR}/${AMNEZIABOX_BINARY}${NC}"
+else
+    if command -v curl &> /dev/null; then
+        curl -fsSL -L -o /tmp/${AMNEZIABOX_BINARY} "${AMNEZIABOX_URL}"
+    elif command -v wget &> /dev/null; then
+        wget -q -O /tmp/${AMNEZIABOX_BINARY} "${AMNEZIABOX_URL}"
+    fi
+
+    echo "Installing to ${INSTALL_DIR}/${AMNEZIABOX_BINARY}..."
+    mv /tmp/${AMNEZIABOX_BINARY} ${INSTALL_DIR}/${AMNEZIABOX_BINARY}
+    chmod +x ${INSTALL_DIR}/${AMNEZIABOX_BINARY}
+fi
 
 # Create config directories
 mkdir -p ${CONFIG_DIR}
@@ -205,6 +256,29 @@ RestartSec=5
 WantedBy=multi-user.target
 EOF
 
+    # Install amnezia-box systemd service (if binary was installed)
+    if [ -f ${INSTALL_DIR}/${AMNEZIABOX_BINARY} ]; then
+        cat > /etc/systemd/system/${AMNEZIABOX_SERVICE}.service << AEOF
+[Unit]
+Description=amnezia-box Service
+Documentation=https://sing-box.sagernet.org
+After=network.target nss-lookup.target
+
+[Service]
+Type=simple
+CapabilityBoundingSet=CAP_NET_ADMIN CAP_NET_RAW CAP_NET_BIND_SERVICE CAP_SYS_PTRACE CAP_DAC_READ_SEARCH
+AmbientCapabilities=CAP_NET_ADMIN CAP_NET_RAW CAP_NET_BIND_SERVICE CAP_SYS_PTRACE CAP_DAC_READ_SEARCH
+ExecStart=${INSTALL_DIR}/${AMNEZIABOX_BINARY} run -c ${SINGBOX_CONFIG_DIR}/config.json
+ExecReload=/bin/kill -HUP \$MAINPID
+Restart=on-failure
+RestartSec=10s
+LimitNOFILE=infinity
+
+[Install]
+WantedBy=multi-user.target
+AEOF
+    fi
+
     systemctl daemon-reload
     systemctl enable ${SERVICE_NAME}
 
@@ -217,14 +291,17 @@ fi
 IP=$(hostname -I | awk '{print $1}')
 
 echo ""
-echo -e "${GREEN}╔═══════════════════════════════════════════╗"
-echo "║         Installation Complete!            ║"
-echo "╚═══════════════════════════════════════════╝${NC}"
+echo -e "${GREEN}╔═══════════════════════════════════════════╗${NC}"
+echo -e "${GREEN}║         Installation Complete!            ║${NC}"
+echo -e "${GREEN}╚═══════════════════════════════════════════╝${NC}"
 echo ""
-echo "Binary:   ${INSTALL_DIR}/${BINARY_NAME}"
-echo "Settings: ${CONFIG_DIR}/${SETTINGS_FILE}"
-echo "GeoIP:    ${CONFIG_DIR}/${GEOIP_FILE}"
-echo "Config:   ${SINGBOX_CONFIG_DIR}"
+echo "RouteBox:    ${INSTALL_DIR}/${BINARY_NAME}"
+if [ -f ${INSTALL_DIR}/${AMNEZIABOX_BINARY} ]; then
+echo "amnezia-box: ${INSTALL_DIR}/${AMNEZIABOX_BINARY}"
+fi
+echo "Settings:    ${CONFIG_DIR}/${SETTINGS_FILE}"
+echo "GeoIP:       ${CONFIG_DIR}/${GEOIP_FILE}"
+echo "Config:      ${SINGBOX_CONFIG_DIR}"
 echo ""
 echo -e "${GREEN}Next steps:${NC}"
 echo ""
@@ -233,6 +310,4 @@ echo "   sudo systemctl start routebox"
 echo ""
 echo "2. Open in browser:"
 echo -e "   ${GREEN}http://${IP}:8080${NC}"
-echo ""
-echo "3. Follow the setup wizard"
 echo ""
