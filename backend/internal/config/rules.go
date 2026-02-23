@@ -382,6 +382,7 @@ var routeSettingsKeys = []string{
 	"final", "auto_detect_interface",
 	"default_interface", "default_mark",
 	"default_domain_resolver",
+	"default_domain_strategy",
 	"default_network_strategy", "default_network_type",
 	"default_fallback_network_type", "default_fallback_delay",
 }
@@ -431,9 +432,17 @@ func (m *Manager) UpdateRouteSettings(settings map[string]interface{}) error {
 		}
 	}
 
+	// Validate default_domain_strategy if provided
+	if strategy, ok := settings["default_domain_strategy"].(string); ok && strategy != "" {
+		valid := map[string]bool{"prefer_ipv4": true, "prefer_ipv6": true, "ipv4_only": true, "ipv6_only": true}
+		if !valid[strategy] {
+			return fmt.Errorf("invalid default_domain_strategy: %s", strategy)
+		}
+	}
+
 	// Validate default_network_strategy if provided
 	if strategy, ok := settings["default_network_strategy"].(string); ok && strategy != "" {
-		valid := map[string]bool{"prefer_ipv4": true, "prefer_ipv6": true, "ipv4_only": true, "ipv6_only": true}
+		valid := map[string]bool{"default": true, "hybrid": true, "fallback": true}
 		if !valid[strategy] {
 			return fmt.Errorf("invalid default_network_strategy: %s", strategy)
 		}

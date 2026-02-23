@@ -363,9 +363,6 @@ export const api = {
 	// Health
 	health: () => request<{ status: string }>('/health'),
 
-	// Setup wizard
-	needsSetup: () => request<NeedsSetupResponse>('/needs-setup'),
-
 	// RouteBox Settings
 	getSettings: () => request<SettingsResponse>('/settings'),
 	updateSettings: (updates: Record<string, unknown>) =>

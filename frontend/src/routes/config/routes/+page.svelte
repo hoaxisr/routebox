@@ -247,10 +247,9 @@
 			}
 		} else {
 			// Create new simple rule
-			const rule: RouteRule = {
-				rule_set: [ruleSetTag],
-				outbound: newOutbound,
-			};
+			const rule: RouteRule = newOutbound === '__reject__'
+				? { rule_set: [ruleSetTag], action: 'reject' }
+				: { rule_set: [ruleSetTag], outbound: newOutbound };
 			try {
 				await api.createRule(rule);
 				rules = [...rules, rule];
@@ -461,34 +460,21 @@
 						<p class="mt-1 text-xs text-[var(--ctp-overlay0)]">{$t('routes.defaultDomainResolverHint')}</p>
 					</div>
 				{/if}
-				{#if $featureFlags['network_strategy']}
-					<div>
-						<label for="default_network_strategy" class="block text-sm text-[var(--ctp-overlay1)] mb-1">{$t('routes.defaultNetworkStrategy')}</label>
-						<select
-							id="default_network_strategy"
-							bind:value={settings.default_network_strategy}
-							onchange={handleSettingsChange}
-							class="w-full px-3 py-2 bg-[var(--ctp-base)] border border-[var(--ctp-surface2)] rounded-lg text-[var(--ctp-text)] focus:outline-none focus:ring-2 focus:ring-[var(--ctp-primary)]"
-						>
-							<option value="">{$t('common.default')}</option>
-							<option value="prefer_ipv4">{$t('dns.strategies.preferIpv4')}</option>
-							<option value="prefer_ipv6">{$t('dns.strategies.preferIpv6')}</option>
-							<option value="ipv4_only">{$t('dns.strategies.ipv4Only')}</option>
-							<option value="ipv6_only">{$t('dns.strategies.ipv6Only')}</option>
-						</select>
-					</div>
-					<div>
-						<label for="default_fallback_delay" class="block text-sm text-[var(--ctp-overlay1)] mb-1">{$t('routes.defaultFallbackDelay')}</label>
-						<input
-							id="default_fallback_delay"
-							type="text"
-							bind:value={settings.default_fallback_delay}
-							onchange={handleSettingsChange}
-							placeholder="300ms"
-							class="w-full px-3 py-2 bg-[var(--ctp-base)] border border-[var(--ctp-surface2)] rounded-lg text-[var(--ctp-text)] placeholder-[var(--ctp-overlay0)] focus:outline-none focus:ring-2 focus:ring-[var(--ctp-primary)]"
-						/>
-					</div>
-				{/if}
+				<div>
+					<label for="default_domain_strategy" class="block text-sm text-[var(--ctp-overlay1)] mb-1">{$t('routes.defaultDomainStrategy')}</label>
+					<select
+						id="default_domain_strategy"
+						bind:value={settings.default_domain_strategy}
+						onchange={handleSettingsChange}
+						class="w-full px-3 py-2 bg-[var(--ctp-base)] border border-[var(--ctp-surface2)] rounded-lg text-[var(--ctp-text)] focus:outline-none focus:ring-2 focus:ring-[var(--ctp-primary)]"
+					>
+						<option value="">{$t('common.none')}</option>
+						<option value="prefer_ipv4">{$t('dns.strategies.preferIpv4')}</option>
+						<option value="prefer_ipv6">{$t('dns.strategies.preferIpv6')}</option>
+						<option value="ipv4_only">{$t('dns.strategies.ipv4Only')}</option>
+						<option value="ipv6_only">{$t('dns.strategies.ipv6Only')}</option>
+					</select>
+				</div>
 			</div>
 		</div>
 

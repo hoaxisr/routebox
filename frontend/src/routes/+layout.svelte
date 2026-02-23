@@ -1,10 +1,8 @@
 <script lang="ts">
 	import '../app.css';
 	import { onMount, onDestroy, type Snippet } from 'svelte';
-	import { goto } from '$app/navigation';
 	import { page } from '$app/stores';
 	import { theme, notifications, loadVersion } from '$lib/stores';
-	import { api } from '$lib/api/client';
 	import UnsavedChangesBar from '$lib/components/shared/UnsavedChangesBar.svelte';
 	import { t, isLoading as i18nLoading } from 'svelte-i18n';
 	import { initI18n } from '$lib/i18n';
@@ -20,13 +18,6 @@
 
 	// Subscribe to theme for reactivity
 	let currentTheme = $derived($theme);
-
-	// Check if we're on the setup page
-	let isSetupPage = $derived($page.url.pathname === '/setup');
-
-	// Check if setup is needed (skip check if already on /setup page)
-	let setupChecked = $state(false);
-	let needsSetup = $state(false);
 
 	// Mobile sidebar state
 	let sidebarOpen = $state(false);
@@ -75,24 +66,6 @@
 
 		// Load version/feature flags in background
 		loadVersion();
-
-		// Skip check if already on setup page
-		if ($page.url.pathname === '/setup') {
-			setupChecked = true;
-			return;
-		}
-
-		try {
-			const result = await api.needsSetup();
-			needsSetup = result.needs_setup;
-			if (result.needs_setup) {
-				goto('/setup');
-			}
-		} catch (e) {
-			console.error('Failed to check setup status:', e);
-		} finally {
-			setupChecked = true;
-		}
 	});
 
 	onDestroy(() => {
@@ -110,22 +83,6 @@
 				<circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle>
 				<path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z"></path>
 			</svg>
-		</div>
-	</div>
-{:else if isSetupPage}
-	<!-- Setup page: minimal layout without sidebar/header -->
-	<div class="min-h-screen bg-[var(--ctp-base)] text-[var(--ctp-text)]">
-		{@render children()}
-	</div>
-{:else if !setupChecked}
-	<!-- Loading state while checking setup -->
-	<div class="min-h-screen bg-[var(--ctp-base)] flex items-center justify-center">
-		<div class="text-center">
-			<svg class="w-8 h-8 animate-spin text-[var(--ctp-primary)] mx-auto" fill="none" viewBox="0 0 24 24">
-				<circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle>
-				<path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z"></path>
-			</svg>
-			<p class="mt-2 text-[var(--ctp-overlay1)]">{$t('app.loading')}</p>
 		</div>
 	</div>
 {:else}

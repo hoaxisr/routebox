@@ -516,6 +516,7 @@ export interface RouteSettings {
 	default_interface?: string;
 	default_mark?: number;
 	default_domain_resolver?: string;
+	default_domain_strategy?: string;
 	default_network_strategy?: string;
 	default_network_type?: string[];
 	default_fallback_network_type?: string[];

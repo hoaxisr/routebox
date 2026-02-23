@@ -79,11 +79,10 @@
 			</label>
 			<select id="network-strategy" bind:value={networkStrategy}
 				class="w-full px-3 py-2 bg-[var(--ctp-base)] border border-[var(--ctp-surface2)] rounded-lg text-[var(--ctp-text)] focus:outline-none focus:ring-2 focus:ring-[var(--ctp-primary)]">
-				<option value="">{$t('common.default')}</option>
-				<option value="prefer_ipv4">{$t('dns.strategies.preferIpv4')}</option>
-				<option value="prefer_ipv6">{$t('dns.strategies.preferIpv6')}</option>
-				<option value="ipv4_only">{$t('dns.strategies.ipv4Only')}</option>
-				<option value="ipv6_only">{$t('dns.strategies.ipv6Only')}</option>
+				<option value="">{$t('common.none')}</option>
+				<option value="default">{$t('routes.networkStrategies.default')}</option>
+				<option value="hybrid">{$t('routes.networkStrategies.hybrid')}</option>
+				<option value="fallback">{$t('routes.networkStrategies.fallback')}</option>
 			</select>
 		</div>
 	{/if}

@@ -3,13 +3,20 @@
 	import { t } from 'svelte-i18n';
 	import { api } from '$lib/api/client';
 	import { notifications, unsavedChanges } from '$lib/stores';
-	import type { RuleSet, RuleSetUsage, Outbound } from '$lib/types';
+	import type { RuleSet, RuleSetUsage, Outbound, Endpoint } from '$lib/types';
 	import RuleSetForm from '$lib/components/config/RuleSetForm.svelte';
 
 	let ruleSets = $state<RuleSet[]>([]);
 	let usage = $state<Record<string, RuleSetUsage>>({});
 	let outbounds = $state<Outbound[]>([]);
+	let endpoints = $state<Endpoint[]>([]);
 	let loading = $state(true);
+
+	// Combined list: outbounds + endpoints (endpoints can be used as detour targets)
+	let allOutbounds = $derived([
+		...outbounds,
+		...endpoints.map(e => ({ tag: e.tag, type: e.type } as Outbound))
+	]);
 
 	// Modal state
 	let showForm = $state(false);
@@ -18,14 +25,16 @@
 
 	async function fetchData() {
 		try {
-			const [rs, us, ob] = await Promise.all([
+			const [rs, us, ob, ep] = await Promise.all([
 				api.listRuleSets(),
 				api.getRuleSetsUsage(),
-				api.listOutbounds()
+				api.listOutbounds(),
+				api.listEndpoints()
 			]);
 			ruleSets = rs;
 			usage = us;
 			outbounds = ob;
+			endpoints = ep;
 		} catch (e) {
 			notifications.error($t('errors.loadFailed') + `: ${e}`);
 		} finally {
@@ -234,7 +243,7 @@
 			<div class="p-4">
 				<RuleSetForm
 					existingTags={ruleSets.filter(rs => rs.tag !== editingRuleSet?.tag).map(rs => rs.tag)}
-					{outbounds}
+					outbounds={allOutbounds}
 					ruleSet={editingRuleSet}
 					onSave={handleSave}
 					onCancel={closeForm}

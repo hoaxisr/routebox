@@ -437,7 +437,7 @@ func validateRule(rule map[string]interface{}, index int, outboundTags, endpoint
 	// Validate route-options / route action fields
 	if action == "route-options" || action == "route" {
 		if strategy, ok := rule["network_strategy"].(string); ok && strategy != "" {
-			validStrategies := map[string]bool{"prefer_ipv4": true, "prefer_ipv6": true, "ipv4_only": true, "ipv6_only": true}
+			validStrategies := map[string]bool{"default": true, "hybrid": true, "fallback": true}
 			if !validStrategies[strategy] {
 				errors = append(errors, fmt.Sprintf("%s: invalid network_strategy '%s'", prefix, strategy))
 			}
