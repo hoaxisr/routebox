@@ -28,6 +28,58 @@ SETTINGS_FILE="routebox.toml"
 GEOIP_FILE="geoip.mmdb"
 GEOIP_URL="https://github.com/iplocate/ip-address-databases/raw/main/ip-to-country/ip-to-country.mmdb"
 
+# ============================================
+# Version helper functions
+# ============================================
+
+# Get version of installed amnezia-box or sing-box binary
+get_installed_version() {
+    local binary=""
+    if [ -f "${INSTALL_DIR}/${AMNEZIABOX_BINARY}" ]; then
+        binary="${INSTALL_DIR}/${AMNEZIABOX_BINARY}"
+    elif [ -f "${INSTALL_DIR}/sing-box" ]; then
+        binary="${INSTALL_DIR}/sing-box"
+    fi
+    if [ -n "$binary" ]; then
+        "$binary" version 2>/dev/null | head -1 | grep -oP '\d+\.\d+\.\d+\S*'
+    fi
+}
+
+# Fetch latest release JSON from GitHub (cached in AMNEZIABOX_RELEASE_JSON)
+fetch_release_json() {
+    if [ -z "${AMNEZIABOX_RELEASE_JSON:-}" ]; then
+        local api_url="https://api.github.com/repos/${AMNEZIABOX_REPO}/releases/latest"
+        if command -v curl &> /dev/null; then
+            AMNEZIABOX_RELEASE_JSON=$(curl -fsSL "$api_url" 2>/dev/null || true)
+        elif command -v wget &> /dev/null; then
+            AMNEZIABOX_RELEASE_JSON=$(wget -qO- "$api_url" 2>/dev/null || true)
+        fi
+    fi
+}
+
+# Get latest version from GitHub releases (strips v prefix)
+get_latest_version() {
+    fetch_release_json
+    local tag=""
+    tag=$(echo "$AMNEZIABOX_RELEASE_JSON" | grep -o '"tag_name":"[^"]*"' | cut -d'"' -f4)
+    echo "${tag#v}"
+}
+
+# Returns true if $1 < $2 (version comparison via sort -V)
+version_lt() {
+    [ "$1" != "$2" ] && [ "$(printf '%s\n%s' "$1" "$2" | sort -V | head -1)" = "$1" ]
+}
+
+# Find which service (amnezia-box or sing-box) is currently running
+get_running_service() {
+    for svc in "${AMNEZIABOX_SERVICE}" "sing-box"; do
+        if systemctl is-active --quiet "$svc" 2>/dev/null; then
+            echo "$svc"
+            return
+        fi
+    done
+}
+
 # Check root
 if [ "$EUID" -ne 0 ]; then
     echo -e "${RED}Error: Please run as root (sudo)${NC}"
@@ -159,31 +211,56 @@ echo "Installing to ${INSTALL_DIR}/${BINARY_NAME}..."
 mv /tmp/${BINARY_NAME} ${INSTALL_DIR}/${BINARY_NAME}
 chmod +x ${INSTALL_DIR}/${BINARY_NAME}
 
-# Download amnezia-box from GitHub Releases (latest)
+# Check amnezia-box version and install/upgrade if needed
 echo ""
-echo "Downloading amnezia-box (latest release)..."
+INSTALLED_VER=$(get_installed_version)
+LATEST_VER=$(get_latest_version)
+RUNNING_SVC=$(get_running_service)
+SKIP_AMNEZIABOX=false
 
-# Get download URL for the right architecture from GitHub API
-AMNEZIABOX_API="https://api.github.com/repos/${AMNEZIABOX_REPO}/releases/latest"
-if command -v curl &> /dev/null; then
-    AMNEZIABOX_URL=$(curl -fsSL "${AMNEZIABOX_API}" | grep -o "https://[^\"]*linux-${ARCH}\"" | tr -d '"' | head -1)
-elif command -v wget &> /dev/null; then
-    AMNEZIABOX_URL=$(wget -qO- "${AMNEZIABOX_API}" | grep -o "https://[^\"]*linux-${ARCH}\"" | tr -d '"' | head -1)
+if [ -n "$INSTALLED_VER" ] && [ -n "$LATEST_VER" ]; then
+    if version_lt "$INSTALLED_VER" "$LATEST_VER"; then
+        echo -e "Upgrading amnezia-box: ${YELLOW}${INSTALLED_VER}${NC} → ${GREEN}${LATEST_VER}${NC}"
+        if [ -n "$RUNNING_SVC" ]; then
+            echo "Stopping ${RUNNING_SVC} service..."
+            systemctl stop "$RUNNING_SVC"
+        fi
+    else
+        echo -e "${GREEN}amnezia-box is up to date (${INSTALLED_VER})${NC}"
+        SKIP_AMNEZIABOX=true
+    fi
+elif [ -z "$INSTALLED_VER" ]; then
+    echo "amnezia-box not found, installing..."
+else
+    echo "Could not determine latest version, skipping amnezia-box update"
+    SKIP_AMNEZIABOX=true
 fi
 
-if [ -z "${AMNEZIABOX_URL}" ]; then
-    echo -e "${YELLOW}Warning: Could not find amnezia-box release for linux-${ARCH}${NC}"
-    echo -e "${YELLOW}You can install amnezia-box manually to ${INSTALL_DIR}/${AMNEZIABOX_BINARY}${NC}"
-else
-    if command -v curl &> /dev/null; then
-        curl -fsSL -L -o /tmp/${AMNEZIABOX_BINARY} "${AMNEZIABOX_URL}"
-    elif command -v wget &> /dev/null; then
-        wget -q -O /tmp/${AMNEZIABOX_BINARY} "${AMNEZIABOX_URL}"
+if [ "$SKIP_AMNEZIABOX" = false ]; then
+    fetch_release_json
+    AMNEZIABOX_URL=$(echo "$AMNEZIABOX_RELEASE_JSON" | grep -o "https://[^\"]*linux-${ARCH}\"" | tr -d '"' | head -1)
+
+    if [ -z "${AMNEZIABOX_URL}" ]; then
+        echo -e "${YELLOW}Warning: Could not find amnezia-box release for linux-${ARCH}${NC}"
+        echo -e "${YELLOW}You can install amnezia-box manually to ${INSTALL_DIR}/${AMNEZIABOX_BINARY}${NC}"
+    else
+        echo "Downloading amnezia-box..."
+        if command -v curl &> /dev/null; then
+            curl -fsSL -L -o /tmp/${AMNEZIABOX_BINARY} "${AMNEZIABOX_URL}"
+        elif command -v wget &> /dev/null; then
+            wget -q -O /tmp/${AMNEZIABOX_BINARY} "${AMNEZIABOX_URL}"
+        fi
+
+        echo "Installing to ${INSTALL_DIR}/${AMNEZIABOX_BINARY}..."
+        mv /tmp/${AMNEZIABOX_BINARY} ${INSTALL_DIR}/${AMNEZIABOX_BINARY}
+        chmod +x ${INSTALL_DIR}/${AMNEZIABOX_BINARY}
     fi
 
-    echo "Installing to ${INSTALL_DIR}/${AMNEZIABOX_BINARY}..."
-    mv /tmp/${AMNEZIABOX_BINARY} ${INSTALL_DIR}/${AMNEZIABOX_BINARY}
-    chmod +x ${INSTALL_DIR}/${AMNEZIABOX_BINARY}
+    # Restart service if it was running before upgrade
+    if [ -n "$RUNNING_SVC" ]; then
+        echo "Starting ${AMNEZIABOX_SERVICE} service..."
+        systemctl start "${AMNEZIABOX_SERVICE}"
+    fi
 fi
 
 # Create config directories
@@ -266,6 +343,7 @@ After=network.target nss-lookup.target
 
 [Service]
 Type=simple
+WorkingDirectory=${SINGBOX_CONFIG_DIR}
 CapabilityBoundingSet=CAP_NET_ADMIN CAP_NET_RAW CAP_NET_BIND_SERVICE CAP_SYS_PTRACE CAP_DAC_READ_SEARCH
 AmbientCapabilities=CAP_NET_ADMIN CAP_NET_RAW CAP_NET_BIND_SERVICE CAP_SYS_PTRACE CAP_DAC_READ_SEARCH
 ExecStart=${INSTALL_DIR}/${AMNEZIABOX_BINARY} run -c ${SINGBOX_CONFIG_DIR}/config.json
