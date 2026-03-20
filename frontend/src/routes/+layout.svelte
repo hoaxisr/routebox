@@ -2,7 +2,8 @@
 	import '../app.css';
 	import { onMount, onDestroy, type Snippet } from 'svelte';
 	import { page } from '$app/stores';
-	import { theme, notifications, loadVersion } from '$lib/stores';
+	import { theme, notifications, loadVersion, speedUnit } from '$lib/stores';
+	import { api } from '$lib/api/client';
 	import UnsavedChangesBar from '$lib/components/shared/UnsavedChangesBar.svelte';
 	import { t, isLoading as i18nLoading } from 'svelte-i18n';
 	import { initI18n } from '$lib/i18n';
@@ -66,6 +67,11 @@
 
 		// Load version/feature flags in background
 		loadVersion();
+
+		// Load speed unit preference
+		api.getSettings().then(res => {
+			speedUnit.set(res.settings.ui.speed_unit);
+		}).catch(() => {});
 	});
 
 	onDestroy(() => {
@@ -244,16 +250,6 @@
 						</div>
 					{/if}
 				</div>
-
-				<!-- Visual Builder (desktop only) -->
-				{#if !isMobile}
-				<a href="/config/visual-builder" onclick={handleNavClick} class="flex items-center gap-3 px-3 py-2 rounded-lg hover:bg-[var(--ctp-surface0)] text-[var(--ctp-subtext1)] hover:text-[var(--ctp-text)] transition-colors">
-					<svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-						<path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 5a1 1 0 011-1h4a1 1 0 011 1v4a1 1 0 01-1 1H5a1 1 0 01-1-1V5zM14 5a1 1 0 011-1h4a1 1 0 011 1v4a1 1 0 01-1 1h-4a1 1 0 01-1-1V5zM4 15a1 1 0 011-1h4a1 1 0 011 1v4a1 1 0 01-1 1H5a1 1 0 01-1-1v-4zM14 15a1 1 0 011-1h4a1 1 0 011 1v4a1 1 0 01-1 1h-4a1 1 0 01-1-1v-4z" />
-					</svg>
-					{$t('nav.visualBuilder')}
-				</a>
-				{/if}
 
 				<!-- Experimental -->
 				<a href="/config/settings" onclick={handleNavClick} class="flex items-center gap-3 px-3 py-2 rounded-lg hover:bg-[var(--ctp-surface0)] text-[var(--ctp-subtext1)] hover:text-[var(--ctp-text)] transition-colors">

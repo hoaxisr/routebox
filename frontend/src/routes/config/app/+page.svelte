@@ -1,7 +1,7 @@
 <script lang="ts">
 	import { onMount } from 'svelte';
 	import { api } from '$lib/api/client';
-	import { notifications } from '$lib/stores';
+	import { notifications, speedUnit } from '$lib/stores';
 	import type { RouteBoxSettings, SettingsResponse } from '$lib/types';
 	import { t } from 'svelte-i18n';
 	import { setLocale } from '$lib/i18n';
@@ -67,6 +67,8 @@
 			originalSettings = JSON.stringify(settings);
 			// Update i18n locale if language changed
 			setLocale(settings.ui.language);
+			// Sync speed unit store
+			speedUnit.set(settings.ui.speed_unit);
 			notifications.success($t('common.success'));
 		} catch (err) {
 			notifications.error(`Failed to save settings: ${err}`);

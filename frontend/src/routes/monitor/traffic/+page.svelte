@@ -2,14 +2,48 @@
 	import { onMount, onDestroy } from 'svelte';
 	import { t } from 'svelte-i18n';
 	import { api, createTrafficStream } from '$lib/api/client';
+	import { formatBytes, formatSpeed } from '$lib/stores';
 	import type { ClashConnection } from '$lib/types';
+
+	// Color palette for outbounds (8 distinct colors)
+	const OUTBOUND_COLORS = [
+		'#da7756', // coral
+		'#3d9970', // green
+		'#6c8ebf', // steel blue
+		'#d4a843', // amber
+		'#9b6dbf', // purple
+		'#4db8a4', // teal
+		'#d46a84', // rose
+		'#7a9f5c', // olive
+	];
+
+	// Stable color assignment by outbound name
+	let outboundColorMap = $state<Map<string, string>>(new Map());
+
+	function assignColors(outbounds: OutboundTraffic[]) {
+		const map = new Map<string, string>();
+		outbounds.forEach((ob, i) => {
+			map.set(ob.name, OUTBOUND_COLORS[i % OUTBOUND_COLORS.length]);
+		});
+		outboundColorMap = map;
+	}
+
+	function colorForOutbound(name: string): string {
+		return outboundColorMap.get(name) || OUTBOUND_COLORS[0];
+	}
 
 	// Svelte 5 reactive state
 	let trafficUp = $state(0);
 	let trafficDown = $state(0);
 	let totalUp = $state(0);
 	let totalDown = $state(0);
-	let history = $state<{ up: number; down: number; time: number }[]>([]);
+
+	interface OutboundRatio {
+		name: string;
+		ratio: number;
+	}
+
+	let history = $state<{ up: number; down: number; time: number; outboundRatios: OutboundRatio[] }[]>([]);
 	let stream: { close: () => void } | null = null;
 	let connected = $state(false);
 
@@ -21,27 +55,16 @@
 		connections: number;
 	}
 	let trafficByOutbound = $state<OutboundTraffic[]>([]);
+	let currentRatios = $state<OutboundRatio[]>([]);
 	let refreshTimer: ReturnType<typeof setInterval> | null = null;
 
 	const MAX_HISTORY = 60; // 60 data points
 
-	// Derived state for max traffic
+	// Derived state for max traffic (total up+down per point)
 	let maxTraffic = $derived(Math.max(
-		...history.map((h) => Math.max(h.up, h.down)),
+		...history.map((h) => h.up + h.down),
 		1024 // minimum 1KB for scale
 	));
-
-	function formatBytes(bytes: number): string {
-		if (bytes === 0) return '0 B';
-		const k = 1024;
-		const sizes = ['B', 'KB', 'MB', 'GB', 'TB'];
-		const i = Math.floor(Math.log(bytes) / Math.log(k));
-		return `${(bytes / Math.pow(k, i)).toFixed(1)} ${sizes[i]}`;
-	}
-
-	function formatSpeed(bytesPerSec: number): string {
-		return `${formatBytes(bytesPerSec)}/s`;
-	}
 
 	let wsError = $state('');
 
@@ -57,7 +80,7 @@
 
 				history = [
 					...history.slice(-(MAX_HISTORY - 1)),
-					{ up: data.up, down: data.down, time: Date.now() }
+					{ up: data.up, down: data.down, time: Date.now(), outboundRatios: currentRatios }
 				];
 			},
 			(error) => {
@@ -108,6 +131,20 @@
 			// Sort by total traffic (download + upload) descending
 			trafficByOutbound = Array.from(byOutbound.values())
 				.sort((a, b) => (b.upload + b.download) - (a.upload + a.download));
+
+			// Assign stable colors based on traffic rank
+			assignColors(trafficByOutbound);
+
+			// Compute download ratios for chart segments
+			const totalDownload = trafficByOutbound.reduce((sum, ob) => sum + ob.download, 0);
+			if (totalDownload > 0) {
+				currentRatios = trafficByOutbound.map((ob) => ({
+					name: ob.name,
+					ratio: ob.download / totalDownload
+				}));
+			} else {
+				currentRatios = [];
+			}
 		} catch (err) {
 			console.error('Failed to fetch outbound traffic:', err);
 		}
@@ -186,17 +223,20 @@
 
 		<div class="h-40 flex items-end gap-px">
 			{#each history as point}
-				<div class="flex-1 h-full flex flex-col justify-end gap-px">
-					<!-- Upload bar (primary color) -->
-					<div
-						class="w-full bg-[var(--ctp-primary)] rounded-sm min-h-[1px]"
-						style="height: {Math.max((point.up / maxTraffic) * 50, 0.5)}%"
-					></div>
-					<!-- Download bar (green) -->
-					<div
-						class="w-full bg-[var(--ctp-green)] rounded-sm min-h-[1px]"
-						style="height: {Math.max((point.down / maxTraffic) * 50, 0.5)}%"
-					></div>
+				{@const barHeight = Math.max(((point.up + point.down) / maxTraffic) * 100, 0.5)}
+				<div class="flex-1 h-full flex flex-col justify-end">
+					<div style="height: {barHeight}%" class="flex flex-col-reverse rounded-sm overflow-hidden">
+						{#if point.outboundRatios.length > 0}
+							{#each point.outboundRatios as segment}
+								<div
+									style="height: {segment.ratio * 100}%; background: {colorForOutbound(segment.name)}"
+									class="min-h-[1px]"
+								></div>
+							{/each}
+						{:else}
+							<div class="h-full bg-[var(--ctp-primary)]"></div>
+						{/if}
+					</div>
 				</div>
 			{/each}
 
@@ -211,6 +251,18 @@
 			<span>{$t('traffic.secondsAgo', { values: { count: 60 } })}</span>
 			<span>{$t('traffic.now')}</span>
 		</div>
+
+		<!-- Legend -->
+		{#if outboundColorMap.size > 0}
+			<div class="flex flex-wrap gap-x-4 gap-y-1 mt-3">
+				{#each [...outboundColorMap.entries()] as [name, color]}
+					<div class="flex items-center gap-1.5 text-xs text-[var(--ctp-subtext1)]">
+						<span class="w-2.5 h-2.5 rounded-full inline-block" style="background: {color}"></span>
+						{name}
+					</div>
+				{/each}
+			</div>
+		{/if}
 	</div>
 
 	<!-- Traffic by Outbound -->
@@ -242,16 +294,10 @@
 							</div>
 						</div>
 						<div class="h-2 bg-[var(--ctp-surface2)] rounded-full overflow-hidden">
-							<div class="h-full flex">
-								<div
-									class="bg-[var(--ctp-primary)] transition-all duration-300"
-									style="width: {maxTotal > 0 ? (outbound.upload / maxTotal) * 100 : 0}%"
-								></div>
-								<div
-									class="bg-[var(--ctp-overlay0)] transition-all duration-300"
-									style="width: {maxTotal > 0 ? (outbound.download / maxTotal) * 100 : 0}%"
-								></div>
-							</div>
+							<div
+								class="h-full transition-all duration-300"
+								style="width: {percentage}%; background: {colorForOutbound(outbound.name)}"
+							></div>
 						</div>
 					</div>
 				{/each}

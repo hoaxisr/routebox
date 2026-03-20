@@ -1,5 +1,5 @@
 <script lang="ts">
-	import type { RouteRule, RuleSet, Outbound, Inbound, DnsServer, TlsFragment, TlsRecordFragment, RuleConditions } from '$lib/types';
+	import type { RouteRule, RuleSet, Outbound, Inbound, DnsServer, RuleConditions } from '$lib/types';
 	import { notifications } from '$lib/stores';
 	import { api } from '$lib/api/client';
 	import { t } from 'svelte-i18n';
@@ -118,12 +118,12 @@
 	// Route options
 	let overrideAddress = $state(rule?.override_address ?? '');
 	let overridePort = $state<number | undefined>(rule?.override_port);
-	let networkStrategy = $state(rule?.network_strategy ?? '');
 	let udpConnect = $state(rule?.udp_connect ?? false);
 	let udpTimeout = $state(rule?.udp_timeout ?? '');
 	let udpDisableDomainUnmapping = $state(rule?.udp_disable_domain_unmapping ?? false);
-	let tlsFragment = $state<TlsFragment>(rule?.tls_fragment ?? {});
-	let tlsRecordFragment = $state<TlsRecordFragment>(rule?.tls_record_fragment ?? {});
+	let tlsFragment = $state(rule?.tls_fragment ?? false);
+	let tlsFragmentFallbackDelay = $state(rule?.tls_fragment_fallback_delay ?? '');
+	let tlsRecordFragment = $state(rule?.tls_record_fragment ?? false);
 
 	let errors = $state<Record<string, string>>({});
 
@@ -212,12 +212,14 @@
 		if (action === 'route' || action === 'route-options') {
 			if (overrideAddress.trim()) newRule.override_address = overrideAddress.trim();
 			if (overridePort && overridePort > 0) newRule.override_port = overridePort;
-			if (networkStrategy) newRule.network_strategy = networkStrategy;
 			if (udpConnect) newRule.udp_connect = true;
 			if (udpTimeout.trim()) newRule.udp_timeout = udpTimeout.trim();
 			if (udpDisableDomainUnmapping) newRule.udp_disable_domain_unmapping = true;
-			if (tlsFragment?.enabled) newRule.tls_fragment = tlsFragment;
-			if (tlsRecordFragment?.enabled) newRule.tls_record_fragment = tlsRecordFragment;
+			if (tlsFragment) newRule.tls_fragment = true;
+			if (tlsFragment && tlsFragmentFallbackDelay.trim()) {
+				newRule.tls_fragment_fallback_delay = tlsFragmentFallbackDelay.trim();
+			}
+			if (tlsRecordFragment) newRule.tls_record_fragment = true;
 		}
 
 		// Conditions
@@ -273,11 +275,11 @@
 		<RouteOptions
 			bind:overrideAddress
 			bind:overridePort
-			bind:networkStrategy
 			bind:udpConnect
 			bind:udpTimeout
 			bind:udpDisableDomainUnmapping
 			bind:tlsFragment
+			bind:tlsFragmentFallbackDelay
 			bind:tlsRecordFragment
 			showDescription
 		/>
@@ -298,11 +300,11 @@
 		<RouteOptions
 			bind:overrideAddress
 			bind:overridePort
-			bind:networkStrategy
 			bind:udpConnect
 			bind:udpTimeout
 			bind:udpDisableDomainUnmapping
 			bind:tlsFragment
+			bind:tlsFragmentFallbackDelay
 			bind:tlsRecordFragment
 			collapsible
 		/>

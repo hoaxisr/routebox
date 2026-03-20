@@ -1,18 +1,17 @@
 <script lang="ts">
 	import { t } from 'svelte-i18n';
 	import { featureFlags } from '$lib/stores';
-	import type { TlsFragment, TlsRecordFragment } from '$lib/types';
 	import TlsFragmentForm from '../../TlsFragmentForm.svelte';
 
 	interface Props {
 		overrideAddress: string;
 		overridePort: number | undefined;
-		networkStrategy: string;
 		udpConnect: boolean;
 		udpTimeout: string;
 		udpDisableDomainUnmapping: boolean;
-		tlsFragment: TlsFragment;
-		tlsRecordFragment: TlsRecordFragment;
+		tlsFragment: boolean;
+		tlsFragmentFallbackDelay: string;
+		tlsRecordFragment: boolean;
 		showDescription?: boolean;
 		collapsible?: boolean;
 	}
@@ -20,11 +19,11 @@
 	let {
 		overrideAddress = $bindable(),
 		overridePort = $bindable(),
-		networkStrategy = $bindable(),
 		udpConnect = $bindable(),
 		udpTimeout = $bindable(),
 		udpDisableDomainUnmapping = $bindable(),
 		tlsFragment = $bindable(),
+		tlsFragmentFallbackDelay = $bindable(),
 		tlsRecordFragment = $bindable(),
 		showDescription = false,
 		collapsible = false
@@ -72,21 +71,6 @@
 		</div>
 	</div>
 
-	{#if $featureFlags['network_strategy']}
-		<div>
-			<label for="network-strategy" class="block text-sm font-medium text-[var(--ctp-subtext1)] mb-1">
-				{$t('routes.defaultNetworkStrategy')}
-			</label>
-			<select id="network-strategy" bind:value={networkStrategy}
-				class="w-full px-3 py-2 bg-[var(--ctp-base)] border border-[var(--ctp-surface2)] rounded-lg text-[var(--ctp-text)] focus:outline-none focus:ring-2 focus:ring-[var(--ctp-primary)]">
-				<option value="">{$t('common.none')}</option>
-				<option value="default">{$t('routes.networkStrategies.default')}</option>
-				<option value="hybrid">{$t('routes.networkStrategies.hybrid')}</option>
-				<option value="fallback">{$t('routes.networkStrategies.fallback')}</option>
-			</select>
-		</div>
-	{/if}
-
 	<details class="group">
 		<summary class="cursor-pointer text-sm text-[var(--ctp-overlay1)] hover:text-[var(--ctp-text)]">
 			{$t('routes.udpOptions')}
@@ -113,6 +97,6 @@
 	</details>
 
 	{#if $featureFlags['tls_fragment']}
-		<TlsFragmentForm bind:tlsFragment bind:tlsRecordFragment />
+		<TlsFragmentForm bind:tlsFragment bind:tlsFragmentFallbackDelay bind:tlsRecordFragment />
 	{/if}
 {/snippet}

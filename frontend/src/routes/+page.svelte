@@ -2,7 +2,7 @@
 	import { onMount, onDestroy } from 'svelte';
 	import { t } from 'svelte-i18n';
 	import { api, createTrafficStream, createConnectionsStream } from '$lib/api/client';
-	import { notifications } from '$lib/stores';
+	import { notifications, formatBytes, formatSpeed } from '$lib/stores';
 	import { singboxVersion, loadVersion } from '$lib/stores/version';
 	import PendingChanges from '$lib/components/shared/PendingChanges.svelte';
 	import type { ProcessStatus, DetectedConfig, ClashConnection } from '$lib/types';
@@ -154,14 +154,6 @@
 			connectionCount = 0;
 			topConnections = [];
 		}
-	}
-
-	function formatBytes(bytes: number): string {
-		if (bytes === 0) return '0 B';
-		const k = 1024;
-		const sizes = ['B', 'KB', 'MB', 'GB'];
-		const i = Math.floor(Math.log(bytes) / Math.log(k));
-		return `${(bytes / Math.pow(k, i)).toFixed(1)} ${sizes[i]}`;
 	}
 
 	onMount(() => {
@@ -358,61 +350,59 @@
 				</button>
 			</div>
 
-			<div class="grid grid-cols-2 md:grid-cols-4 gap-4 mb-6">
-				<div class="bg-[var(--ctp-surface1)] rounded-lg p-4">
-					<div class="text-sm text-[var(--ctp-overlay1)]">PID</div>
-					<div class="text-xl font-mono text-[var(--ctp-text)]">{status.pid || '-'}</div>
+			<div class="grid grid-cols-2 gap-3 sm:gap-4 mb-6">
+				<div class="bg-[var(--ctp-surface1)] rounded-lg p-3 sm:p-4">
+					<div class="text-xs sm:text-sm text-[var(--ctp-overlay1)]">PID</div>
+					<div class="text-lg sm:text-xl font-mono text-[var(--ctp-text)]">{status.pid || '-'}</div>
 				</div>
-				<div class="bg-[var(--ctp-surface1)] rounded-lg p-4">
-					<div class="text-sm text-[var(--ctp-overlay1)]">Uptime</div>
-					<div class="text-xl font-mono text-[var(--ctp-text)]">{status.uptime || '-'}</div>
+				<div class="bg-[var(--ctp-surface1)] rounded-lg p-3 sm:p-4">
+					<div class="text-xs sm:text-sm text-[var(--ctp-overlay1)]">Uptime</div>
+					<div class="text-lg sm:text-xl font-mono text-[var(--ctp-text)]">{status.uptime || '-'}</div>
 				</div>
-				<div class="bg-[var(--ctp-surface1)] rounded-lg p-4" title={$singboxVersion ? `sing-box ${$singboxVersion.version}` : ''}>
-					<div class="text-sm text-[var(--ctp-overlay1)]">Managed by</div>
-					<div class="text-lg font-mono text-[var(--ctp-text)]">
+				<div class="bg-[var(--ctp-surface1)] rounded-lg p-3 sm:p-4" title={$singboxVersion ? `sing-box ${$singboxVersion.version}` : ''}>
+					<div class="text-xs sm:text-sm text-[var(--ctp-overlay1)]">Managed by</div>
+					<div class="text-sm sm:text-lg font-mono text-[var(--ctp-text)]">
 						{#if status.managed_by === 'systemd'}
 							<span class="text-[var(--ctp-primary)]">systemd</span>
 							{#if status.service_name}
-								<span class="text-sm text-[var(--ctp-overlay0)]">({status.service_name})</span>
+								<div class="text-xs text-[var(--ctp-overlay0)] truncate">({status.service_name})</div>
 							{/if}
 						{:else}
 							standalone
 						{/if}
 					</div>
 					{#if $singboxVersion}
-						<div class="text-xs text-[var(--ctp-overlay0)] mt-1">sing-box {$singboxVersion.version}</div>
+						<div class="text-xs text-[var(--ctp-overlay0)] mt-1 truncate">sing-box {$singboxVersion.version}</div>
 					{/if}
 				</div>
-				<div class="bg-[var(--ctp-surface1)] rounded-lg p-4">
-					<div class="text-sm text-[var(--ctp-overlay1)]">Connections</div>
-					<div class="text-xl font-mono text-[var(--ctp-text)]">{connectionCount}</div>
+				<div class="bg-[var(--ctp-surface1)] rounded-lg p-3 sm:p-4">
+					<div class="text-xs sm:text-sm text-[var(--ctp-overlay1)]">Connections</div>
+					<div class="text-lg sm:text-xl font-mono text-[var(--ctp-text)]">{connectionCount}</div>
 				</div>
 			</div>
 
 			<!-- Config path -->
 			{#if status.config_path}
-				<div class="mb-4 p-3 bg-[var(--ctp-surface1)] rounded-lg">
-					<div class="text-sm text-[var(--ctp-overlay1)]">Config file</div>
-					<div class="text-sm font-mono text-[var(--ctp-text)] truncate">{status.config_path}</div>
+				<div class="mb-4 p-3 bg-[var(--ctp-surface1)] rounded-lg overflow-hidden">
+					<div class="text-xs sm:text-sm text-[var(--ctp-overlay1)]">Config file</div>
+					<div class="text-xs sm:text-sm font-mono text-[var(--ctp-text)] truncate">{status.config_path}</div>
 				</div>
 			{/if}
 
 			<!-- Traffic stats -->
-			<div class="grid grid-cols-2 gap-4 mb-6">
-				<div class="bg-[var(--ctp-surface1)] rounded-lg p-4">
-					<div class="text-sm text-[var(--ctp-overlay1)]">Traffic Rate</div>
-					<div class="text-lg font-mono text-[var(--ctp-text)]">
-						<span class="text-[var(--ctp-overlay0)]">↑</span> {formatBytes(trafficUp)}/s
-						<span class="text-[var(--ctp-overlay0)] mx-2">|</span>
-						<span class="text-[var(--ctp-overlay0)]">↓</span> {formatBytes(trafficDown)}/s
+			<div class="grid grid-cols-2 gap-3 sm:gap-4 mb-6">
+				<div class="bg-[var(--ctp-surface1)] rounded-lg p-3 sm:p-4">
+					<div class="text-xs sm:text-sm text-[var(--ctp-overlay1)]">Traffic Rate</div>
+					<div class="font-mono text-[var(--ctp-text)] text-sm sm:text-lg">
+						<div><span class="text-[var(--ctp-overlay0)]">↑</span> {formatSpeed(trafficUp)}</div>
+						<div><span class="text-[var(--ctp-overlay0)]">↓</span> {formatSpeed(trafficDown)}</div>
 					</div>
 				</div>
-				<div class="bg-[var(--ctp-surface1)] rounded-lg p-4">
-					<div class="text-sm text-[var(--ctp-overlay1)]">Total Transfer</div>
-					<div class="text-lg font-mono text-[var(--ctp-text)]">
-						<span class="text-[var(--ctp-overlay0)]">↑</span> {formatBytes(uploadTotal)}
-						<span class="text-[var(--ctp-overlay0)] mx-2">|</span>
-						<span class="text-[var(--ctp-overlay0)]">↓</span> {formatBytes(downloadTotal)}
+				<div class="bg-[var(--ctp-surface1)] rounded-lg p-3 sm:p-4">
+					<div class="text-xs sm:text-sm text-[var(--ctp-overlay1)]">Total Transfer</div>
+					<div class="font-mono text-[var(--ctp-text)] text-sm sm:text-lg">
+						<div><span class="text-[var(--ctp-overlay0)]">↑</span> {formatBytes(uploadTotal)}</div>
+						<div><span class="text-[var(--ctp-overlay0)]">↓</span> {formatBytes(downloadTotal)}</div>
 					</div>
 				</div>
 			</div>
@@ -426,12 +416,16 @@
 					</div>
 					<div class="bg-[var(--ctp-surface1)] rounded-lg divide-y divide-[var(--ctp-surface2)]">
 						{#each topConnections as conn}
-							<div class="px-4 py-2 flex items-center justify-between">
-								<div class="truncate max-w-[200px] text-[var(--ctp-text)]">
+							<div class="px-3 sm:px-4 py-2 flex items-center gap-2 sm:gap-4">
+								<div class="flex-1 min-w-0 truncate text-sm text-[var(--ctp-text)]">
 									{conn.metadata.host || conn.metadata.destinationIP}
 								</div>
-								<div class="flex items-center gap-4 text-sm font-mono text-[var(--ctp-subtext1)]">
-									<span>{formatBytes(conn.upload)}</span>
+								<div class="hidden sm:flex items-center justify-center gap-1 flex-shrink-0">
+									{#each conn.chains as chain}
+										<span class="selection-chip">{chain}</span>
+									{/each}
+								</div>
+								<div class="flex items-center gap-2 sm:gap-4 text-xs sm:text-sm font-mono text-[var(--ctp-subtext1)] tabular-nums flex-shrink-0">
 									<span>{formatBytes(conn.download)}</span>
 								</div>
 							</div>
@@ -453,60 +447,60 @@
 	</div>
 
 	<!-- Quick Links -->
-	<div class="grid grid-cols-3 gap-4">
+	<div class="grid grid-cols-3 gap-2 sm:gap-4">
 		<a
 			href="/config/endpoints"
-			class="bg-[var(--ctp-surface0)] rounded-xl p-4 hover:bg-[var(--ctp-surface1)] transition-colors group"
+			class="bg-[var(--ctp-surface0)] rounded-xl p-3 sm:p-4 hover:bg-[var(--ctp-surface1)] transition-colors group"
 		>
-			<div class="flex items-center gap-3">
-				<div class="p-2.5 bg-[var(--ctp-surface2)] rounded-lg flex-shrink-0">
+			<div class="flex flex-col items-center gap-1.5 sm:flex-row sm:items-center sm:gap-3">
+				<div class="p-2 sm:p-2.5 bg-[var(--ctp-surface2)] rounded-lg flex-shrink-0">
 					<svg class="w-5 h-5 text-[var(--ctp-subtext1)]" fill="none" stroke="currentColor" viewBox="0 0 24 24">
 						<path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 12h14M5 12a2 2 0 01-2-2V6a2 2 0 012-2h14a2 2 0 012 2v4a2 2 0 01-2 2M5 12a2 2 0 00-2 2v4a2 2 0 002 2h14a2 2 0 002-2v-4a2 2 0 00-2-2m-2-4h.01M17 16h.01" />
 					</svg>
 				</div>
-				<div class="min-w-0">
-					<h3 class="font-semibold text-[var(--ctp-text)] group-hover:text-[var(--ctp-primary)] transition-colors">
+				<div class="min-w-0 text-center sm:text-left">
+					<h3 class="text-sm sm:text-base font-semibold text-[var(--ctp-text)] group-hover:text-[var(--ctp-primary)] transition-colors">
 						Endpoints
 					</h3>
-					<p class="text-xs text-[var(--ctp-overlay1)] truncate">AWG, WireGuard</p>
+					<p class="text-xs text-[var(--ctp-overlay1)] truncate hidden sm:block">AWG, WireGuard</p>
 				</div>
 			</div>
 		</a>
 
 		<a
 			href="/config/outbounds"
-			class="bg-[var(--ctp-surface0)] rounded-xl p-4 hover:bg-[var(--ctp-surface1)] transition-colors group"
+			class="bg-[var(--ctp-surface0)] rounded-xl p-3 sm:p-4 hover:bg-[var(--ctp-surface1)] transition-colors group"
 		>
-			<div class="flex items-center gap-3">
-				<div class="p-2.5 bg-[var(--ctp-surface2)] rounded-lg flex-shrink-0">
+			<div class="flex flex-col items-center gap-1.5 sm:flex-row sm:items-center sm:gap-3">
+				<div class="p-2 sm:p-2.5 bg-[var(--ctp-surface2)] rounded-lg flex-shrink-0">
 					<svg class="w-5 h-5 text-[var(--ctp-subtext1)]" fill="none" stroke="currentColor" viewBox="0 0 24 24">
 						<path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M8 7h12m0 0l-4-4m4 4l-4 4m0 6H4m0 0l4 4m-4-4l4-4" />
 					</svg>
 				</div>
-				<div class="min-w-0">
-					<h3 class="font-semibold text-[var(--ctp-text)] group-hover:text-[var(--ctp-primary)] transition-colors">
+				<div class="min-w-0 text-center sm:text-left">
+					<h3 class="text-sm sm:text-base font-semibold text-[var(--ctp-text)] group-hover:text-[var(--ctp-primary)] transition-colors">
 						Outbounds
 					</h3>
-					<p class="text-xs text-[var(--ctp-overlay1)] truncate">VLESS, Hysteria2</p>
+					<p class="text-xs text-[var(--ctp-overlay1)] truncate hidden sm:block">VLESS, Hysteria2</p>
 				</div>
 			</div>
 		</a>
 
 		<a
 			href="/config/routes"
-			class="bg-[var(--ctp-surface0)] rounded-xl p-4 hover:bg-[var(--ctp-surface1)] transition-colors group"
+			class="bg-[var(--ctp-surface0)] rounded-xl p-3 sm:p-4 hover:bg-[var(--ctp-surface1)] transition-colors group"
 		>
-			<div class="flex items-center gap-3">
-				<div class="p-2.5 bg-[var(--ctp-surface2)] rounded-lg flex-shrink-0">
+			<div class="flex flex-col items-center gap-1.5 sm:flex-row sm:items-center sm:gap-3">
+				<div class="p-2 sm:p-2.5 bg-[var(--ctp-surface2)] rounded-lg flex-shrink-0">
 					<svg class="w-5 h-5 text-[var(--ctp-subtext1)]" fill="none" stroke="currentColor" viewBox="0 0 24 24">
 						<path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 20l-5.447-2.724A1 1 0 013 16.382V5.618a1 1 0 011.447-.894L9 7m0 13l6-3m-6 3V7m6 10l4.553 2.276A1 1 0 0021 18.382V7.618a1 1 0 00-.553-.894L15 4m0 13V4m0 0L9 7" />
 					</svg>
 				</div>
-				<div class="min-w-0">
-					<h3 class="font-semibold text-[var(--ctp-text)] group-hover:text-[var(--ctp-primary)] transition-colors">
+				<div class="min-w-0 text-center sm:text-left">
+					<h3 class="text-sm sm:text-base font-semibold text-[var(--ctp-text)] group-hover:text-[var(--ctp-primary)] transition-colors">
 						Routes
 					</h3>
-					<p class="text-xs text-[var(--ctp-overlay1)] truncate">Rules & rule sets</p>
+					<p class="text-xs text-[var(--ctp-overlay1)] truncate hidden sm:block">Rules & rule sets</p>
 				</div>
 			</div>
 		</a>

@@ -25,7 +25,6 @@
     "connections": "Connections",
     "proxies": "Proxies",
     "routeInspector": "Route Inspector",
-    "visualBuilder": "Visual Builder",
     "network": "Network",
     "routing": "Routing"
   },
@@ -760,14 +759,16 @@
     "serverAddressHint": "e.g., 8.8.8.8, tls://dns.google, https://dns.google/dns-query",
     "detour": "Detour",
     "clientSubnet": "Client Subnet (EDNS)",
-    "strategy": "Strategy",
+    "strategy": "Default Strategy",
+    "strategyHint": "Global default for all DNS queries — prefer IPv4 or IPv6 when resolving domains",
     "strategies": {
       "preferIpv4": "Prefer IPv4",
       "preferIpv6": "Prefer IPv6",
       "ipv4Only": "IPv4 Only",
       "ipv6Only": "IPv6 Only"
     },
-    "ruleServer": "DNS Server",
+    "ruleServer": "Final DNS Server",
+    "ruleServerHint": "Fallback server used when no DNS rule matches the query",
     "disableCache": "Disable cache",
     "disableExpire": "Disable expire",
     "independentCache": "Independent cache",
@@ -1035,7 +1036,8 @@
     "sortByUpload": "By Upload",
     "connectionClosed": "Connection closed",
     "allConnectionsClosed": "All connections closed",
-    "liveUpdates": "Live updates"
+    "liveUpdates": "Live updates",
+    "groupBySource": "Group by client"
   },
   "proxies": {
     "title": "Proxies",
@@ -1241,6 +1243,7 @@
     "tolerance": "Latency difference (in ms) that triggers switching to a faster proxy.",
     "interval": "How often to check proxy availability.",
     "idleTimeout": "Close connection after this period of inactivity.",
+    "finalDnsServer": "DNS queries that don't match any DNS rule are sent to this server. Similar to 'final' outbound in routing.",
     "finalOutbound": "Traffic that doesn't match any rule goes to this outbound.",
     "rulesOrder": "Rules are evaluated top to bottom. First matching rule determines the route.",
     "downloadDetour": "Outbound to use when downloading remote rule sets.",
@@ -1311,17 +1314,5 @@
     "categoryUaDesc": "All Ukrainian domain zones",
     "ads": "Block Ads",
     "adsDesc": "Block advertising domains"
-  },
-  "visualBuilder": {
-    "title": "Visual Builder",
-    "description": "Visual representation of routing rules",
-    "beta": "Beta",
-    "rules": "Rules",
-    "outbounds": "Outbounds",
-    "noRules": "No routing rules",
-    "noRulesHint": "Create routing rules first to visualize them here",
-    "goToRules": "Go to Routes",
-    "helpText": "Click a rule to edit. Drag from rule handle to outbound to change routing, or click rule then click outbound.",
-    "shortcuts": "Shortcuts: Esc - close panel, Delete - remove selected rule"
   }
 }

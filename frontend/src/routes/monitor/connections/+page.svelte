@@ -2,7 +2,7 @@
 	import { onMount, onDestroy } from 'svelte';
 	import { t } from 'svelte-i18n';
 	import { api, createConnectionsStream } from '$lib/api/client';
-	import { notifications } from '$lib/stores';
+	import { notifications, formatBytes } from '$lib/stores';
 	import type { ClashConnection, ConnectionsResponse } from '$lib/types';
 	import ConnectionTable from '$lib/components/monitor/ConnectionTable.svelte';
 
@@ -13,14 +13,6 @@
 	let loading = $state(true);
 	let useWebSocket = $state(true);
 	let stream: { close: () => void } | null = null;
-
-	function formatBytes(bytes: number): string {
-		if (bytes === 0) return '0 B';
-		const k = 1024;
-		const sizes = ['B', 'KB', 'MB', 'GB', 'TB'];
-		const i = Math.floor(Math.log(bytes) / Math.log(k));
-		return `${(bytes / Math.pow(k, i)).toFixed(2)} ${sizes[i]}`;
-	}
 
 	async function fetchConnections() {
 		try {
