@@ -2,6 +2,26 @@
 
 All notable changes to RouteBox are documented here.
 
+## [0.14.1] - 2026-03-20
+
+### Bug Fixes
+
+**Frontend:**
+- **Fixed endpoint address CIDR normalization** — addresses without prefix (e.g. `10.8.0.2`) are now auto-appended with `/32` (IPv4) or `/128` (IPv6) to match sing-box `netip.Prefix` requirement
+- **Fixed connections table column alignment** — headers and data now properly aligned using `table-fixed` layout with explicit column widths
+- **Fixed dashboard mobile layout** — traffic stats stacked vertically, responsive info grid, smaller fonts on small screens, chain chips hidden on mobile
+
+### Improvements
+
+**Frontend:**
+- **Speed unit support (bits/bytes)** — the bytes/bits toggle in App Settings now actually works everywhere: traffic page, dashboard, connections. Shared `formatBytes`/`formatSpeed` replaces 4 duplicated local functions
+- **Connections grouping by client** — new "Group by client" checkbox groups connections by source IP, showing per-client totals and collapsible groups
+- **Removed `defaultNetworkStrategy` from route rule form** — was incorrectly placed in per-rule form
+- **Removed Visual Builder** — module removed entirely
+- **Quick Links mobile layout** — cards switch to vertical (icon-on-top) layout on small screens
+
+---
+
 ## [0.13.5] - 2026-02-25
 
 ### Bug Fixes
