@@ -193,11 +193,17 @@
 	function handleSubmit() {
 		if (!validate()) return;
 
+		// Ensure addresses have CIDR prefix notation (sing-box requires netip.Prefix)
+		const normalizedAddresses = parseCSV(addresses).map((addr) => {
+			if (addr.includes('/')) return addr;
+			return addr.includes(':') ? `${addr}/128` : `${addr}/32`;
+		});
+
 		const ep: Endpoint = {
 			type,
 			tag: tag.trim(),
 			private_key: privateKey.trim(),
-			address: parseCSV(addresses),
+			address: normalizedAddresses,
 			mtu,
 			peers: peers.map((p) => ({
 				address: p.address.trim(),
