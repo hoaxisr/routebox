@@ -460,6 +460,9 @@ func (m *Manager) getUptime(pid int) string {
 	clkTck := int64(100)
 	processStartSec := startTime / clkTck
 	processUptime := time.Duration(int64(systemUptime)-processStartSec) * time.Second
+	if processUptime < 0 {
+		processUptime = 0
+	}
 
 	return formatDuration(processUptime)
 }

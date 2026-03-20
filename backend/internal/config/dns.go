@@ -427,7 +427,11 @@ func (m *Manager) UpdateDnsSettings(settings map[string]interface{}) error {
 		dns["final"] = final
 	}
 	if strategy, ok := settings["strategy"].(string); ok {
-		dns["strategy"] = strategy
+		if strategy != "" {
+			dns["strategy"] = strategy
+		} else {
+			delete(dns, "strategy")
+		}
 	}
 	if disableCache, ok := settings["disable_cache"].(bool); ok {
 		dns["disable_cache"] = disableCache
@@ -439,18 +443,22 @@ func (m *Manager) UpdateDnsSettings(settings map[string]interface{}) error {
 		dns["independent_cache"] = independentCache
 	}
 	// New fields
-	if cacheCapacity, ok := settings["cache_capacity"].(float64); ok && cacheCapacity > 0 {
-		dns["cache_capacity"] = int(cacheCapacity)
-	} else {
-		delete(dns, "cache_capacity")
+	if cacheCapacity, ok := settings["cache_capacity"].(float64); ok {
+		if cacheCapacity > 0 {
+			dns["cache_capacity"] = int(cacheCapacity)
+		} else {
+			delete(dns, "cache_capacity")
+		}
 	}
 	if reverseMapping, ok := settings["reverse_mapping"].(bool); ok {
 		dns["reverse_mapping"] = reverseMapping
 	}
-	if clientSubnet, ok := settings["client_subnet"].(string); ok && clientSubnet != "" {
-		dns["client_subnet"] = clientSubnet
-	} else {
-		delete(dns, "client_subnet")
+	if clientSubnet, ok := settings["client_subnet"].(string); ok {
+		if clientSubnet != "" {
+			dns["client_subnet"] = clientSubnet
+		} else {
+			delete(dns, "client_subnet")
+		}
 	}
 
 	return m.saveDraftToDisk()

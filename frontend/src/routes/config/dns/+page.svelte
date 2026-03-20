@@ -6,6 +6,7 @@
 	import type { DnsServer, DnsRule, DnsSettings, RuleSet, Outbound } from '$lib/types';
 	import DnsServerForm from '$lib/components/config/DnsServerForm.svelte';
 	import DnsRuleForm from '$lib/components/config/DnsRuleForm.svelte';
+	import HelpTooltip from '$lib/components/shared/HelpTooltip.svelte';
 
 	let dnsServers = $state<DnsServer[]>([]);
 	let dnsRules = $state<DnsRule[]>([]);
@@ -257,7 +258,10 @@
 			<h2 class="font-medium text-[var(--ctp-subtext1)]">{$t('dns.settings')}</h2>
 			<div class="grid grid-cols-1 md:grid-cols-2 gap-4">
 				<div>
-					<label for="final" class="block text-sm text-[var(--ctp-overlay1)] mb-1">{$t('dns.ruleServer')}</label>
+					<label for="final" class="flex items-center gap-1 text-sm text-[var(--ctp-overlay1)] mb-1">
+						{$t('dns.ruleServer')}
+						<HelpTooltip text={$t('help.finalDnsServer')} />
+					</label>
 					<select
 						id="final"
 						bind:value={settings.final}
@@ -269,9 +273,13 @@
 							<option value={srv.tag}>{srv.tag}</option>
 						{/each}
 					</select>
+					<p class="mt-1 text-xs text-[var(--ctp-overlay0)]">{$t('dns.ruleServerHint')}</p>
 				</div>
 				<div>
-					<label for="strategy" class="block text-sm text-[var(--ctp-overlay1)] mb-1">{$t('dns.strategy')}</label>
+					<label for="strategy" class="flex items-center gap-1 text-sm text-[var(--ctp-overlay1)] mb-1">
+						{$t('dns.strategy')}
+						<HelpTooltip text={$t('help.strategy')} />
+					</label>
 					<select
 						id="strategy"
 						bind:value={settings.strategy}
@@ -284,6 +292,7 @@
 						<option value="ipv4_only">{$t('dns.strategies.ipv4Only')}</option>
 						<option value="ipv6_only">{$t('dns.strategies.ipv6Only')}</option>
 					</select>
+					<p class="mt-1 text-xs text-[var(--ctp-overlay0)]">{$t('dns.strategyHint')}</p>
 				</div>
 			</div>
 

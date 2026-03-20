@@ -447,15 +447,8 @@ func validateRule(rule map[string]interface{}, index int, outboundTags, endpoint
 		}
 	}
 
-	// Validate TLS fragment (for route/route-options with >=1.12)
-	if action == "route-options" || action == "route" {
-		if fragment, ok := rule["tls_fragment"].(map[string]interface{}); ok {
-			errors = append(errors, validateTlsFragment(fragment, prefix+".tls_fragment")...)
-		}
-		if recordFragment, ok := rule["tls_record_fragment"].(map[string]interface{}); ok {
-			errors = append(errors, validateTlsRecordFragment(recordFragment, prefix+".tls_record_fragment")...)
-		}
-	}
+	// TLS fragment fields (≥1.12): tls_fragment and tls_record_fragment are booleans,
+	// tls_fragment_fallback_delay is a duration string — sing-box validates the values
 
 	// Validate matching conditions
 	if ipVersion, ok := rule["ip_version"].(float64); ok {
@@ -486,29 +479,6 @@ func validateRule(rule map[string]interface{}, index int, outboundTags, endpoint
 		}
 	}
 
-	return errors
-}
-
-// validateTlsFragment validates tls_fragment object
-func validateTlsFragment(fragment map[string]interface{}, prefix string) []string {
-	var errors []string
-	// size and sleep should be "min:max" format if present
-	for _, field := range []string{"size", "sleep"} {
-		if val, ok := fragment[field].(string); ok && val != "" {
-			// Basic validation: should contain a colon
-			if len(val) > 0 {
-				// accept formats like "40:100" or plain numbers
-				// no strict validation needed, sing-box will validate
-			}
-		}
-	}
-	return errors
-}
-
-// validateTlsRecordFragment validates tls_record_fragment object
-func validateTlsRecordFragment(fragment map[string]interface{}, prefix string) []string {
-	var errors []string
-	// minimal validation - sing-box handles detailed validation
 	return errors
 }
 

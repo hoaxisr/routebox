@@ -1,6 +1,6 @@
 <script lang="ts">
 	import type { DnsServer, Outbound } from '$lib/types';
-	import { notifications } from '$lib/stores';
+	import { notifications, featureFlags } from '$lib/stores';
 	import { t } from 'svelte-i18n';
 	import HelpTooltip from '$lib/components/shared/HelpTooltip.svelte';
 
@@ -132,7 +132,7 @@
 
 			if (needsDomainResolver && domainResolver) {
 				newServer.domain_resolver = domainResolver;
-				if (domainStrategy) {
+				if (domainStrategy && !$featureFlags['domain_resolver']) {
 					newServer.domain_strategy = domainStrategy as DnsServer['domain_strategy'];
 				}
 			}
@@ -283,23 +283,25 @@
 				{/if}
 			</div>
 
-			<!-- Domain Strategy (optional) -->
-			<div>
-				<label for="domain_strategy" class="flex items-center gap-1 text-sm font-medium text-[var(--ctp-subtext1)] mb-1">
-					{$t('dns.domainStrategy')}
-					<HelpTooltip text={$t('help.strategy')} />
-					<span class="font-normal text-[var(--ctp-overlay0)]">({$t('common.optional')})</span>
-				</label>
-				<select
-					id="domain_strategy"
-					bind:value={domainStrategy}
-					class="w-full px-3 py-2 bg-[var(--ctp-surface0)] border border-[var(--ctp-surface2)] rounded-lg text-[var(--ctp-text)] focus:outline-none focus:ring-2 focus:ring-[var(--ctp-primary)]"
-				>
-					{#each strategyOptions as opt}
-						<option value={opt.value}>{$t(opt.labelKey)}</option>
-					{/each}
-				</select>
-			</div>
+			<!-- Domain Strategy (optional, deprecated in 1.12+ when domain_resolver is available) -->
+			{#if !$featureFlags['domain_resolver']}
+				<div>
+					<label for="domain_strategy" class="flex items-center gap-1 text-sm font-medium text-[var(--ctp-subtext1)] mb-1">
+						{$t('dns.domainStrategy')}
+						<HelpTooltip text={$t('help.strategy')} />
+						<span class="font-normal text-[var(--ctp-overlay0)]">({$t('common.optional')})</span>
+					</label>
+					<select
+						id="domain_strategy"
+						bind:value={domainStrategy}
+						class="w-full px-3 py-2 bg-[var(--ctp-surface0)] border border-[var(--ctp-surface2)] rounded-lg text-[var(--ctp-text)] focus:outline-none focus:ring-2 focus:ring-[var(--ctp-primary)]"
+					>
+						{#each strategyOptions as opt}
+							<option value={opt.value}>{$t(opt.labelKey)}</option>
+						{/each}
+					</select>
+				</div>
+			{/if}
 		{/if}
 
 		<!-- Port -->

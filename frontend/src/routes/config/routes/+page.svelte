@@ -433,20 +433,7 @@
 					/>
 					<p class="mt-1 text-xs text-[var(--ctp-overlay0)]">{$t('routes.defaultInterfaceHint')}</p>
 				</div>
-				<div>
-					<label for="default_mark" class="block text-sm text-[var(--ctp-overlay1)] mb-1">{$t('routes.defaultMark')}</label>
-					<input
-						id="default_mark"
-						type="number"
-						min="0"
-						bind:value={settings.default_mark}
-						onchange={handleSettingsChange}
-						placeholder="0"
-						class="w-full px-3 py-2 bg-[var(--ctp-base)] border border-[var(--ctp-surface2)] rounded-lg text-[var(--ctp-text)] placeholder-[var(--ctp-overlay0)] focus:outline-none focus:ring-2 focus:ring-[var(--ctp-primary)]"
-					/>
-					<p class="mt-1 text-xs text-[var(--ctp-overlay0)]">{$t('routes.defaultMarkHint')}</p>
-				</div>
-				{#if $featureFlags['default_domain_resolver']}
+					{#if $featureFlags['default_domain_resolver']}
 					<div>
 						<label for="default_domain_resolver" class="block text-sm text-[var(--ctp-overlay1)] mb-1">{$t('routes.defaultDomainResolver')}</label>
 						<input
@@ -460,6 +447,7 @@
 						<p class="mt-1 text-xs text-[var(--ctp-overlay0)]">{$t('routes.defaultDomainResolverHint')}</p>
 					</div>
 				{/if}
+				{#if !$featureFlags['default_domain_resolver']}
 				<div>
 					<label for="default_domain_strategy" class="block text-sm text-[var(--ctp-overlay1)] mb-1">{$t('routes.defaultDomainStrategy')}</label>
 					<select
@@ -475,6 +463,7 @@
 						<option value="ipv6_only">{$t('dns.strategies.ipv6Only')}</option>
 					</select>
 				</div>
+			{/if}
 			</div>
 		</div>
 

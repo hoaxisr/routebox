@@ -2,6 +2,24 @@
 
 All notable changes to RouteBox are documented here.
 
+## [0.13.5] - 2026-02-25
+
+### Bug Fixes
+
+**Frontend:**
+- **Fixed TLS Fragment config format** — sing-box expects `tls_fragment: true` (boolean), not a nested object with `size`/`sleep` fields that don't exist in sing-box. Removed phantom `size` and `sleep` inputs. Only `tls_fragment_fallback_delay` is configurable as a separate duration field.
+
+**Backend:**
+- Removed obsolete `validateTlsFragment()` / `validateTlsRecordFragment()` validators that expected object format
+
+### Improvements
+
+**Frontend:**
+- **Hide deprecated fields on sing-box 1.12+** — `domain_strategy` on DNS servers and `default_domain_strategy` in route settings are hidden when their replacements (`domain_resolver` / `default_domain_resolver`) are available
+- **DNS Settings UX** — "DNS Server" renamed to "Final DNS Server" with tooltip explaining fallback behavior; "Strategy" renamed to "Default Strategy" with hint text clarifying it's the global default for all DNS queries
+
+---
+
 ## [0.13.0] - 2026-01-30
 
 ### New Features

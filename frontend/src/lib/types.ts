@@ -458,8 +458,9 @@ export interface RouteRule {
 	udp_disable_domain_unmapping?: boolean;
 
 	// TLS Fragment (≥1.12)
-	tls_fragment?: TlsFragment;
-	tls_record_fragment?: TlsRecordFragment;
+	tls_fragment?: boolean;
+	tls_fragment_fallback_delay?: string;
+	tls_record_fragment?: boolean;
 
 	// Logical rule support
 	type?: 'default' | 'logical';
@@ -496,18 +497,6 @@ export interface RouteRule {
 	auth_user?: string[];
 	user?: string[];
 	user_id?: number[];
-}
-
-export interface TlsFragment {
-	enabled?: boolean;
-	size?: string;    // "min:max" e.g., "40:100"
-	sleep?: string;   // "min:max" e.g., "10:15"
-	fallback_delay?: string;
-}
-
-export interface TlsRecordFragment {
-	enabled?: boolean;
-	size?: string;    // "min:max"
 }
 
 export interface RouteSettings {
