@@ -2,6 +2,24 @@
 
 All notable changes to RouteBox are documented here.
 
+## [0.14.2] - 2026-03-27
+
+### Bug Fixes
+
+**Frontend:**
+- **Fixed connections filter/sort** — `$derived(() => ...)` replaced with `$derived.by(() => ...)` so filter input and sort headers actually trigger reactivity
+- **Fixed dashboard traffic not resetting after restart** — streams and totals now reset when sing-box is restarted via dashboard button
+
+### Improvements
+
+**Frontend:**
+- **Dashboard layout redesign** — replaced 4 info cards (PID, Uptime, Managed by, Connections) with a compact horizontal metrics bar; config path and version merged into a secondary inline bar
+- **Connections grouped and collapsed by default** — `groupBySource` defaults to true with groups collapsed, reducing visual noise
+- **Fixed connections table header alignment** — sort buttons now fill full cell width for proper column alignment
+- **Dashboard top connections badge positioning** — chain badges shifted left closer to hostname
+
+---
+
 ## [0.14.1] - 2026-03-20
 
 ### Bug Fixes
