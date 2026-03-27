@@ -82,7 +82,14 @@
 			if (result.warning) {
 				notifications.warning(result.warning);
 			}
+			// Reset totals and restart streams after sing-box restart
+			stopTrafficStream();
+			stopConnectionsStream();
+			uploadTotal = 0;
+			downloadTotal = 0;
 			await fetchStatus();
+			startTrafficStream();
+			startConnectionsStream();
 		} catch (e) {
 			notifications.error(`Failed to restart: ${e}`);
 		} finally {
@@ -350,34 +357,33 @@
 				</button>
 			</div>
 
-			<div class="grid grid-cols-2 gap-3 sm:gap-4 mb-6">
-				<div class="bg-[var(--ctp-surface1)] rounded-lg p-3 sm:p-4">
-					<div class="text-xs sm:text-sm text-[var(--ctp-overlay1)]">PID</div>
-					<div class="text-lg sm:text-xl font-mono text-[var(--ctp-text)]">{status.pid || '-'}</div>
-				</div>
-				<div class="bg-[var(--ctp-surface1)] rounded-lg p-3 sm:p-4">
-					<div class="text-xs sm:text-sm text-[var(--ctp-overlay1)]">Uptime</div>
-					<div class="text-lg sm:text-xl font-mono text-[var(--ctp-text)]">{status.uptime || '-'}</div>
-				</div>
-				<div class="bg-[var(--ctp-surface1)] rounded-lg p-3 sm:p-4" title={$singboxVersion ? `sing-box ${$singboxVersion.version}` : ''}>
-					<div class="text-xs sm:text-sm text-[var(--ctp-overlay1)]">Managed by</div>
-					<div class="text-sm sm:text-lg font-mono text-[var(--ctp-text)]">
-						{#if status.managed_by === 'systemd'}
-							<span class="text-[var(--ctp-primary)]">systemd</span>
-							{#if status.service_name}
-								<div class="text-xs text-[var(--ctp-overlay0)] truncate">({status.service_name})</div>
-							{/if}
-						{:else}
-							standalone
+			<!-- System metrics bar -->
+			<div class="bg-[var(--ctp-surface1)] rounded-lg px-4 py-3 flex items-center gap-4 sm:gap-5 flex-wrap mb-3">
+				<div class="flex items-baseline gap-1.5">
+					<span class="text-[10px] uppercase tracking-wide text-[var(--ctp-overlay1)]">Managed by</span>
+					{#if status.managed_by === 'systemd'}
+						<span class="text-sm font-mono font-semibold text-[var(--ctp-primary)]">systemd</span>
+						{#if status.service_name}
+							<span class="text-[10px] text-[var(--ctp-overlay0)]">({status.service_name})</span>
 						{/if}
-					</div>
-					{#if $singboxVersion}
-						<div class="text-xs text-[var(--ctp-overlay0)] mt-1 truncate">sing-box {$singboxVersion.version}</div>
+					{:else}
+						<span class="text-sm font-mono font-semibold text-[var(--ctp-text)]">standalone</span>
 					{/if}
 				</div>
-				<div class="bg-[var(--ctp-surface1)] rounded-lg p-3 sm:p-4">
-					<div class="text-xs sm:text-sm text-[var(--ctp-overlay1)]">Connections</div>
-					<div class="text-lg sm:text-xl font-mono text-[var(--ctp-text)]">{connectionCount}</div>
+				<div class="w-px h-[18px] bg-[var(--ctp-surface2)]"></div>
+				<div class="flex items-baseline gap-1.5">
+					<span class="text-[10px] uppercase tracking-wide text-[var(--ctp-overlay1)]">PID</span>
+					<span class="text-sm font-mono font-semibold text-[var(--ctp-text)]">{status.pid || '-'}</span>
+				</div>
+				<div class="w-px h-[18px] bg-[var(--ctp-surface2)]"></div>
+				<div class="flex items-baseline gap-1.5">
+					<span class="text-[10px] uppercase tracking-wide text-[var(--ctp-overlay1)]">Uptime</span>
+					<span class="text-sm font-mono font-semibold text-[var(--ctp-text)]">{status.uptime || '-'}</span>
+				</div>
+				<div class="w-px h-[18px] bg-[var(--ctp-surface2)]"></div>
+				<div class="flex items-baseline gap-1.5">
+					<span class="text-[10px] uppercase tracking-wide text-[var(--ctp-overlay1)]">Connections</span>
+					<span class="text-sm font-mono font-semibold text-[var(--ctp-text)]">{connectionCount}</span>
 				</div>
 			</div>
 
@@ -417,16 +423,16 @@
 					<div class="bg-[var(--ctp-surface1)] rounded-lg divide-y divide-[var(--ctp-surface2)]">
 						{#each topConnections as conn}
 							<div class="px-3 sm:px-4 py-2 flex items-center gap-2 sm:gap-4">
-								<div class="flex-1 min-w-0 truncate text-sm text-[var(--ctp-text)]">
+								<div class="min-w-0 truncate text-sm text-[var(--ctp-text)]">
 									{conn.metadata.host || conn.metadata.destinationIP}
 								</div>
-								<div class="hidden sm:flex items-center justify-center gap-1 flex-shrink-0">
+								<div class="hidden sm:flex items-center gap-1 flex-shrink-0 ml-auto">
 									{#each conn.chains as chain}
 										<span class="selection-chip">{chain}</span>
 									{/each}
 								</div>
-								<div class="flex items-center gap-2 sm:gap-4 text-xs sm:text-sm font-mono text-[var(--ctp-subtext1)] tabular-nums flex-shrink-0">
-									<span>{formatBytes(conn.download)}</span>
+								<div class="w-[5.5rem] text-right text-xs sm:text-sm font-mono text-[var(--ctp-subtext1)] tabular-nums flex-shrink-0">
+									{formatBytes(conn.download)}
 								</div>
 							</div>
 						{/each}
