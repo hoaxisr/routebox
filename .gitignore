@@ -31,3 +31,4 @@ data/
 
 # Backups
 *.bak
+.superpowers/

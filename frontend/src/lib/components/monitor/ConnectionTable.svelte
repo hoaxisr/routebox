@@ -22,17 +22,17 @@
 	let expandedIds = $state<Set<string>>(new Set());
 
 	// Group by source IP
-	let groupBySource = $state(false);
-	let collapsedGroups = $state<Set<string>>(new Set());
+	let groupBySource = $state(true);
+	let expandedGroups = $state<Set<string>>(new Set());
 
 	function toggleGroup(ip: string) {
-		const newSet = new Set(collapsedGroups);
+		const newSet = new Set(expandedGroups);
 		if (newSet.has(ip)) {
 			newSet.delete(ip);
 		} else {
 			newSet.add(ip);
 		}
-		collapsedGroups = newSet;
+		expandedGroups = newSet;
 	}
 
 	function toggleExpand(id: string) {
@@ -114,7 +114,7 @@
 		});
 	}
 
-	const filteredConnections = $derived(() => {
+	const filteredConnections = $derived.by(() => {
 		let result = connections;
 
 		// Filter
@@ -143,8 +143,8 @@
 		totalDownload: number;
 	}
 
-	const groupedConnections = $derived((): SourceGroup[] => {
-		const conns = filteredConnections();
+	const groupedConnections = $derived.by((): SourceGroup[] => {
+		const conns = filteredConnections;
 		const groups = new Map<string, ClashConnection[]>();
 
 		for (const conn of conns) {
@@ -211,28 +211,28 @@
 			<thead>
 				<tr class="bg-[var(--ctp-mantle)] text-[var(--ctp-subtext1)] text-sm">
 					<th class="px-4 py-3 text-left font-medium">
-						<button onclick={() => setSort('host')} class="flex items-center gap-1 hover:text-[var(--ctp-text)]">
+						<button onclick={() => setSort('host')} class="w-full flex items-center gap-1 hover:text-[var(--ctp-text)]">
 							{$t('connections.host')} <span class="opacity-50">{getSortIcon('host')}</span>
 						</button>
 					</th>
 					<th class="px-4 py-3 text-center font-medium">
-						<button onclick={() => setSort('network')} class="flex items-center gap-1 justify-center hover:text-[var(--ctp-text)]">
+						<button onclick={() => setSort('network')} class="w-full flex items-center gap-1 justify-center hover:text-[var(--ctp-text)]">
 							{$t('connections.network')} <span class="opacity-50">{getSortIcon('network')}</span>
 						</button>
 					</th>
 					<th class="px-4 py-3 text-right font-medium">
-						<button onclick={() => setSort('upload')} class="flex items-center gap-1 justify-end hover:text-[var(--ctp-text)]">
+						<button onclick={() => setSort('upload')} class="w-full flex items-center gap-1 justify-end hover:text-[var(--ctp-text)]">
 							{$t('connections.upload')} <span class="opacity-50">{getSortIcon('upload')}</span>
 						</button>
 					</th>
 					<th class="px-4 py-3 text-right font-medium">
-						<button onclick={() => setSort('download')} class="flex items-center gap-1 justify-end hover:text-[var(--ctp-text)]">
+						<button onclick={() => setSort('download')} class="w-full flex items-center gap-1 justify-end hover:text-[var(--ctp-text)]">
 							{$t('connections.download')} <span class="opacity-50">{getSortIcon('download')}</span>
 						</button>
 					</th>
 					<th class="px-4 py-3 text-center font-medium">{$t('connections.chain')}</th>
 					<th class="px-4 py-3 text-center font-medium">
-						<button onclick={() => setSort('start')} class="flex items-center gap-1 justify-center hover:text-[var(--ctp-text)]">
+						<button onclick={() => setSort('start')} class="w-full flex items-center gap-1 justify-center hover:text-[var(--ctp-text)]">
 							{$t('connections.time')} <span class="opacity-50">{getSortIcon('start')}</span>
 						</button>
 					</th>
@@ -241,13 +241,13 @@
 			</thead>
 			<tbody class="divide-y divide-[var(--ctp-surface2)]">
 				{#if groupBySource}
-					{#each groupedConnections() as group}
+					{#each groupedConnections as group}
 						<!-- Group header -->
 						<tr class="bg-[var(--ctp-mantle)] cursor-pointer hover:bg-[var(--ctp-surface1)] transition-colors"
 							onclick={() => toggleGroup(group.sourceIP)}>
 							<td class="px-4 py-2" colspan="2">
 								<div class="flex items-center gap-2">
-									<svg class="w-4 h-4 transition-transform text-[var(--ctp-overlay1)] {collapsedGroups.has(group.sourceIP) ? '' : 'rotate-90'}" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+									<svg class="w-4 h-4 transition-transform text-[var(--ctp-overlay1)] {expandedGroups.has(group.sourceIP) ? 'rotate-90' : ''}" fill="none" stroke="currentColor" viewBox="0 0 24 24">
 										<path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 5l7 7-7 7" />
 									</svg>
 									<span class="font-mono font-medium text-[var(--ctp-text)]">{group.sourceIP}</span>
@@ -264,14 +264,14 @@
 							</td>
 							<td colspan="3"></td>
 						</tr>
-						{#if !collapsedGroups.has(group.sourceIP)}
+						{#if expandedGroups.has(group.sourceIP)}
 							{#each group.connections as conn (conn.id)}
 								{@render connectionRow(conn)}
 								{@render expandedRow(conn)}
 							{/each}
 						{/if}
 					{/each}
-					{#if groupedConnections().length === 0}
+					{#if groupedConnections.length === 0}
 						<tr>
 							<td colspan="7" class="px-4 py-8 text-center text-[var(--ctp-overlay0)]">
 								{filter ? $t('proxies.noProxiesMatchFilter') : $t('connections.noConnections')}
@@ -279,7 +279,7 @@
 						</tr>
 					{/if}
 				{:else}
-					{#each filteredConnections() as conn (conn.id)}
+					{#each filteredConnections as conn (conn.id)}
 						{@render connectionRow(conn)}
 						{@render expandedRow(conn)}
 					{:else}
