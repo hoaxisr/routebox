@@ -3,7 +3,7 @@
 	import { t } from 'svelte-i18n';
 	import { api } from '$lib/api/client';
 	import { notifications, unsavedChanges } from '$lib/stores';
-	import type { Outbound, Endpoint, RouteRule, DnsServer, RouteSettings } from '$lib/types';
+	import type { Outbound, Endpoint, RouteRule, DnsServer, RouteSettings, ClashProxy } from '$lib/types';
 	import Modal from '$lib/components/shared/Modal.svelte';
 	import OutboundForm from '$lib/components/config/OutboundForm.svelte';
 
@@ -28,6 +28,52 @@
 	// Split outbounds into service and real
 	let serviceOutbounds = $derived(outbounds.filter(o => serviceTypes.includes(o.type)));
 	let realOutbounds = $derived(outbounds.filter(o => !serviceTypes.includes(o.type)));
+
+	let clashProxies = $state<Record<string, ClashProxy>>({});
+
+	async function fetchProxyDelays() {
+		try {
+			const data = await api.getProxies();
+			clashProxies = data.proxies || {};
+		} catch {
+			// Clash API may not be available if sing-box is stopped
+		}
+	}
+
+	async function testOutboundLatencies() {
+		const tags = outbounds.filter(o => !['direct', 'block', 'dns'].includes(o.type)).map(o => o.tag);
+		await Promise.allSettled(tags.map(tag => api.testLatency(tag)));
+		await fetchProxyDelays();
+	}
+
+	function getStatusColor(tag: string): { bg: string; stroke: string } {
+		const proxy = clashProxies[tag];
+		// For selector/urltest, use active member's delay
+		let delay: number | null = null;
+		if (proxy) {
+			if ((proxy.type === 'Selector' || proxy.type === 'URLTest') && proxy.now) {
+				const activeProxy = clashProxies[proxy.now];
+				const lastHistory = activeProxy?.history?.[activeProxy.history.length - 1];
+				delay = lastHistory?.delay ?? null;
+			} else {
+				const lastHistory = proxy.history?.[proxy.history.length - 1];
+				delay = lastHistory?.delay ?? null;
+			}
+		}
+		if (delay === undefined || delay === null) {
+			return { bg: 'color-mix(in srgb, var(--ctp-overlay0) 15%, transparent)', stroke: 'var(--ctp-overlay0)' };
+		}
+		if (delay === 0) {
+			return { bg: 'color-mix(in srgb, var(--ctp-red) 15%, transparent)', stroke: 'var(--ctp-red)' };
+		}
+		if (delay < 300) {
+			return { bg: 'color-mix(in srgb, var(--ctp-green) 15%, transparent)', stroke: 'var(--ctp-green)' };
+		}
+		if (delay <= 1000) {
+			return { bg: 'color-mix(in srgb, var(--ctp-primary) 15%, transparent)', stroke: 'var(--ctp-primary)' };
+		}
+		return { bg: 'color-mix(in srgb, var(--ctp-red) 15%, transparent)', stroke: 'var(--ctp-red)' };
+	}
 
 	// Count route rules usage for each outbound
 	let routeUsage = $derived.by(() => {
@@ -157,7 +203,11 @@
 		}
 	}
 
-	onMount(fetchData);
+	onMount(async () => {
+		await fetchData();
+		fetchProxyDelays();
+		testOutboundLatencies();
+	});
 </script>
 
 <div class="space-y-6">
@@ -199,11 +249,12 @@
 				<div class="space-y-2">
 					{#each serviceOutbounds as outbound}
 						{@const rulesCount = routeUsage.get(outbound.tag) || 0}
+						{@const statusColor = getStatusColor(outbound.tag)}
 						<div class="bg-[var(--ctp-surface0)] rounded-xl p-4 hover:bg-[var(--ctp-surface1)] transition-colors border-l-4" style="border-color: {getTypeColor(outbound.type)}">
 							<div class="flex items-center justify-between">
 								<div class="flex items-center gap-4">
-									<div class="w-10 h-10 rounded-lg flex items-center justify-center" style="background-color: color-mix(in srgb, {getTypeColor(outbound.type)} 15%, transparent)">
-										<svg class="w-5 h-5" style="color: {getTypeColor(outbound.type)}" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+									<div class="w-10 h-10 rounded-lg flex items-center justify-center" style="background-color: {statusColor.bg}">
+										<svg class="w-5 h-5" fill="none" stroke={statusColor.stroke} viewBox="0 0 24 24">
 											<path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d={getTypeIcon(outbound.type)} />
 										</svg>
 									</div>
@@ -271,11 +322,12 @@
 					{#each realOutbounds as outbound}
 						{@const rulesCount = routeUsage.get(outbound.tag) || 0}
 						{@const groups = containedIn.get(outbound.tag) || []}
+						{@const statusColor = getStatusColor(outbound.tag)}
 						<div class="bg-[var(--ctp-surface0)] rounded-xl p-4 hover:bg-[var(--ctp-surface1)] transition-colors border-l-4" style="border-color: {getTypeColor(outbound.type)}">
 							<div class="flex items-center justify-between">
 								<div class="flex items-center gap-4">
-									<div class="w-10 h-10 rounded-lg flex items-center justify-center" style="background-color: color-mix(in srgb, {getTypeColor(outbound.type)} 15%, transparent)">
-										<svg class="w-5 h-5" style="color: {getTypeColor(outbound.type)}" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+									<div class="w-10 h-10 rounded-lg flex items-center justify-center" style="background-color: {statusColor.bg}">
+										<svg class="w-5 h-5" fill="none" stroke={statusColor.stroke} viewBox="0 0 24 24">
 											<path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d={getTypeIcon(outbound.type)} />
 										</svg>
 									</div>
