@@ -111,8 +111,11 @@
 		}
 	});
 
-	onMount(() => {
-		fetchProxies();
+	onMount(async () => {
+		await fetchProxies();
+		// Auto-test latency for all testable proxies on page load
+		const testable = proxies.filter(p => !['Direct', 'Reject', 'Block'].includes(p.type));
+		Promise.allSettled(testable.map(p => api.testLatency(p.name))).then(() => fetchProxies());
 	});
 
 	onDestroy(() => {

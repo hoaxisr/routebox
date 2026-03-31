@@ -33,6 +33,13 @@
 		}
 	}
 
+	async function testEndpointLatencies() {
+		// Test all endpoints, then refresh delays
+		const tags = endpoints.map(ep => ep.tag);
+		await Promise.allSettled(tags.map(tag => api.testLatency(tag)));
+		await fetchProxyDelays();
+	}
+
 	function getStatusColor(tag: string): { bg: string; stroke: string } {
 		const delay = proxyDelays.get(tag);
 		if (delay === undefined || delay === null) {
@@ -186,9 +193,10 @@
 		return 'WG';
 	}
 
-	onMount(() => {
-		fetchEndpoints();
+	onMount(async () => {
+		await fetchEndpoints();
 		fetchProxyDelays();
+		testEndpointLatencies();
 	});
 </script>
 
