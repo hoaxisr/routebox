@@ -6,14 +6,6 @@ export const speedUnit = writable<SpeedUnit>('bytes');
 
 export function formatBytes(bytes: number): string {
 	if (bytes === 0) return '0 B';
-	const unit = get(speedUnit);
-	if (unit === 'bits') {
-		const bits = bytes * 8;
-		const k = 1000;
-		const sizes = ['b', 'Kb', 'Mb', 'Gb', 'Tb'];
-		const i = Math.floor(Math.log(bits) / Math.log(k));
-		return `${(bits / Math.pow(k, i)).toFixed(1)} ${sizes[i]}`;
-	}
 	const k = 1024;
 	const sizes = ['B', 'KB', 'MB', 'GB', 'TB'];
 	const i = Math.floor(Math.log(bytes) / Math.log(k));
