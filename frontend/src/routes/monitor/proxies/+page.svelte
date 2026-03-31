@@ -81,6 +81,14 @@
 		return result;
 	});
 
+	const proxiesMap = $derived.by((): Record<string, ClashProxy> => {
+		const map: Record<string, ClashProxy> = {};
+		for (const p of proxies) {
+			map[p.name] = p;
+		}
+		return map;
+	});
+
 	function startAutoRefresh() {
 		if (autoRefreshTimer) return;
 		autoRefreshTimer = setInterval(async () => {
@@ -226,7 +234,7 @@
 	{:else}
 		<div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
 			{#each filteredProxies() as proxy (proxy.name)}
-				<ProxyCard {proxy} onUpdate={fetchProxies} />
+				<ProxyCard {proxy} allProxies={proxiesMap} onUpdate={fetchProxies} />
 			{/each}
 		</div>
 	{/if}
