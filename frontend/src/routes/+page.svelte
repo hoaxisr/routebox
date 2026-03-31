@@ -439,6 +439,9 @@
 								<div class="min-w-0 truncate text-sm text-[var(--ctp-text)]">
 									{conn.metadata.host || conn.metadata.destinationIP}
 								</div>
+								<div class="hidden sm:block text-xs font-mono tabular-nums text-[var(--ctp-overlay1)] flex-shrink-0">
+									{conn.metadata.sourceIP}
+								</div>
 								<div class="hidden sm:flex items-center gap-1 flex-shrink-0 ml-auto">
 									{#each conn.chains as chain}
 										<span class="selection-chip">{chain}</span>
