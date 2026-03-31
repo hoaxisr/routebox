@@ -2,6 +2,23 @@
 
 All notable changes to RouteBox are documented here.
 
+## [0.15.0] - 2026-03-31
+
+### New Features
+
+**Frontend:**
+- **Endpoint connectivity status** — icon-badges on Endpoints page now colored by latency from Clash API (green < 300ms, orange 300-1000ms, red for timeout, gray if untested)
+- **Proxy connectivity status** — ProxyCard icons colored by latency; selector/urltest groups show status of active member
+- **Source IP in dashboard Top-5** — added sourceIP column to top connections table on the dashboard
+
+### Bug Fixes
+
+**Frontend:**
+- **Speed unit no longer affects traffic volume** — bytes/bits setting now only changes speed display (MB/s vs Mbps), traffic totals always show in bytes (KB, MB, GB)
+- **Proxy delay reads last history entry** — fixed ProxyCard using first history entry instead of most recent
+
+---
+
 ## [0.14.2] - 2026-03-27
 
 ### Bug Fixes
