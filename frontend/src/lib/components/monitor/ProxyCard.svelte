@@ -13,7 +13,7 @@
 	let { proxy, allProxies, onUpdate }: Props = $props();
 
 	let testing = $state(false);
-	let delay = $state<number | null>(proxy.history?.[0]?.delay ?? null);
+	let delay = $state<number | null>(proxy.history?.[proxy.history.length - 1]?.delay ?? null);
 
 	const isGroup = $derived(proxy.type === 'Selector' || proxy.type === 'URLTest');
 
