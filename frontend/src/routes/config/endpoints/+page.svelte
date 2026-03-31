@@ -3,7 +3,7 @@
 	import { t } from 'svelte-i18n';
 	import { api } from '$lib/api/client';
 	import { notifications, unsavedChanges } from '$lib/stores';
-	import type { Endpoint, Outbound, DnsServer, RouteSettings } from '$lib/types';
+	import type { Endpoint, Outbound, DnsServer, RouteSettings, ClashProxy } from '$lib/types';
 	import Modal from '$lib/components/shared/Modal.svelte';
 	import EndpointForm from '$lib/components/config/EndpointForm.svelte';
 
@@ -15,6 +15,40 @@
 
 	// Check if default_domain_resolver is configured
 	let hasDefaultResolver = $derived(!!routeSettings?.default_domain_resolver);
+
+	let proxyDelays = $state<Map<string, number | null>>(new Map());
+
+	async function fetchProxyDelays() {
+		try {
+			const data = await api.getProxies();
+			const proxies = data.proxies || {};
+			const delays = new Map<string, number | null>();
+			for (const [name, proxy] of Object.entries(proxies)) {
+				const lastHistory = proxy.history?.[proxy.history.length - 1];
+				delays.set(name, lastHistory?.delay ?? null);
+			}
+			proxyDelays = delays;
+		} catch {
+			// Clash API may not be available if sing-box is stopped
+		}
+	}
+
+	function getStatusColor(tag: string): { bg: string; stroke: string } {
+		const delay = proxyDelays.get(tag);
+		if (delay === undefined || delay === null) {
+			return { bg: 'color-mix(in srgb, var(--ctp-overlay0) 15%, transparent)', stroke: 'var(--ctp-overlay0)' };
+		}
+		if (delay === 0) {
+			return { bg: 'color-mix(in srgb, var(--ctp-red) 15%, transparent)', stroke: 'var(--ctp-red)' };
+		}
+		if (delay < 300) {
+			return { bg: 'color-mix(in srgb, var(--ctp-green) 15%, transparent)', stroke: 'var(--ctp-green)' };
+		}
+		if (delay <= 1000) {
+			return { bg: 'color-mix(in srgb, var(--ctp-primary) 15%, transparent)', stroke: 'var(--ctp-primary)' };
+		}
+		return { bg: 'color-mix(in srgb, var(--ctp-red) 15%, transparent)', stroke: 'var(--ctp-red)' };
+	}
 
 	// Modal state
 	let showModal = $state(false);
@@ -152,7 +186,10 @@
 		return 'WG';
 	}
 
-	onMount(fetchEndpoints);
+	onMount(() => {
+		fetchEndpoints();
+		fetchProxyDelays();
+	});
 </script>
 
 <div class="space-y-6">
@@ -182,11 +219,12 @@
 		<div class="space-y-4">
 			{#each endpoints as endpoint}
 				{@const groups = containedIn.get(endpoint.tag) || []}
+				{@const statusColor = getStatusColor(endpoint.tag)}
 				<div class="bg-[var(--ctp-surface0)] rounded-xl p-4 hover:bg-[var(--ctp-surface1)] transition-colors">
 					<div class="flex items-start justify-between">
 						<div class="flex items-start gap-4">
-							<div class="icon-badge">
-								<svg class="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+							<div class="icon-badge" style="background-color: {statusColor.bg}">
+								<svg class="w-6 h-6" fill="none" stroke={statusColor.stroke} viewBox="0 0 24 24">
 									<path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d={getEndpointIcon(endpoint.type)} />
 								</svg>
 							</div>
