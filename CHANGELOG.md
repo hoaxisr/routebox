@@ -2,6 +2,27 @@
 
 All notable changes to RouteBox are documented here.
 
+## [0.15.1] - 2026-04-21
+
+### New Features
+
+**Frontend:**
+- **Traffic Breakdown page** — new `/monitor/breakdown` with 3-way live drill-down. Three panels (Sources, Domains, Chains) aggregate open connections by bytes; clicking any row toggles it as a filter chip and the other two panels re-aggregate. Filters combine as AND across dimensions / OR within a dimension.
+- **Group by chain on Connections** — new checkbox that groups rows by their proxy-chain path (e.g. `vless-auto → vless-de`), mutually exclusive with Group by client.
+- **Persisted view preferences** — Live updates, Group by client and Group by chain toggles now survive navigating away and back (localStorage).
+
+### Improvements
+
+**Frontend:**
+- **Simpler connectivity icon colors** — endpoint/outbound/proxy icon-badges are now binary: green = alive (or untested), red = explicit failure (delay === 0). No more grey "unknown" or orange "slow" states that caused icons to flash red on page entry before the auto-latency test completed.
+- **Unified dashboard typography** — PID, uptime, connections, traffic rate, total transfer and config-path values now use the same sans-serif as domain rows (removed `font-mono`/`font-semibold`).
+
+**Backend:**
+- **Friendly errors for missing local `.srs` files** — Apply now pre-checks every `route.rule_set` of type `local` and returns a clear per-rule-set message (missing file / directory / stat error) before sing-box sees the config.
+- **Stripped ANSI from sing-box stderr** — when sing-box check does surface an error, the toast now shows readable text instead of `\x1b[31mFATAL\x1b[0m...` escape sequences.
+
+---
+
 ## [0.15.0] - 2026-03-31
 
 ### New Features
