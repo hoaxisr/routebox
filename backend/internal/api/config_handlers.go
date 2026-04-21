@@ -5,6 +5,8 @@ import (
 	"encoding/json"
 	"fmt"
 	"net/http"
+
+	"routebox/backend/internal/config"
 )
 
 // GetConfig returns the current configuration
@@ -112,6 +114,12 @@ func (h *Handler) ImportConfig(w http.ResponseWriter, r *http.Request) {
 func (h *Handler) ApplyConfig(w http.ResponseWriter, r *http.Request) {
 	// Optionally validate draft before applying
 	if h.config.HasDraft() {
+		// Pre-check local rule-set paths so the user sees a friendly message
+		// instead of sing-box's raw FATAL for missing .srs files.
+		if pathErrs := config.ValidateLocalRuleSetPaths(h.config.Get()); len(pathErrs) > 0 {
+			writeError(w, http.StatusBadRequest, fmt.Sprintf("Config validation failed: %v", pathErrs))
+			return
+		}
 		valid, errors := h.config.CheckDraft()
 		if !valid {
 			writeError(w, http.StatusBadRequest, fmt.Sprintf("Config validation failed: %v", errors))

@@ -2,8 +2,55 @@ package config
 
 import (
 	"fmt"
+	"os"
 	"regexp"
 )
+
+// ValidateLocalRuleSetPaths checks that every rule_set of type "local" points
+// to a file that exists on disk. sing-box's own failure for this case surfaces
+// as a raw FATAL with ANSI codes, so we catch it earlier with a friendly message.
+func ValidateLocalRuleSetPaths(config map[string]interface{}) []string {
+	var errors []string
+	route, ok := config["route"].(map[string]interface{})
+	if !ok {
+		return errors
+	}
+	ruleSets, ok := route["rule_set"].([]interface{})
+	if !ok {
+		return errors
+	}
+	for i, rs := range ruleSets {
+		obj, ok := rs.(map[string]interface{})
+		if !ok {
+			continue
+		}
+		if rsType, _ := obj["type"].(string); rsType != "local" {
+			continue
+		}
+		path, _ := obj["path"].(string)
+		if path == "" {
+			continue // already caught by validateRuleSet
+		}
+		tag, _ := obj["tag"].(string)
+		label := tag
+		if label == "" {
+			label = fmt.Sprintf("rule_set[%d]", i)
+		}
+		info, err := os.Stat(path)
+		if err != nil {
+			if os.IsNotExist(err) {
+				errors = append(errors, fmt.Sprintf("rule-set %q: file %q does not exist", label, path))
+			} else {
+				errors = append(errors, fmt.Sprintf("rule-set %q: cannot access %q: %v", label, path, err))
+			}
+			continue
+		}
+		if info.IsDir() {
+			errors = append(errors, fmt.Sprintf("rule-set %q: %q is a directory, expected a .srs file", label, path))
+		}
+	}
+	return errors
+}
 
 // Validate checks if config is valid (comprehensive validation)
 func (m *Manager) Validate(config map[string]interface{}) []string {

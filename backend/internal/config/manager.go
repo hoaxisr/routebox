@@ -7,6 +7,7 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"regexp"
 	"strings"
 	"sync"
 	"time"
@@ -501,14 +502,23 @@ func (m *Manager) GetDiff() (string, int, int, error) {
 	return string(output), additions, deletions, nil
 }
 
+// ansiEscapeRegex matches ANSI SGR escape sequences (e.g. "\x1b[31m") so we
+// can strip colors from sing-box stderr before surfacing it to the UI.
+var ansiEscapeRegex = regexp.MustCompile(`\x1b\[[0-9;]*[a-zA-Z]`)
+
+func stripAnsi(s string) string {
+	return ansiEscapeRegex.ReplaceAllString(s, "")
+}
+
 // CheckConfig validates config using sing-box check command
 func (m *Manager) CheckConfig(configPath string) (bool, []string) {
 	cmd := exec.Command("sing-box", "check", "-c", configPath)
 	output, err := cmd.CombinedOutput()
 
 	if err != nil {
-		// Parse error output
-		lines := strings.Split(strings.TrimSpace(string(output)), "\n")
+		// Parse error output — strip ANSI color codes so the UI shows readable text
+		cleaned := stripAnsi(string(output))
+		lines := strings.Split(strings.TrimSpace(cleaned), "\n")
 		errors := make([]string, 0, len(lines))
 		for _, line := range lines {
 			if line != "" {
