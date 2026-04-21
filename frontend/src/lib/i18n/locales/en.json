@@ -23,6 +23,7 @@
     "traffic": "Traffic",
     "logs": "Logs",
     "connections": "Connections",
+    "breakdown": "Breakdown",
     "proxies": "Proxies",
     "routeInspector": "Route Inspector",
     "network": "Network",
@@ -1039,6 +1040,19 @@
     "liveUpdates": "Live updates",
     "groupBySource": "Group by client",
     "groupByChain": "Group by chain"
+  },
+  "breakdown": {
+    "title": "Traffic Breakdown",
+    "subtitle": "Live breakdown of open connections by source, domain and chain",
+    "bySource": "By Source",
+    "byDomain": "By Domain",
+    "byChain": "By Chain",
+    "filters": "Active filters",
+    "clearFilters": "Clear",
+    "noMatches": "No connections match current filters",
+    "totalTraffic": "Filtered total",
+    "connCount": "{count} conn",
+    "connCountPlural": "{count} conns"
   },
   "proxies": {
     "title": "Proxies",

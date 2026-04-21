@@ -12,6 +12,7 @@
 @source "routes/config/settings/*.svelte";
 @source "routes/monitor/*.svelte";
 @source "routes/monitor/connections/*.svelte";
+@source "routes/monitor/breakdown/*.svelte";
 @source "routes/monitor/logs/*.svelte";
 @source "routes/monitor/proxies/*.svelte";
 @source "routes/monitor/traffic/*.svelte";
