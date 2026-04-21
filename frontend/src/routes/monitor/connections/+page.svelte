@@ -1,5 +1,6 @@
 <script lang="ts">
 	import { onMount, onDestroy } from 'svelte';
+	import { browser } from '$app/environment';
 	import { t } from 'svelte-i18n';
 	import { api, createConnectionsStream } from '$lib/api/client';
 	import { notifications, formatBytes } from '$lib/stores';
@@ -11,8 +12,14 @@
 	let downloadTotal = $state(0);
 	let uploadTotal = $state(0);
 	let loading = $state(true);
-	let useWebSocket = $state(true);
+	let useWebSocket = $state(
+		browser ? localStorage.getItem('connections.liveUpdates') !== 'false' : true
+	);
 	let stream: { close: () => void } | null = null;
+
+	$effect(() => {
+		if (browser) localStorage.setItem('connections.liveUpdates', String(useWebSocket));
+	});
 
 	async function fetchConnections() {
 		try {

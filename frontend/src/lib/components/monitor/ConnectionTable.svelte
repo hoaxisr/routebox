@@ -1,4 +1,5 @@
 <script lang="ts">
+	import { browser } from '$app/environment';
 	import { t } from 'svelte-i18n';
 	import { formatBytes } from '$lib/stores';
 	import type { ClashConnection } from '$lib/types';
@@ -21,9 +22,38 @@
 	// Expanded rows
 	let expandedIds = $state<Set<string>>(new Set());
 
-	// Group by source IP
-	let groupBySource = $state(true);
+	// Grouping — persisted, mutually exclusive
+	let groupBySource = $state(
+		browser ? localStorage.getItem('connections.groupBySource') !== 'false' : true
+	);
+	let groupByChain = $state(
+		browser ? localStorage.getItem('connections.groupByChain') === 'true' : false
+	);
 	let expandedGroups = $state<Set<string>>(new Set());
+
+	$effect(() => {
+		if (browser) localStorage.setItem('connections.groupBySource', String(groupBySource));
+	});
+	$effect(() => {
+		if (browser) localStorage.setItem('connections.groupByChain', String(groupByChain));
+	});
+
+	function toggleGroupBySource(checked: boolean) {
+		groupBySource = checked;
+		if (checked) groupByChain = false;
+		expandedGroups = new Set();
+	}
+
+	function toggleGroupByChain(checked: boolean) {
+		groupByChain = checked;
+		if (checked) groupBySource = false;
+		expandedGroups = new Set();
+	}
+
+	function getChainKey(conn: ClashConnection): string {
+		if (!conn.chains || conn.chains.length === 0) return '-';
+		return conn.chains.join(' → ');
+	}
 
 	function toggleGroup(ip: string) {
 		const newSet = new Set(expandedGroups);
@@ -165,6 +195,35 @@
 			.sort((a, b) => (b.totalDownload + b.totalUpload) - (a.totalDownload + a.totalUpload));
 	});
 
+	interface ChainGroup {
+		chain: string;
+		connections: ClashConnection[];
+		totalUpload: number;
+		totalDownload: number;
+	}
+
+	const chainGroupedConnections = $derived.by((): ChainGroup[] => {
+		const conns = filteredConnections;
+		const groups = new Map<string, ClashConnection[]>();
+
+		for (const conn of conns) {
+			const key = getChainKey(conn);
+			if (!groups.has(key)) {
+				groups.set(key, []);
+			}
+			groups.get(key)!.push(conn);
+		}
+
+		return Array.from(groups.entries())
+			.map(([chain, conns]) => ({
+				chain,
+				connections: conns,
+				totalUpload: conns.reduce((s, c) => s + c.upload, 0),
+				totalDownload: conns.reduce((s, c) => s + c.download, 0)
+			}))
+			.sort((a, b) => (b.totalDownload + b.totalUpload) - (a.totalDownload + a.totalUpload));
+	});
+
 	function getSortIcon(key: SortKey): string {
 		if (sortKey !== key) return '↕';
 		return sortAsc ? '↑' : '↓';
@@ -189,9 +248,16 @@
 			</svg>
 		</div>
 		<label class="flex items-center gap-2 cursor-pointer flex-shrink-0 text-sm text-[var(--ctp-subtext1)]">
-			<input type="checkbox" bind:checked={groupBySource}
+			<input type="checkbox" checked={groupBySource}
+				onchange={(e) => toggleGroupBySource(e.currentTarget.checked)}
 				class="w-4 h-4 rounded border-[var(--ctp-surface2)] text-[var(--ctp-primary)] focus:ring-[var(--ctp-primary)]" />
 			{$t('connections.groupBySource')}
+		</label>
+		<label class="flex items-center gap-2 cursor-pointer flex-shrink-0 text-sm text-[var(--ctp-subtext1)]">
+			<input type="checkbox" checked={groupByChain}
+				onchange={(e) => toggleGroupByChain(e.currentTarget.checked)}
+				class="w-4 h-4 rounded border-[var(--ctp-surface2)] text-[var(--ctp-primary)] focus:ring-[var(--ctp-primary)]" />
+			{$t('connections.groupByChain')}
 		</label>
 	</div>
 
@@ -272,6 +338,43 @@
 						{/if}
 					{/each}
 					{#if groupedConnections.length === 0}
+						<tr>
+							<td colspan="7" class="px-4 py-8 text-center text-[var(--ctp-overlay0)]">
+								{filter ? $t('proxies.noProxiesMatchFilter') : $t('connections.noConnections')}
+							</td>
+						</tr>
+					{/if}
+				{:else if groupByChain}
+					{#each chainGroupedConnections as group}
+						<tr class="bg-[var(--ctp-mantle)] cursor-pointer hover:bg-[var(--ctp-surface1)] transition-colors"
+							onclick={() => toggleGroup(group.chain)}>
+							<td class="px-4 py-2" colspan="2">
+								<div class="flex items-center gap-2">
+									<svg class="w-4 h-4 transition-transform text-[var(--ctp-overlay1)] {expandedGroups.has(group.chain) ? 'rotate-90' : ''}" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+										<path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 5l7 7-7 7" />
+									</svg>
+									<span class="selection-chip">{group.chain}</span>
+									<span class="text-xs text-[var(--ctp-overlay0)]">
+										({group.connections.length})
+									</span>
+								</div>
+							</td>
+							<td class="px-4 py-2 text-right font-mono text-sm text-[var(--ctp-subtext1)] tabular-nums whitespace-nowrap">
+								{formatBytes(group.totalUpload)}
+							</td>
+							<td class="px-4 py-2 text-right font-mono text-sm text-[var(--ctp-subtext1)] tabular-nums whitespace-nowrap">
+								{formatBytes(group.totalDownload)}
+							</td>
+							<td colspan="3"></td>
+						</tr>
+						{#if expandedGroups.has(group.chain)}
+							{#each group.connections as conn (conn.id)}
+								{@render connectionRow(conn)}
+								{@render expandedRow(conn)}
+							{/each}
+						{/if}
+					{/each}
+					{#if chainGroupedConnections.length === 0}
 						<tr>
 							<td colspan="7" class="px-4 py-8 text-center text-[var(--ctp-overlay0)]">
 								{filter ? $t('proxies.noProxiesMatchFilter') : $t('connections.noConnections')}

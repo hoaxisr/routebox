@@ -1037,7 +1037,8 @@
     "connectionClosed": "Connection closed",
     "allConnectionsClosed": "All connections closed",
     "liveUpdates": "Live updates",
-    "groupBySource": "Group by client"
+    "groupBySource": "Group by client",
+    "groupByChain": "Group by chain"
   },
   "proxies": {
     "title": "Proxies",
