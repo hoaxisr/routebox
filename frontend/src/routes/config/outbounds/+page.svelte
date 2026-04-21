@@ -48,7 +48,6 @@
 
 	function getStatusColor(tag: string): { bg: string; stroke: string } {
 		const proxy = clashProxies[tag];
-		// For selector/urltest, use active member's delay
 		let delay: number | null = null;
 		if (proxy) {
 			if ((proxy.type === 'Selector' || proxy.type === 'URLTest') && proxy.now) {
@@ -60,19 +59,10 @@
 				delay = lastHistory?.delay ?? null;
 			}
 		}
-		if (delay === undefined || delay === null) {
-			return { bg: 'color-mix(in srgb, var(--ctp-overlay0) 15%, transparent)', stroke: 'var(--ctp-overlay0)' };
-		}
 		if (delay === 0) {
 			return { bg: 'color-mix(in srgb, var(--ctp-red) 15%, transparent)', stroke: 'var(--ctp-red)' };
 		}
-		if (delay < 300) {
-			return { bg: 'color-mix(in srgb, var(--ctp-green) 15%, transparent)', stroke: 'var(--ctp-green)' };
-		}
-		if (delay <= 1000) {
-			return { bg: 'color-mix(in srgb, var(--ctp-primary) 15%, transparent)', stroke: 'var(--ctp-primary)' };
-		}
-		return { bg: 'color-mix(in srgb, var(--ctp-red) 15%, transparent)', stroke: 'var(--ctp-red)' };
+		return { bg: 'color-mix(in srgb, var(--ctp-green) 15%, transparent)', stroke: 'var(--ctp-green)' };
 	}
 
 	// Count route rules usage for each outbound

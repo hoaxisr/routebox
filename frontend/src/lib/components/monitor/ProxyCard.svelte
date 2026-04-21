@@ -27,19 +27,13 @@
 	});
 
 	function getStatusBg(ms: number | null): string {
-		if (ms === null) return 'color-mix(in srgb, var(--ctp-overlay0) 15%, transparent)';
 		if (ms === 0) return 'color-mix(in srgb, var(--ctp-red) 15%, transparent)';
-		if (ms < 300) return 'color-mix(in srgb, var(--ctp-green) 15%, transparent)';
-		if (ms <= 1000) return 'color-mix(in srgb, var(--ctp-primary) 15%, transparent)';
-		return 'color-mix(in srgb, var(--ctp-red) 15%, transparent)';
+		return 'color-mix(in srgb, var(--ctp-green) 15%, transparent)';
 	}
 
 	function getStatusStroke(ms: number | null): string {
-		if (ms === null) return 'var(--ctp-overlay0)';
 		if (ms === 0) return 'var(--ctp-red)';
-		if (ms < 300) return 'var(--ctp-green)';
-		if (ms <= 1000) return 'var(--ctp-primary)';
-		return 'var(--ctp-red)';
+		return 'var(--ctp-green)';
 	}
 
 	function getDelayColor(ms: number | null): string {
