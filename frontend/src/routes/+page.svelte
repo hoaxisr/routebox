@@ -362,28 +362,28 @@
 				<div class="flex items-baseline gap-1.5">
 					<span class="text-[10px] uppercase tracking-wide text-[var(--ctp-overlay1)]">Managed by</span>
 					{#if status.managed_by === 'systemd'}
-						<span class="text-sm font-mono font-semibold text-[var(--ctp-primary)]">systemd</span>
+						<span class="text-sm text-[var(--ctp-primary)]">systemd</span>
 						{#if status.service_name}
 							<span class="text-[10px] text-[var(--ctp-overlay0)]">({status.service_name})</span>
 						{/if}
 					{:else}
-						<span class="text-sm font-mono font-semibold text-[var(--ctp-text)]">standalone</span>
+						<span class="text-sm text-[var(--ctp-text)]">standalone</span>
 					{/if}
 				</div>
 				<div class="w-px h-[18px] bg-[var(--ctp-surface2)]"></div>
 				<div class="flex items-baseline gap-1.5">
 					<span class="text-[10px] uppercase tracking-wide text-[var(--ctp-overlay1)]">PID</span>
-					<span class="text-sm font-mono font-semibold text-[var(--ctp-text)]">{status.pid || '-'}</span>
+					<span class="text-sm text-[var(--ctp-text)]">{status.pid || '-'}</span>
 				</div>
 				<div class="w-px h-[18px] bg-[var(--ctp-surface2)]"></div>
 				<div class="flex items-baseline gap-1.5">
 					<span class="text-[10px] uppercase tracking-wide text-[var(--ctp-overlay1)]">Uptime</span>
-					<span class="text-sm font-mono font-semibold text-[var(--ctp-text)]">{status.uptime || '-'}</span>
+					<span class="text-sm text-[var(--ctp-text)]">{status.uptime || '-'}</span>
 				</div>
 				<div class="w-px h-[18px] bg-[var(--ctp-surface2)]"></div>
 				<div class="flex items-baseline gap-1.5">
 					<span class="text-[10px] uppercase tracking-wide text-[var(--ctp-overlay1)]">Connections</span>
-					<span class="text-sm font-mono font-semibold text-[var(--ctp-text)]">{connectionCount}</span>
+					<span class="text-sm text-[var(--ctp-text)]">{connectionCount}</span>
 				</div>
 			</div>
 
@@ -393,7 +393,7 @@
 					{#if $singboxVersion}
 						<div class="flex items-center gap-1.5">
 							<span class="text-[var(--ctp-overlay1)]">sing-box</span>
-							<span class="font-mono text-[var(--ctp-subtext1)]">{$singboxVersion.version}</span>
+							<span class="text-[var(--ctp-subtext1)]">{$singboxVersion.version}</span>
 						</div>
 					{/if}
 					{#if $singboxVersion && status.config_path}
@@ -402,7 +402,7 @@
 					{#if status.config_path}
 						<div class="flex items-center gap-1.5 min-w-0">
 							<span class="text-[var(--ctp-overlay1)] flex-shrink-0">Config</span>
-							<span class="font-mono text-[var(--ctp-subtext1)] truncate">{status.config_path}</span>
+							<span class="text-[var(--ctp-subtext1)] truncate">{status.config_path}</span>
 						</div>
 					{/if}
 				</div>
@@ -412,14 +412,14 @@
 			<div class="grid grid-cols-2 gap-3 sm:gap-4 mb-6">
 				<div class="bg-[var(--ctp-surface1)] rounded-lg p-3 sm:p-4">
 					<div class="text-xs sm:text-sm text-[var(--ctp-overlay1)]">Traffic Rate</div>
-					<div class="font-mono text-[var(--ctp-text)] text-sm sm:text-lg">
+					<div class="text-[var(--ctp-text)] text-sm sm:text-lg">
 						<div><span class="text-[var(--ctp-overlay0)]">↑</span> {formatSpeed(trafficUp)}</div>
 						<div><span class="text-[var(--ctp-overlay0)]">↓</span> {formatSpeed(trafficDown)}</div>
 					</div>
 				</div>
 				<div class="bg-[var(--ctp-surface1)] rounded-lg p-3 sm:p-4">
 					<div class="text-xs sm:text-sm text-[var(--ctp-overlay1)]">Total Transfer</div>
-					<div class="font-mono text-[var(--ctp-text)] text-sm sm:text-lg">
+					<div class="text-[var(--ctp-text)] text-sm sm:text-lg">
 						<div><span class="text-[var(--ctp-overlay0)]">↑</span> {formatBytes(uploadTotal)}</div>
 						<div><span class="text-[var(--ctp-overlay0)]">↓</span> {formatBytes(downloadTotal)}</div>
 					</div>
