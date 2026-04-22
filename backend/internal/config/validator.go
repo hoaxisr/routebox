@@ -3,13 +3,21 @@ package config
 import (
 	"fmt"
 	"os"
+	"path/filepath"
 	"regexp"
 )
 
 // ValidateLocalRuleSetPaths checks that every rule_set of type "local" points
 // to a file that exists on disk. sing-box's own failure for this case surfaces
 // as a raw FATAL with ANSI codes, so we catch it earlier with a friendly message.
-func ValidateLocalRuleSetPaths(config map[string]interface{}) []string {
+//
+// Relative paths are resolved against configDir — the directory holding the
+// active config.json — because that's how sing-box's filemanager resolves them.
+// If we can't trust configDir (empty string), we skip the existence check
+// entirely and let sing-box validate; reporting a bogus "file missing" for a
+// file that actually exists (just not relative to RouteBox's CWD) is worse
+// than letting sing-box surface the real error.
+func ValidateLocalRuleSetPaths(config map[string]interface{}, configDir string) []string {
 	var errors []string
 	route, ok := config["route"].(map[string]interface{})
 	if !ok {
@@ -36,17 +44,29 @@ func ValidateLocalRuleSetPaths(config map[string]interface{}) []string {
 		if label == "" {
 			label = fmt.Sprintf("rule_set[%d]", i)
 		}
-		info, err := os.Stat(path)
+
+		// Resolve relative to the config directory — same as sing-box does via
+		// filemanager.BasePath. Skip the check if we have no base to resolve
+		// against, so we never falsely reject a valid relative path.
+		resolved := path
+		if !filepath.IsAbs(path) {
+			if configDir == "" {
+				continue
+			}
+			resolved = filepath.Join(configDir, path)
+		}
+
+		info, err := os.Stat(resolved)
 		if err != nil {
 			if os.IsNotExist(err) {
-				errors = append(errors, fmt.Sprintf("rule-set %q: file %q does not exist", label, path))
+				errors = append(errors, fmt.Sprintf("rule-set %q: file %q does not exist", label, resolved))
 			} else {
-				errors = append(errors, fmt.Sprintf("rule-set %q: cannot access %q: %v", label, path, err))
+				errors = append(errors, fmt.Sprintf("rule-set %q: cannot access %q: %v", label, resolved, err))
 			}
 			continue
 		}
 		if info.IsDir() {
-			errors = append(errors, fmt.Sprintf("rule-set %q: %q is a directory, expected a .srs file", label, path))
+			errors = append(errors, fmt.Sprintf("rule-set %q: %q is a directory, expected a .srs file", label, resolved))
 		}
 	}
 	return errors

@@ -232,3 +232,42 @@ func (h *Handler) ensureRuleSetInConfig(tag string) {
 	}
 	h.config.CreateRuleSet(rs)
 }
+
+// autoCompileDomainSets recompiles every domain set that's referenced by a
+// local rule_set in the draft config. Runs before Apply so the user never has
+// to press "Compile" manually — if a .srs is missing or stale it gets fixed
+// here. Returns a list of compile failures (empty on success).
+func (h *Handler) autoCompileDomainSets() []string {
+	if h.domains == nil {
+		return nil
+	}
+
+	// Index known domain-set tags so we only recompile sets we actually own.
+	sets, err := h.domains.ListSets()
+	if err != nil {
+		return []string{fmt.Sprintf("failed to list domain sets: %v", err)}
+	}
+	known := make(map[string]bool, len(sets))
+	for _, s := range sets {
+		known[s.Tag] = true
+	}
+	if len(known) == 0 {
+		return nil
+	}
+
+	var compileErrs []string
+	for _, rs := range h.config.ListRuleSets() {
+		rsType, _ := rs["type"].(string)
+		if rsType != "local" {
+			continue
+		}
+		tag, _ := rs["tag"].(string)
+		if !known[tag] {
+			continue // rule_set references an external .srs we don't own
+		}
+		if err := h.domains.Compile(tag); err != nil {
+			compileErrs = append(compileErrs, fmt.Sprintf("%s: %v", tag, err))
+		}
+	}
+	return compileErrs
+}
