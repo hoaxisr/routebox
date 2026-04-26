@@ -367,7 +367,9 @@
     "ruleSetCreated": "Rule set created",
     "ruleSetDeleted": "Rule set deleted",
     "createNew": "Create New",
-    "newRuleSet": "New Rule Set"
+    "newRuleSet": "New Rule Set",
+    "legacyTooltip": "Legacy local rule-set (read-only — recreate as inline to edit)",
+    "legacySuffix": " (legacy)"
   },
   "domains": {
     "title": "Domain Sets",

@@ -145,8 +145,8 @@
 					<div class="flex items-center justify-between">
 						<div class="flex items-center gap-3 min-w-0 flex-1">
 							<!-- Type badge -->
-							<span class="px-2 py-0.5 text-xs rounded {ruleSet.type === 'local' ? 'bg-[var(--ctp-overlay0)] text-[var(--ctp-base)]' : 'bg-[var(--ctp-surface2)] text-[var(--ctp-overlay1)]'} flex-shrink-0" title={ruleSet.type === 'local' ? 'Legacy local rule-set (read-only — recreate as inline to edit)' : null}>
-								{ruleSet.type}{ruleSet.type === 'local' ? ' (legacy)' : ''}
+							<span class="px-2 py-0.5 text-xs rounded {ruleSet.type === 'local' ? 'bg-[var(--ctp-overlay0)] text-[var(--ctp-base)]' : 'bg-[var(--ctp-surface2)] text-[var(--ctp-overlay1)]'} flex-shrink-0" title={ruleSet.type === 'local' ? $t('ruleSets.legacyTooltip') : undefined}>
+								{ruleSet.type}{ruleSet.type === 'local' ? $t('ruleSets.legacySuffix') : ''}
 							</span>
 							<!-- Tag -->
 							<span class="font-medium text-[var(--ctp-text)] truncate">{ruleSet.tag}</span>
@@ -318,12 +318,14 @@
 				</div>
 			</div>
 			<div class="px-4 py-3 border-t border-[var(--ctp-surface2)] flex justify-end gap-2">
-				<button
-					onclick={() => { openEdit(viewingRuleSet!); viewingRuleSet = null; }}
-					class="px-4 py-2 bg-[var(--ctp-primary)] text-white rounded-lg hover:opacity-90"
-				>
-					{$t('common.edit')}
-				</button>
+				{#if viewingRuleSet.type !== 'local'}
+					<button
+						onclick={() => { openEdit(viewingRuleSet!); viewingRuleSet = null; }}
+						class="px-4 py-2 bg-[var(--ctp-primary)] text-white rounded-lg hover:opacity-90"
+					>
+						{$t('common.edit')}
+					</button>
+				{/if}
 				<button
 					onclick={() => viewingRuleSet = null}
 					class="px-4 py-2 bg-[var(--ctp-surface1)] text-[var(--ctp-text)] rounded-lg hover:bg-[var(--ctp-surface2)]"
