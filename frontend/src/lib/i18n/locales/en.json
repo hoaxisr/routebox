@@ -18,6 +18,7 @@
     "jsonEditor": "JSON Editor",
     "ruleSets": "Rule Sets",
     "domains": "Domain Sets",
+    "clients": "Clients",
     "appSettings": "App Settings",
     "monitor": "Monitor",
     "traffic": "Traffic",
@@ -110,6 +111,25 @@
     "noData": "No data",
     "empty": "Empty",
     "unknown": "Unknown"
+  },
+  "clients": {
+    "title": "Clients",
+    "description": "LAN devices observed by amnezia-box. Assign friendly names to recognise them in Connections, Statistics and Dashboard.",
+    "search": "Search by IP, name, or note...",
+    "showOffline": "Show offline (last seen > 5m)",
+    "hideUnnamed": "Hide unnamed",
+    "ip": "IP",
+    "name": "Name",
+    "note": "Note",
+    "connections": "Connections",
+    "traffic24h": "Traffic (24h)",
+    "lastSeen": "Last seen",
+    "live": "live",
+    "namePlaceholder": "Click to name...",
+    "notePlaceholder": "add note...",
+    "forget": "Forget",
+    "forgetConfirm": "Forget client {ip}? The IP will reappear without a name on next traffic.",
+    "noClients": "No clients observed yet"
   },
   "status": {
     "running": "Running",
