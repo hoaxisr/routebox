@@ -54,6 +54,9 @@
 		download: number;
 		total: number;
 		connCount: number;
+		primaryIp?: string;
+		ipCount?: number;
+		allIps?: string[];
 	}
 
 	// For each dimension we aggregate using the filter-set from the OTHER two dimensions,
@@ -61,6 +64,7 @@
 	// showing all sources (otherwise you'd lose the ability to compare).
 	function aggregate(dim: Dimension): Bucket[] {
 		const map = new Map<string, Bucket>();
+		const ipsByKey = dim === 'domain' ? new Map<string, Set<string>>() : null;
 		for (const conn of connections) {
 			if (!matchesFilters(conn, dim)) continue;
 			const key = keyOf(conn, dim);
@@ -73,6 +77,22 @@
 			b.download += conn.download;
 			b.total += conn.upload + conn.download;
 			b.connCount += 1;
+			if (ipsByKey) {
+				const ip = conn.metadata.destinationIP;
+				if (ip) {
+					let set = ipsByKey.get(key);
+					if (!set) { set = new Set(); ipsByKey.set(key, set); }
+					set.add(ip);
+					if (!b.primaryIp) b.primaryIp = ip;
+				}
+			}
+		}
+		if (ipsByKey) {
+			for (const [key, set] of ipsByKey) {
+				const b = map.get(key)!;
+				b.ipCount = set.size;
+				b.allIps = Array.from(set);
+			}
 		}
 		return Array.from(map.values()).sort((a, b) => b.total - a.total);
 	}
@@ -249,6 +269,14 @@
 								<span class="text-[var(--ctp-overlay0)]">{b.connCount}</span>
 							</div>
 						</div>
+						{#if dim === 'domain' && b.primaryIp}
+							<div
+								class="relative mt-0.5 text-[10px] font-mono text-[var(--ctp-overlay0)]"
+								title={b.allIps?.join(', ')}
+							>
+								{b.primaryIp}{#if b.ipCount && b.ipCount > 1} (+{b.ipCount - 1}){/if}
+							</div>
+						{/if}
 					</button>
 				{/each}
 			{/if}
