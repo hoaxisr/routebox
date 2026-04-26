@@ -1,6 +1,7 @@
 package main
 
 import (
+	"encoding/json"
 	"flag"
 	"fmt"
 	"log"
@@ -168,6 +169,11 @@ func main() {
 	stopClients := make(chan struct{})
 	go clientsMgr.StartPersistLoop(30*time.Second, stopClients)
 	defer close(stopClients)
+
+	// Auto-discover LAN clients from Clash /connections
+	stopDiscovery := make(chan struct{})
+	go runClientDiscovery(clientsMgr, resolvedClashAddr, stopDiscovery)
+	defer close(stopDiscovery)
 
 	// Initialize API handlers
 	apiHandler := api.NewHandler(cfgMgr, procMgr, resolvedClashAddr, geoipDB, settingsMgr, clientsMgr)
@@ -369,6 +375,48 @@ func main() {
 
 	if err := http.ListenAndServe(resolvedListenAddr, r); err != nil {
 		log.Fatalf("Server error: %v", err)
+	}
+}
+
+// runClientDiscovery polls the Clash /connections endpoint every 60s and feeds
+// observed source IPs into the clients manager. Exits cleanly when stop closes.
+func runClientDiscovery(mgr *clients.Manager, clashAddr string, stop <-chan struct{}) {
+	if clashAddr == "" {
+		return
+	}
+	ticker := time.NewTicker(60 * time.Second)
+	defer ticker.Stop()
+	tick := func() {
+		resp, err := http.Get("http://" + clashAddr + "/connections")
+		if err != nil {
+			return
+		}
+		defer resp.Body.Close()
+		var data struct {
+			Connections []struct {
+				Metadata struct {
+					SourceIP string `json:"sourceIP"`
+				} `json:"metadata"`
+			} `json:"connections"`
+		}
+		if err := json.NewDecoder(resp.Body).Decode(&data); err != nil {
+			return
+		}
+		now := time.Now()
+		for _, c := range data.Connections {
+			if c.Metadata.SourceIP != "" {
+				mgr.Observe(c.Metadata.SourceIP, now)
+			}
+		}
+	}
+	tick()
+	for {
+		select {
+		case <-ticker.C:
+			tick()
+		case <-stop:
+			return
+		}
 	}
 }
 
