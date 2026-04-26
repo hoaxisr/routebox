@@ -11,8 +11,7 @@
 	let stream: { close: () => void } | null = null;
 	let loading = $state(true);
 
-	// Active filters per dimension. Each dimension can hold multiple values (OR within,
-	// AND across) — e.g. source=192.168.1.14 AND (domain=a.com OR domain=b.com).
+	// Active filter per dimension (AND across). Click a row to set, click again to unset.
 	let filters = $state<Record<Dimension, string | null>>({
 		source: null,
 		domain: null,
@@ -28,6 +27,12 @@
 	function togglePanelExpand(dim: Dimension) {
 		expandedPanels = { ...expandedPanels, [dim]: !expandedPanels[dim] };
 	}
+
+	$effect(() => {
+		// Reset Show all when filters change — each filter view starts collapsed
+		filters.source; filters.domain; filters.chain;
+		expandedPanels = { source: false, domain: false, chain: false };
+	});
 
 	function keyOf(conn: ClashConnection, dim: Dimension): string {
 		switch (dim) {
@@ -93,15 +98,16 @@
 					let set = ipsByKey.get(key);
 					if (!set) { set = new Set(); ipsByKey.set(key, set); }
 					set.add(ip);
-					if (!b.primaryIp) b.primaryIp = ip;
 				}
 			}
 		}
 		if (ipsByKey) {
 			for (const [key, set] of ipsByKey) {
 				const b = map.get(key)!;
-				b.ipCount = set.size;
-				b.allIps = Array.from(set);
+				const sorted = Array.from(set).sort();
+				b.primaryIp = sorted[0];
+				b.ipCount = sorted.length;
+				b.allIps = sorted;
 			}
 		}
 		return Array.from(map.values()).sort((a, b) => b.total - a.total);
