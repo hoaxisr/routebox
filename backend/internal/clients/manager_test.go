@@ -1,6 +1,8 @@
 package clients
 
 import (
+	"os"
+	"path/filepath"
 	"testing"
 	"time"
 )
@@ -69,6 +71,12 @@ func TestSetName_AutocreatesIfMissing(t *testing.T) {
 	if !ok || e.Name != "Server" {
 		t.Errorf("expected entry with name Server, got %+v ok=%v", e, ok)
 	}
+	if e.FirstSeen == 0 || e.LastSeen == 0 {
+		t.Errorf("expected timestamps to be set, got %+v", e)
+	}
+	if e.FirstSeen != e.LastSeen {
+		t.Errorf("FirstSeen and LastSeen should match on autocreate, got %d vs %d", e.FirstSeen, e.LastSeen)
+	}
 }
 
 func TestForget_RemovesEntry(t *testing.T) {
@@ -94,5 +102,66 @@ func TestList_SortsByLastSeenDesc(t *testing.T) {
 		if got[i].IP != ip {
 			t.Errorf("List()[%d].IP = %q, want %q", i, got[i].IP, ip)
 		}
+	}
+}
+
+func TestSaveLoad_RoundTrip(t *testing.T) {
+	dir := t.TempDir()
+	p := filepath.Join(dir, "clients.toml")
+
+	m1 := New(p)
+	m1.Observe("10.0.0.1", time.Unix(1000, 0))
+	if err := m1.SetName("10.0.0.1", "Mac", "work"); err != nil {
+		t.Fatalf("SetName: %v", err)
+	}
+	m1.Observe("10.0.0.2", time.Unix(2000, 0))
+	if err := m1.Save(); err != nil {
+		t.Fatalf("Save: %v", err)
+	}
+
+	m2 := New(p)
+	if err := m2.Load(); err != nil {
+		t.Fatalf("Load: %v", err)
+	}
+
+	e, ok := m2.Get("10.0.0.1")
+	if !ok {
+		t.Fatal("expected 10.0.0.1 to be loaded")
+	}
+	if e.Name != "Mac" || e.Note != "work" {
+		t.Errorf("Mac entry: got name=%q note=%q, want Mac/work", e.Name, e.Note)
+	}
+	if e.FirstSeen != 1000 || e.LastSeen != 1000 {
+		t.Errorf("Mac entry timestamps: %d/%d, want 1000/1000", e.FirstSeen, e.LastSeen)
+	}
+
+	if _, ok := m2.Get("10.0.0.2"); !ok {
+		t.Error("expected 10.0.0.2 to be loaded")
+	}
+}
+
+func TestSave_NoOpWhenNotDirty(t *testing.T) {
+	dir := t.TempDir()
+	p := filepath.Join(dir, "clients.toml")
+	m := New(p)
+	// Observe -> dirty -> save -> file exists -> dirty=false
+	m.Observe("1.1.1.1", time.Unix(0, 0))
+	if err := m.Save(); err != nil {
+		t.Fatalf("first save: %v", err)
+	}
+	info1, err := os.Stat(p)
+	if err != nil {
+		t.Fatalf("stat: %v", err)
+	}
+	// Save again with no changes — file should not be rewritten.
+	if err := m.Save(); err != nil {
+		t.Fatalf("second save: %v", err)
+	}
+	info2, err := os.Stat(p)
+	if err != nil {
+		t.Fatalf("stat: %v", err)
+	}
+	if info1.ModTime() != info2.ModTime() {
+		t.Errorf("expected no rewrite; got mtime change: %v -> %v", info1.ModTime(), info2.ModTime())
 	}
 }

@@ -34,7 +34,9 @@ func New(path string) *Manager {
 	return &Manager{path: path, byIP: map[string]*Entry{}}
 }
 
-// Load reads the TOML file if path is set and file exists.
+// Load reads the TOML file if path is set and file exists. Must be called once
+// at startup before any Observe/SetName calls — Load replaces the in-memory map
+// wholesale, so any IPs already observed since New(...) would be lost.
 func (m *Manager) Load() error {
 	m.mu.Lock()
 	defer m.mu.Unlock()
@@ -85,7 +87,13 @@ func (m *Manager) Save() error {
 		os.Remove(tmp)
 		return err
 	}
+	if err := f.Sync(); err != nil {
+		f.Close()
+		os.Remove(tmp)
+		return err
+	}
 	if err := f.Close(); err != nil {
+		os.Remove(tmp)
 		return err
 	}
 	if err := os.Rename(tmp, m.path); err != nil {
@@ -185,7 +193,9 @@ func (m *Manager) StartPersistLoop(interval time.Duration, stop <-chan struct{})
 				log.Printf("clients: save failed: %v", err)
 			}
 		case <-stop:
-			_ = m.Save()
+			if err := m.Save(); err != nil {
+				log.Printf("clients: final save failed: %v", err)
+			}
 			return
 		}
 	}
