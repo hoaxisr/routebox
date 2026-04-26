@@ -2,6 +2,39 @@
 
 All notable changes to RouteBox are documented here.
 
+## [0.16.0] - 2026-04-26
+
+### New Features
+
+**Frontend:**
+- **Clients page** (`/config/clients`) — auto-discovers LAN devices from active connections, lets you assign friendly names and notes inline. Names appear in Connections (group headers + source cells), Dashboard Top Connections, and Breakdown BY SOURCE.
+- **Traffic history on Breakdown** — new time range selector (Live / 1h / 3h / 24h / Week / Month). Historical mode reads from a SQLite store maintained by a 60s sampler; filter clicks drill into the same SQL query.
+- **Pie charts on Breakdown** — each panel (BY SOURCE / BY DOMAIN / BY CHAIN) gets a donut chart with top-3 + "other" legend. Click a slice to filter the dimension.
+- **Domain Sets reworked as inline rule-set editor** — no more local `.json` source / `.srs` compile pipeline. Edits go straight into `route.rule_set[]` of the sing-box config and apply on the next config Apply.
+
+### Improvements
+
+**Frontend:**
+- **Dashboard metric bars reordered** — sing-box version + config path now sits above Managed-by / PID / Uptime / Connections.
+- **Logs persist last selected level** — `localStorage` survives reloads.
+- **Connections — show source IP when grouped by chain** — inside chain groups, the otherwise-redundant Chain column reuses the slot for the source IP (with `whitespace-nowrap` so IPv6 doesn't wrap).
+- **Rule Sets form** — Local type removed (was deprecated by Inline). Remote and Inline buttons now equal-width, matching the Format selector. Legacy `type:local` rule-sets render read-only with a `(legacy)` badge and the Edit button hidden in both list and view-modal.
+- **Breakdown polish** — single-select per dimension (was multi-set), each panel collapses to top 10 with a Show all (N) toggle that resets on filter change, domain rows show their primary destination IP underneath with `(+N)` for additional resolved IPs (lex-smallest pinned for stability across WS ticks), totals + filter chips split into a stable two-row bar that no longer jumps when filters appear.
+
+**Backend:**
+- **Inline rule-set CRUD** — `domains_handlers.go` rewritten as a thin layer over `route.rule_set` of `type: inline`. Validator now accepts empty `rules` arrays (needed for create + last-domain-removed). Handlers deep-copy rule-sets on read so failed updates don't leave the in-memory config in a partial state.
+- **Compile pipeline removed** — no more `autoCompileDomainSets` pre-Apply hook, no `.srs` generation, dead `backend/internal/domains` package deleted.
+- **Clients manager** (`backend/internal/clients`) — TOML persistence next to settings file, atomic write with `f.Sync()` before rename for crash safety, 30s background save loop.
+- **Traffic store** (`backend/internal/traffic`) — `modernc.org/sqlite` (pure-Go, no CGO) keeps minute-bucketed `(source, domain, chain) → upload/download` aggregates with a 35-day retention sweep. Sampler polls Clash `/connections` every 60s, computes byte deltas with counter-reset detection, upserts via `ON CONFLICT DO UPDATE`.
+- **HTTP API additions** — `GET/PUT/DELETE /api/clients` for client names, `GET /api/traffic/history?range=...&source=...&domain=...&chain=...` for historical aggregates.
+
+### Notes
+
+- Go directive bumped to `1.25.0` by `modernc.org/sqlite@latest`.
+- Go test coverage added: `backend/internal/clients` (8 tests, including TOML round-trip and no-op-when-not-dirty), `backend/internal/traffic` (10 tests covering store schema, query filters, prune, and sampler delta math including counter-reset and closed-connection eviction).
+
+---
+
 ## [0.15.1] - 2026-04-21
 
 ### New Features
