@@ -357,8 +357,29 @@
 				</button>
 			</div>
 
+			<!-- Version + Config path bar -->
+			{#if $singboxVersion || status.config_path}
+				<div class="bg-[var(--ctp-surface1)] rounded-lg px-4 py-2 flex items-center gap-4 flex-wrap mb-3 text-xs">
+					{#if $singboxVersion}
+						<div class="flex items-center gap-1.5">
+							<span class="text-[var(--ctp-overlay1)]">sing-box</span>
+							<span class="text-[var(--ctp-subtext1)]">{$singboxVersion.version}</span>
+						</div>
+					{/if}
+					{#if $singboxVersion && status.config_path}
+						<div class="w-px h-[14px] bg-[var(--ctp-surface2)]"></div>
+					{/if}
+					{#if status.config_path}
+						<div class="flex items-center gap-1.5 min-w-0">
+							<span class="text-[var(--ctp-overlay1)] flex-shrink-0">Config</span>
+							<span class="text-[var(--ctp-subtext1)] truncate">{status.config_path}</span>
+						</div>
+					{/if}
+				</div>
+			{/if}
+
 			<!-- System metrics bar -->
-			<div class="bg-[var(--ctp-surface1)] rounded-lg px-4 py-3 flex items-center gap-4 sm:gap-5 flex-wrap mb-3">
+			<div class="bg-[var(--ctp-surface1)] rounded-lg px-4 py-3 flex items-center gap-4 sm:gap-5 flex-wrap mb-6">
 				<div class="flex items-baseline gap-1.5">
 					<span class="text-[10px] uppercase tracking-wide text-[var(--ctp-overlay1)]">Managed by</span>
 					{#if status.managed_by === 'systemd'}
@@ -386,27 +407,6 @@
 					<span class="text-sm text-[var(--ctp-text)]">{connectionCount}</span>
 				</div>
 			</div>
-
-			<!-- Version + Config path bar -->
-			{#if $singboxVersion || status.config_path}
-				<div class="bg-[var(--ctp-surface1)] rounded-lg px-4 py-2 flex items-center gap-4 flex-wrap mb-6 text-xs">
-					{#if $singboxVersion}
-						<div class="flex items-center gap-1.5">
-							<span class="text-[var(--ctp-overlay1)]">sing-box</span>
-							<span class="text-[var(--ctp-subtext1)]">{$singboxVersion.version}</span>
-						</div>
-					{/if}
-					{#if $singboxVersion && status.config_path}
-						<div class="w-px h-[14px] bg-[var(--ctp-surface2)]"></div>
-					{/if}
-					{#if status.config_path}
-						<div class="flex items-center gap-1.5 min-w-0">
-							<span class="text-[var(--ctp-overlay1)] flex-shrink-0">Config</span>
-							<span class="text-[var(--ctp-subtext1)] truncate">{status.config_path}</span>
-						</div>
-					{/if}
-				</div>
-			{/if}
 
 			<!-- Traffic stats -->
 			<div class="grid grid-cols-2 gap-3 sm:gap-4 mb-6">
