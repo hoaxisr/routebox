@@ -13,10 +13,10 @@
 
 	// Active filters per dimension. Each dimension can hold multiple values (OR within,
 	// AND across) — e.g. source=192.168.1.14 AND (domain=a.com OR domain=b.com).
-	let filters = $state<Record<Dimension, Set<string>>>({
-		source: new Set(),
-		domain: new Set(),
-		chain: new Set()
+	let filters = $state<Record<Dimension, string | null>>({
+		source: null,
+		domain: null,
+		chain: null
 	});
 
 	function keyOf(conn: ClashConnection, dim: Dimension): string {
@@ -33,22 +33,19 @@
 	function matchesFilters(conn: ClashConnection, except?: Dimension): boolean {
 		for (const dim of ['source', 'domain', 'chain'] as Dimension[]) {
 			if (dim === except) continue;
-			const set = filters[dim];
-			if (set.size === 0) continue;
-			if (!set.has(keyOf(conn, dim))) return false;
+			const v = filters[dim];
+			if (v === null) continue;
+			if (keyOf(conn, dim) !== v) return false;
 		}
 		return true;
 	}
 
 	function toggleFilter(dim: Dimension, value: string) {
-		const set = new Set(filters[dim]);
-		if (set.has(value)) set.delete(value);
-		else set.add(value);
-		filters = { ...filters, [dim]: set };
+		filters = { ...filters, [dim]: filters[dim] === value ? null : value };
 	}
 
 	function clearFilters() {
-		filters = { source: new Set(), domain: new Set(), chain: new Set() };
+		filters = { source: null, domain: null, chain: null };
 	}
 
 	interface Bucket {
@@ -98,7 +95,7 @@
 	});
 
 	const hasAnyFilter = $derived(
-		filters.source.size + filters.domain.size + filters.chain.size > 0
+		filters.source !== null || filters.domain !== null || filters.chain !== null
 	);
 
 	function startStream() {
@@ -172,19 +169,19 @@
 			<div class="text-sm text-[var(--ctp-overlay1)]">{$t('breakdown.filters')}:</div>
 			<div class="flex flex-wrap gap-1.5">
 				{#each ['source', 'domain', 'chain'] as Dimension[] as dim}
-					{#each Array.from(filters[dim]) as value}
+					{#if filters[dim] !== null}
 						<button
-							onclick={() => toggleFilter(dim, value)}
+							onclick={() => toggleFilter(dim, filters[dim]!)}
 							class="flex items-center gap-1.5 px-2 py-0.5 text-xs rounded-full border border-[var(--ctp-primary)] bg-[color-mix(in_srgb,var(--ctp-primary)_10%,transparent)] text-[var(--ctp-primary)] hover:bg-[color-mix(in_srgb,var(--ctp-primary)_20%,transparent)]"
 							title="Remove filter"
 						>
 							<span class="text-[10px] uppercase tracking-wide opacity-70">{dim}</span>
-							<span>{value}</span>
+							<span>{filters[dim]}</span>
 							<svg class="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
 								<path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12" />
 							</svg>
 						</button>
-					{/each}
+					{/if}
 				{/each}
 			</div>
 			<button
@@ -226,7 +223,7 @@
 				</div>
 			{:else}
 				{#each buckets as b (b.key)}
-					{@const active = filters[dim].has(b.key)}
+					{@const active = filters[dim] === b.key}
 					<button
 						onclick={() => toggleFilter(dim, b.key)}
 						class="w-full text-left px-4 py-2 hover:bg-[var(--ctp-surface1)] transition-colors relative overflow-hidden"
