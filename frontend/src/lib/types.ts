@@ -600,6 +600,24 @@ export interface ClientEntry {
 	online: boolean;
 }
 
+// Traffic history (aggregated buckets for breakdowns)
+export interface TrafficBucket {
+	source: string;
+	domain: string;
+	chain: string;
+	upload: number;
+	download: number;
+}
+
+export interface TrafficHistoryResponse {
+	range: string;
+	start_ts: number;
+	end_ts: number;
+	buckets: TrafficBucket[];
+}
+
+export type TrafficRange = '1h' | '3h' | '24h' | 'week' | 'month';
+
 // Rule set source file (JSON format for sing-box compilation)
 export interface RuleSetSource {
 	version: number;
