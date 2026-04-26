@@ -1,4 +1,4 @@
-import type { ApiResponse, ProcessStatus, DetectedConfig, NeedsSetupResponse, SingboxConfig, Endpoint, Outbound, Inbound, RuleSet, RuleSetUsage, RouteRule, RouteSettings, DnsServer, DnsRule, DnsSettings, LogSettings, ExperimentalSettings, ConnectionsResponse, ProxiesResponse, ClashProxy, TestRouteResponse, ConnectTestResponse, SettingsResponse, RouteBoxSettings, SingBoxVersion, DomainSetInfo, RuleSetSource } from '$lib/types';
+import type { ApiResponse, ProcessStatus, DetectedConfig, NeedsSetupResponse, SingboxConfig, Endpoint, Outbound, Inbound, RuleSet, RuleSetUsage, RouteRule, RouteSettings, DnsServer, DnsRule, DnsSettings, LogSettings, ExperimentalSettings, ConnectionsResponse, ProxiesResponse, ClashProxy, TestRouteResponse, ConnectTestResponse, SettingsResponse, RouteBoxSettings, SingBoxVersion, DomainSetInfo, RuleSetSource, ClientEntry } from '$lib/types';
 
 const API_BASE = '/api';
 
@@ -405,7 +405,17 @@ export const api = {
 		request<{ message: string; added: number }>(`/domains/${encodeURIComponent(tag)}/import`, {
 			method: 'POST',
 			body: JSON.stringify({ domains })
-		})
+		}),
+
+	// Clients (LAN devices) CRUD
+	listClients: () => request<ClientEntry[]>('/clients'),
+	updateClient: (ip: string, body: { name: string; note: string }) =>
+		request<ClientEntry>(`/clients/${encodeURIComponent(ip)}`, {
+			method: 'PUT',
+			body: JSON.stringify(body)
+		}),
+	deleteClient: (ip: string) =>
+		requestRaw<void>(`/clients/${encodeURIComponent(ip)}`, { method: 'DELETE' })
 };
 
 // WebSocket helpers

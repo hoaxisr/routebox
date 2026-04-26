@@ -590,6 +590,16 @@ export interface DomainSetInfo {
 	rules_count: number;
 }
 
+// Client (LAN device) entry
+export interface ClientEntry {
+	ip: string;
+	name: string;
+	note: string;
+	first_seen: number;
+	last_seen: number;
+	online: boolean;
+}
+
 // Rule set source file (JSON format for sing-box compilation)
 export interface RuleSetSource {
 	version: number;
