@@ -1,5 +1,6 @@
 <script lang="ts">
 	import { onMount } from 'svelte';
+	import { browser } from '$app/environment';
 	import { t } from 'svelte-i18n';
 	import { createLogsStream } from '$lib/api/client';
 
@@ -14,7 +15,7 @@
 	let stream: { close: () => void } | null = null;
 	let connected = $state(false);
 	let logId = 0;
-	let filter = $state('all');
+	let filter = $state(browser ? (localStorage.getItem('logs.level') ?? 'all') : 'all');
 	let search = $state('');
 	let autoScroll = $state(true);
 	let paused = $state(false);
@@ -133,6 +134,7 @@
 	$effect(() => {
 		if (filter !== prevFilter) {
 			prevFilter = filter;
+			if (browser) localStorage.setItem('logs.level', filter);
 			startStream(filter === 'all' ? 'info' : filter);
 		}
 	});
