@@ -2,7 +2,7 @@
 	import { onMount, onDestroy } from 'svelte';
 	import { t } from 'svelte-i18n';
 	import { createConnectionsStream, api } from '$lib/api/client';
-	import { formatBytes } from '$lib/stores';
+	import { formatBytes, clientNames } from '$lib/stores';
 	import type { ClashConnection } from '$lib/types';
 
 	type Dimension = 'source' | 'domain' | 'chain';
@@ -282,7 +282,11 @@
 								class:text-[var(--ctp-primary)]={active}
 								class:text-[var(--ctp-text)]={!active}
 								title={b.key}>
-								{b.key}
+								{#if dim === 'source'}
+									{$clientNames.get(b.key) ?? b.key}
+								{:else}
+									{b.key}
+								{/if}
 							</div>
 							<div class="flex items-baseline gap-2 flex-shrink-0 font-mono tabular-nums text-xs">
 								<span class="text-[var(--ctp-subtext1)]">{formatBytes(b.total)}</span>
@@ -297,6 +301,12 @@
 							>
 								{b.primaryIp}{#if b.ipCount && b.ipCount > 1} (+{b.ipCount - 1}){/if}
 							</div>
+						{/if}
+						{#if dim === 'source'}
+							{@const sourceName = $clientNames.get(b.key)}
+							{#if sourceName}
+								<div class="relative mt-0.5 text-[10px] font-mono text-[var(--ctp-overlay0)]">{b.key}</div>
+							{/if}
 						{/if}
 					</button>
 				{/each}

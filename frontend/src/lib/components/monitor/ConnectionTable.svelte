@@ -1,7 +1,7 @@
 <script lang="ts">
 	import { browser } from '$app/environment';
 	import { t } from 'svelte-i18n';
-	import { formatBytes } from '$lib/stores';
+	import { formatBytes, clientNames } from '$lib/stores';
 	import type { ClashConnection } from '$lib/types';
 
 	interface Props {
@@ -310,6 +310,7 @@
 			<tbody class="divide-y divide-[var(--ctp-surface2)]">
 				{#if groupBySource}
 					{#each groupedConnections as group}
+						{@const groupName = $clientNames.get(group.sourceIP)}
 						<!-- Group header -->
 						<tr class="bg-[var(--ctp-mantle)] cursor-pointer hover:bg-[var(--ctp-surface1)] transition-colors"
 							onclick={() => toggleGroup(group.sourceIP)}>
@@ -318,7 +319,11 @@
 									<svg class="w-4 h-4 transition-transform text-[var(--ctp-overlay1)] {expandedGroups.has(group.sourceIP) ? 'rotate-90' : ''}" fill="none" stroke="currentColor" viewBox="0 0 24 24">
 										<path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 5l7 7-7 7" />
 									</svg>
-									<span class="font-mono font-medium text-[var(--ctp-text)]">{group.sourceIP}</span>
+									<span class="font-medium text-[var(--ctp-text)]">
+										{#if groupName}{groupName} <span class="font-mono text-xs text-[var(--ctp-overlay0)]">({group.sourceIP})</span>
+										{:else}<span class="font-mono">{group.sourceIP}</span>
+										{/if}
+									</span>
 									<span class="text-xs text-[var(--ctp-overlay0)]">
 										({group.connections.length})
 									</span>
@@ -443,8 +448,10 @@
 		</td>
 		<td class="px-4 py-3 text-center">
 			{#if groupByChain}
-				<span class="font-mono text-sm text-[var(--ctp-subtext1)] whitespace-nowrap">
-					{conn.metadata.sourceIP || '-'}
+				{@const name = $clientNames.get(conn.metadata.sourceIP || '')}
+				<span class="text-sm text-[var(--ctp-subtext1)] whitespace-nowrap" title={conn.metadata.sourceIP}>
+					{#if name}{name}
+					{:else}<span class="font-mono">{conn.metadata.sourceIP || '-'}</span>{/if}
 				</span>
 			{:else}
 				<div class="flex flex-wrap gap-1 justify-center">
