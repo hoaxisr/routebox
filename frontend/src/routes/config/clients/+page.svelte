@@ -29,20 +29,15 @@
     }
 
     async function fetchTraffic24h() {
-        // Phase 3 endpoint — graceful skip if not yet available.
-        // Use a runtime check on the api object since the method may not exist yet.
-        const getTraffic = (api as any).getTrafficHistory;
-        if (typeof getTraffic !== 'function') return;
         try {
-            const data = await getTraffic('24h');
-            if (!data?.buckets) return;
+            const data = await api.getTrafficHistory('24h');
             const map = new Map<string, number>();
             for (const b of data.buckets) {
                 map.set(b.source, (map.get(b.source) ?? 0) + b.upload + b.download);
             }
             traffic24h = map;
         } catch {
-            /* Phase 3 not landed yet or temporary error */
+            /* ignore — backend may not have any data yet */
         }
     }
 
