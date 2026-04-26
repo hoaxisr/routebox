@@ -443,7 +443,7 @@
 		</td>
 		<td class="px-4 py-3 text-center">
 			{#if groupByChain}
-				<span class="font-mono text-sm text-[var(--ctp-subtext1)]">
+				<span class="font-mono text-sm text-[var(--ctp-subtext1)] whitespace-nowrap">
 					{conn.metadata.sourceIP || '-'}
 				</span>
 			{:else}
