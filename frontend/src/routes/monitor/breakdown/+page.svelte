@@ -383,8 +383,10 @@
 							</div>
 							<div class="flex items-baseline gap-2 flex-shrink-0 font-mono tabular-nums text-xs">
 								<span class="text-[var(--ctp-subtext1)]">{formatBytes(b.total)}</span>
-								<span class="text-[var(--ctp-overlay0)]">·</span>
-								<span class="text-[var(--ctp-overlay0)]">{b.connCount}</span>
+								{#if b.connCount > 0}
+									<span class="text-[var(--ctp-overlay0)]">·</span>
+									<span class="text-[var(--ctp-overlay0)]">{b.connCount}</span>
+								{/if}
 							</div>
 						</div>
 						{#if dim === 'domain' && b.primaryIp}
