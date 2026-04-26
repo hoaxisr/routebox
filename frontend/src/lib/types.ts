@@ -587,9 +587,7 @@ export interface RuleSetUsage {
 export interface DomainSetInfo {
 	tag: string;
 	domain_count: number;
-	rule_count: number;
-	has_compiled: boolean;
-	needs_recompile: boolean;
+	rules_count: number;
 }
 
 // Rule set source file (JSON format for sing-box compilation)

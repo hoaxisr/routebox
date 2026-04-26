@@ -401,10 +401,6 @@ export const api = {
 		request<{ message: string }>(`/domains/${encodeURIComponent(tag)}/domain/${encodeURIComponent(domain)}`, {
 			method: 'DELETE'
 		}),
-	compileDomains: (tag: string) =>
-		request<{ message: string }>(`/domains/${encodeURIComponent(tag)}/compile`, {
-			method: 'POST'
-		}),
 	importDomains: (tag: string, domains: string[]) =>
 		request<{ message: string; added: number }>(`/domains/${encodeURIComponent(tag)}/import`, {
 			method: 'POST',

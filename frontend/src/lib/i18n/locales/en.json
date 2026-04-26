@@ -373,7 +373,7 @@
   },
   "domains": {
     "title": "Domain Sets",
-    "description": "Create and manage custom domain rule sets for routing",
+    "description": "Inline domain lists referenced by routing rules. Edits apply on the next config Apply.",
     "ruleSets": "Rule Sets",
     "createSet": "Create Rule Set",
     "tagPlaceholder": "my-domains",
