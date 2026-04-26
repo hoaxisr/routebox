@@ -7,12 +7,14 @@ import (
 	"net/http"
 	"os"
 	"path/filepath"
+	"time"
 
 	"github.com/go-chi/chi/v5"
 	"github.com/go-chi/chi/v5/middleware"
 	"github.com/go-chi/cors"
 
 	"routebox/backend/internal/api"
+	"routebox/backend/internal/clients"
 	"routebox/backend/internal/config"
 	"routebox/backend/internal/embedded"
 	"routebox/backend/internal/geoip"
@@ -152,8 +154,23 @@ func main() {
 		resolvedListenAddr = cfg.Network.Listen
 	}
 
+	// Initialize clients manager (LAN device names)
+	var clientsPath string
+	if sp := settingsMgr.GetPath(); sp != "" {
+		clientsPath = filepath.Join(filepath.Dir(sp), "clients.toml")
+	}
+	clientsMgr := clients.New(clientsPath)
+	if clientsPath != "" {
+		if err := clientsMgr.Load(); err != nil {
+			log.Printf("Warning: failed to load clients.toml: %v", err)
+		}
+	}
+	stopClients := make(chan struct{})
+	go clientsMgr.StartPersistLoop(30*time.Second, stopClients)
+	defer close(stopClients)
+
 	// Initialize API handlers
-	apiHandler := api.NewHandler(cfgMgr, procMgr, resolvedClashAddr, geoipDB, settingsMgr)
+	apiHandler := api.NewHandler(cfgMgr, procMgr, resolvedClashAddr, geoipDB, settingsMgr, clientsMgr)
 
 	// Setup router
 	r := chi.NewRouter()
@@ -239,6 +256,13 @@ func main() {
 				r.Delete("/domain/{domain}", apiHandler.RemoveDomain)
 				r.Post("/import", apiHandler.ImportDomains)
 			})
+		})
+
+		// Clients (LAN device names)
+		r.Route("/clients", func(r chi.Router) {
+			r.Get("/", apiHandler.ListClients)
+			r.Put("/{ip}", apiHandler.UpdateClient)
+			r.Delete("/{ip}", apiHandler.DeleteClient)
 		})
 
 		// Route Rules CRUD

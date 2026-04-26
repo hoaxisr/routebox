@@ -1,6 +1,7 @@
 package api
 
 import (
+	"routebox/backend/internal/clients"
 	"routebox/backend/internal/config"
 	"routebox/backend/internal/geoip"
 	"routebox/backend/internal/process"
@@ -14,15 +15,17 @@ type Handler struct {
 	clashAddr string
 	geoip     *geoip.DB
 	settings  *settings.Manager
+	clients   *clients.Manager
 }
 
 // NewHandler creates a new API handler
-func NewHandler(cfg *config.Manager, proc *process.Manager, clashAddr string, geoipDB *geoip.DB, settingsMgr *settings.Manager) *Handler {
+func NewHandler(cfg *config.Manager, proc *process.Manager, clashAddr string, geoipDB *geoip.DB, settingsMgr *settings.Manager, clientsMgr *clients.Manager) *Handler {
 	return &Handler{
 		config:    cfg,
 		process:   proc,
 		clashAddr: clashAddr,
 		geoip:     geoipDB,
 		settings:  settingsMgr,
+		clients:   clientsMgr,
 	}
 }
