@@ -184,8 +184,8 @@
 		<p class="text-sm text-[var(--ctp-overlay1)] mt-1">{$t('breakdown.subtitle')}</p>
 	</div>
 
-	<!-- Filter chips + totals -->
-	<div class="bg-[var(--ctp-surface0)] rounded-lg border border-[var(--ctp-surface2)] p-4 flex flex-wrap items-center gap-3">
+	<!-- Totals row (always one line, fixed height) -->
+	<div class="bg-[var(--ctp-surface0)] {hasAnyFilter ? 'rounded-t-lg border-x border-t' : 'rounded-lg border'} border-[var(--ctp-surface2)] px-4 py-3 flex items-center gap-3">
 		<div class="text-sm text-[var(--ctp-overlay1)]">{$t('breakdown.totalTraffic')}:</div>
 		<div class="text-sm text-[var(--ctp-text)]">
 			<span class="text-[var(--ctp-overlay0)]">↑</span> {formatBytes(filteredTotal.up)}
@@ -194,34 +194,38 @@
 			<span class="mx-2 text-[var(--ctp-overlay0)]">·</span>
 			<span class="text-[var(--ctp-overlay1)]">{filteredTotal.count} conn</span>
 		</div>
-		{#if hasAnyFilter}
-			<div class="w-px h-5 bg-[var(--ctp-surface2)]"></div>
-			<div class="text-sm text-[var(--ctp-overlay1)]">{$t('breakdown.filters')}:</div>
-			<div class="flex flex-wrap gap-1.5">
-				{#each ['source', 'domain', 'chain'] as Dimension[] as dim}
-					{#if filters[dim] !== null}
-						<button
-							onclick={() => toggleFilter(dim, filters[dim]!)}
-							class="flex items-center gap-1.5 px-2 py-0.5 text-xs rounded-full border border-[var(--ctp-primary)] bg-[color-mix(in_srgb,var(--ctp-primary)_10%,transparent)] text-[var(--ctp-primary)] hover:bg-[color-mix(in_srgb,var(--ctp-primary)_20%,transparent)]"
-							title="Remove filter"
-						>
-							<span class="text-[10px] uppercase tracking-wide opacity-70">{dim}</span>
-							<span>{filters[dim]}</span>
-							<svg class="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-								<path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12" />
-							</svg>
-						</button>
-					{/if}
-				{/each}
-			</div>
+		<div class="flex-1"></div>
+		<!-- Range selector slot — added in Phase 3 -->
+	</div>
+
+	<!-- Filter chips row — only visible when filters are present -->
+	{#if hasAnyFilter}
+		<div class="bg-[var(--ctp-surface0)] rounded-b-lg border-x border-b border-[var(--ctp-surface2)] px-4 py-2 flex flex-wrap items-center gap-2">
+			<div class="text-xs text-[var(--ctp-overlay1)]">{$t('breakdown.filters')}:</div>
+			{#each ['source', 'domain', 'chain'] as Dimension[] as dim}
+				{#if filters[dim] !== null}
+					<button
+						onclick={() => toggleFilter(dim, filters[dim]!)}
+						class="flex items-center gap-1.5 px-2 py-0.5 text-xs rounded-full border border-[var(--ctp-primary)] bg-[color-mix(in_srgb,var(--ctp-primary)_10%,transparent)] text-[var(--ctp-primary)] hover:bg-[color-mix(in_srgb,var(--ctp-primary)_20%,transparent)]"
+						title="Remove filter"
+					>
+						<span class="text-[10px] uppercase tracking-wide opacity-70">{dim}</span>
+						<span>{filters[dim]}</span>
+						<svg class="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+							<path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12" />
+						</svg>
+					</button>
+				{/if}
+			{/each}
+			<div class="flex-1"></div>
 			<button
 				onclick={clearFilters}
-				class="ml-auto px-3 py-1 text-xs text-[var(--ctp-overlay1)] hover:text-[var(--ctp-text)] border border-[var(--ctp-surface2)] rounded-lg hover:bg-[var(--ctp-surface1)]"
+				class="px-3 py-0.5 text-xs text-[var(--ctp-overlay1)] hover:text-[var(--ctp-text)] border border-[var(--ctp-surface2)] rounded-lg hover:bg-[var(--ctp-surface1)]"
 			>
 				{$t('breakdown.clearFilters')}
 			</button>
-		{/if}
-	</div>
+		</div>
+	{/if}
 
 	<!-- Three-panel breakdown -->
 	{#if loading}
