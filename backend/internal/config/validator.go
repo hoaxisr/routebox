@@ -443,7 +443,7 @@ func validateRuleSet(rs map[string]interface{}, index int) []string {
 			errors = append(errors, fmt.Sprintf("%s: local type requires 'path'", prefix))
 		}
 	case "inline":
-		if rules, ok := rs["rules"].([]interface{}); !ok || len(rules) == 0 {
+		if _, ok := rs["rules"].([]interface{}); !ok {
 			errors = append(errors, fmt.Sprintf("%s: inline type requires 'rules' array", prefix))
 		}
 	}

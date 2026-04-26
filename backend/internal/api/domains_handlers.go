@@ -9,12 +9,42 @@ import (
 	"github.com/go-chi/chi/v5"
 )
 
-// inlineRuleSets returns all rule_set entries with type=inline from the draft config.
+// deepCopyRuleSet returns a deep copy of a rule-set map so callers can mutate
+// freely without affecting the manager's internal config state.
+func deepCopyRuleSet(rs map[string]interface{}) map[string]interface{} {
+	out := map[string]interface{}{}
+	for k, v := range rs {
+		out[k] = deepCopyValue(v)
+	}
+	return out
+}
+
+func deepCopyValue(v interface{}) interface{} {
+	switch x := v.(type) {
+	case map[string]interface{}:
+		m := map[string]interface{}{}
+		for k, vv := range x {
+			m[k] = deepCopyValue(vv)
+		}
+		return m
+	case []interface{}:
+		s := make([]interface{}, len(x))
+		for i, vv := range x {
+			s[i] = deepCopyValue(vv)
+		}
+		return s
+	default:
+		return v
+	}
+}
+
+// inlineRuleSets returns deep copies of all rule_set entries with type=inline
+// from the draft config so handlers can mutate without touching live state.
 func (h *Handler) inlineRuleSets() []map[string]interface{} {
 	out := []map[string]interface{}{}
 	for _, rs := range h.config.ListRuleSets() {
 		if t, _ := rs["type"].(string); t == "inline" {
-			out = append(out, rs)
+			out = append(out, deepCopyRuleSet(rs))
 		}
 	}
 	return out
@@ -25,7 +55,7 @@ func (h *Handler) findInlineRuleSet(tag string) (map[string]interface{}, bool) {
 		t, _ := rs["type"].(string)
 		rsTag, _ := rs["tag"].(string)
 		if t == "inline" && rsTag == tag {
-			return rs, true
+			return deepCopyRuleSet(rs), true
 		}
 	}
 	return nil, false
