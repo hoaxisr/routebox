@@ -4,8 +4,11 @@
 	import { createConnectionsStream, api } from '$lib/api/client';
 	import { formatBytes, clientNames } from '$lib/stores';
 	import type { ClashConnection } from '$lib/types';
+	import PieChart from '$lib/components/monitor/PieChart.svelte';
+	import type { TrafficRange, TrafficBucket } from '$lib/types';
 
 	type Dimension = 'source' | 'domain' | 'chain';
+	type ViewMode = 'live' | TrafficRange;
 
 	let connections = $state<ClashConnection[]>([]);
 	let stream: { close: () => void } | null = null;
@@ -24,6 +27,10 @@
 		chain: false
 	});
 
+	let viewMode = $state<ViewMode>('live');
+	let historical = $state<TrafficBucket[] | null>(null);
+	let historyLoading = $state(false);
+
 	function togglePanelExpand(dim: Dimension) {
 		expandedPanels = { ...expandedPanels, [dim]: !expandedPanels[dim] };
 	}
@@ -32,6 +39,21 @@
 		// Reset Show all when filters change — each filter view starts collapsed
 		filters.source; filters.domain; filters.chain;
 		expandedPanels = { source: false, domain: false, chain: false };
+	});
+
+	$effect(() => {
+		if (viewMode === 'live') {
+			historical = null;
+			return;
+		}
+		loadHistorical(viewMode);
+	});
+
+	$effect(() => {
+		if (viewMode === 'live') return;
+		// Track filter property reads so we re-fetch when they change
+		void filters.source; void filters.domain; void filters.chain;
+		loadHistorical(viewMode);
 	});
 
 	function keyOf(conn: ClashConnection, dim: Dimension): string {
@@ -61,6 +83,10 @@
 
 	function clearFilters() {
 		filters = { source: null, domain: null, chain: null };
+	}
+
+	function clearOneFilter(dim: Dimension) {
+		filters = { ...filters, [dim]: null };
 	}
 
 	interface Bucket {
@@ -113,19 +139,66 @@
 		return Array.from(map.values()).sort((a, b) => b.total - a.total);
 	}
 
-	const sourceBuckets = $derived(aggregate('source'));
-	const domainBuckets = $derived(aggregate('domain'));
-	const chainBuckets = $derived(aggregate('chain'));
+	function aggregateHistorical(dim: Dimension, rows: TrafficBucket[]): Bucket[] {
+		const map = new Map<string, Bucket>();
+		for (const r of rows) {
+			if (dim !== 'source' && filters.source !== null && r.source !== filters.source) continue;
+			if (dim !== 'domain' && filters.domain !== null && r.domain !== filters.domain) continue;
+			if (dim !== 'chain' && filters.chain !== null && r.chain !== filters.chain) continue;
+			let key: string;
+			switch (dim) {
+				case 'source': key = r.source || 'unknown'; break;
+				case 'domain': key = r.domain || '-'; break;
+				case 'chain': key = r.chain || '-'; break;
+			}
+			let b = map.get(key);
+			if (!b) {
+				b = { key, upload: 0, download: 0, total: 0, connCount: 0 };
+				map.set(key, b);
+			}
+			b.upload += r.upload;
+			b.download += r.download;
+			b.total += r.upload + r.download;
+			// historical doesn't track per-conn count
+		}
+		return Array.from(map.values()).sort((a, b) => b.total - a.total);
+	}
+
+	async function loadHistorical(mode: TrafficRange) {
+		historyLoading = true;
+		try {
+			const data = await api.getTrafficHistory(mode, {
+				source: filters.source ?? undefined,
+				domain: filters.domain ?? undefined,
+				chain: filters.chain ?? undefined
+			});
+			historical = data.buckets;
+		} catch {
+			historical = [];
+		} finally {
+			historyLoading = false;
+		}
+	}
+
+	const sourceBuckets = $derived(historical !== null ? aggregateHistorical('source', historical) : aggregate('source'));
+	const domainBuckets = $derived(historical !== null ? aggregateHistorical('domain', historical) : aggregate('domain'));
+	const chainBuckets = $derived(historical !== null ? aggregateHistorical('chain', historical) : aggregate('chain'));
 
 	const filteredTotal = $derived.by(() => {
-		let up = 0;
-		let down = 0;
-		let count = 0;
+		if (historical !== null) {
+			let up = 0, down = 0;
+			for (const r of historical) {
+				if (filters.source !== null && r.source !== filters.source) continue;
+				if (filters.domain !== null && r.domain !== filters.domain) continue;
+				if (filters.chain !== null && r.chain !== filters.chain) continue;
+				up += r.upload; down += r.download;
+			}
+			return { up, down, count: 0 };
+		}
+		let up = 0, down = 0, count = 0;
 		for (const conn of connections) {
 			if (!matchesFilters(conn)) continue;
-			up += conn.upload;
-			down += conn.download;
-			count += 1;
+			up += conn.upload; down += conn.download; count += 1;
 		}
 		return { up, down, count };
 	});
@@ -201,7 +274,16 @@
 			<span class="text-[var(--ctp-overlay1)]">{filteredTotal.count} conn</span>
 		</div>
 		<div class="flex-1"></div>
-		<!-- Range selector slot — added in Phase 3 -->
+		<div class="flex gap-1 bg-[var(--ctp-mantle)] rounded-md p-0.5">
+			{#each [{m:'live',l:$t('breakdown.rangeLive')},{m:'1h',l:'1h'},{m:'3h',l:'3h'},{m:'24h',l:'24h'},{m:'week',l:'Week'},{m:'month',l:'Month'}] as r}
+				<button
+					onclick={() => viewMode = r.m as ViewMode}
+					class="px-2.5 py-1 text-xs rounded transition-colors {viewMode === r.m
+						? 'bg-[var(--ctp-surface2)] text-[var(--ctp-text)]'
+						: 'text-[var(--ctp-overlay1)] hover:text-[var(--ctp-text)]'}"
+				>{r.l}</button>
+			{/each}
+		</div>
 	</div>
 
 	<!-- Filter chips row — only visible when filters are present -->
@@ -256,6 +338,17 @@
 			<h2 class="text-sm font-semibold text-[var(--ctp-subtext1)] uppercase tracking-wide">{title}</h2>
 			<span class="text-xs text-[var(--ctp-overlay0)]">{buckets.length}</span>
 		</div>
+		{#if buckets.length > 0}
+			<div class="px-4 py-3 border-b border-[var(--ctp-surface2)]">
+				<PieChart
+					items={buckets.map(b => ({ key: b.key, label: b.key, value: b.total }))}
+					centerNumber={buckets.length}
+					centerLabel={dim === 'source' ? $t('breakdown.clientsLabel') : dim === 'domain' ? $t('breakdown.domainsLabel') : $t('breakdown.chainsLabel')}
+					activeKey={filters[dim]}
+					onSelect={(k) => k === null ? clearOneFilter(dim) : toggleFilter(dim, k)}
+				/>
+			</div>
+		{/if}
 		<div class="flex-1 overflow-y-auto divide-y divide-[var(--ctp-surface2)]">
 			{#if buckets.length === 0}
 				<div class="px-4 py-8 text-center text-sm text-[var(--ctp-overlay0)]">

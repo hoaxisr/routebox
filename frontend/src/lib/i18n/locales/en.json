@@ -1076,7 +1076,11 @@
     "connCount": "{count} conn",
     "connCountPlural": "{count} conns",
     "showAll": "Show all",
-    "showLess": "Show less"
+    "showLess": "Show less",
+    "rangeLive": "Live",
+    "clientsLabel": "clients",
+    "domainsLabel": "domains",
+    "chainsLabel": "chains"
   },
   "proxies": {
     "title": "Proxies",
