@@ -2,7 +2,7 @@
 	import '../app.css';
 	import { onMount, onDestroy, type Snippet } from 'svelte';
 	import { page } from '$app/stores';
-	import { theme, notifications, loadVersion, speedUnit } from '$lib/stores';
+	import { theme, notifications, loadVersion, speedUnit, loadClientNames } from '$lib/stores';
 	import { api } from '$lib/api/client';
 	import UnsavedChangesBar from '$lib/components/shared/UnsavedChangesBar.svelte';
 	import { t, isLoading as i18nLoading } from 'svelte-i18n';
@@ -26,7 +26,7 @@
 
 	// Collapsible nav groups
 	const networkPaths = ['/config/endpoints', '/config/outbounds', '/config/inbounds', '/config/dns'];
-	const routingPaths = ['/config/rule-sets', '/config/domains', '/config/routes'];
+	const routingPaths = ['/config/rule-sets', '/config/domains', '/config/clients', '/config/routes'];
 
 	let networkExpanded = $state(false);
 	let routingExpanded = $state(false);
@@ -67,6 +67,7 @@
 
 		// Load version/feature flags in background
 		loadVersion();
+		loadClientNames();
 
 		// Load speed unit preference
 		api.getSettings().then(res => {
@@ -243,6 +244,9 @@
 							</a>
 							<a href="/config/domains" onclick={handleNavClick} class="flex items-center gap-3 px-3 py-1.5 rounded-lg hover:bg-[var(--ctp-surface0)] text-[var(--ctp-subtext1)] hover:text-[var(--ctp-text)] transition-colors text-sm">
 								{$t('nav.domains')}
+							</a>
+							<a href="/config/clients" onclick={handleNavClick} class="flex items-center gap-3 px-3 py-1.5 rounded-lg hover:bg-[var(--ctp-surface0)] text-[var(--ctp-subtext1)] hover:text-[var(--ctp-text)] transition-colors text-sm">
+								{$t('nav.clients')}
 							</a>
 							<a href="/config/routes" onclick={handleNavClick} class="flex items-center gap-3 px-3 py-1.5 rounded-lg hover:bg-[var(--ctp-surface0)] text-[var(--ctp-subtext1)] hover:text-[var(--ctp-text)] transition-colors text-sm">
 								{$t('nav.routes')}

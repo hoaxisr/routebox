@@ -1,7 +1,7 @@
 <script lang="ts">
 	import { browser } from '$app/environment';
 	import { t } from 'svelte-i18n';
-	import { formatBytes } from '$lib/stores';
+	import { formatBytes, clientNames } from '$lib/stores';
 	import type { ClashConnection } from '$lib/types';
 
 	interface Props {
@@ -296,7 +296,9 @@
 							{$t('connections.download')} <span class="opacity-50">{getSortIcon('download')}</span>
 						</button>
 					</th>
-					<th class="px-4 py-3 text-center font-medium">{$t('connections.chain')}</th>
+					<th class="px-4 py-3 text-center font-medium">
+						{groupByChain ? $t('connections.sourceIP') : $t('connections.chain')}
+					</th>
 					<th class="px-4 py-3 text-center font-medium">
 						<button onclick={() => setSort('start')} class="w-full flex items-center gap-1 justify-center hover:text-[var(--ctp-text)]">
 							{$t('connections.time')} <span class="opacity-50">{getSortIcon('start')}</span>
@@ -308,6 +310,7 @@
 			<tbody class="divide-y divide-[var(--ctp-surface2)]">
 				{#if groupBySource}
 					{#each groupedConnections as group}
+						{@const groupName = $clientNames.get(group.sourceIP)}
 						<!-- Group header -->
 						<tr class="bg-[var(--ctp-mantle)] cursor-pointer hover:bg-[var(--ctp-surface1)] transition-colors"
 							onclick={() => toggleGroup(group.sourceIP)}>
@@ -316,7 +319,11 @@
 									<svg class="w-4 h-4 transition-transform text-[var(--ctp-overlay1)] {expandedGroups.has(group.sourceIP) ? 'rotate-90' : ''}" fill="none" stroke="currentColor" viewBox="0 0 24 24">
 										<path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 5l7 7-7 7" />
 									</svg>
-									<span class="font-mono font-medium text-[var(--ctp-text)]">{group.sourceIP}</span>
+									<span class="font-medium text-[var(--ctp-text)]">
+										{#if groupName}{groupName} <span class="font-mono text-xs text-[var(--ctp-overlay0)]">({group.sourceIP})</span>
+										{:else}<span class="font-mono">{group.sourceIP}</span>
+										{/if}
+									</span>
 									<span class="text-xs text-[var(--ctp-overlay0)]">
 										({group.connections.length})
 									</span>
@@ -440,13 +447,21 @@
 			{formatBytes(conn.download)}
 		</td>
 		<td class="px-4 py-3 text-center">
-			<div class="flex flex-wrap gap-1 justify-center">
-				{#each conn.chains as chain}
-					<span class="selection-chip">
-						{chain}
-					</span>
-				{/each}
-			</div>
+			{#if groupByChain}
+				{@const name = $clientNames.get(conn.metadata.sourceIP || '')}
+				<span class="text-sm text-[var(--ctp-subtext1)] whitespace-nowrap" title={conn.metadata.sourceIP}>
+					{#if name}{name}
+					{:else}<span class="font-mono">{conn.metadata.sourceIP || '-'}</span>{/if}
+				</span>
+			{:else}
+				<div class="flex flex-wrap gap-1 justify-center">
+					{#each conn.chains as chain}
+						<span class="selection-chip">
+							{chain}
+						</span>
+					{/each}
+				</div>
+			{/if}
 		</td>
 		<td class="px-4 py-3 text-center text-sm text-[var(--ctp-overlay1)] whitespace-nowrap">
 			{timeAgo(conn.start)}

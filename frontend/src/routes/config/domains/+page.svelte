@@ -1,7 +1,7 @@
 <script lang="ts">
 	import { onMount } from 'svelte';
 	import { api } from '$lib/api/client';
-	import { notifications } from '$lib/stores';
+	import { notifications, unsavedChanges } from '$lib/stores';
 	import { t } from 'svelte-i18n';
 	import type { DomainSetInfo, RuleSetSource } from '$lib/types';
 
@@ -30,9 +30,6 @@
 	let jsonText = $state('');
 	let jsonError = $state('');
 	let savingJson = $state(false);
-
-	// Compile state
-	let compiling = $state(false);
 
 	// Delete confirmation
 	let deleteConfirmTag = $state<string | null>(null);
@@ -77,6 +74,7 @@
 			const createdTag = newTag.trim();
 			newTag = '';
 			await fetchSets();
+			unsavedChanges.markChanged($t('domains.title'), `${$t('common.create')} "${createdTag}"`);
 			selectSet(createdTag);
 		} catch (e) {
 			notifications.error(`${e}`);
@@ -95,6 +93,7 @@
 			}
 			deleteConfirmTag = null;
 			await fetchSets();
+			unsavedChanges.markChanged($t('domains.title'), `${$t('common.delete')} "${tag}"`);
 		} catch (e) {
 			notifications.error(`${e}`);
 		}
@@ -108,6 +107,7 @@
 			inputValue = '';
 			await selectSet(selectedTag);
 			await fetchSets();
+			unsavedChanges.markChanged($t('domains.title'), `add domain to "${selectedTag}"`);
 		} catch (e) {
 			notifications.error(`${e}`);
 		} finally {
@@ -121,22 +121,9 @@
 			await api.removeDomain(selectedTag, domain);
 			await selectSet(selectedTag);
 			await fetchSets();
+			unsavedChanges.markChanged($t('domains.title'), `remove domain from "${selectedTag}"`);
 		} catch (e) {
 			notifications.error(`${e}`);
-		}
-	}
-
-	async function compileDomains() {
-		if (!selectedTag) return;
-		compiling = true;
-		try {
-			await api.compileDomains(selectedTag);
-			notifications.success($t('domains.compiled'));
-			await fetchSets();
-		} catch (e) {
-			notifications.error(`${e}`);
-		} finally {
-			compiling = false;
 		}
 	}
 
@@ -154,6 +141,7 @@
 			importText = '';
 			await selectSet(selectedTag);
 			await fetchSets();
+			unsavedChanges.markChanged($t('domains.title'), `import domains into "${selectedTag}"`);
 		} catch (e) {
 			notifications.error(`${e}`);
 		} finally {
@@ -171,6 +159,7 @@
 			notifications.success($t('domains.jsonSaved'));
 			await selectSet(selectedTag);
 			await fetchSets();
+			unsavedChanges.markChanged($t('domains.title'), `${$t('common.update')} "${selectedTag}"`);
 		} catch (e) {
 			if (e instanceof SyntaxError) {
 				jsonError = $t('domains.invalidJson');
@@ -215,8 +204,6 @@
 		return allDomains.filter((d) => d.includes(q));
 	});
 
-	let selectedSetInfo = $derived(sets.find((s) => s.tag === selectedTag));
-
 	onMount(fetchSets);
 </script>
 
@@ -248,11 +235,6 @@
 				>
 					<span>{set.tag}</span>
 					<span class="text-xs opacity-70">({set.domain_count})</span>
-					{#if set.has_compiled && !set.needs_recompile}
-						<span class="w-1.5 h-1.5 rounded-full bg-[var(--ctp-green)]" title={$t('domains.compiled')}></span>
-					{:else if set.needs_recompile}
-						<span class="w-1.5 h-1.5 rounded-full bg-[var(--ctp-yellow)]" title={$t('domains.needsRecompile')}></span>
-					{/if}
 				</button>
 			{/each}
 			<button
@@ -301,18 +283,6 @@
 					</div>
 
 					<div class="flex items-center gap-2">
-						{#if selectedSetInfo?.has_compiled && !selectedSetInfo?.needs_recompile}
-							<span class="text-xs text-[var(--ctp-green)]">{$t('domains.upToDate')}</span>
-						{:else if selectedSetInfo?.needs_recompile}
-							<span class="text-xs text-[var(--ctp-yellow)]">{$t('domains.needsRecompile')}</span>
-						{/if}
-						<button
-							onclick={compileDomains}
-							disabled={compiling}
-							class="px-3 py-1.5 text-sm rounded-lg bg-[var(--ctp-surface1)] text-[var(--ctp-text)] hover:bg-[var(--ctp-surface2)] transition-colors disabled:opacity-50"
-						>
-							{compiling ? $t('domains.compiling') : $t('domains.compile')}
-						</button>
 						<button
 							onclick={() => deleteConfirmTag = selectedTag}
 							class="p-1.5 rounded-lg text-[var(--ctp-red)] hover:bg-[var(--ctp-surface1)] transition-colors"

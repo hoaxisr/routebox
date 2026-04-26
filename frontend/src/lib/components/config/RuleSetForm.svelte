@@ -1,7 +1,7 @@
 <script lang="ts">
 	import { t } from 'svelte-i18n';
 	import type { RuleSet, Outbound } from '$lib/types';
-	import { notifications, featureFlags } from '$lib/stores';
+	import { notifications } from '$lib/stores';
 
 	interface Props {
 		existingTags: string[];
@@ -25,10 +25,11 @@
 
 	// Form state - initialize from ruleSet if editing
 	let tag = $state(ruleSet?.tag || '');
-	let type = $state<'remote' | 'local' | 'inline'>(ruleSet?.type || 'remote');
+	let type = $state<'remote' | 'inline'>(
+		ruleSet?.type === 'inline' ? 'inline' : 'remote'
+	);
 	let format = $state<'binary' | 'source'>(ruleSet?.format || 'binary');
 	let url = $state(ruleSet?.url || '');
-	let path = $state(ruleSet?.path || '');
 	// Remote-specific options
 	let downloadDetour = $state(ruleSet?.download_detour || '');
 	let updateInterval = $state(ruleSet?.update_interval || '24h');
@@ -55,10 +56,6 @@
 
 		if (type === 'remote' && !url.trim()) {
 			errors['url'] = $t('dns.validation.serverRequired');
-		}
-
-		if (type === 'local' && !path.trim()) {
-			errors['path'] = $t('errors.requiredField');
 		}
 
 		if (type === 'inline') {
@@ -94,8 +91,6 @@
 			newRuleSet.url = url.trim();
 			if (downloadDetour) newRuleSet.download_detour = downloadDetour;
 			if (updateInterval && updateInterval !== '24h') newRuleSet.update_interval = updateInterval;
-		} else if (type === 'local') {
-			newRuleSet.path = path.trim();
 		} else if (type === 'inline') {
 			newRuleSet.rules = JSON.parse(inlineRulesJson);
 		}
@@ -152,26 +147,17 @@
 				<button
 					type="button"
 					onclick={() => type = 'remote'}
-					class="toggle-btn {type === 'remote' ? 'selected' : ''}"
+					class="toggle-btn flex-1 {type === 'remote' ? 'selected' : ''}"
 				>
 					{$t('routes.ruleSetTypes.remote')}
 				</button>
 				<button
 					type="button"
-					onclick={() => type = 'local'}
-					class="toggle-btn {type === 'local' ? 'selected' : ''}"
+					onclick={() => type = 'inline'}
+					class="toggle-btn flex-1 {type === 'inline' ? 'selected' : ''}"
 				>
-					{$t('routes.ruleSetTypes.local')}
+					{$t('routes.ruleSetTypes.inline')}
 				</button>
-				{#if $featureFlags['inline_rule_sets']}
-					<button
-						type="button"
-						onclick={() => type = 'inline'}
-						class="toggle-btn {type === 'inline' ? 'selected' : ''}"
-					>
-						{$t('routes.ruleSetTypes.inline')}
-					</button>
-				{/if}
 			</div>
 		</div>
 
@@ -183,14 +169,14 @@
 				<button
 					type="button"
 					onclick={() => format = 'binary'}
-					class="toggle-btn {format === 'binary' ? 'selected' : ''}"
+					class="toggle-btn flex-1 {format === 'binary' ? 'selected' : ''}"
 				>
 					{$t('routes.ruleSetFormats.binary')}
 				</button>
 				<button
 					type="button"
 					onclick={() => format = 'source'}
-					class="toggle-btn {format === 'source' ? 'selected' : ''}"
+					class="toggle-btn flex-1 {format === 'source' ? 'selected' : ''}"
 				>
 					{$t('routes.ruleSetFormats.source')}
 				</button>
@@ -240,23 +226,6 @@
 					/>
 					<p class="mt-1 text-xs text-[var(--ctp-overlay0)]">{$t('routes.updateIntervalHint')}</p>
 				</div>
-			</div>
-		{/if}
-
-		<!-- Path (for local) -->
-		{#if type === 'local'}
-			<div class="mb-4">
-				<label for="path" class="block text-sm font-medium text-[var(--ctp-subtext1)] mb-1">{$t('routes.ruleSetPath')} *</label>
-				<input
-					id="path"
-					type="text"
-					bind:value={path}
-					placeholder="/etc/sing-box/rulesets/custom.srs"
-					class="w-full px-3 py-2 bg-[var(--ctp-surface0)] border rounded-lg text-[var(--ctp-text)] placeholder-[var(--ctp-overlay0)] focus:outline-none focus:ring-2 focus:ring-[var(--ctp-primary)] {errors['path'] ? 'border-[var(--ctp-red)]' : 'border-[var(--ctp-surface2)]'}"
-				/>
-				{#if errors['path']}
-					<p class="mt-1 text-sm text-[var(--ctp-red)]">{errors['path']}</p>
-				{/if}
 			</div>
 		{/if}
 

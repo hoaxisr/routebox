@@ -7,26 +7,98 @@ import (
 	"strings"
 
 	"github.com/go-chi/chi/v5"
-
-	"routebox/backend/internal/domains"
 )
 
-// ListDomainSets returns all domain set sources
-func (h *Handler) ListDomainSets(w http.ResponseWriter, r *http.Request) {
-	if h.domains == nil {
-		writeError(w, http.StatusServiceUnavailable, "domains manager not initialized")
-		return
+// deepCopyRuleSet returns a deep copy of a rule-set map so callers can mutate
+// freely without affecting the manager's internal config state.
+func deepCopyRuleSet(rs map[string]interface{}) map[string]interface{} {
+	out := map[string]interface{}{}
+	for k, v := range rs {
+		out[k] = deepCopyValue(v)
 	}
-
-	sets, err := h.domains.ListSets()
-	if err != nil {
-		writeError(w, http.StatusInternalServerError, err.Error())
-		return
-	}
-	writeSuccess(w, sets)
+	return out
 }
 
-// CreateDomainSet creates a new empty domain set
+func deepCopyValue(v interface{}) interface{} {
+	switch x := v.(type) {
+	case map[string]interface{}:
+		m := map[string]interface{}{}
+		for k, vv := range x {
+			m[k] = deepCopyValue(vv)
+		}
+		return m
+	case []interface{}:
+		s := make([]interface{}, len(x))
+		for i, vv := range x {
+			s[i] = deepCopyValue(vv)
+		}
+		return s
+	default:
+		return v
+	}
+}
+
+// inlineRuleSets returns deep copies of all rule_set entries with type=inline
+// from the draft config so handlers can mutate without touching live state.
+func (h *Handler) inlineRuleSets() []map[string]interface{} {
+	out := []map[string]interface{}{}
+	for _, rs := range h.config.ListRuleSets() {
+		if t, _ := rs["type"].(string); t == "inline" {
+			out = append(out, deepCopyRuleSet(rs))
+		}
+	}
+	return out
+}
+
+func (h *Handler) findInlineRuleSet(tag string) (map[string]interface{}, bool) {
+	for _, rs := range h.config.ListRuleSets() {
+		t, _ := rs["type"].(string)
+		rsTag, _ := rs["tag"].(string)
+		if t == "inline" && rsTag == tag {
+			return deepCopyRuleSet(rs), true
+		}
+	}
+	return nil, false
+}
+
+// DomainSetInfo is the listing shape returned to the UI.
+type DomainSetInfo struct {
+	Tag         string `json:"tag"`
+	DomainCount int    `json:"domain_count"`
+	RulesCount  int    `json:"rules_count"`
+}
+
+func countDomains(rs map[string]interface{}) (rules int, domains int) {
+	rulesAny, _ := rs["rules"].([]interface{})
+	rules = len(rulesAny)
+	for _, r := range rulesAny {
+		rule, _ := r.(map[string]interface{})
+		ds, _ := rule["domain_suffix"].([]interface{})
+		domains += len(ds)
+		if d, _ := rule["domain"].([]interface{}); d != nil {
+			domains += len(d)
+		}
+	}
+	return
+}
+
+// ListDomainSets returns all inline rule-sets in the draft config.
+func (h *Handler) ListDomainSets(w http.ResponseWriter, r *http.Request) {
+	rss := h.inlineRuleSets()
+	out := make([]DomainSetInfo, 0, len(rss))
+	for _, rs := range rss {
+		tag, _ := rs["tag"].(string)
+		rulesCount, domainCount := countDomains(rs)
+		out = append(out, DomainSetInfo{
+			Tag:         tag,
+			DomainCount: domainCount,
+			RulesCount:  rulesCount,
+		})
+	}
+	writeSuccess(w, out)
+}
+
+// CreateDomainSet creates a new empty inline rule-set.
 func (h *Handler) CreateDomainSet(w http.ResponseWriter, r *http.Request) {
 	var body struct {
 		Tag string `json:"tag"`
@@ -35,92 +107,102 @@ func (h *Handler) CreateDomainSet(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusBadRequest, fmt.Sprintf("invalid JSON: %v", err))
 		return
 	}
-
-	if body.Tag == "" {
+	tag := strings.TrimSpace(body.Tag)
+	if tag == "" {
 		writeError(w, http.StatusBadRequest, "tag is required")
 		return
 	}
 
-	// Check if tag conflicts with existing rule_set tags in sing-box config
-	existingRuleSets := h.config.ListRuleSets()
-	for _, rs := range existingRuleSets {
-		if t, ok := rs["tag"].(string); ok && t == body.Tag {
-			writeError(w, http.StatusConflict, fmt.Sprintf("tag '%s' is already used by an existing rule-set in config", body.Tag))
+	for _, rs := range h.config.ListRuleSets() {
+		if t, _ := rs["tag"].(string); t == tag {
+			writeError(w, http.StatusConflict, fmt.Sprintf("tag '%s' is already used by an existing rule-set", tag))
 			return
 		}
 	}
 
-	if err := h.domains.CreateSet(body.Tag); err != nil {
-		if strings.Contains(err.Error(), "already exists") {
-			writeError(w, http.StatusConflict, err.Error())
-		} else {
-			writeError(w, http.StatusBadRequest, err.Error())
-		}
+	rs := map[string]interface{}{
+		"tag":   tag,
+		"type":  "inline",
+		"rules": []interface{}{},
+	}
+	if err := h.config.CreateRuleSet(rs); err != nil {
+		writeError(w, http.StatusBadRequest, err.Error())
 		return
 	}
 
-	writeSuccess(w, map[string]string{"tag": body.Tag, "message": fmt.Sprintf("rule set '%s' created", body.Tag)})
+	writeSuccess(w, map[string]string{
+		"tag":     tag,
+		"message": fmt.Sprintf("inline rule-set '%s' created", tag),
+	})
 }
 
-// DeleteDomainSet deletes a domain set and its files
-func (h *Handler) DeleteDomainSet(w http.ResponseWriter, r *http.Request) {
-	tag := chi.URLParam(r, "tag")
-
-	if err := h.domains.DeleteSet(tag); err != nil {
-		if strings.Contains(err.Error(), "not found") {
-			writeError(w, http.StatusNotFound, err.Error())
-		} else {
-			writeError(w, http.StatusInternalServerError, err.Error())
-		}
-		return
-	}
-
-	writeSuccess(w, map[string]string{"message": fmt.Sprintf("rule set '%s' deleted", tag)})
-}
-
-// GetDomainSet returns the full rule set source content
+// GetDomainSet returns the full inline rule-set body.
 func (h *Handler) GetDomainSet(w http.ResponseWriter, r *http.Request) {
 	tag := chi.URLParam(r, "tag")
-
-	src, err := h.domains.GetSet(tag)
-	if err != nil {
-		if strings.Contains(err.Error(), "not found") {
-			writeError(w, http.StatusNotFound, err.Error())
-		} else {
-			writeError(w, http.StatusInternalServerError, err.Error())
-		}
+	rs, ok := h.findInlineRuleSet(tag)
+	if !ok {
+		writeError(w, http.StatusNotFound, fmt.Sprintf("inline rule-set '%s' not found", tag))
 		return
 	}
-
-	writeSuccess(w, src)
+	writeSuccess(w, rs)
 }
 
-// SaveDomainSet saves the full rule set source (JSON mode)
+// SaveDomainSet replaces the rules array of an inline rule-set.
 func (h *Handler) SaveDomainSet(w http.ResponseWriter, r *http.Request) {
 	tag := chi.URLParam(r, "tag")
-
-	var src domains.RuleSetSource
-	if err := json.NewDecoder(r.Body).Decode(&src); err != nil {
+	var body struct {
+		Tag   string                   `json:"tag"`
+		Rules []map[string]interface{} `json:"rules"`
+	}
+	if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
 		writeError(w, http.StatusBadRequest, fmt.Sprintf("invalid JSON: %v", err))
 		return
 	}
-
-	if err := h.domains.SaveSet(tag, &src); err != nil {
-		if strings.Contains(err.Error(), "not found") {
-			writeError(w, http.StatusNotFound, err.Error())
-		} else {
-			writeError(w, http.StatusBadRequest, err.Error())
-		}
+	rs, ok := h.findInlineRuleSet(tag)
+	if !ok {
+		writeError(w, http.StatusNotFound, fmt.Sprintf("inline rule-set '%s' not found", tag))
 		return
 	}
-
-	writeSuccess(w, map[string]string{"message": fmt.Sprintf("rule set '%s' saved", tag)})
+	rulesAny := make([]interface{}, len(body.Rules))
+	for i, rule := range body.Rules {
+		rulesAny[i] = rule
+	}
+	updated := map[string]interface{}{}
+	for k, v := range rs {
+		updated[k] = v
+	}
+	updated["rules"] = rulesAny
+	if err := h.config.UpdateRuleSet(tag, updated); err != nil {
+		writeError(w, http.StatusBadRequest, err.Error())
+		return
+	}
+	writeSuccess(w, map[string]string{"message": fmt.Sprintf("inline rule-set '%s' saved", tag)})
 }
 
-// AddDomain adds a domain to a set's domain_suffix
+// DeleteDomainSet removes an inline rule-set; refuses if referenced by route or DNS rules.
+func (h *Handler) DeleteDomainSet(w http.ResponseWriter, r *http.Request) {
+	tag := chi.URLParam(r, "tag")
+	if _, ok := h.findInlineRuleSet(tag); !ok {
+		writeError(w, http.StatusNotFound, fmt.Sprintf("inline rule-set '%s' not found", tag))
+		return
+	}
+	usage := h.config.GetRuleSetsUsage()
+	if u, ok := usage[tag]; ok {
+		if len(u["route_rules"]) > 0 || len(u["dns_rules"]) > 0 {
+			writeError(w, http.StatusConflict, fmt.Sprintf("rule-set '%s' is referenced by route or DNS rules — remove references first", tag))
+			return
+		}
+	}
+	if err := h.config.DeleteRuleSet(tag); err != nil {
+		writeError(w, http.StatusInternalServerError, err.Error())
+		return
+	}
+	writeSuccess(w, map[string]string{"message": fmt.Sprintf("inline rule-set '%s' deleted", tag)})
+}
+
+// AddDomain appends a single domain_suffix entry to the rule-set's first rule.
 func (h *Handler) AddDomain(w http.ResponseWriter, r *http.Request) {
 	tag := chi.URLParam(r, "tag")
-
 	var body struct {
 		Domain string `json:"domain"`
 	}
@@ -128,62 +210,89 @@ func (h *Handler) AddDomain(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusBadRequest, fmt.Sprintf("invalid JSON: %v", err))
 		return
 	}
-
-	if body.Domain == "" {
+	domain := strings.TrimSpace(body.Domain)
+	if domain == "" {
 		writeError(w, http.StatusBadRequest, "domain is required")
 		return
 	}
-
-	if err := h.domains.AddDomain(tag, body.Domain); err != nil {
-		if strings.Contains(err.Error(), "not found") {
-			writeError(w, http.StatusNotFound, err.Error())
-		} else if strings.Contains(err.Error(), "already exists") {
-			writeError(w, http.StatusConflict, err.Error())
-		} else {
-			writeError(w, http.StatusBadRequest, err.Error())
-		}
+	rs, ok := h.findInlineRuleSet(tag)
+	if !ok {
+		writeError(w, http.StatusNotFound, fmt.Sprintf("inline rule-set '%s' not found", tag))
 		return
 	}
-
+	rules, _ := rs["rules"].([]interface{})
+	if len(rules) == 0 {
+		rules = []interface{}{map[string]interface{}{
+			"domain_suffix": []interface{}{domain},
+		}}
+	} else {
+		first, _ := rules[0].(map[string]interface{})
+		ds, _ := first["domain_suffix"].([]interface{})
+		for _, existing := range ds {
+			if s, _ := existing.(string); s == domain {
+				writeError(w, http.StatusConflict, fmt.Sprintf("domain '%s' already exists", domain))
+				return
+			}
+		}
+		first["domain_suffix"] = append(ds, domain)
+		rules[0] = first
+	}
+	updated := map[string]interface{}{}
+	for k, v := range rs {
+		updated[k] = v
+	}
+	updated["rules"] = rules
+	if err := h.config.UpdateRuleSet(tag, updated); err != nil {
+		writeError(w, http.StatusBadRequest, err.Error())
+		return
+	}
 	writeSuccess(w, map[string]string{"message": fmt.Sprintf("domain added to '%s'", tag)})
 }
 
-// RemoveDomain removes a domain from a set
+// RemoveDomain strips a domain from any domain_suffix entry; removes empty rules.
 func (h *Handler) RemoveDomain(w http.ResponseWriter, r *http.Request) {
 	tag := chi.URLParam(r, "tag")
 	domain := chi.URLParam(r, "domain")
-
-	if err := h.domains.RemoveDomain(tag, domain); err != nil {
-		if strings.Contains(err.Error(), "not found") {
-			writeError(w, http.StatusNotFound, err.Error())
-		} else {
-			writeError(w, http.StatusBadRequest, err.Error())
-		}
+	rs, ok := h.findInlineRuleSet(tag)
+	if !ok {
+		writeError(w, http.StatusNotFound, fmt.Sprintf("inline rule-set '%s' not found", tag))
 		return
 	}
-
+	rules, _ := rs["rules"].([]interface{})
+	newRules := make([]interface{}, 0, len(rules))
+	for _, raw := range rules {
+		rule, _ := raw.(map[string]interface{})
+		ds, _ := rule["domain_suffix"].([]interface{})
+		filtered := make([]interface{}, 0, len(ds))
+		for _, e := range ds {
+			if s, _ := e.(string); s != domain {
+				filtered = append(filtered, e)
+			}
+		}
+		if len(filtered) > 0 {
+			rule["domain_suffix"] = filtered
+		} else {
+			delete(rule, "domain_suffix")
+		}
+		if len(rule) > 0 {
+			newRules = append(newRules, rule)
+		}
+	}
+	updated := map[string]interface{}{}
+	for k, v := range rs {
+		updated[k] = v
+	}
+	updated["rules"] = newRules
+	if err := h.config.UpdateRuleSet(tag, updated); err != nil {
+		writeError(w, http.StatusBadRequest, err.Error())
+		return
+	}
 	writeSuccess(w, map[string]string{"message": fmt.Sprintf("domain removed from '%s'", tag)})
 }
 
-// CompileDomains compiles a domain set's JSON to SRS binary
-func (h *Handler) CompileDomains(w http.ResponseWriter, r *http.Request) {
-	tag := chi.URLParam(r, "tag")
-
-	if err := h.domains.Compile(tag); err != nil {
-		writeError(w, http.StatusInternalServerError, err.Error())
-		return
-	}
-
-	// Auto-create rule_set entry in sing-box config if not present
-	h.ensureRuleSetInConfig(tag)
-
-	writeSuccess(w, map[string]string{"message": fmt.Sprintf("rule set '%s' compiled successfully", tag)})
-}
-
-// ImportDomains bulk-imports domains into a set
+// ImportDomains bulk-adds domains, skipping duplicates.
 func (h *Handler) ImportDomains(w http.ResponseWriter, r *http.Request) {
 	tag := chi.URLParam(r, "tag")
-
 	var body struct {
 		Domains []string `json:"domains"`
 	}
@@ -191,83 +300,53 @@ func (h *Handler) ImportDomains(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusBadRequest, fmt.Sprintf("invalid JSON: %v", err))
 		return
 	}
-
 	if len(body.Domains) == 0 {
 		writeError(w, http.StatusBadRequest, "domains list is required")
 		return
 	}
-
-	added, err := h.domains.ImportDomains(tag, body.Domains)
-	if err != nil {
-		if strings.Contains(err.Error(), "not found") {
-			writeError(w, http.StatusNotFound, err.Error())
-		} else {
-			writeError(w, http.StatusBadRequest, err.Error())
-		}
+	rs, ok := h.findInlineRuleSet(tag)
+	if !ok {
+		writeError(w, http.StatusNotFound, fmt.Sprintf("inline rule-set '%s' not found", tag))
 		return
 	}
-
+	rules, _ := rs["rules"].([]interface{})
+	var first map[string]interface{}
+	if len(rules) > 0 {
+		first, _ = rules[0].(map[string]interface{})
+	} else {
+		first = map[string]interface{}{}
+		rules = []interface{}{first}
+	}
+	ds, _ := first["domain_suffix"].([]interface{})
+	existing := make(map[string]bool, len(ds))
+	for _, e := range ds {
+		if s, _ := e.(string); s != "" {
+			existing[s] = true
+		}
+	}
+	added := 0
+	for _, d := range body.Domains {
+		d = strings.TrimSpace(d)
+		if d == "" || existing[d] {
+			continue
+		}
+		ds = append(ds, d)
+		existing[d] = true
+		added++
+	}
+	first["domain_suffix"] = ds
+	rules[0] = first
+	updated := map[string]interface{}{}
+	for k, v := range rs {
+		updated[k] = v
+	}
+	updated["rules"] = rules
+	if err := h.config.UpdateRuleSet(tag, updated); err != nil {
+		writeError(w, http.StatusBadRequest, err.Error())
+		return
+	}
 	writeSuccess(w, map[string]interface{}{
 		"message": fmt.Sprintf("%d domains imported into '%s'", added, tag),
 		"added":   added,
 	})
-}
-
-// ensureRuleSetInConfig creates a local binary rule_set entry in config if tag doesn't exist
-func (h *Handler) ensureRuleSetInConfig(tag string) {
-	// Check if rule set already exists in config
-	existing := h.config.ListRuleSets()
-	for _, rs := range existing {
-		if t, ok := rs["tag"].(string); ok && t == tag {
-			return // already exists
-		}
-	}
-
-	// Create local binary rule_set entry
-	rs := map[string]interface{}{
-		"tag":    tag,
-		"type":   "local",
-		"format": "binary",
-		"path":   fmt.Sprintf("ruleset/%s.srs", tag),
-	}
-	h.config.CreateRuleSet(rs)
-}
-
-// autoCompileDomainSets recompiles every domain set that's referenced by a
-// local rule_set in the draft config. Runs before Apply so the user never has
-// to press "Compile" manually — if a .srs is missing or stale it gets fixed
-// here. Returns a list of compile failures (empty on success).
-func (h *Handler) autoCompileDomainSets() []string {
-	if h.domains == nil {
-		return nil
-	}
-
-	// Index known domain-set tags so we only recompile sets we actually own.
-	sets, err := h.domains.ListSets()
-	if err != nil {
-		return []string{fmt.Sprintf("failed to list domain sets: %v", err)}
-	}
-	known := make(map[string]bool, len(sets))
-	for _, s := range sets {
-		known[s.Tag] = true
-	}
-	if len(known) == 0 {
-		return nil
-	}
-
-	var compileErrs []string
-	for _, rs := range h.config.ListRuleSets() {
-		rsType, _ := rs["type"].(string)
-		if rsType != "local" {
-			continue
-		}
-		tag, _ := rs["tag"].(string)
-		if !known[tag] {
-			continue // rule_set references an external .srs we don't own
-		}
-		if err := h.domains.Compile(tag); err != nil {
-			compileErrs = append(compileErrs, fmt.Sprintf("%s: %v", tag, err))
-		}
-	}
-	return compileErrs
 }

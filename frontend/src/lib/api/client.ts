@@ -1,4 +1,4 @@
-import type { ApiResponse, ProcessStatus, DetectedConfig, NeedsSetupResponse, SingboxConfig, Endpoint, Outbound, Inbound, RuleSet, RuleSetUsage, RouteRule, RouteSettings, DnsServer, DnsRule, DnsSettings, LogSettings, ExperimentalSettings, ConnectionsResponse, ProxiesResponse, ClashProxy, TestRouteResponse, ConnectTestResponse, SettingsResponse, RouteBoxSettings, SingBoxVersion, DomainSetInfo, RuleSetSource } from '$lib/types';
+import type { ApiResponse, ProcessStatus, DetectedConfig, NeedsSetupResponse, SingboxConfig, Endpoint, Outbound, Inbound, RuleSet, RuleSetUsage, RouteRule, RouteSettings, DnsServer, DnsRule, DnsSettings, LogSettings, ExperimentalSettings, ConnectionsResponse, ProxiesResponse, ClashProxy, TestRouteResponse, ConnectTestResponse, SettingsResponse, RouteBoxSettings, SingBoxVersion, DomainSetInfo, RuleSetSource, ClientEntry, TrafficHistoryResponse, TrafficRange } from '$lib/types';
 
 const API_BASE = '/api';
 
@@ -360,6 +360,15 @@ export const api = {
 	closeAllConnections: () =>
 		requestRaw('/clash/connections', { method: 'DELETE' }),
 
+	// Traffic history (aggregated buckets for breakdowns)
+	getTrafficHistory: (range: TrafficRange, opts: { source?: string; domain?: string; chain?: string } = {}) => {
+		const qs = new URLSearchParams({ range });
+		if (opts.source) qs.set('source', opts.source);
+		if (opts.domain) qs.set('domain', opts.domain);
+		if (opts.chain) qs.set('chain', opts.chain);
+		return request<TrafficHistoryResponse>(`/traffic/history?${qs.toString()}`);
+	},
+
 	// Health
 	health: () => request<{ status: string }>('/health'),
 
@@ -401,15 +410,21 @@ export const api = {
 		request<{ message: string }>(`/domains/${encodeURIComponent(tag)}/domain/${encodeURIComponent(domain)}`, {
 			method: 'DELETE'
 		}),
-	compileDomains: (tag: string) =>
-		request<{ message: string }>(`/domains/${encodeURIComponent(tag)}/compile`, {
-			method: 'POST'
-		}),
 	importDomains: (tag: string, domains: string[]) =>
 		request<{ message: string; added: number }>(`/domains/${encodeURIComponent(tag)}/import`, {
 			method: 'POST',
 			body: JSON.stringify({ domains })
-		})
+		}),
+
+	// Clients (LAN devices) CRUD
+	listClients: () => request<ClientEntry[]>('/clients'),
+	updateClient: (ip: string, body: { name: string; note: string }) =>
+		request<ClientEntry>(`/clients/${encodeURIComponent(ip)}`, {
+			method: 'PUT',
+			body: JSON.stringify(body)
+		}),
+	deleteClient: (ip: string) =>
+		requestRaw<void>(`/clients/${encodeURIComponent(ip)}`, { method: 'DELETE' })
 };
 
 // WebSocket helpers

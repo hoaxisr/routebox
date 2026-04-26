@@ -1,24 +1,27 @@
 package main
 
 import (
+	"encoding/json"
 	"flag"
 	"fmt"
 	"log"
 	"net/http"
 	"os"
 	"path/filepath"
+	"time"
 
 	"github.com/go-chi/chi/v5"
 	"github.com/go-chi/chi/v5/middleware"
 	"github.com/go-chi/cors"
 
 	"routebox/backend/internal/api"
+	"routebox/backend/internal/clients"
 	"routebox/backend/internal/config"
-	"routebox/backend/internal/domains"
 	"routebox/backend/internal/embedded"
 	"routebox/backend/internal/geoip"
 	"routebox/backend/internal/process"
 	"routebox/backend/internal/settings"
+	"routebox/backend/internal/traffic"
 )
 
 var (
@@ -153,11 +156,48 @@ func main() {
 		resolvedListenAddr = cfg.Network.Listen
 	}
 
-	// Initialize domains manager (uses auto-detected binary path from process manager)
-	domainsMgr := domains.NewManager(resolvedConfigPath, procMgr.GetBinaryPath())
+	// Initialize clients manager (LAN device names)
+	var clientsPath string
+	if sp := settingsMgr.GetPath(); sp != "" {
+		clientsPath = filepath.Join(filepath.Dir(sp), "clients.toml")
+	}
+	clientsMgr := clients.New(clientsPath)
+	if clientsPath != "" {
+		if err := clientsMgr.Load(); err != nil {
+			log.Printf("Warning: failed to load clients.toml: %v", err)
+		}
+	}
+	stopClients := make(chan struct{})
+	go clientsMgr.StartPersistLoop(30*time.Second, stopClients)
+	defer close(stopClients)
+
+	// Auto-discover LAN clients from Clash /connections
+	stopDiscovery := make(chan struct{})
+	go runClientDiscovery(clientsMgr, resolvedClashAddr, stopDiscovery)
+	defer close(stopDiscovery)
+
+	// Open traffic history store (next to settings file)
+	var trafficStore *traffic.Store
+	if sp := settingsMgr.GetPath(); sp != "" {
+		trafficPath := filepath.Join(filepath.Dir(sp), "traffic.db")
+		if ts, err := traffic.OpenStore(trafficPath); err != nil {
+			log.Printf("Warning: traffic store unavailable: %v", err)
+		} else {
+			trafficStore = ts
+			defer trafficStore.Close()
+		}
+	}
+
+	// Start traffic sampler (no-op if trafficStore is nil)
+	stopSampler := make(chan struct{})
+	if trafficStore != nil {
+		sampler := traffic.NewSampler(trafficStore)
+		go sampler.Run(resolvedClashAddr, 35, stopSampler)
+	}
+	defer close(stopSampler)
 
 	// Initialize API handlers
-	apiHandler := api.NewHandler(cfgMgr, procMgr, resolvedClashAddr, geoipDB, settingsMgr, domainsMgr)
+	apiHandler := api.NewHandler(cfgMgr, procMgr, resolvedClashAddr, geoipDB, settingsMgr, clientsMgr, trafficStore)
 
 	// Setup router
 	r := chi.NewRouter()
@@ -241,9 +281,15 @@ func main() {
 				r.Delete("/", apiHandler.DeleteDomainSet)
 				r.Post("/domain", apiHandler.AddDomain)
 				r.Delete("/domain/{domain}", apiHandler.RemoveDomain)
-				r.Post("/compile", apiHandler.CompileDomains)
 				r.Post("/import", apiHandler.ImportDomains)
 			})
+		})
+
+		// Clients (LAN device names)
+		r.Route("/clients", func(r chi.Router) {
+			r.Get("/", apiHandler.ListClients)
+			r.Put("/{ip}", apiHandler.UpdateClient)
+			r.Delete("/{ip}", apiHandler.DeleteClient)
 		})
 
 		// Route Rules CRUD
@@ -264,6 +310,9 @@ func main() {
 
 		// Connection Test (diagnostics)
 		r.Post("/diagnostics/connect", apiHandler.ConnectTest)
+
+		// Traffic history (SQLite-backed)
+		r.Get("/traffic/history", apiHandler.GetTrafficHistory)
 
 		// DNS Servers CRUD
 		r.Route("/dns/servers", func(r chi.Router) {
@@ -350,6 +399,48 @@ func main() {
 
 	if err := http.ListenAndServe(resolvedListenAddr, r); err != nil {
 		log.Fatalf("Server error: %v", err)
+	}
+}
+
+// runClientDiscovery polls the Clash /connections endpoint every 60s and feeds
+// observed source IPs into the clients manager. Exits cleanly when stop closes.
+func runClientDiscovery(mgr *clients.Manager, clashAddr string, stop <-chan struct{}) {
+	if clashAddr == "" {
+		return
+	}
+	ticker := time.NewTicker(60 * time.Second)
+	defer ticker.Stop()
+	tick := func() {
+		resp, err := http.Get("http://" + clashAddr + "/connections")
+		if err != nil {
+			return
+		}
+		defer resp.Body.Close()
+		var data struct {
+			Connections []struct {
+				Metadata struct {
+					SourceIP string `json:"sourceIP"`
+				} `json:"metadata"`
+			} `json:"connections"`
+		}
+		if err := json.NewDecoder(resp.Body).Decode(&data); err != nil {
+			return
+		}
+		now := time.Now()
+		for _, c := range data.Connections {
+			if c.Metadata.SourceIP != "" {
+				mgr.Observe(c.Metadata.SourceIP, now)
+			}
+		}
+	}
+	tick()
+	for {
+		select {
+		case <-ticker.C:
+			tick()
+		case <-stop:
+			return
+		}
 	}
 }
 

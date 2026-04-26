@@ -145,8 +145,8 @@
 					<div class="flex items-center justify-between">
 						<div class="flex items-center gap-3 min-w-0 flex-1">
 							<!-- Type badge -->
-							<span class="px-2 py-0.5 text-xs rounded bg-[var(--ctp-surface2)] text-[var(--ctp-overlay1)] flex-shrink-0">
-								{ruleSet.type}
+							<span class="px-2 py-0.5 text-xs rounded {ruleSet.type === 'local' ? 'bg-[var(--ctp-overlay0)] text-[var(--ctp-base)]' : 'bg-[var(--ctp-surface2)] text-[var(--ctp-overlay1)]'} flex-shrink-0" title={ruleSet.type === 'local' ? $t('ruleSets.legacyTooltip') : undefined}>
+								{ruleSet.type}{ruleSet.type === 'local' ? $t('ruleSets.legacySuffix') : ''}
 							</span>
 							<!-- Tag -->
 							<span class="font-medium text-[var(--ctp-text)] truncate">{ruleSet.tag}</span>
@@ -189,15 +189,17 @@
 									<path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M2.458 12C3.732 7.943 7.523 5 12 5c4.478 0 8.268 2.943 9.542 7-1.274 4.057-5.064 7-9.542 7-4.477 0-8.268-2.943-9.542-7z" />
 								</svg>
 							</button>
-							<button
-								onclick={() => openEdit(ruleSet)}
-								class="p-1.5 rounded hover:bg-[var(--ctp-surface2)] text-[var(--ctp-overlay1)]"
-								title={$t('common.edit')}
-							>
-								<svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-									<path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z" />
-								</svg>
-							</button>
+							{#if ruleSet.type !== 'local'}
+								<button
+									onclick={() => openEdit(ruleSet)}
+									class="p-1.5 rounded hover:bg-[var(--ctp-surface2)] text-[var(--ctp-overlay1)]"
+									title={$t('common.edit')}
+								>
+									<svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+										<path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z" />
+									</svg>
+								</button>
+							{/if}
 							<button
 								onclick={() => handleDelete(ruleSet.tag)}
 								class="p-1.5 rounded hover:bg-[var(--ctp-red)] hover:bg-opacity-20 text-[var(--ctp-red)]"
@@ -316,12 +318,14 @@
 				</div>
 			</div>
 			<div class="px-4 py-3 border-t border-[var(--ctp-surface2)] flex justify-end gap-2">
-				<button
-					onclick={() => { openEdit(viewingRuleSet!); viewingRuleSet = null; }}
-					class="px-4 py-2 bg-[var(--ctp-primary)] text-white rounded-lg hover:opacity-90"
-				>
-					{$t('common.edit')}
-				</button>
+				{#if viewingRuleSet.type !== 'local'}
+					<button
+						onclick={() => { openEdit(viewingRuleSet!); viewingRuleSet = null; }}
+						class="px-4 py-2 bg-[var(--ctp-primary)] text-white rounded-lg hover:opacity-90"
+					>
+						{$t('common.edit')}
+					</button>
+				{/if}
 				<button
 					onclick={() => viewingRuleSet = null}
 					class="px-4 py-2 bg-[var(--ctp-surface1)] text-[var(--ctp-text)] rounded-lg hover:bg-[var(--ctp-surface2)]"
