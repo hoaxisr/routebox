@@ -21,6 +21,7 @@ import (
 	"routebox/backend/internal/geoip"
 	"routebox/backend/internal/process"
 	"routebox/backend/internal/settings"
+	"routebox/backend/internal/traffic"
 )
 
 var (
@@ -175,8 +176,28 @@ func main() {
 	go runClientDiscovery(clientsMgr, resolvedClashAddr, stopDiscovery)
 	defer close(stopDiscovery)
 
+	// Open traffic history store (next to settings file)
+	var trafficStore *traffic.Store
+	if sp := settingsMgr.GetPath(); sp != "" {
+		trafficPath := filepath.Join(filepath.Dir(sp), "traffic.db")
+		if ts, err := traffic.OpenStore(trafficPath); err != nil {
+			log.Printf("Warning: traffic store unavailable: %v", err)
+		} else {
+			trafficStore = ts
+			defer trafficStore.Close()
+		}
+	}
+
+	// Start traffic sampler (no-op if trafficStore is nil)
+	stopSampler := make(chan struct{})
+	if trafficStore != nil {
+		sampler := traffic.NewSampler(trafficStore)
+		go sampler.Run(resolvedClashAddr, 35, stopSampler)
+	}
+	defer close(stopSampler)
+
 	// Initialize API handlers
-	apiHandler := api.NewHandler(cfgMgr, procMgr, resolvedClashAddr, geoipDB, settingsMgr, clientsMgr)
+	apiHandler := api.NewHandler(cfgMgr, procMgr, resolvedClashAddr, geoipDB, settingsMgr, clientsMgr, trafficStore)
 
 	// Setup router
 	r := chi.NewRouter()
@@ -289,6 +310,9 @@ func main() {
 
 		// Connection Test (diagnostics)
 		r.Post("/diagnostics/connect", apiHandler.ConnectTest)
+
+		// Traffic history (SQLite-backed)
+		r.Get("/traffic/history", apiHandler.GetTrafficHistory)
 
 		// DNS Servers CRUD
 		r.Route("/dns/servers", func(r chi.Router) {
