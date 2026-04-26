@@ -19,6 +19,16 @@
 		chain: null
 	});
 
+	let expandedPanels = $state<Record<Dimension, boolean>>({
+		source: false,
+		domain: false,
+		chain: false
+	});
+
+	function togglePanelExpand(dim: Dimension) {
+		expandedPanels = { ...expandedPanels, [dim]: !expandedPanels[dim] };
+	}
+
 	function keyOf(conn: ClashConnection, dim: Dimension): string {
 		switch (dim) {
 			case 'source':
@@ -242,7 +252,8 @@
 					{$t('breakdown.noMatches')}
 				</div>
 			{:else}
-				{#each buckets as b (b.key)}
+				{@const visible = expandedPanels[dim] ? buckets : buckets.slice(0, 10)}
+				{#each visible as b (b.key)}
 					{@const active = filters[dim] === b.key}
 					<button
 						onclick={() => toggleFilter(dim, b.key)}
@@ -279,6 +290,14 @@
 						{/if}
 					</button>
 				{/each}
+				{#if buckets.length > 10}
+					<button
+						onclick={() => togglePanelExpand(dim)}
+						class="w-full text-center px-4 py-2 text-xs text-[var(--ctp-overlay1)] hover:text-[var(--ctp-primary)] hover:bg-[var(--ctp-surface1)] transition-colors"
+					>
+						{expandedPanels[dim] ? $t('breakdown.showLess') : `${$t('breakdown.showAll')} (${buckets.length})`}
+					</button>
+				{/if}
 			{/if}
 		</div>
 	</div>

@@ -1054,7 +1054,9 @@
     "noMatches": "No connections match current filters",
     "totalTraffic": "Filtered total",
     "connCount": "{count} conn",
-    "connCountPlural": "{count} conns"
+    "connCountPlural": "{count} conns",
+    "showAll": "Show all",
+    "showLess": "Show less"
   },
   "proxies": {
     "title": "Proxies",
