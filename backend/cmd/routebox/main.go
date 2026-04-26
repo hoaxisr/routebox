@@ -14,7 +14,6 @@ import (
 
 	"routebox/backend/internal/api"
 	"routebox/backend/internal/config"
-	"routebox/backend/internal/domains"
 	"routebox/backend/internal/embedded"
 	"routebox/backend/internal/geoip"
 	"routebox/backend/internal/process"
@@ -153,11 +152,8 @@ func main() {
 		resolvedListenAddr = cfg.Network.Listen
 	}
 
-	// Initialize domains manager (uses auto-detected binary path from process manager)
-	domainsMgr := domains.NewManager(resolvedConfigPath, procMgr.GetBinaryPath())
-
 	// Initialize API handlers
-	apiHandler := api.NewHandler(cfgMgr, procMgr, resolvedClashAddr, geoipDB, settingsMgr, domainsMgr)
+	apiHandler := api.NewHandler(cfgMgr, procMgr, resolvedClashAddr, geoipDB, settingsMgr)
 
 	// Setup router
 	r := chi.NewRouter()
@@ -241,7 +237,6 @@ func main() {
 				r.Delete("/", apiHandler.DeleteDomainSet)
 				r.Post("/domain", apiHandler.AddDomain)
 				r.Delete("/domain/{domain}", apiHandler.RemoveDomain)
-				r.Post("/compile", apiHandler.CompileDomains)
 				r.Post("/import", apiHandler.ImportDomains)
 			})
 		})

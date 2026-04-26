@@ -115,14 +115,6 @@ func (h *Handler) ImportConfig(w http.ResponseWriter, r *http.Request) {
 func (h *Handler) ApplyConfig(w http.ResponseWriter, r *http.Request) {
 	// Optionally validate draft before applying
 	if h.config.HasDraft() {
-		// Auto-compile every local rule_set that matches a known domain set —
-		// the user should never have to press "Compile" manually before Apply.
-		// If the .srs is missing or stale, we regenerate it here.
-		if compileErrs := h.autoCompileDomainSets(); len(compileErrs) > 0 {
-			writeError(w, http.StatusBadRequest, fmt.Sprintf("Domain set compile failed: %v", compileErrs))
-			return
-		}
-
 		// Pre-check local rule-set paths so the user sees a friendly message
 		// instead of sing-box's raw FATAL for missing .srs files. Relative
 		// paths resolve against the config file's directory, matching how
