@@ -296,7 +296,9 @@
 							{$t('connections.download')} <span class="opacity-50">{getSortIcon('download')}</span>
 						</button>
 					</th>
-					<th class="px-4 py-3 text-center font-medium">{$t('connections.chain')}</th>
+					<th class="px-4 py-3 text-center font-medium">
+						{groupByChain ? $t('connections.sourceIP') : $t('connections.chain')}
+					</th>
 					<th class="px-4 py-3 text-center font-medium">
 						<button onclick={() => setSort('start')} class="w-full flex items-center gap-1 justify-center hover:text-[var(--ctp-text)]">
 							{$t('connections.time')} <span class="opacity-50">{getSortIcon('start')}</span>
@@ -440,13 +442,19 @@
 			{formatBytes(conn.download)}
 		</td>
 		<td class="px-4 py-3 text-center">
-			<div class="flex flex-wrap gap-1 justify-center">
-				{#each conn.chains as chain}
-					<span class="selection-chip">
-						{chain}
-					</span>
-				{/each}
-			</div>
+			{#if groupByChain}
+				<span class="font-mono text-sm text-[var(--ctp-subtext1)]">
+					{conn.metadata.sourceIP || '-'}
+				</span>
+			{:else}
+				<div class="flex flex-wrap gap-1 justify-center">
+					{#each conn.chains as chain}
+						<span class="selection-chip">
+							{chain}
+						</span>
+					{/each}
+				</div>
+			{/if}
 		</td>
 		<td class="px-4 py-3 text-center text-sm text-[var(--ctp-overlay1)] whitespace-nowrap">
 			{timeAgo(conn.start)}
