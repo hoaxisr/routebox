@@ -29,6 +29,11 @@ Thumbs.db
 data/
 *.mmdb
 
-# Backups
+# Other
 *.bak
 .superpowers/
+.claude/
+CLAUDE.md
+docs/
+Makefile
+routebox-linux-amd64
