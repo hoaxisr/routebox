@@ -417,6 +417,14 @@
 				/>
 			</div>
 		{/if}
+		{#if buckets.length > 10}
+			<button
+				onclick={() => togglePanelExpand(dim)}
+				class="w-full text-center px-4 py-2 text-xs text-[var(--ctp-overlay1)] hover:text-[var(--ctp-primary)] hover:bg-[var(--ctp-surface1)] transition-colors border-b border-[var(--ctp-surface2)]"
+			>
+				{expandedPanels[dim] ? $t('breakdown.showLess') : `${$t('breakdown.showAll')} (${buckets.length})`}
+			</button>
+		{/if}
 		<div class="flex-1 overflow-y-auto divide-y divide-[var(--ctp-surface2)]">
 			{#if buckets.length === 0}
 				<div class="px-4 py-8 text-center text-sm text-[var(--ctp-overlay0)]">
@@ -473,14 +481,6 @@
 						{/if}
 					</button>
 				{/each}
-				{#if buckets.length > 10}
-					<button
-						onclick={() => togglePanelExpand(dim)}
-						class="w-full text-center px-4 py-2 text-xs text-[var(--ctp-overlay1)] hover:text-[var(--ctp-primary)] hover:bg-[var(--ctp-surface1)] transition-colors"
-					>
-						{expandedPanels[dim] ? $t('breakdown.showLess') : `${$t('breakdown.showAll')} (${buckets.length})`}
-					</button>
-				{/if}
 			{/if}
 		</div>
 	</div>
