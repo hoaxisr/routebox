@@ -368,6 +368,8 @@ export const api = {
 		if (opts.chain) qs.set('chain', opts.chain);
 		return request<TrafficHistoryResponse>(`/traffic/history?${qs.toString()}`);
 	},
+	resetTrafficHistory: () =>
+		request<{ message: string }>('/traffic/reset', { method: 'POST' }),
 
 	// Health
 	health: () => request<{ status: string }>('/health'),
