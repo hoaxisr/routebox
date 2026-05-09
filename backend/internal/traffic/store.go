@@ -115,3 +115,12 @@ func (s *Store) PruneOlderThan(cutoffTs int64) error {
 	_, err := s.db.Exec(`DELETE FROM traffic_minute WHERE bucket_ts < ?`, cutoffTs)
 	return err
 }
+
+// Reset clears all accumulated traffic history. The schema is preserved so
+// subsequent Upserts continue to work. The Sampler's in-memory lastSeen state
+// is intentionally not touched — future deltas keep being computed against
+// current Clash counters from this point forward.
+func (s *Store) Reset() error {
+	_, err := s.db.Exec(`DELETE FROM traffic_minute`)
+	return err
+}

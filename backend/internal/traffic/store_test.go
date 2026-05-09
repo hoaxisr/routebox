@@ -95,6 +95,31 @@ func TestStore_QueryWithApexDomainFilter(t *testing.T) {
 	}
 }
 
+func TestStore_Reset(t *testing.T) {
+	tmp := t.TempDir()
+	s, _ := OpenStore(filepath.Join(tmp, "t.db"))
+	defer s.Close()
+	s.Upsert(60, "1.1.1.1", "a.com", "direct", 100, 200)
+	s.Upsert(120, "2.2.2.2", "b.com", "direct", 300, 400)
+
+	if err := s.Reset(); err != nil {
+		t.Fatalf("Reset: %v", err)
+	}
+	rows, _ := s.QueryAggregate(0, 9999999999, "", "", "")
+	if len(rows) != 0 {
+		t.Errorf("after Reset got %d rows, want 0", len(rows))
+	}
+
+	// Schema must still work after reset — subsequent insert + query succeeds.
+	if err := s.Upsert(180, "3.3.3.3", "c.com", "direct", 1, 2); err != nil {
+		t.Fatalf("Upsert after Reset: %v", err)
+	}
+	rows, _ = s.QueryAggregate(0, 9999999999, "", "", "")
+	if len(rows) != 1 || rows[0].Source != "3.3.3.3" {
+		t.Errorf("after Reset+Upsert got %+v, want one row for 3.3.3.3", rows)
+	}
+}
+
 func TestStore_PruneOlderThan(t *testing.T) {
 	tmp := t.TempDir()
 	s, _ := OpenStore(filepath.Join(tmp, "t.db"))
