@@ -2,6 +2,21 @@
 
 All notable changes to RouteBox are documented here.
 
+## [Unreleased]
+
+### Improvements
+
+**Frontend:**
+- **Breakdown — apex-domain rollup in BY DOMAIN panel** — subdomains collapse to their effective TLD+1 via the public suffix list (`tldts`), so e.g. all `*.googlevideo.com` rows aggregate under a single `googlevideo.com` entry in both live and historical modes. IPs and the `-` placeholder are unaffected.
+- **Breakdown — Reset history action** — destructive button in the page header that opens a confirmation modal and wipes the accumulated traffic store; live counters are unaffected and accumulation resumes from the next sample tick.
+
+**Backend:**
+- **Apex domain match in `QueryAggregate`** — the `domain` filter on `GET /api/traffic/history` now expands to the supplied apex plus all of its subdomains (the UI sends apex strings).
+- **`POST /api/traffic/reset`** — wipes the `traffic_minute` SQLite table. The sampler's in-memory state is intentionally preserved so deltas keep being attributed correctly from the next tick.
+- New helper `traffic.ApexDomain` (backed by `golang.org/x/net/publicsuffix`) and matching JS helper `apexDomain` (backed by `tldts`).
+
+---
+
 ## [0.16.0] - 2026-04-26
 
 ### New Features
