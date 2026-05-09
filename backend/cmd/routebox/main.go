@@ -313,6 +313,7 @@ func main() {
 
 		// Traffic history (SQLite-backed)
 		r.Get("/traffic/history", apiHandler.GetTrafficHistory)
+		r.Post("/traffic/reset", apiHandler.ResetTrafficHistory)
 
 		// DNS Servers CRUD
 		r.Route("/dns/servers", func(r chi.Router) {

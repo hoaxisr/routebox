@@ -69,3 +69,19 @@ func (h *Handler) GetTrafficHistory(w http.ResponseWriter, r *http.Request) {
 	}
 	writeSuccess(w, out)
 }
+
+// ResetTrafficHistory wipes the traffic_minute table. Destructive — caller
+// is expected to confirm before invoking. Live counters (Clash) and the
+// sampler's in-memory state are not affected; future deltas continue to
+// accumulate from now.
+func (h *Handler) ResetTrafficHistory(w http.ResponseWriter, r *http.Request) {
+	if h.traffic == nil {
+		writeError(w, http.StatusServiceUnavailable, "traffic store not initialized")
+		return
+	}
+	if err := h.traffic.Reset(); err != nil {
+		writeError(w, http.StatusInternalServerError, err.Error())
+		return
+	}
+	writeSuccess(w, map[string]string{"message": "traffic history cleared"})
+}
