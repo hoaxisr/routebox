@@ -6,6 +6,7 @@
 	import type { ClashConnection } from '$lib/types';
 	import PieChart from '$lib/components/monitor/PieChart.svelte';
 	import type { TrafficRange, TrafficBucket } from '$lib/types';
+	import { apexDomain } from '$lib/utils/apexDomain';
 
 	type Dimension = 'source' | 'domain' | 'chain';
 	type ViewMode = 'live' | TrafficRange;
@@ -61,7 +62,7 @@
 			case 'source':
 				return conn.metadata.sourceIP || 'unknown';
 			case 'domain':
-				return conn.metadata.host || conn.metadata.destinationIP || '-';
+				return apexDomain(conn.metadata.host || conn.metadata.destinationIP || '-');
 			case 'chain':
 				return conn.chains && conn.chains.length > 0 ? conn.chains.join(' → ') : '-';
 		}
@@ -148,7 +149,7 @@
 			let key: string;
 			switch (dim) {
 				case 'source': key = r.source || 'unknown'; break;
-				case 'domain': key = r.domain || '-'; break;
+				case 'domain': key = apexDomain(r.domain || '-'); break;
 				case 'chain': key = r.chain || '-'; break;
 			}
 			let b = map.get(key);
