@@ -57,7 +57,7 @@
 
 		if (autoScroll && logContainer) {
 			requestAnimationFrame(() => {
-				logContainer.scrollTop = logContainer.scrollHeight;
+				logContainer.scrollTop = 0;
 			});
 		}
 	}
@@ -124,11 +124,16 @@
 		});
 	}
 
-	let filteredLogs = $derived(logs.filter((log) => {
-		if (filter !== 'all' && log.type.toLowerCase() !== filter) return false;
-		if (search && !log.payload.toLowerCase().includes(search.toLowerCase())) return false;
-		return true;
-	}));
+	let filteredLogs = $derived(
+		logs
+			.filter((log) => {
+				if (filter !== 'all' && log.type.toLowerCase() !== filter) return false;
+				if (search && !log.payload.toLowerCase().includes(search.toLowerCase())) return false;
+				return true;
+			})
+			.slice()
+			.reverse()
+	);
 
 	let prevFilter = 'all';
 	$effect(() => {
