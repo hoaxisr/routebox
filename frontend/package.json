@@ -39,6 +39,7 @@
     "@xyflow/svelte": "^1.5.0",
     "codemirror": "^6.0.2",
     "svelte-i18n": "^4.0.1",
+    "tldts": "^7.0.30",
     "uplot": "^1.6.32"
   }
 }
