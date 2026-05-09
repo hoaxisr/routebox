@@ -82,8 +82,11 @@ func (s *Store) QueryAggregate(startTs, endTs int64, source, domain, chain strin
 		args = append(args, source)
 	}
 	if domain != "" {
-		q += " AND domain = ?"
-		args = append(args, domain)
+		// Match the apex itself or any subdomain. Callers pass apex strings
+		// (the UI uses ApexDomain to construct keys); raw rows in the DB are
+		// full hostnames, so we expand on read.
+		q += " AND (domain = ? OR domain LIKE ?)"
+		args = append(args, domain, "%."+domain)
 	}
 	if chain != "" {
 		q += " AND chain = ?"

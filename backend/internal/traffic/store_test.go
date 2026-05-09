@@ -2,6 +2,7 @@ package traffic
 
 import (
 	"path/filepath"
+	"strings"
 	"testing"
 )
 
@@ -61,6 +62,36 @@ func TestStore_QueryWithFilter(t *testing.T) {
 	rows, _ := s.QueryAggregate(0, 9999999999, "1.1.1.1", "", "")
 	if len(rows) != 1 || rows[0].Source != "1.1.1.1" {
 		t.Errorf("got %+v, want one row for 1.1.1.1", rows)
+	}
+}
+
+func TestStore_QueryWithApexDomainFilter(t *testing.T) {
+	tmp := t.TempDir()
+	s, _ := OpenStore(filepath.Join(tmp, "t.db"))
+	defer s.Close()
+	// Three rows that should all match apex "googlevideo.com"
+	s.Upsert(60, "1.1.1.1", "googlevideo.com", "direct", 10, 0)
+	s.Upsert(60, "1.1.1.1", "r3.googlevideo.com", "direct", 20, 0)
+	s.Upsert(60, "1.1.1.1", "a.b.googlevideo.com", "direct", 30, 0)
+	// Row that must be excluded (different apex with same suffix)
+	s.Upsert(60, "1.1.1.1", "evilgooglevideo.com", "direct", 100, 0)
+	// Row that must be excluded (different apex)
+	s.Upsert(60, "1.1.1.1", "youtube.com", "direct", 200, 0)
+
+	rows, err := s.QueryAggregate(0, 9999999999, "", "googlevideo.com", "")
+	if err != nil {
+		t.Fatalf("QueryAggregate: %v", err)
+	}
+	var sumUp int64
+	for _, r := range rows {
+		sumUp += r.Upload
+		if !(r.Domain == "googlevideo.com" ||
+			strings.HasSuffix(r.Domain, ".googlevideo.com")) {
+			t.Errorf("row leaked through filter: %+v", r)
+		}
+	}
+	if sumUp != 60 {
+		t.Errorf("sum upload = %d, want 60 (10+20+30)", sumUp)
 	}
 }
 
