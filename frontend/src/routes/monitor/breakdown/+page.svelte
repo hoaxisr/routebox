@@ -383,7 +383,11 @@
 		{#if buckets.length > 0}
 			<div class="px-4 py-3 border-b border-[var(--ctp-surface2)]">
 				<PieChart
-					items={buckets.map(b => ({ key: b.key, label: b.key, value: b.total }))}
+					items={buckets.map(b => ({
+						key: b.key,
+						label: dim === 'source' ? ($clientNames.get(b.key) ?? b.key) : b.key,
+						value: b.total
+					}))}
 					centerNumber={buckets.length}
 					centerLabel={dim === 'source' ? $t('breakdown.clientsLabel') : dim === 'domain' ? $t('breakdown.domainsLabel') : $t('breakdown.chainsLabel')}
 					activeKey={filters[dim]}
