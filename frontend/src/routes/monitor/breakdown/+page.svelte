@@ -88,12 +88,27 @@
 		}
 	}
 
+	// A domain filter value is either an apex (e.g. "googlevideo.com") or a
+	// specific host (e.g. "r3.googlevideo.com"); we tell them apart by checking
+	// whether the value already equals its own apex.
+	function domainMatchesFilter(host: string, filterValue: string): boolean {
+		if (apexDomain(filterValue) === filterValue) {
+			return apexDomain(host) === filterValue;
+		}
+		return host === filterValue;
+	}
+
 	function matchesFilters(conn: ClashConnection, except?: Dimension): boolean {
 		for (const dim of ['source', 'domain', 'chain'] as Dimension[]) {
 			if (dim === except) continue;
 			const v = filters[dim];
 			if (v === null) continue;
-			if (keyOf(conn, dim) !== v) return false;
+			if (dim === 'domain') {
+				const host = conn.metadata.host || conn.metadata.destinationIP || '-';
+				if (!domainMatchesFilter(host, v)) return false;
+			} else if (keyOf(conn, dim) !== v) {
+				return false;
+			}
 		}
 		return true;
 	}
@@ -127,9 +142,15 @@
 	function aggregate(dim: Dimension): Bucket[] {
 		const map = new Map<string, Bucket>();
 		const ipsByKey = dim === 'domain' ? new Map<string, Set<string>>() : null;
+		// Drill-down: when a domain filter is active, the by-domain panel zooms
+		// into the subdomains under that apex (don't except — apply the filter
+		// here too, so non-matching subdomains are dropped).
+		const drillDomain = dim === 'domain' && filters.domain !== null;
 		for (const conn of connections) {
-			if (!matchesFilters(conn, dim)) continue;
-			const key = keyOf(conn, dim);
+			if (!matchesFilters(conn, drillDomain ? undefined : dim)) continue;
+			const key = drillDomain
+				? (conn.metadata.host || conn.metadata.destinationIP || '-')
+				: keyOf(conn, dim);
 			let b = map.get(key);
 			if (!b) {
 				b = { key, upload: 0, download: 0, total: 0, connCount: 0 };
@@ -162,14 +183,15 @@
 
 	function aggregateHistorical(dim: Dimension, rows: TrafficBucket[]): Bucket[] {
 		const map = new Map<string, Bucket>();
+		const drillDomain = dim === 'domain' && filters.domain !== null;
 		for (const r of rows) {
 			if (dim !== 'source' && filters.source !== null && r.source !== filters.source) continue;
-			if (dim !== 'domain' && filters.domain !== null && r.domain !== filters.domain) continue;
+			if (dim !== 'domain' && filters.domain !== null && !domainMatchesFilter(r.domain, filters.domain)) continue;
 			if (dim !== 'chain' && filters.chain !== null && r.chain !== filters.chain) continue;
 			let key: string;
 			switch (dim) {
 				case 'source': key = r.source || 'unknown'; break;
-				case 'domain': key = apexDomain(r.domain || '-'); break;
+				case 'domain': key = drillDomain ? (r.domain || '-') : apexDomain(r.domain || '-'); break;
 				case 'chain': key = r.chain || '-'; break;
 			}
 			let b = map.get(key);
