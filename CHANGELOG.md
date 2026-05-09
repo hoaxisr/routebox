@@ -2,13 +2,18 @@
 
 All notable changes to RouteBox are documented here.
 
-## [Unreleased]
+## [0.16.1] - 2026-05-09
 
 ### Improvements
 
 **Frontend:**
 - **Breakdown — apex-domain rollup in BY DOMAIN panel** — subdomains collapse to their effective TLD+1 via the public suffix list (`tldts`), so e.g. all `*.googlevideo.com` rows aggregate under a single `googlevideo.com` entry in both live and historical modes. IPs and the `-` placeholder are unaffected.
+- **Breakdown — drill into subdomains** — clicking an apex row zooms the BY DOMAIN panel into the subdomains under that apex; clicking a subdomain drills further to a single host. The chip in the filter bar steps back out.
 - **Breakdown — Reset history action** — destructive button in the page header that opens a confirmation modal and wipes the accumulated traffic store; live counters are unaffected and accumulation resumes from the next sample tick.
+- **Breakdown — Show all / Show less toggle moved above the row list** — always visible regardless of scroll position; previously you had to scroll past thousands of rows to collapse a panel.
+- **Breakdown — friendly client names in BY SOURCE pie legend** — the donut legend now resolves IPs to their assigned client names (matching the rows below the chart).
+- **Domain Sets — sans-serif font for domain rows** — matches the URL typography on Rule Sets.
+- **Logs — newest entries at top** — incoming log lines now prepend; auto-scroll snaps to the head of the feed.
 
 **Backend:**
 - **Apex domain match in `QueryAggregate`** — the `domain` filter on `GET /api/traffic/history` now expands to the supplied apex plus all of its subdomains (the UI sends apex strings).
