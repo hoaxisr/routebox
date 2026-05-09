@@ -338,7 +338,7 @@
 							<div class="divide-y divide-[var(--ctp-surface1)]">
 								{#each filteredDomains as domain (domain)}
 									<div class="px-4 py-2 flex items-center justify-between group hover:bg-[var(--ctp-surface1)] transition-colors">
-										<span class="text-sm font-mono text-[var(--ctp-text)]">{domain}</span>
+										<span class="text-sm text-[var(--ctp-text)]">{domain}</span>
 										<button
 											onclick={() => removeDomain(domain)}
 											class="opacity-0 group-hover:opacity-100 p-1 rounded hover:bg-[var(--ctp-surface2)] transition-all"
