@@ -2,11 +2,12 @@
 	import { onMount, onDestroy } from 'svelte';
 	import { t } from 'svelte-i18n';
 	import { createConnectionsStream, api } from '$lib/api/client';
-	import { formatBytes, clientNames } from '$lib/stores';
+	import { formatBytes, clientNames, notifications } from '$lib/stores';
 	import type { ClashConnection } from '$lib/types';
 	import PieChart from '$lib/components/monitor/PieChart.svelte';
 	import type { TrafficRange, TrafficBucket } from '$lib/types';
 	import { apexDomain } from '$lib/utils/apexDomain';
+	import ResetHistoryDialog from '$lib/components/monitor/ResetHistoryDialog.svelte';
 
 	type Dimension = 'source' | 'domain' | 'chain';
 	type ViewMode = 'live' | TrafficRange;
@@ -31,6 +32,25 @@
 	let viewMode = $state<ViewMode>('live');
 	let historical = $state<TrafficBucket[] | null>(null);
 	let historyLoading = $state(false);
+
+	let resetOpen = $state(false);
+	let resetBusy = $state(false);
+
+	async function handleReset() {
+		resetBusy = true;
+		try {
+			await api.resetTrafficHistory();
+			notifications.success($t('breakdown.resetSuccess'));
+			resetOpen = false;
+			if (viewMode !== 'live') {
+				loadHistorical(viewMode);
+			}
+		} catch (err) {
+			notifications.error(err instanceof Error ? err.message : String(err));
+		} finally {
+			resetBusy = false;
+		}
+	}
 
 	function togglePanelExpand(dim: Dimension) {
 		expandedPanels = { ...expandedPanels, [dim]: !expandedPanels[dim] };
@@ -259,9 +279,23 @@
 
 <div class="p-6 max-w-[1600px] mx-auto space-y-6">
 	<!-- Header -->
-	<div>
-		<h1 class="text-2xl font-semibold text-[var(--ctp-text)]">{$t('breakdown.title')}</h1>
-		<p class="text-sm text-[var(--ctp-overlay1)] mt-1">{$t('breakdown.subtitle')}</p>
+	<div class="flex items-start justify-between gap-3">
+		<div>
+			<h1 class="text-2xl font-semibold text-[var(--ctp-text)]">{$t('breakdown.title')}</h1>
+			<p class="text-sm text-[var(--ctp-overlay1)] mt-1">{$t('breakdown.subtitle')}</p>
+		</div>
+		<button
+			type="button"
+			onclick={() => (resetOpen = true)}
+			class="flex items-center gap-1.5 px-3 py-1.5 text-xs rounded-md border border-[var(--ctp-surface2)] text-[var(--ctp-overlay1)] hover:text-[var(--ctp-red)] hover:border-[var(--ctp-red)] transition-colors"
+			title={$t('breakdown.resetHistory')}
+		>
+			<svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+				<path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
+					d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6M1 7h22M9 7V4a1 1 0 011-1h4a1 1 0 011 1v3" />
+			</svg>
+			{$t('breakdown.resetHistory')}
+		</button>
 	</div>
 
 	<!-- Totals row (always one line, fixed height) -->
@@ -332,6 +366,13 @@
 		</div>
 	{/if}
 </div>
+
+<ResetHistoryDialog
+	open={resetOpen}
+	busy={resetBusy}
+	onClose={() => (resetOpen = false)}
+	onConfirm={handleReset}
+/>
 
 {#snippet panel(dim: Dimension, title: string, buckets: Bucket[])}
 	<div class="bg-[var(--ctp-surface0)] rounded-lg border border-[var(--ctp-surface2)] flex flex-col min-h-[24rem]">

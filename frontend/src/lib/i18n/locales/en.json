@@ -1080,7 +1080,12 @@
     "rangeLive": "Live",
     "clientsLabel": "clients",
     "domainsLabel": "domains",
-    "chainsLabel": "chains"
+    "chainsLabel": "chains",
+    "resetHistory": "Reset history",
+    "resetConfirmTitle": "Reset traffic history",
+    "resetConfirmBody": "This deletes all accumulated traffic statistics (1h, 3h, 24h, week, month). Live counters and current connections are unaffected. History will start re-accumulating from now.",
+    "resetConfirmButton": "Reset history",
+    "resetSuccess": "Traffic history cleared"
   },
   "proxies": {
     "title": "Proxies",
