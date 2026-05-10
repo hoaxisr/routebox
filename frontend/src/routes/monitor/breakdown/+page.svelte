@@ -93,6 +93,25 @@ import { PRESETS as VOLUME_PRESETS } from '$lib/utils/volumeThreshold';
 		localStorage.setItem('routebox.breakdown.minVolume', String(minVolumeBytes));
 	});
 
+	let menuRef: HTMLDivElement | undefined = $state();
+
+	$effect(() => {
+		if (!menuOpen) return;
+		function onKey(e: KeyboardEvent) {
+			if (e.key === 'Escape') menuOpen = false;
+		}
+		function onClick(e: MouseEvent) {
+			if (menuRef && !menuRef.contains(e.target as Node)) menuOpen = false;
+		}
+		window.addEventListener('keydown', onKey);
+		// `capture: true` so we see the event before it can stopPropagation inside the popover
+		window.addEventListener('mousedown', onClick, true);
+		return () => {
+			window.removeEventListener('keydown', onKey);
+			window.removeEventListener('mousedown', onClick, true);
+		};
+	});
+
 	function keyOf(conn: ClashConnection, dim: Dimension): string {
 		switch (dim) {
 			case 'source':
@@ -139,6 +158,14 @@ import { PRESETS as VOLUME_PRESETS } from '$lib/utils/volumeThreshold';
 
 	function clearOneFilter(dim: Dimension) {
 		filters = { ...filters, [dim]: null };
+	}
+
+	function applyMinVolume(v: number) {
+		minVolumeBytes = v;
+		menuOpen = false;
+	}
+	function clearMinVolume() {
+		minVolumeBytes = 0;
 	}
 
 	interface Bucket {
@@ -332,18 +359,84 @@ import { PRESETS as VOLUME_PRESETS } from '$lib/utils/volumeThreshold';
 			<h1 class="text-2xl font-semibold text-[var(--ctp-text)]">{$t('breakdown.title')}</h1>
 			<p class="text-sm text-[var(--ctp-overlay1)] mt-1">{$t('breakdown.subtitle')}</p>
 		</div>
-		<button
-			type="button"
-			onclick={() => (resetOpen = true)}
-			class="flex items-center gap-1.5 px-3 py-1.5 text-xs rounded-md border border-[var(--ctp-surface2)] text-[var(--ctp-overlay1)] hover:text-[var(--ctp-red)] hover:border-[var(--ctp-red)] transition-colors"
-			title={$t('breakdown.resetHistory')}
-		>
-			<svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-				<path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
-					d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6M1 7h22M9 7V4a1 1 0 011-1h4a1 1 0 011 1v3" />
-			</svg>
-			{$t('breakdown.resetHistory')}
-		</button>
+		<div class="flex flex-wrap gap-2 justify-end">
+			<!-- Min volume threshold dropdown -->
+			<div class="relative" bind:this={menuRef}>
+				<button
+					type="button"
+					onclick={() => (menuOpen = !menuOpen)}
+					aria-haspopup="menu"
+					aria-expanded={menuOpen}
+					class="flex items-center gap-1.5 px-3 py-1.5 text-xs rounded-md border transition-colors {minVolumeBytes > 0
+						? 'border-[var(--ctp-primary)] text-[var(--ctp-primary)] bg-[color-mix(in_srgb,var(--ctp-primary)_10%,transparent)] hover:bg-[color-mix(in_srgb,var(--ctp-primary)_20%,transparent)]'
+						: 'border-[var(--ctp-surface2)] text-[var(--ctp-overlay1)] hover:text-[var(--ctp-text)] hover:border-[var(--ctp-subtext1)]'}"
+					title="Hide buckets below this size"
+				>
+					<svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+						<path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
+							d="M3 6h18M7 12h10M10 18h4" />
+					</svg>
+					{minVolumeBytes > 0 ? `Min: ${formatBytes(minVolumeBytes)}` : 'Min volume'}
+					<span class="text-[10px] opacity-60">▾</span>
+					{#if minVolumeBytes > 0}
+						<span
+							role="button"
+							tabindex="0"
+							onclick={(e) => { e.stopPropagation(); clearMinVolume(); }}
+							onkeydown={(e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); e.stopPropagation(); clearMinVolume(); } }}
+							class="inline-flex w-4 h-4 items-center justify-center rounded-full hover:bg-[color-mix(in_srgb,var(--ctp-primary)_25%,transparent)]"
+							title="Clear threshold"
+						>
+							<svg class="w-2.5 h-2.5" fill="none" stroke="currentColor" viewBox="0 0 24 24" stroke-width="2.5">
+								<path stroke-linecap="round" stroke-linejoin="round" d="M6 18L18 6M6 6l12 12" />
+							</svg>
+						</span>
+					{/if}
+				</button>
+
+				{#if menuOpen}
+					<div
+						class="absolute top-full right-0 mt-1.5 min-w-[220px] bg-[var(--ctp-base)] border border-[var(--ctp-surface2)] rounded-lg shadow-lg p-1 z-10"
+						role="menu"
+					>
+						{#each VOLUME_PRESETS as preset}
+							{@const selected = minVolumeBytes === preset.value}
+							<button
+								type="button"
+								onclick={() => applyMinVolume(preset.value)}
+								class="w-full flex items-center gap-2.5 px-3 py-1.5 text-xs rounded hover:bg-[var(--ctp-surface0)] {selected ? 'text-[var(--ctp-primary)] font-medium' : 'text-[var(--ctp-text)]'}"
+								role="menuitemradio"
+								aria-checked={selected}
+							>
+								<span
+									class="w-3 h-3 rounded-full border flex-shrink-0 relative {selected
+										? 'border-[var(--ctp-primary)]'
+										: 'border-[var(--ctp-overlay0)]'}"
+								>
+									{#if selected}
+										<span class="absolute inset-[2px] rounded-full bg-[var(--ctp-primary)]"></span>
+									{/if}
+								</span>
+								<span>{preset.label}</span>
+							</button>
+						{/each}
+					</div>
+				{/if}
+			</div>
+
+			<button
+				type="button"
+				onclick={() => (resetOpen = true)}
+				class="flex items-center gap-1.5 px-3 py-1.5 text-xs rounded-md border border-[var(--ctp-surface2)] text-[var(--ctp-overlay1)] hover:text-[var(--ctp-red)] hover:border-[var(--ctp-red)] transition-colors"
+				title={$t('breakdown.resetHistory')}
+			>
+				<svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+					<path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
+						d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6M1 7h22M9 7V4a1 1 0 011-1h4a1 1 0 011 1v3" />
+				</svg>
+				{$t('breakdown.resetHistory')}
+			</button>
+		</div>
 	</div>
 
 	<!-- Totals row: horizontal on sm+, stacked on mobile so the range pills don't overflow -->
