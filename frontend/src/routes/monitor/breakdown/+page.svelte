@@ -101,7 +101,9 @@ import { PRESETS as VOLUME_PRESETS, bytesFromUnit, splitBytes, type VolumeUnit }
 		if (!menuOpen) return;
 		// Pre-fill custom row from current threshold (so user sees the active value, not blank)
 		const split = splitBytes(minVolumeBytes);
-		customValue = split.value > 0 ? split.value : null;
+		// toPrecision(10) strips floating-point noise (e.g. 1.1000003814697266 → 1.1)
+		// while preserving any value a human would actually type
+		customValue = split.value > 0 ? parseFloat(split.value.toPrecision(10)) : null;
 		customUnit = split.unit;
 		function onKey(e: KeyboardEvent) {
 			if (e.key === 'Escape') menuOpen = false;
@@ -410,7 +412,7 @@ import { PRESETS as VOLUME_PRESETS, bytesFromUnit, splitBytes, type VolumeUnit }
 					<div
 						class="absolute top-full right-0 mt-1.5 min-w-[220px] bg-[var(--ctp-base)] border border-[var(--ctp-surface2)] rounded-lg shadow-lg p-1 z-10"
 						role="menu"
-						aria-label="Minimum volume threshold presets"
+						aria-label="Minimum volume threshold"
 					>
 						{#each VOLUME_PRESETS as preset}
 							{@const selected = minVolumeBytes === preset.value}
