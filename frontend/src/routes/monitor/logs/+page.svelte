@@ -135,7 +135,7 @@
 			.reverse()
 	);
 
-	let prevFilter = 'all';
+	let prevFilter = filter;
 	$effect(() => {
 		if (filter !== prevFilter) {
 			prevFilter = filter;
@@ -145,7 +145,7 @@
 	});
 
 	onMount(() => {
-		startStream('info');
+		startStream(filter === 'all' ? 'info' : filter);
 		return () => {
 			stopStream();
 		};
