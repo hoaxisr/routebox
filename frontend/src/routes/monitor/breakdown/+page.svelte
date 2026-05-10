@@ -380,8 +380,7 @@ import { PRESETS as VOLUME_PRESETS } from '$lib/utils/volumeThreshold';
 					<span class="text-[10px] opacity-60">▾</span>
 					{#if minVolumeBytes > 0}
 						<span
-							role="button"
-							tabindex="0"
+							tabindex="-1"
 							onclick={(e) => { e.stopPropagation(); clearMinVolume(); }}
 							onkeydown={(e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); e.stopPropagation(); clearMinVolume(); } }}
 							class="inline-flex w-4 h-4 items-center justify-center rounded-full hover:bg-[color-mix(in_srgb,var(--ctp-primary)_25%,transparent)]"
@@ -398,6 +397,7 @@ import { PRESETS as VOLUME_PRESETS } from '$lib/utils/volumeThreshold';
 					<div
 						class="absolute top-full right-0 mt-1.5 min-w-[220px] bg-[var(--ctp-base)] border border-[var(--ctp-surface2)] rounded-lg shadow-lg p-1 z-10"
 						role="menu"
+						aria-label="Minimum volume threshold presets"
 					>
 						{#each VOLUME_PRESETS as preset}
 							{@const selected = minVolumeBytes === preset.value}
