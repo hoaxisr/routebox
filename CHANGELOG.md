@@ -2,6 +2,16 @@
 
 All notable changes to RouteBox are documented here.
 
+## [Unreleased]
+
+### Improvements
+
+**Frontend:**
+- **Breakdown — Min volume filter** — new dropdown in the page header (next to Reset history) lets you hide buckets below a chosen size threshold (presets 10 MB / 100 MB / 1 GB or a custom value with KB/MB/GB units). Filter is display-only — affects rows, pie chart segments, and panel counts in all three panels (BY SOURCE / BY DOMAIN / BY CHAIN), but does not change the page-level "Filtered total" cumulative numbers. The chosen threshold persists per-device in `localStorage`.
+- **Breakdown — mobile layout polish** — the totals row no longer splits value+unit pairs across lines on narrow viewports, and the time-range pill group wraps onto a 2nd row instead of overflowing the right edge.
+
+---
+
 ## [0.16.1] - 2026-05-09
 
 ### Improvements
