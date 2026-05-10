@@ -320,18 +320,20 @@
 		</button>
 	</div>
 
-	<!-- Totals row (always one line, fixed height) -->
-	<div class="bg-[var(--ctp-surface0)] {hasAnyFilter ? 'rounded-t-lg border-x border-t' : 'rounded-lg border'} border-[var(--ctp-surface2)] px-4 py-3 flex items-center gap-3">
-		<div class="text-sm text-[var(--ctp-overlay1)]">{$t('breakdown.totalTraffic')}:</div>
-		<div class="text-sm text-[var(--ctp-text)]">
-			<span class="text-[var(--ctp-overlay0)]">↑</span> {formatBytes(filteredTotal.up)}
-			<span class="mx-2 text-[var(--ctp-overlay0)]">·</span>
-			<span class="text-[var(--ctp-overlay0)]">↓</span> {formatBytes(filteredTotal.down)}
-			<span class="mx-2 text-[var(--ctp-overlay0)]">·</span>
-			<span class="text-[var(--ctp-overlay1)]">{filteredTotal.count} conn</span>
+	<!-- Totals row: horizontal on sm+, stacked on mobile so the range pills don't overflow -->
+	<div class="bg-[var(--ctp-surface0)] {hasAnyFilter ? 'rounded-t-lg border-x border-t' : 'rounded-lg border'} border-[var(--ctp-surface2)] px-4 py-3 flex flex-col sm:flex-row sm:items-center gap-2 sm:gap-3">
+		<div class="flex flex-wrap items-center gap-x-3 gap-y-1">
+			<div class="text-sm text-[var(--ctp-overlay1)]">{$t('breakdown.totalTraffic')}:</div>
+			<div class="text-sm text-[var(--ctp-text)] flex flex-wrap items-center gap-x-2 gap-y-0.5">
+				<span class="whitespace-nowrap"><span class="text-[var(--ctp-overlay0)]">↑</span> {formatBytes(filteredTotal.up)}</span>
+				<span class="text-[var(--ctp-overlay0)]">·</span>
+				<span class="whitespace-nowrap"><span class="text-[var(--ctp-overlay0)]">↓</span> {formatBytes(filteredTotal.down)}</span>
+				<span class="text-[var(--ctp-overlay0)]">·</span>
+				<span class="whitespace-nowrap text-[var(--ctp-overlay1)]">{filteredTotal.count} conn</span>
+			</div>
 		</div>
-		<div class="flex-1"></div>
-		<div class="flex gap-1 bg-[var(--ctp-mantle)] rounded-md p-0.5">
+		<div class="hidden sm:block flex-1"></div>
+		<div class="flex flex-wrap gap-1 bg-[var(--ctp-mantle)] rounded-md p-0.5 self-start sm:self-auto">
 			{#each [{m:'live',l:$t('breakdown.rangeLive')},{m:'1h',l:'1h'},{m:'3h',l:'3h'},{m:'24h',l:'24h'},{m:'week',l:'Week'},{m:'month',l:'Month'}] as r}
 				<button
 					onclick={() => viewMode = r.m as ViewMode}
