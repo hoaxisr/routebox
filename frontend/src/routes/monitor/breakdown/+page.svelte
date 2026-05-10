@@ -300,7 +300,7 @@ import { PRESETS as VOLUME_PRESETS, bytesFromUnit, splitBytes, type VolumeUnit }
 			let up = 0, down = 0;
 			for (const r of historical) {
 				if (filters.source !== null && r.source !== filters.source) continue;
-				if (filters.domain !== null && r.domain !== filters.domain) continue;
+				if (filters.domain !== null && !domainMatchesFilter(r.domain, filters.domain)) continue;
 				if (filters.chain !== null && r.chain !== filters.chain) continue;
 				up += r.upload; down += r.download;
 			}
