@@ -8,7 +8,7 @@
 	import type { TrafficRange, TrafficBucket } from '$lib/types';
 	import { apexDomain } from '$lib/utils/apexDomain';
 	import ResetHistoryDialog from '$lib/components/monitor/ResetHistoryDialog.svelte';
-import { PRESETS as VOLUME_PRESETS } from '$lib/utils/volumeThreshold';
+import { PRESETS as VOLUME_PRESETS, bytesFromUnit, splitBytes, type VolumeUnit } from '$lib/utils/volumeThreshold';
 
 	type Dimension = 'source' | 'domain' | 'chain';
 	type ViewMode = 'live' | TrafficRange;
@@ -46,6 +46,8 @@ import { PRESETS as VOLUME_PRESETS } from '$lib/utils/volumeThreshold';
 	}
 	let minVolumeBytes = $state<number>(readInitialMinVolume());
 	let menuOpen = $state(false);
+	let customValue = $state<number | null>(null);
+	let customUnit = $state<VolumeUnit>('MB');
 
 	async function handleReset() {
 		resetBusy = true;
@@ -97,6 +99,10 @@ import { PRESETS as VOLUME_PRESETS } from '$lib/utils/volumeThreshold';
 
 	$effect(() => {
 		if (!menuOpen) return;
+		// Pre-fill custom row from current threshold (so user sees the active value, not blank)
+		const split = splitBytes(minVolumeBytes);
+		customValue = split.value > 0 ? split.value : null;
+		customUnit = split.unit;
 		function onKey(e: KeyboardEvent) {
 			if (e.key === 'Escape') menuOpen = false;
 		}
@@ -166,6 +172,13 @@ import { PRESETS as VOLUME_PRESETS } from '$lib/utils/volumeThreshold';
 	}
 	function clearMinVolume() {
 		minVolumeBytes = 0;
+	}
+
+	function applyCustom() {
+		const bytes = bytesFromUnit(customValue ?? 0, customUnit);
+		if (bytes === 0) return; // ignore empty/invalid input
+		minVolumeBytes = bytes;
+		menuOpen = false;
 	}
 
 	interface Bucket {
@@ -420,6 +433,35 @@ import { PRESETS as VOLUME_PRESETS } from '$lib/utils/volumeThreshold';
 								<span>{preset.label}</span>
 							</button>
 						{/each}
+						<div class="h-px bg-[var(--ctp-surface2)] mx-2 my-1"></div>
+						<div class="flex items-center gap-1.5 px-3 py-1.5 text-xs">
+							<span class="text-[var(--ctp-overlay1)] flex-shrink-0">Custom:</span>
+							<input
+								type="number"
+								bind:value={customValue}
+								min="0"
+								step="any"
+								inputmode="decimal"
+								placeholder="50"
+								onkeydown={(e) => { if (e.key === 'Enter') { e.preventDefault(); applyCustom(); } }}
+								class="w-14 px-1.5 py-0.5 bg-[var(--ctp-mantle)] border border-[var(--ctp-surface2)] rounded font-mono text-right text-[var(--ctp-text)] focus:outline-none focus:border-[var(--ctp-primary)]"
+							/>
+							<select
+								bind:value={customUnit}
+								class="px-1.5 py-0.5 bg-[var(--ctp-mantle)] border border-[var(--ctp-surface2)] rounded text-[var(--ctp-text)] focus:outline-none focus:border-[var(--ctp-primary)]"
+							>
+								<option value="KB">KB</option>
+								<option value="MB">MB</option>
+								<option value="GB">GB</option>
+							</select>
+							<button
+								type="button"
+								onclick={applyCustom}
+								class="ml-auto px-2.5 py-0.5 text-[var(--ctp-base)] bg-[var(--ctp-primary)] rounded font-medium hover:brightness-110"
+							>
+								Set
+							</button>
+						</div>
 					</div>
 				{/if}
 			</div>
