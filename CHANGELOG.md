@@ -10,6 +10,12 @@ All notable changes to RouteBox are documented here.
 - **Breakdown — Min volume filter** — new dropdown in the page header (next to Reset history) lets you hide buckets below a chosen size threshold (presets 10 MB / 100 MB / 1 GB or a custom value with KB/MB/GB units). Filter is display-only — affects rows, pie chart segments, and panel counts in all three panels (BY SOURCE / BY DOMAIN / BY CHAIN), but does not change the page-level "Filtered total" cumulative numbers. The chosen threshold persists per-device in `localStorage`.
 - **Breakdown — mobile layout polish** — the totals row no longer splits value+unit pairs across lines on narrow viewports, and the time-range pill group wraps onto a 2nd row instead of overflowing the right edge.
 
+### Bug fixes
+
+**Frontend:**
+- **Breakdown — historical "Filtered total" now matches the panel sums when an apex domain is filtered.** Previously, picking a filter like `googlevideo.com` on the 1h/3h/24h/Week/Month views would show `0 B` at the top even though the BY SOURCE panel correctly aggregated tens of MB. The totals row was doing exact-match against the filter while the panels did apex-match (since the v0.16.1 apex rollup); aligning the totals row to use the same apex match resolves the discrepancy.
+- **Logs page — respect the saved log level on initial mount.** The dropdown restored its value from `localStorage` but the stream briefly subscribed to `info` before the reactive effect re-opened it at the saved level. Now the stream starts at the right level immediately.
+
 ---
 
 ## [0.16.1] - 2026-05-09
