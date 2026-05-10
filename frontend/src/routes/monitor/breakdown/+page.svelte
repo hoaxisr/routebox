@@ -8,6 +8,7 @@
 	import type { TrafficRange, TrafficBucket } from '$lib/types';
 	import { apexDomain } from '$lib/utils/apexDomain';
 	import ResetHistoryDialog from '$lib/components/monitor/ResetHistoryDialog.svelte';
+import { PRESETS as VOLUME_PRESETS } from '$lib/utils/volumeThreshold';
 
 	type Dimension = 'source' | 'domain' | 'chain';
 	type ViewMode = 'live' | TrafficRange;
@@ -35,6 +36,8 @@
 
 	let resetOpen = $state(false);
 	let resetBusy = $state(false);
+	let minVolumeBytes = $state<number>(0);
+	let menuOpen = $state(false);
 
 	async function handleReset() {
 		resetBusy = true;
@@ -75,6 +78,11 @@
 		// Track filter property reads so we re-fetch when they change
 		void filters.source; void filters.domain; void filters.chain;
 		loadHistorical(viewMode);
+	});
+
+	$effect(() => {
+		if (typeof localStorage === 'undefined') return;
+		localStorage.setItem('routebox.breakdown.minVolume', String(minVolumeBytes));
 	});
 
 	function keyOf(conn: ClashConnection, dim: Dimension): string {
@@ -227,6 +235,16 @@
 	const domainBuckets = $derived(historical !== null ? aggregateHistorical('domain', historical) : aggregate('domain'));
 	const chainBuckets = $derived(historical !== null ? aggregateHistorical('chain', historical) : aggregate('chain'));
 
+	const sourceBucketsVisible = $derived(
+		minVolumeBytes > 0 ? sourceBuckets.filter(b => b.total >= minVolumeBytes) : sourceBuckets
+	);
+	const domainBucketsVisible = $derived(
+		minVolumeBytes > 0 ? domainBuckets.filter(b => b.total >= minVolumeBytes) : domainBuckets
+	);
+	const chainBucketsVisible = $derived(
+		minVolumeBytes > 0 ? chainBuckets.filter(b => b.total >= minVolumeBytes) : chainBuckets
+	);
+
 	const filteredTotal = $derived.by(() => {
 		if (historical !== null) {
 			let up = 0, down = 0;
@@ -280,6 +298,11 @@
 	}
 
 	onMount(() => {
+		const v = localStorage.getItem('routebox.breakdown.minVolume');
+		if (v !== null) {
+			const n = Number(v);
+			if (Number.isFinite(n) && n >= 0) minVolumeBytes = n;
+		}
 		startStream();
 	});
 
@@ -384,9 +407,9 @@
 		</div>
 	{:else}
 		<div class="grid grid-cols-1 lg:grid-cols-3 gap-4">
-			{@render panel('source', $t('breakdown.bySource'), sourceBuckets)}
-			{@render panel('domain', $t('breakdown.byDomain'), domainBuckets)}
-			{@render panel('chain', $t('breakdown.byChain'), chainBuckets)}
+			{@render panel('source', $t('breakdown.bySource'), sourceBucketsVisible)}
+			{@render panel('domain', $t('breakdown.byDomain'), domainBucketsVisible)}
+			{@render panel('chain', $t('breakdown.byChain'), chainBucketsVisible)}
 		</div>
 	{/if}
 </div>
