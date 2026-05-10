@@ -36,7 +36,15 @@ import { PRESETS as VOLUME_PRESETS } from '$lib/utils/volumeThreshold';
 
 	let resetOpen = $state(false);
 	let resetBusy = $state(false);
-	let minVolumeBytes = $state<number>(0);
+
+	function readInitialMinVolume(): number {
+		if (typeof localStorage === 'undefined') return 0;
+		const v = localStorage.getItem('routebox.breakdown.minVolume');
+		if (v === null) return 0;
+		const n = Number(v);
+		return Number.isFinite(n) && n >= 0 ? n : 0;
+	}
+	let minVolumeBytes = $state<number>(readInitialMinVolume());
 	let menuOpen = $state(false);
 
 	async function handleReset() {
@@ -298,11 +306,6 @@ import { PRESETS as VOLUME_PRESETS } from '$lib/utils/volumeThreshold';
 	}
 
 	onMount(() => {
-		const v = localStorage.getItem('routebox.breakdown.minVolume');
-		if (v !== null) {
-			const n = Number(v);
-			if (Number.isFinite(n) && n >= 0) minVolumeBytes = n;
-		}
 		startStream();
 	});
 
