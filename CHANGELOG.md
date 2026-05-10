@@ -2,7 +2,7 @@
 
 All notable changes to RouteBox are documented here.
 
-## [0.16.2]
+## [0.16.2] - 2026-05-10
 
 ### Improvements
 
