@@ -8,6 +8,7 @@ All notable changes to RouteBox are documented here.
 
 **Frontend:**
 - **NaiveProxy outbound type** — full form with server/port, username/password, SNI, CA certificate (PEM) pinning, QUIC transport toggle, and extra HTTP headers. Supports import from `naive+https://` and `naive+quic://` URIs via the Import modal.
+- **Mobile layout pass** — connection cards on phones, bottom-sheet modals, responsive grids on dashboard/traffic/connections, stacked pie-chart legend, wrapping proxy cards, stacked unsaved-changes bar
 
 **Backend:**
 - `naive` outbound tag recognized in the VPN-config detection heuristic.
