@@ -43,7 +43,7 @@
 {#if open}
 	<!-- svelte-ignore a11y_no_noninteractive_element_interactions -->
 	<div
-		class="fixed inset-0 z-50 flex items-center justify-center bg-black/50 backdrop-blur-sm modal-backdrop"
+		class="fixed inset-0 z-50 flex items-end sm:items-center justify-center bg-black/50 backdrop-blur-sm modal-backdrop"
 		onclick={handleBackdropClick}
 		onkeydown={handleKeydown}
 		role="dialog"
@@ -52,8 +52,13 @@
 		tabindex="-1"
 	>
 		<div
-			class="bg-[var(--ctp-base)] rounded-xl shadow-xl w-full {sizeClasses[size]} mx-4 max-h-[90vh] flex flex-col modal-content"
+			class="bg-[var(--ctp-base)] rounded-t-2xl sm:rounded-xl shadow-xl w-full {sizeClasses[size]} mx-0 sm:mx-4 max-h-[92vh] sm:max-h-[90vh] flex flex-col modal-content"
 		>
+			<!-- Mobile sheet grabber -->
+			<div class="sm:hidden pt-2 flex justify-center">
+				<div class="w-9 h-1 rounded-full bg-[var(--ctp-surface2)]"></div>
+			</div>
+
 			<!-- Header -->
 			<div class="flex items-center justify-between px-6 py-4 border-b border-[var(--ctp-surface2)]">
 				<h2 id="modal-title" class="text-lg font-semibold text-[var(--ctp-text)]">{title}</h2>
