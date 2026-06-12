@@ -23,6 +23,25 @@ All notable changes to RouteBox are documented here.
 
 ---
 
+### Added — Panel security (VPS Phase 1)
+
+**Backend:**
+- Cookie-based login sessions (`POST /api/auth/login` / `logout`, `GET /api/auth/session`) with sliding expiry; HTTP Basic still accepted for scripts.
+- Passwords hashed with bcrypt at rest (existing plaintext `auth_password` auto-migrated on load) + brute-force lockout with exponential backoff.
+- Root router split into public (login/health/SPA) and authenticated groups.
+- Optional built-in TLS via `network.tls_cert_path` / `tls_key_path`.
+- Hardened defaults: same-origin CORS (default no wildcard), same-origin WebSocket origin checks, panel credentials stripped before proxying to the clash API, `no-store` on auth responses.
+
+**Frontend:**
+- Login page, automatic redirect to login on 401, logout control, and an insecure-HTTP warning banner.
+
+### Changed
+
+- **BREAKING (VPS mode only):** `--mode=vps` (or `server.mode = "vps"`) now force-enables auth and generates an admin password (printed to the log and written to `routebox-initial-password`, mode 0600) if none is configured. Default `router` mode is unchanged; a warning is logged when bound to a non-loopback address without auth.
+- CORS now defaults to same-origin (no `Access-Control-Allow-Origin: *`); set `security.cors_origins` to opt into cross-origin access.
+
+---
+
 ## [0.17.0] - 2026-06-12
 
 ### New Features
