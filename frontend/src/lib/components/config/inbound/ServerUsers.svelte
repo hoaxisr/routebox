@@ -16,28 +16,21 @@
 
 	async function addUser() {
 		const u: ServerInboundUser = {};
-		if (protocol === 'vless') {
-			u.name = `user-${users.length + 1}`;
-			try {
+		try {
+			if (protocol === 'vless') {
+				u.name = `user-${users.length + 1}`;
 				u.uuid = (await api.generateUuid()).uuid;
-			} catch {
-				notifications.error($t('inbounds.server.genFailed'));
-			}
-			u.flow = 'xtls-rprx-vision';
-		} else if (protocol === 'naive') {
-			u.username = `user-${users.length + 1}`;
-			try {
+				u.flow = 'xtls-rprx-vision';
+			} else if (protocol === 'naive') {
+				u.username = `user-${users.length + 1}`;
 				u.password = (await api.generatePassword()).password;
-			} catch {
-				notifications.error($t('inbounds.server.genFailed'));
-			}
-		} else {
-			u.name = `user-${users.length + 1}`;
-			try {
+			} else {
+				u.name = `user-${users.length + 1}`;
 				u.password = (await api.generatePassword()).password;
-			} catch {
-				notifications.error($t('inbounds.server.genFailed'));
 			}
+		} catch {
+			notifications.error($t('inbounds.server.genFailed'));
+			return;
 		}
 		users = [...users, u];
 	}
