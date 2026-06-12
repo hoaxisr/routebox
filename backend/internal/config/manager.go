@@ -87,6 +87,41 @@ func (m *Manager) SetPathWithoutLoad(path string) {
 	m.draftPath = path + ".bak"
 }
 
+// atomicWriteFile writes data to path atomically: write to a temp file in the
+// same directory, fsync, set permissions, then rename over the target. A crash
+// mid-write leaves the original file intact.
+func atomicWriteFile(path string, data []byte, perm os.FileMode) error {
+	dir := filepath.Dir(path)
+	tmp, err := os.CreateTemp(dir, filepath.Base(path)+".tmp-*")
+	if err != nil {
+		return err
+	}
+	tmpName := tmp.Name()
+	defer func() {
+		if tmpName != "" {
+			tmp.Close()
+			os.Remove(tmpName)
+		}
+	}()
+	if _, err := tmp.Write(data); err != nil {
+		return err
+	}
+	if err := tmp.Sync(); err != nil {
+		return err
+	}
+	if err := tmp.Chmod(perm); err != nil {
+		return err
+	}
+	if err := tmp.Close(); err != nil {
+		return err
+	}
+	if err := os.Rename(tmpName, path); err != nil {
+		return err
+	}
+	tmpName = "" // success: disable deferred cleanup
+	return nil
+}
+
 // SetCheckBinary sets the binary used for `check` validation (detected
 // sing-box/amnezia-box path from the process manager).
 func (m *Manager) SetCheckBinary(path string) {
@@ -155,7 +190,7 @@ func (m *Manager) Save(config map[string]interface{}) error {
 	}
 	data := buf.Bytes()
 
-	if err := os.WriteFile(m.path, data, 0644); err != nil {
+	if err := atomicWriteFile(m.path, data, 0644); err != nil {
 		return fmt.Errorf("failed to write config: %w", err)
 	}
 
@@ -335,7 +370,7 @@ func (m *Manager) saveDraftToDisk() error {
 		return fmt.Errorf("failed to marshal draft config: %w", err)
 	}
 
-	if err := os.WriteFile(m.draftPath, buf.Bytes(), 0644); err != nil {
+	if err := atomicWriteFile(m.draftPath, buf.Bytes(), 0644); err != nil {
 		return fmt.Errorf("failed to write draft config: %w", err)
 	}
 
@@ -417,7 +452,7 @@ func (m *Manager) ApplyDraft() error {
 		return fmt.Errorf("failed to marshal config: %w", err)
 	}
 
-	if err := os.WriteFile(m.path, buf.Bytes(), 0644); err != nil {
+	if err := atomicWriteFile(m.path, buf.Bytes(), 0644); err != nil {
 		return fmt.Errorf("failed to write config: %w", err)
 	}
 
