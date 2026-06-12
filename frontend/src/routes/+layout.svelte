@@ -7,6 +7,7 @@
 	import UnsavedChangesBar from '$lib/components/shared/UnsavedChangesBar.svelte';
 	import { t, isLoading as i18nLoading } from 'svelte-i18n';
 	import { initI18n } from '$lib/i18n';
+	import { goto } from '$app/navigation';
 
 	// Initialize i18n
 	initI18n();
@@ -88,6 +89,15 @@
 			window.removeEventListener('resize', checkMobile);
 		}
 	});
+
+	async function logout() {
+		try {
+			await api.logout();
+		} catch {
+			// ignore errors — navigate to login regardless
+		}
+		goto('/login');
+	}
 </script>
 
 {#if $i18nLoading}
@@ -154,6 +164,18 @@
 							</svg>
 						{/if}
 					</button>
+					<!-- Logout (hidden on login page) -->
+					{#if !$page.url.pathname.startsWith('/login')}
+						<button
+							onclick={logout}
+							class="p-2 rounded-lg hover:bg-[var(--ctp-surface0)] transition-colors"
+							title={$t('auth.logout')}
+						>
+							<svg class="w-5 h-5 text-[var(--ctp-subtext1)]" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+								<path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M17 16l4-4m0 0l-4-4m4 4H7m6 4v1a3 3 0 01-3 3H6a3 3 0 01-3-3V7a3 3 0 013-3h4a3 3 0 013 3v1" />
+							</svg>
+						</button>
+					{/if}
 				</div>
 			</div>
 		</header>
@@ -347,6 +369,13 @@
 				</a>
 			</nav>
 		</aside>
+
+		<!-- HTTP warning banner (non-localhost HTTP, hidden on login page) -->
+		{#if !$page.url.pathname.startsWith('/login') && typeof window !== 'undefined' && window.location.protocol === 'http:' && window.location.hostname !== 'localhost' && window.location.hostname !== '127.0.0.1'}
+			<div class="fixed top-14 left-0 right-0 z-40 bg-[var(--ctp-red)] text-white text-xs text-center py-1 px-2 {isMobile ? '' : 'pl-56'}">
+				{$t('auth.insecureWarning')}
+			</div>
+		{/if}
 
 		<!-- Main content -->
 		<main class="pt-14 {isMobile ? 'pl-0' : 'pl-56'}">

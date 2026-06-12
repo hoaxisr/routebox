@@ -1509,5 +1509,13 @@
     "updated": "Updated {time}",
     "never": "Never updated",
     "timeAgo": { "justNow": "just now", "minutes": "{n}m ago", "hours": "{n}h ago", "days": "{n}d ago" }
+  },
+  "auth": {
+    "signIn": "Sign in",
+    "username": "Username",
+    "password": "Password",
+    "invalidCredentials": "Invalid username or password",
+    "logout": "Log out",
+    "insecureWarning": "This panel is served over unencrypted HTTP — use HTTPS (reverse proxy) before exposing it publicly."
   }
 }

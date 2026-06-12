@@ -14,6 +14,9 @@ async function request<T>(path: string, options: RequestInit = {}): Promise<T> {
 	});
 
 	if (!response.ok) {
+		if (response.status === 401 && typeof window !== 'undefined' && !window.location.pathname.startsWith('/login')) {
+			window.location.href = '/login';
+		}
 		let errorMessage = `HTTP ${response.status}`;
 		try {
 			const error = await response.json();
@@ -462,7 +465,14 @@ export const api = {
 	deleteSubscription: (id: string) =>
 		request<{ message: string }>(`/subscriptions/${encodeURIComponent(id)}`, { method: 'DELETE' }),
 	refreshSubscription: (id: string) =>
-		request<Subscription>(`/subscriptions/${encodeURIComponent(id)}/refresh`, { method: 'POST' })
+		request<Subscription>(`/subscriptions/${encodeURIComponent(id)}/refresh`, { method: 'POST' }),
+
+	// Panel auth
+	login: (username: string, password: string) =>
+		request<{ username: string }>('/auth/login', { method: 'POST', body: JSON.stringify({ username, password }) }),
+	logout: () => request<{ status: string }>('/auth/logout', { method: 'POST' }),
+	getSession: () =>
+		request<{ authenticated: boolean; auth_enabled: boolean; username?: string }>('/auth/session')
 };
 
 // WebSocket helpers
