@@ -15,6 +15,11 @@ All notable changes to RouteBox are documented here.
 
 > **Note:** Requires amnezia-box `v1.13.13-awg2.0` or newer linux-amd64 binary (naive outbound is amd64-only).
 
+### Bug fixes
+
+- **Backend:** process manager no longer matches RouteBox itself when finding the proxy PID; config validation uses the detected amnezia-box binary; atomic config writes (power-loss safe); numeric settings updates no longer silently ignored; process lifecycle serialized; optional HTTP basic auth (settings `[security]`) + server timeouts; WS proxy keepalive (no more leaked connections); backup rotation (keep 5)
+- **Frontend:** monitor streams auto-reconnect with honest status indicators (works behind HTTPS); dashboard start/stop manages both streams; live-updates toggle survives transient errors; proxies auto-refresh respects interval changes; `ss://` base64url import; backup import correctly reports draft state; missing i18n keys; confirmation for Close All connections and endpoint delete
+
 ---
 
 ## [0.16.2] - 2026-05-10
