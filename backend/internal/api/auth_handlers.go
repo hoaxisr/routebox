@@ -15,6 +15,7 @@ type loginRequest struct {
 
 // Login verifies credentials and sets a session cookie.
 func (h *Handler) Login(w http.ResponseWriter, r *http.Request) {
+	w.Header().Set("Cache-Control", "no-store")
 	r.Body = http.MaxBytesReader(w, r.Body, 4096)
 	var req loginRequest
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
@@ -65,16 +66,26 @@ func (h *Handler) Login(w http.ResponseWriter, r *http.Request) {
 
 // Logout invalidates the current session and clears the cookie.
 func (h *Handler) Logout(w http.ResponseWriter, r *http.Request) {
+	w.Header().Set("Cache-Control", "no-store")
 	if c, err := r.Cookie(SessionCookieName); err == nil && h.sessions != nil {
 		h.sessions.Delete(c.Value)
 	}
-	http.SetCookie(w, &http.Cookie{Name: SessionCookieName, Value: "", Path: "/", HttpOnly: true, MaxAge: -1})
+	http.SetCookie(w, &http.Cookie{
+		Name:     SessionCookieName,
+		Value:    "",
+		Path:     "/",
+		HttpOnly: true,
+		MaxAge:   -1,
+		SameSite: http.SameSiteStrictMode,
+		Secure:   isSecure(r),
+	})
 	writeSuccess(w, map[string]string{"status": "ok"})
 }
 
 // Session reports whether the caller is authenticated (public endpoint so the
 // SPA can choose between the login screen and the app).
 func (h *Handler) Session(w http.ResponseWriter, r *http.Request) {
+	w.Header().Set("Cache-Control", "no-store")
 	sec := h.settings.Get().Security
 	authed := !sec.AuthEnabled
 	if !authed {

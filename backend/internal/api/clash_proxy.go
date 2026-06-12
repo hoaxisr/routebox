@@ -15,10 +15,20 @@ import (
 	"github.com/gorilla/websocket"
 )
 
-// WebSocket upgrader with permissive origin checking (internal API)
+// WebSocket upgrader with same-host origin checking.
+// Non-browser clients (curl, native apps) send no Origin header and are allowed
+// through; cross-origin browser requests are rejected.
 var wsUpgrader = websocket.Upgrader{
 	CheckOrigin: func(r *http.Request) bool {
-		return true // Allow all origins for internal API
+		origin := r.Header.Get("Origin")
+		if origin == "" {
+			return true // non-browser client (curl, native app) — no Origin header
+		}
+		u, err := url.Parse(origin)
+		if err != nil {
+			return false
+		}
+		return u.Host == r.Host // same-origin only
 	},
 }
 
@@ -93,6 +103,9 @@ func (h *Handler) ProxyClashAPI(w http.ResponseWriter, r *http.Request) {
 			proxyReq.Header.Add(key, value)
 		}
 	}
+	// Don't leak panel credentials to the clash process.
+	proxyReq.Header.Del("Cookie")
+	proxyReq.Header.Del("Authorization")
 
 	// Send request
 	client := &http.Client{}
@@ -144,6 +157,9 @@ func (h *Handler) ProxyClashWebSocket(w http.ResponseWriter, r *http.Request) {
 				proxyReq.Header.Add(key, value)
 			}
 		}
+		// Don't leak panel credentials to the clash process.
+		proxyReq.Header.Del("Cookie")
+		proxyReq.Header.Del("Authorization")
 
 		client := &http.Client{}
 		resp, err := client.Do(proxyReq)

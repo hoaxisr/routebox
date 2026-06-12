@@ -115,7 +115,7 @@ func TestAuthMiddleware(t *testing.T) {
 	})
 }
 
-// TestAuthMiddleware_NilManager verifies that a nil settings manager passes all requests through.
+// TestAuthMiddleware_NilManager verifies that a nil settings manager fails closed (503).
 func TestAuthMiddleware_NilManager(t *testing.T) {
 	okHandler := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.WriteHeader(http.StatusOK)
@@ -124,7 +124,7 @@ func TestAuthMiddleware_NilManager(t *testing.T) {
 	req := httptest.NewRequest("GET", "/api/status", nil)
 	rec := httptest.NewRecorder()
 	handler.ServeHTTP(rec, req)
-	if rec.Code != http.StatusOK {
-		t.Fatalf("nil manager: status = %d, want %d", rec.Code, http.StatusOK)
+	if rec.Code != http.StatusServiceUnavailable {
+		t.Fatalf("nil manager: status = %d, want %d", rec.Code, http.StatusServiceUnavailable)
 	}
 }

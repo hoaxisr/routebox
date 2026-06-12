@@ -141,7 +141,7 @@ func Default() Settings {
 			AuthEnabled:           false,
 			AuthUsername:          "",
 			AuthPassword:          "",
-			CorsOrigins:           "*",
+			CorsOrigins:           "",
 			SessionTimeoutMinutes: 720,
 		},
 		Network: NetworkSettings{

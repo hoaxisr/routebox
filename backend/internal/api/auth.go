@@ -35,7 +35,7 @@ func AuthMiddleware(settingsMgr *settings.Manager, sessions *auth.SessionStore, 
 	return func(next http.Handler) http.Handler {
 		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 			if settingsMgr == nil {
-				next.ServeHTTP(w, r)
+				http.Error(w, "auth misconfigured", http.StatusServiceUnavailable)
 				return
 			}
 			sec := settingsMgr.Get().Security

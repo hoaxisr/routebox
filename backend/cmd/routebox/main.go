@@ -288,13 +288,15 @@ func main() {
 	if cfg.Network.CompressionEnabled {
 		r.Use(middleware.Compress(5))
 	}
-	r.Use(cors.Handler(cors.Options{
-		AllowedOrigins:   []string{cfg.Security.CorsOrigins},
-		AllowedMethods:   []string{"GET", "POST", "PUT", "DELETE", "OPTIONS"},
-		AllowedHeaders:   []string{"Accept", "Content-Type"},
-		AllowCredentials: false,
-		MaxAge:           300,
-	}))
+	if cfg.Security.CorsOrigins != "" {
+		r.Use(cors.Handler(cors.Options{
+			AllowedOrigins:   []string{cfg.Security.CorsOrigins},
+			AllowedMethods:   []string{"GET", "POST", "PUT", "DELETE", "OPTIONS"},
+			AllowedHeaders:   []string{"Accept", "Content-Type"},
+			AllowCredentials: false,
+			MaxAge:           300,
+		}))
+	}
 
 	// API routes: public group + protected group
 	r.Route("/api", func(r chi.Router) {
@@ -519,12 +521,16 @@ func main() {
 				log.Fatalf("persist auth: %v", err)
 			}
 			pwFile := filepath.Join(filepath.Dir(settingsMgr.GetPath()), "routebox-initial-password")
-			_ = os.WriteFile(pwFile, []byte(pw+"\n"), 0600)
+			writeErr := os.WriteFile(pwFile, []byte(pw+"\n"), 0600)
 			fmt.Println("==================================================================")
 			fmt.Println(" VPS MODE: panel auth was OFF — generated admin credentials")
 			fmt.Printf("   username: %s\n", orDefault(sec.AuthUsername, "admin"))
 			fmt.Printf("   password: %s\n", pw)
-			fmt.Printf("   (also written to %s)\n", pwFile)
+			if writeErr == nil {
+				fmt.Printf("   (also written to %s)\n", pwFile)
+			} else {
+				fmt.Printf("   (WARNING: could not write password file: %v)\n", writeErr)
+			}
 			fmt.Println("==================================================================")
 		}
 	} else if isNonLoopback(resolvedListenAddr) && !settingsMgr.Get().Security.AuthEnabled {
