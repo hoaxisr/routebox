@@ -7,6 +7,7 @@ import (
 	"path/filepath"
 	"strconv"
 	"strings"
+	"sync"
 	"syscall"
 	"time"
 )
@@ -36,11 +37,38 @@ type SystemChecks struct {
 
 // Manager handles amnezia-box process lifecycle
 type Manager struct {
+	opMu    sync.Mutex   // serializes Start/Stop/Restart/Reload
+	stateMu sync.RWMutex // guards fields below
+
 	binaryPath      string
 	configPath      string
-	serviceName     string // detected systemd service name
+	serviceName     string // detected systemd service name (set once in NewManager)
 	forceStandalone bool   // force standalone mode even if systemd service exists
 	startedPID      int    // PID of process started by us in standalone mode (0 if none)
+}
+
+func (m *Manager) getBinaryPath() string {
+	m.stateMu.RLock()
+	defer m.stateMu.RUnlock()
+	return m.binaryPath
+}
+
+func (m *Manager) setBinaryPath(p string) {
+	m.stateMu.Lock()
+	defer m.stateMu.Unlock()
+	m.binaryPath = p
+}
+
+func (m *Manager) getStartedPID() int {
+	m.stateMu.RLock()
+	defer m.stateMu.RUnlock()
+	return m.startedPID
+}
+
+func (m *Manager) setStartedPID(pid int) {
+	m.stateMu.Lock()
+	defer m.stateMu.Unlock()
+	m.startedPID = pid
 }
 
 // NewManager creates a new process manager
@@ -56,17 +84,23 @@ func NewManager() *Manager {
 
 // SetConfigPath sets the config path for the process
 func (m *Manager) SetConfigPath(path string) {
+	m.stateMu.Lock()
+	defer m.stateMu.Unlock()
 	m.configPath = path
 }
 
 // SetForceStandalone enables standalone mode even if systemd service exists
 // Use this when running with a local config that differs from systemd config
 func (m *Manager) SetForceStandalone(force bool) {
+	m.stateMu.Lock()
+	defer m.stateMu.Unlock()
 	m.forceStandalone = force
 }
 
 // IsForceStandalone returns true if standalone mode is forced
 func (m *Manager) IsForceStandalone() bool {
+	m.stateMu.RLock()
+	defer m.stateMu.RUnlock()
 	return m.forceStandalone
 }
 
@@ -290,14 +324,14 @@ func (m *Manager) IsBinaryInstalled() bool {
 
 // GetBinaryPath returns the path to the sing-box/amnezia-box binary
 func (m *Manager) GetBinaryPath() string {
-	return findBinary()
+	return m.getBinaryPath()
 }
 
 // GetVersion returns the version of installed sing-box/amnezia-box binary
 func (m *Manager) GetVersion() (string, error) {
 	// Try the detected binary path first
-	if m.binaryPath != "" {
-		if version, err := m.runVersion(m.binaryPath); err == nil {
+	if bp := m.getBinaryPath(); bp != "" {
+		if version, err := m.runVersion(bp); err == nil {
 			return version, nil
 		}
 	}
@@ -305,7 +339,7 @@ func (m *Manager) GetVersion() (string, error) {
 	// Try amnezia-box in PATH
 	if path, err := exec.LookPath("amnezia-box"); err == nil {
 		if version, err := m.runVersion(path); err == nil {
-			m.binaryPath = path // Update to working path
+			m.setBinaryPath(path) // Update to working path
 			return version, nil
 		}
 	}
@@ -313,7 +347,7 @@ func (m *Manager) GetVersion() (string, error) {
 	// Try sing-box in PATH
 	if path, err := exec.LookPath("sing-box"); err == nil {
 		if version, err := m.runVersion(path); err == nil {
-			m.binaryPath = path // Update to working path
+			m.setBinaryPath(path) // Update to working path
 			return version, nil
 		}
 	}
@@ -348,6 +382,7 @@ func (m *Manager) runVersion(binaryPath string) (string, error) {
 func (m *Manager) GetStatus() Status {
 	// Get version info (cached in binaryPath if successful)
 	version, _ := m.GetVersion()
+	bp := m.getBinaryPath()
 
 	// Always include system checks
 	systemChecks := GetSystemChecks()
@@ -358,7 +393,7 @@ func (m *Manager) GetStatus() Status {
 			Running:      false,
 			SupportsHUP:  true,
 			Version:      version,
-			BinaryPath:   m.binaryPath,
+			BinaryPath:   bp,
 			SystemChecks: systemChecks,
 		}
 		// Still report if systemd service exists
@@ -372,12 +407,12 @@ func (m *Manager) GetStatus() Status {
 	// Check if process is actually running
 	process, err := os.FindProcess(pid)
 	if err != nil {
-		return Status{Running: false, SupportsHUP: true, Version: version, BinaryPath: m.binaryPath}
+		return Status{Running: false, SupportsHUP: true, Version: version, BinaryPath: bp}
 	}
 
 	// On Unix, FindProcess always succeeds. Need to send signal 0 to check.
 	if err := process.Signal(syscall.Signal(0)); err != nil {
-		return Status{Running: false, SupportsHUP: true, Version: version, BinaryPath: m.binaryPath}
+		return Status{Running: false, SupportsHUP: true, Version: version, BinaryPath: bp}
 	}
 
 	// Get uptime from /proc
@@ -402,7 +437,7 @@ func (m *Manager) GetStatus() Status {
 		ConfigPath:   configPath,
 		SupportsHUP:  true, // sing-box supports SIGHUP
 		Version:      version,
-		BinaryPath:   m.binaryPath,
+		BinaryPath:   bp,
 		SystemChecks: systemChecks,
 	}
 }
@@ -415,11 +450,11 @@ func (m *Manager) findPID() int {
 	self := os.Getpid()
 
 	// Prefer the PID we started ourselves in standalone mode
-	if m.startedPID != 0 && m.startedPID != self {
-		if m.exeMatches(m.startedPID) {
-			return m.startedPID
+	if startedPID := m.getStartedPID(); startedPID != 0 && startedPID != self {
+		if m.exeMatches(startedPID) {
+			return startedPID
 		}
-		m.startedPID = 0 // stale: process exited or PID was reused
+		m.setStartedPID(0) // stale: process exited or PID was reused
 	}
 
 	entries, err := os.ReadDir("/proc")
@@ -448,11 +483,11 @@ func (m *Manager) exeMatches(pid int) bool {
 		return false
 	}
 	exe = strings.TrimSuffix(exe, " (deleted)")
-	if m.binaryPath != "" {
-		if abs, err := filepath.Abs(m.binaryPath); err == nil && exe == abs {
+	if bp := m.getBinaryPath(); bp != "" {
+		if abs, err := filepath.Abs(bp); err == nil && exe == abs {
 			return true
 		}
-		if filepath.Base(exe) == filepath.Base(m.binaryPath) {
+		if filepath.Base(exe) == filepath.Base(bp) {
 			return true
 		}
 	}
@@ -516,6 +551,9 @@ func formatDuration(d time.Duration) string {
 
 // Reload sends SIGHUP to reload configuration without restart
 func (m *Manager) Reload() error {
+	m.opMu.Lock()
+	defer m.opMu.Unlock()
+
 	status := m.GetStatus()
 	if !status.Running {
 		return fmt.Errorf("amnezia-box is not running")
@@ -548,12 +586,19 @@ func (m *Manager) Reload() error {
 
 // Start starts the amnezia-box process
 func (m *Manager) Start(configPath string) error {
+	m.opMu.Lock()
+	defer m.opMu.Unlock()
+	return m.startLocked(configPath)
+}
+
+// startLocked starts the process. Caller must hold opMu.
+func (m *Manager) startLocked(configPath string) error {
 	if m.GetStatus().Running {
 		return fmt.Errorf("amnezia-box is already running")
 	}
 
 	// If systemd service exists and standalone mode is not forced, use systemctl
-	if m.serviceName != "" && !m.forceStandalone {
+	if m.serviceName != "" && !m.IsForceStandalone() {
 		cmd := exec.Command("systemctl", "start", m.serviceName+".service")
 		if output, err := cmd.CombinedOutput(); err != nil {
 			return fmt.Errorf("systemctl start failed: %s", string(output))
@@ -574,7 +619,7 @@ func (m *Manager) Start(configPath string) error {
 
 	// Standalone mode
 	args := []string{"run", "-c", configPath}
-	cmd := exec.Command(m.binaryPath, args...)
+	cmd := exec.Command(m.getBinaryPath(), args...)
 
 	// Detach from parent
 	cmd.SysProcAttr = &syscall.SysProcAttr{
@@ -588,7 +633,7 @@ func (m *Manager) Start(configPath string) error {
 	if err := cmd.Start(); err != nil {
 		return fmt.Errorf("failed to start: %w", err)
 	}
-	m.startedPID = cmd.Process.Pid
+	m.setStartedPID(cmd.Process.Pid)
 
 	// Don't wait - let it run in background
 	go cmd.Wait()
@@ -604,13 +649,20 @@ func (m *Manager) Start(configPath string) error {
 
 // Stop stops the amnezia-box process
 func (m *Manager) Stop() error {
+	m.opMu.Lock()
+	defer m.opMu.Unlock()
+	return m.stopLocked()
+}
+
+// stopLocked stops the process. Caller must hold opMu.
+func (m *Manager) stopLocked() error {
 	status := m.GetStatus()
 	if !status.Running {
 		return fmt.Errorf("amnezia-box is not running")
 	}
 
 	// If managed by systemd and standalone mode is not forced, use systemctl
-	if m.IsSystemdManaged() && !m.forceStandalone {
+	if m.IsSystemdManaged() && !m.IsForceStandalone() {
 		cmd := exec.Command("systemctl", "stop", m.serviceName+".service")
 		if output, err := cmd.CombinedOutput(); err != nil {
 			return fmt.Errorf("systemctl stop failed: %s", string(output))
@@ -641,6 +693,7 @@ func (m *Manager) Stop() error {
 	for i := 0; i < 50; i++ { // 5 seconds timeout
 		time.Sleep(100 * time.Millisecond)
 		if !m.GetStatus().Running {
+			m.setStartedPID(0)
 			return nil
 		}
 	}
@@ -653,13 +706,17 @@ func (m *Manager) Stop() error {
 		return fmt.Errorf("failed to stop process")
 	}
 
+	m.setStartedPID(0)
 	return nil
 }
 
 // Restart restarts the amnezia-box process
 func (m *Manager) Restart(configPath string) error {
+	m.opMu.Lock()
+	defer m.opMu.Unlock()
+
 	// If managed by systemd and standalone mode is not forced, use systemctl restart
-	if m.IsSystemdManaged() && !m.forceStandalone {
+	if m.IsSystemdManaged() && !m.IsForceStandalone() {
 		cmd := exec.Command("systemctl", "restart", m.serviceName+".service")
 		if output, err := cmd.CombinedOutput(); err != nil {
 			return fmt.Errorf("systemctl restart failed: %s", string(output))
@@ -675,12 +732,12 @@ func (m *Manager) Restart(configPath string) error {
 
 	// Standalone mode
 	if m.GetStatus().Running {
-		if err := m.Stop(); err != nil {
+		if err := m.stopLocked(); err != nil {
 			return fmt.Errorf("failed to stop: %w", err)
 		}
 	}
 
-	return m.Start(configPath)
+	return m.startLocked(configPath)
 }
 
 // GetJournalLogs returns recent logs from systemd journal
