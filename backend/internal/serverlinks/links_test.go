@@ -95,6 +95,8 @@ func TestBuildShareLinkErrors(t *testing.T) {
 		{"no port", map[string]interface{}{"type": "vless"}, user, "h"},
 		{"no uuid", base, map[string]interface{}{}, "h"},
 		{"bad type", map[string]interface{}{"type": "tun", "listen_port": float64(1)}, user, "h"},
+		{"naive no username", map[string]interface{}{"type": "naive", "listen_port": float64(443)}, map[string]interface{}{}, "h"},
+		{"hy2 no password", map[string]interface{}{"type": "hysteria2", "listen_port": float64(443)}, map[string]interface{}{}, "h"},
 	}
 	for _, c := range cases {
 		if _, err := BuildShareLink(c.inbound, c.user, c.host); err == nil {
@@ -181,7 +183,7 @@ func TestBuildShareLinkNaive(t *testing.T) {
 func TestBuildShareLinkHysteria2(t *testing.T) {
 	inbound := map[string]interface{}{
 		"type": "hysteria2", "tag": "hy2-in", "listen_port": float64(8443),
-		"tls":  map[string]interface{}{"enabled": true, "server_name": "vpn.example.com"},
+		"tls":  map[string]interface{}{"enabled": true, "server_name": "cdn.example.com"},
 		"obfs": map[string]interface{}{"type": "salamander", "password": "obfspw"},
 	}
 	user := map[string]interface{}{"name": "phone", "password": "hunter2"}
@@ -203,5 +205,67 @@ func TestBuildShareLinkHysteria2(t *testing.T) {
 	obfs := ob["obfs"].(map[string]interface{})
 	if obfs["type"] != "salamander" || obfs["password"] != "obfspw" {
 		t.Fatalf("obfs mismatch: %v", obfs)
+	}
+	tls := ob["tls"].(map[string]interface{})
+	if tls["server_name"] != "cdn.example.com" {
+		t.Fatalf("sni mismatch: got %v want cdn.example.com", tls["server_name"])
+	}
+}
+
+func TestBuildShareLinkHysteria2NoObfs(t *testing.T) {
+	inbound := map[string]interface{}{
+		"type": "hysteria2", "listen_port": float64(8443),
+		"tls": map[string]interface{}{"enabled": true, "server_name": "vpn.example.com"},
+	}
+	user := map[string]interface{}{"name": "laptop", "password": "hunter2"}
+
+	link, err := BuildShareLink(inbound, user, "vpn.example.com")
+	if err != nil {
+		t.Fatalf("BuildShareLink: %v", err)
+	}
+	ob := parseBack(t, link)
+	if ob["server"] != "vpn.example.com" || ob["server_port"] != 8443 {
+		t.Fatalf("server/port mismatch: %v", ob)
+	}
+	if _, hasObfs := ob["obfs"]; hasObfs {
+		t.Fatalf("no-obfs link should not carry obfs key after round-trip: %v", ob["obfs"])
+	}
+}
+
+func TestBuildShareLinkSpecialCharCredentials(t *testing.T) {
+	// naive: username and password containing ':' and '@'
+	naive := map[string]interface{}{
+		"type": "naive", "listen_port": float64(443),
+		"tls": map[string]interface{}{"enabled": true, "server_name": "vpn.example.com"},
+	}
+	nUser := map[string]interface{}{"username": "us:er", "password": "p@ss:word"}
+	link, err := BuildShareLink(naive, nUser, "vpn.example.com")
+	if err != nil {
+		t.Fatalf("naive: %v", err)
+	}
+	ob := parseBack(t, link)
+	if ob["server"] != "vpn.example.com" || ob["server_port"] != 443 {
+		t.Fatalf("naive server/port corrupted: %v", ob)
+	}
+	if ob["username"] != "us:er" || ob["password"] != "p@ss:word" {
+		t.Fatalf("naive creds corrupted: user=%v pass=%v", ob["username"], ob["password"])
+	}
+
+	// hysteria2: password containing '@' and ':'
+	hy2 := map[string]interface{}{
+		"type": "hysteria2", "listen_port": float64(8443),
+		"tls": map[string]interface{}{"enabled": true, "server_name": "vpn.example.com"},
+	}
+	hUser := map[string]interface{}{"name": "phone", "password": "p@ss:w0rd"}
+	link2, err := BuildShareLink(hy2, hUser, "vpn.example.com")
+	if err != nil {
+		t.Fatalf("hy2: %v", err)
+	}
+	ob2 := parseBack(t, link2)
+	if ob2["server"] != "vpn.example.com" || ob2["server_port"] != 8443 {
+		t.Fatalf("hy2 server/port corrupted: %v", ob2)
+	}
+	if ob2["password"] != "p@ss:w0rd" {
+		t.Fatalf("hy2 password corrupted: %v", ob2["password"])
 	}
 }

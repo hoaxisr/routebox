@@ -135,7 +135,7 @@ func buildNaive(inbound, user map[string]interface{}, host string, port int) (st
 	if username == "" {
 		return "", fmt.Errorf("naive user has no username")
 	}
-	userinfo := url.PathEscape(username) + ":" + url.PathEscape(password)
+	userinfo := url.UserPassword(username, password).String()
 	return fmt.Sprintf("naive+https://%s@%s#%s",
 		userinfo, hostPort(host, port), url.PathEscape(nameOf(user, "NaiveProxy"))), nil
 }
@@ -156,5 +156,5 @@ func buildHysteria2(inbound, user map[string]interface{}, host string, port int)
 		}
 	}
 	return fmt.Sprintf("hy2://%s@%s?%s#%s",
-		url.PathEscape(password), hostPort(host, port), q.Encode(), url.PathEscape(nameOf(user, "Hysteria2"))), nil
+		url.User(password).String(), hostPort(host, port), q.Encode(), url.PathEscape(nameOf(user, "Hysteria2"))), nil
 }
