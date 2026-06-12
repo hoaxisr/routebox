@@ -399,7 +399,7 @@ export function parseNaive(uri: string): ParseResult {
 			content = uri.slice(13);
 			quic = true;
 		} else {
-			return { success: false, error: 'Invalid Naive URI: must start with naive+https:// or naive+quic://' };
+			return { success: false, error: 'Invalid NaiveProxy URI: must start with naive+https:// or naive+quic://' };
 		}
 
 		// Split by # to get name
@@ -430,7 +430,7 @@ export function parseNaive(uri: string): ParseResult {
 		// Parse host:port (supports [IPv6]:port)
 		const hp = splitHostPort(hostPort);
 		if (!hp) {
-			return { success: false, error: 'Invalid Naive URI: invalid host:port' };
+			return { success: false, error: 'Invalid NaiveProxy URI: invalid host:port' };
 		}
 		const server = hp.host;
 		const port = hp.port;
@@ -444,7 +444,7 @@ export function parseNaive(uri: string): ParseResult {
 
 		return { success: true, config };
 	} catch (err) {
-		return { success: false, error: `Failed to parse Naive URI: ${err}` };
+		return { success: false, error: `Failed to parse NaiveProxy URI: ${err}` };
 	}
 }
 
