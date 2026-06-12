@@ -51,3 +51,23 @@ func TestGeneratePassword(t *testing.T) {
 		t.Fatalf("password too short: %q", pw)
 	}
 }
+
+func TestParseRealityKeypair(t *testing.T) {
+	out := "PrivateKey: SN5HcFLrdjYEYbYYowow0k8zRF5m2uvX6_vcun25p2s\nPublicKey: onu9CnSwBGKrgJGKK_WkggznnOwUuvNjTHw4nBlSdwU\n"
+	priv, pub, err := parseRealityKeypair(out)
+	if err != nil {
+		t.Fatalf("parse: %v", err)
+	}
+	if priv != "SN5HcFLrdjYEYbYYowow0k8zRF5m2uvX6_vcun25p2s" {
+		t.Fatalf("priv mismatch: %q", priv)
+	}
+	if pub != "onu9CnSwBGKrgJGKK_WkggznnOwUuvNjTHw4nBlSdwU" {
+		t.Fatalf("pub mismatch: %q", pub)
+	}
+}
+
+func TestParseRealityKeypairRejectsEmpty(t *testing.T) {
+	if _, _, err := parseRealityKeypair("some unrelated output\n"); err == nil {
+		t.Fatal("expected error when keys absent")
+	}
+}
