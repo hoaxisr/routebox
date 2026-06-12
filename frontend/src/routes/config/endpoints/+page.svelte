@@ -111,11 +111,11 @@
 		try {
 			if (editingEndpoint) {
 				await api.updateEndpoint(editingEndpoint.tag, endpoint);
-				notifications.success(`Endpoint "${endpoint.tag}" updated`);
+				notifications.success($t('endpoints.endpointUpdated'));
 				unsavedChanges.markChanged('Endpoints', `Updated "${endpoint.tag}"`);
 			} else {
 				await api.createEndpoint(endpoint);
-				notifications.success(`Endpoint "${endpoint.tag}" created`);
+				notifications.success($t('endpoints.endpointCreated'));
 				unsavedChanges.markChanged('Endpoints', `Created "${endpoint.tag}"`);
 			}
 			closeModal();
@@ -132,7 +132,7 @@
 
 		try {
 			await api.deleteEndpoint(tag);
-			notifications.success(`Endpoint "${tag}" deleted`);
+			notifications.success($t('endpoints.endpointDeleted'));
 			unsavedChanges.markChanged('Endpoints', `Deleted "${tag}"`);
 			await fetchEndpoints();
 		} catch (e) {

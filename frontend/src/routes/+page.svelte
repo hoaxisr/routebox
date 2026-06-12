@@ -47,7 +47,7 @@
 		actionLoading = 'start';
 		try {
 			const result = await api.start();
-			notifications.success('amnezia-box started');
+			notifications.success($t('dashboard.started'));
 			if (result.warning) {
 				notifications.warning(result.warning);
 			}
@@ -65,7 +65,7 @@
 		actionLoading = 'stop';
 		try {
 			await api.stop();
-			notifications.success('amnezia-box stopped');
+			notifications.success($t('dashboard.stopped'));
 			await fetchStatus();
 			stopTrafficStream();
 			stopConnectionsStream();
@@ -80,7 +80,7 @@
 		actionLoading = 'restart';
 		try {
 			const result = await api.restart();
-			notifications.success('amnezia-box restarted');
+			notifications.success($t('dashboard.restarted'));
 			if (result.warning) {
 				notifications.warning(result.warning);
 			}
@@ -103,7 +103,7 @@
 		actionLoading = 'reload';
 		try {
 			await api.reload();
-			notifications.success('Configuration reloaded (SIGHUP)');
+			notifications.success($t('dashboard.configReloaded'));
 			await fetchStatus();
 		} catch (e) {
 			notifications.error(`Failed to reload: ${e}`);

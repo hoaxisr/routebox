@@ -68,7 +68,7 @@
 		applying = true;
 		try {
 			await api.applyConfig();
-			notifications.success('Changes applied successfully');
+			notifications.success($t('changes.configApplied'));
 			hasChanges = false;
 			unsavedChanges.clearChanges();
 		} catch (e) {
@@ -123,7 +123,7 @@
 			showRuleForm = false;
 			hasChanges = true;
 			unsavedChanges.markChanged('Routes', 'Created routing rule');
-			notifications.success('Rule created');
+			notifications.success($t('routes.ruleCreated'));
 		} catch (e) {
 			notifications.error(`${e}`);
 		}
@@ -138,7 +138,7 @@
 			hasChanges = true;
 			unsavedChanges.markChanged('Routes', `Updated rule #${editingRuleIndex + 1}`);
 			editingRuleIndex = null;
-			notifications.success('Rule updated');
+			notifications.success($t('routes.ruleUpdated'));
 		} catch (e) {
 			notifications.error(`${e}`);
 		}
@@ -151,7 +151,7 @@
 			rules = rules.filter((_, i) => i !== index);
 			hasChanges = true;
 			unsavedChanges.markChanged('Routes', `Deleted rule #${index + 1}`);
-			notifications.success('Rule deleted');
+			notifications.success($t('routes.ruleDeleted'));
 		} catch (e) {
 			notifications.error(`${e}`);
 		}
@@ -199,7 +199,7 @@
 
 			hasChanges = true;
 			unsavedChanges.markChanged('Routes', `Added ${ruleSet.tag} from template`);
-			notifications.success(`Added ${ruleSet.tag}`);
+			notifications.success($t('routes.ruleSetAdded', { values: { tag: ruleSet.tag } }));
 		} catch (e) {
 			notifications.error(`${e}`);
 		}
@@ -212,7 +212,7 @@
 			rules = [...rules, rule];
 			hasChanges = true;
 			unsavedChanges.markChanged('Routes', 'Created rule via wizard');
-			notifications.success('Rule created');
+			notifications.success($t('routes.ruleCreated'));
 		} catch (e) {
 			notifications.error(`${e}`);
 		}

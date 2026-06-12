@@ -189,7 +189,11 @@
     "configSummary": "Configuration Summary",
     "activeConnections": "Active Connections",
     "totalTraffic": "Total Traffic",
-    "recentActivity": "Recent Activity"
+    "recentActivity": "Recent Activity",
+    "started": "amnezia-box started",
+    "stopped": "amnezia-box stopped",
+    "restarted": "amnezia-box restarted",
+    "configReloaded": "Configuration reloaded (SIGHUP)"
   },
   "overview": {
     "title": "Config Overview",
@@ -538,6 +542,7 @@
     "ruleSetCreated": "Rule set created",
     "ruleSetUpdated": "Rule set updated",
     "ruleSetDeleted": "Rule set deleted",
+    "ruleSetAdded": "Added {tag}",
     "templates": "Templates",
     "useTemplate": "Use Template",
     "wizard": "Wizard",
