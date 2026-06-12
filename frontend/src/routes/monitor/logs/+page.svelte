@@ -76,16 +76,22 @@
 
 	function startStream(level = 'info') {
 		stopStream();
-		stream = createLogsStream((data) => {
-			connected = true;
-			const entry: LogEntry = {
-				id: ++logId,
-				type: data.type,
-				payload: data.payload,
-				time: new Date()
-			};
-			pendingLogs.push(entry);
-		}, level);
+		stream = createLogsStream(
+			(data) => {
+				const entry: LogEntry = {
+					id: ++logId,
+					type: data.type,
+					payload: data.payload,
+					time: new Date()
+				};
+				pendingLogs.push(entry);
+			},
+			level,
+			undefined,
+			(status) => {
+				connected = status === 'connected';
+			}
+		);
 		startFlushTimer();
 	}
 
