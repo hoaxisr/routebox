@@ -1,8 +1,8 @@
 <script lang="ts">
 	import type { Outbound, Endpoint, DnsServer, TLSConfig, TransportConfig, MultiplexConfig, ObfsConfig } from '$lib/types';
 	import { notifications } from '$lib/stores';
-	import { parsePortRanges } from '$lib/utils/parsers';
-	import type { ParsedVless, ParsedHysteria2, ParsedShadowsocks } from '$lib/utils/parsers';
+	import { parsePortRanges, parseKeyValuePairs, formatKeyValuePairs } from '$lib/utils/parsers';
+	import type { ParsedVless, ParsedHysteria2, ParsedShadowsocks, ParsedNaive } from '$lib/utils/parsers';
 	import {
 		validateRequired,
 		validatePort,
@@ -19,6 +19,7 @@
 	import ShadowsocksForm from './outbound/ShadowsocksForm.svelte';
 	import ShadowtlsForm from './outbound/ShadowtlsForm.svelte';
 	import AnytlsForm from './outbound/AnytlsForm.svelte';
+	import NaiveForm from './outbound/NaiveForm.svelte';
 	import ImportModal from './outbound/ImportModal.svelte';
 
 	interface Props {
@@ -132,6 +133,17 @@
 	let atIdleTimeout = $state(outbound?.idle_session_timeout ?? '');
 	let atMinIdleSession = $state(outbound?.min_idle_session ?? 0);
 
+	// Naive state
+	let nvUsername = $state(outbound?.username ?? '');
+	let nvPassword = $state(outbound?.password ?? '');
+	let nvSni = $state(outbound?.tls?.server_name ?? '');
+	let nvCaCert = $state(outbound?.tls?.certificate?.join('\n') ?? '');
+	let nvInsecureConcurrency = $state(outbound?.insecure_concurrency ?? 0);
+	let nvExtraHeaders = $state(formatKeyValuePairs(outbound?.extra_headers));
+	let nvQuic = $state(outbound?.quic ?? false);
+	let nvQuicCC = $state(outbound?.quic_congestion_control ?? '');
+	let nvUdpOverTcp = $state(outbound?.udp_over_tcp ?? false);
+
 	// Available outbounds for selector
 	let availableForSelection = $derived.by(() => {
 		if (type === 'selector' || type === 'urltest') {
@@ -143,13 +155,15 @@
 	});
 
 	// Import handlers
-	function handleImport(config: ParsedVless | ParsedHysteria2 | ParsedShadowsocks) {
-		if ('uuid' in config) {
-			applyVlessConfig(config as ParsedVless);
-		} else if ('obfs' in config || 'insecure' in config) {
-			applyHysteria2Config(config as ParsedHysteria2);
+	function handleImport(config: ParsedVless | ParsedHysteria2 | ParsedShadowsocks | ParsedNaive) {
+		if (config.type === 'vless') {
+			applyVlessConfig(config);
+		} else if (config.type === 'hy2') {
+			applyHysteria2Config(config);
+		} else if (config.type === 'ss') {
+			applyShadowsocksConfig(config);
 		} else {
-			applyShadowsocksConfig(config as ParsedShadowsocks);
+			applyNaiveConfig(config);
 		}
 		showImport = false;
 	}
@@ -208,6 +222,17 @@
 		ssPluginOpts = config.pluginOpts || '';
 	}
 
+	function applyNaiveConfig(config: ParsedNaive) {
+		type = 'naive';
+		tag = config.name.replace(/[^a-zA-Z0-9-_]/g, '-');
+		server = config.server;
+		serverPort = config.port;
+		nvUsername = config.username ?? '';
+		nvPassword = config.password ?? '';
+		nvSni = config.server;
+		nvQuic = config.quic ?? false;
+	}
+
 	function validate(): boolean {
 		errors = {};
 
@@ -219,7 +244,7 @@
 			if (!outboundsResult.valid) errors['outbounds'] = outboundsResult.error!;
 		}
 
-		const serverBasedTypes = ['vless', 'hysteria2', 'shadowsocks', 'shadowtls', 'anytls'];
+		const serverBasedTypes = ['vless', 'hysteria2', 'shadowsocks', 'shadowtls', 'anytls', 'naive'];
 		if (serverBasedTypes.includes(type)) {
 			const serverResult = validateRequired(server, 'Server');
 			if (!serverResult.valid) errors['server'] = serverResult.error!;
@@ -256,6 +281,14 @@
 		if (type === 'anytls') {
 			const pwResult = validateRequired(atPassword, 'Password');
 			if (!pwResult.valid) errors['password'] = pwResult.error!;
+		}
+
+		if (type === 'naive') {
+			const hasUser = nvUsername.trim().length > 0;
+			const hasPass = nvPassword.length > 0;
+			if (hasUser !== hasPass) {
+				errors['password'] = 'Username and password must be set together';
+			}
 		}
 
 		if (hasValidationErrors(errors)) {
@@ -395,8 +428,32 @@
 			if (atMinIdleSession > 0) ob.min_idle_session = atMinIdleSession;
 		}
 
+		if (type === 'naive') {
+			ob.server = server.trim();
+			ob.server_port = serverPort;
+			if (nvUsername.trim()) {
+				ob.username = nvUsername.trim();
+				ob.password = nvPassword;
+			}
+			ob.tls = {
+				enabled: true,
+				server_name: nvSni.trim() || server.trim()
+			};
+			if (nvCaCert.trim()) {
+				ob.tls.certificate = nvCaCert.trim().split('\n');
+			}
+			if (nvInsecureConcurrency > 0) ob.insecure_concurrency = nvInsecureConcurrency;
+			const headers = parseKeyValuePairs(nvExtraHeaders);
+			if (Object.keys(headers).length > 0) ob.extra_headers = headers;
+			if (nvQuic) {
+				ob.quic = true;
+				if (nvQuicCC) ob.quic_congestion_control = nvQuicCC;
+			}
+			if (nvUdpOverTcp) ob.udp_over_tcp = true;
+		}
+
 		// Add domain_resolver for server-based outbounds
-		const serverBasedTypes = ['vless', 'hysteria2', 'shadowsocks', 'shadowtls', 'anytls'];
+		const serverBasedTypes = ['vless', 'hysteria2', 'shadowsocks', 'shadowtls', 'anytls', 'naive'];
 		if (serverBasedTypes.includes(type) && domainResolver.trim()) {
 			ob.domain_resolver = domainResolver.trim();
 		}
@@ -413,7 +470,8 @@
 		{ value: 'hysteria2', labelKey: 'outbounds.hysteria2', descKey: 'outbounds.hysteria2Desc' },
 		{ value: 'shadowsocks', labelKey: 'outbounds.shadowsocks', descKey: 'outbounds.shadowsocksDesc' },
 		{ value: 'shadowtls', labelKey: 'outbounds.shadowtls', descKey: 'outbounds.shadowtlsDesc' },
-		{ value: 'anytls', labelKey: 'outbounds.anytls', descKey: 'outbounds.anytlsDesc' }
+		{ value: 'anytls', labelKey: 'outbounds.anytls', descKey: 'outbounds.anytlsDesc' },
+		{ value: 'naive', labelKey: 'outbounds.naive', descKey: 'outbounds.naiveDesc' }
 	];
 </script>
 
@@ -553,6 +611,27 @@
 		/>
 	{/if}
 
+	{#if type === 'naive'}
+		<NaiveForm
+			bind:server
+			bind:serverPort
+			bind:username={nvUsername}
+			bind:password={nvPassword}
+			bind:sni={nvSni}
+			bind:caCert={nvCaCert}
+			bind:insecureConcurrency={nvInsecureConcurrency}
+			bind:extraHeaders={nvExtraHeaders}
+			bind:quic={nvQuic}
+			bind:quicCongestionControl={nvQuicCC}
+			bind:udpOverTcp={nvUdpOverTcp}
+			bind:domainResolver
+			{dnsServers}
+			{hasDefaultResolver}
+			{errors}
+			onImport={() => showImport = true}
+		/>
+	{/if}
+
 	{#if type === 'direct' || type === 'block'}
 		<div class="bg-[var(--ctp-surface0)] rounded-lg p-4 text-sm text-[var(--ctp-overlay1)]">
 			{#if type === 'direct'}
@@ -584,7 +663,7 @@
 <!-- Import Modal -->
 {#if showImport}
 	<ImportModal
-		protocol={type as 'vless' | 'hysteria2' | 'shadowsocks'}
+		protocol={type as 'vless' | 'hysteria2' | 'shadowsocks' | 'naive'}
 		onImport={handleImport}
 		onClose={() => showImport = false}
 	/>

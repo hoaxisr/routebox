@@ -7,12 +7,13 @@
 		parseShadowsocks,
 		type ParsedVless,
 		type ParsedHysteria2,
-		type ParsedShadowsocks
+		type ParsedShadowsocks,
+		type ParsedNaive
 	} from '$lib/utils/parsers';
 
 	interface Props {
-		protocol: 'vless' | 'hysteria2' | 'shadowsocks';
-		onImport: (config: ParsedVless | ParsedHysteria2 | ParsedShadowsocks) => void;
+		protocol: 'vless' | 'hysteria2' | 'shadowsocks' | 'naive';
+		onImport: (config: ParsedVless | ParsedHysteria2 | ParsedShadowsocks | ParsedNaive) => void;
 		onClose: () => void;
 	}
 
@@ -24,19 +25,22 @@
 	const protocolNames = {
 		vless: 'VLESS',
 		hysteria2: 'Hysteria2',
-		shadowsocks: 'Shadowsocks'
+		shadowsocks: 'Shadowsocks',
+		naive: 'Naive'
 	};
 
 	const placeholders = {
 		vless: 'vless://uuid@server:port?params#name',
 		hysteria2: 'hy2://password@server:port?params#name',
-		shadowsocks: 'ss://BASE64(method:password)@server:port#name'
+		shadowsocks: 'ss://BASE64(method:password)@server:port#name',
+		naive: 'naive+https://user:password@server:port#name'
 	};
 
 	const linkPrefixes = {
 		vless: 'vless://',
 		hysteria2: 'hy2:// or hysteria2://',
-		shadowsocks: 'ss://'
+		shadowsocks: 'ss://',
+		naive: 'naive+https://'
 	};
 
 	function parseImportLink() {
