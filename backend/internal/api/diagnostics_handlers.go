@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"net"
 	"net/http"
+	"path/filepath"
 	"time"
 )
 
@@ -117,6 +118,7 @@ func (h *Handler) findMatchedRule(input, inputType string) *MatchedRuleInfo {
 	rules := h.config.ListRules()
 	ruleSets := h.config.ListRuleSets()
 	routeSettings := h.config.GetRouteSettings()
+	configDir := filepath.Dir(h.config.GetPath())
 
 	// Build rule set map for quick lookup
 	ruleSetMap := make(map[string]map[string]interface{})
@@ -127,7 +129,7 @@ func (h *Handler) findMatchedRule(input, inputType string) *MatchedRuleInfo {
 	}
 
 	for i, rule := range rules {
-		match := checkRuleMatch(input, inputType, rule, ruleSetMap)
+		match := checkRuleMatch(input, inputType, rule, ruleSetMap, configDir)
 		if match.Matched {
 			action := "route"
 			if a, ok := rule["action"].(string); ok {

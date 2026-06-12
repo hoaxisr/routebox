@@ -39,7 +39,7 @@ func (m *Manager) hasTunAutoRedirect() bool {
 
 // --- Rule Sets CRUD (tag-based) ---
 
-// ListRuleSets returns all rule sets
+// ListRuleSets returns all rule sets (deep-copied, like Get)
 func (m *Manager) ListRuleSets() []map[string]interface{} {
 	m.mu.RLock()
 	defer m.mu.RUnlock()
@@ -48,7 +48,7 @@ func (m *Manager) ListRuleSets() []map[string]interface{} {
 	result := make([]map[string]interface{}, 0, len(arr))
 	for _, item := range arr {
 		if obj, ok := item.(map[string]interface{}); ok {
-			result = append(result, obj)
+			result = append(result, m.deepCopy(obj))
 		}
 	}
 	return result
@@ -180,7 +180,7 @@ func (m *Manager) UpdateRuleSet(tag string, rs map[string]interface{}) error {
 
 // --- Route Rules CRUD (index-based) ---
 
-// ListRules returns all route rules in order
+// ListRules returns all route rules in order (deep-copied, like Get)
 func (m *Manager) ListRules() []map[string]interface{} {
 	m.mu.RLock()
 	defer m.mu.RUnlock()
@@ -189,7 +189,7 @@ func (m *Manager) ListRules() []map[string]interface{} {
 	result := make([]map[string]interface{}, 0, len(arr))
 	for _, item := range arr {
 		if obj, ok := item.(map[string]interface{}); ok {
-			result = append(result, obj)
+			result = append(result, m.deepCopy(obj))
 		}
 	}
 	return result

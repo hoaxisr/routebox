@@ -321,19 +321,19 @@ func (m *Manager) Update(updates map[string]interface{}) error {
 		case "monitoring.max_closed_connections":
 			v, ok := toInt(value)
 			if !ok {
-				return fmt.Errorf("setting %s requires an integer value, got %T", key, value)
+				return fmt.Errorf("setting %s: value must be a whole number", key)
 			}
 			m.settings.Monitoring.MaxClosedConnections = v
 		case "monitoring.poll_interval_ms":
 			v, ok := toInt(value)
 			if !ok {
-				return fmt.Errorf("setting %s requires an integer value, got %T", key, value)
+				return fmt.Errorf("setting %s: value must be a whole number", key)
 			}
 			m.settings.Monitoring.PollIntervalMs = v
 		case "monitoring.proxies_refresh_ms":
 			v, ok := toInt(value)
 			if !ok {
-				return fmt.Errorf("setting %s requires an integer value, got %T", key, value)
+				return fmt.Errorf("setting %s: value must be a whole number", key)
 			}
 			m.settings.Monitoring.ProxiesRefreshMs = v
 
@@ -341,7 +341,7 @@ func (m *Manager) Update(updates map[string]interface{}) error {
 		case "security.session_timeout_minutes":
 			v, ok := toInt(value)
 			if !ok {
-				return fmt.Errorf("setting %s requires an integer value, got %T", key, value)
+				return fmt.Errorf("setting %s: value must be a whole number", key)
 			}
 			m.settings.Security.SessionTimeoutMinutes = v
 
@@ -349,13 +349,13 @@ func (m *Manager) Update(updates map[string]interface{}) error {
 		case "advanced.ws_ping_interval_sec":
 			v, ok := toInt(value)
 			if !ok {
-				return fmt.Errorf("setting %s requires an integer value, got %T", key, value)
+				return fmt.Errorf("setting %s: value must be a whole number", key)
 			}
 			m.settings.Advanced.WsPingIntervalSec = v
 		case "advanced.ws_pong_timeout_sec":
 			v, ok := toInt(value)
 			if !ok {
-				return fmt.Errorf("setting %s requires an integer value, got %T", key, value)
+				return fmt.Errorf("setting %s: value must be a whole number", key)
 			}
 			m.settings.Advanced.WsPongTimeoutSec = v
 

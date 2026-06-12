@@ -203,8 +203,9 @@ func (h *Handler) ProxyClashWebSocket(w http.ResponseWriter, r *http.Request) {
 	const writeWait = 10 * time.Second
 	readWait := pingInterval + pongTimeout
 
-	// Half-dead client detection: require a pong (or any frame) within readWait.
-	// Pongs are consumed by the client->Clash reader goroutine's ReadMessage.
+	// Half-dead client detection: require a pong within readWait. Only pongs
+	// reset the deadline (via the pong handler below) — regular data frames
+	// from the client do not extend it.
 	clientConn.SetReadDeadline(time.Now().Add(readWait))
 	clientConn.SetPongHandler(func(string) error {
 		clientConn.SetReadDeadline(time.Now().Add(readWait))
@@ -276,6 +277,7 @@ func (h *Handler) ProxyClashWebSocket(w http.ResponseWriter, r *http.Request) {
 				clashConn.Close()
 				return
 			}
+			clashConn.SetWriteDeadline(time.Now().Add(writeWait))
 			if err := clashConn.WriteMessage(msgType, msg); err != nil {
 				return
 			}

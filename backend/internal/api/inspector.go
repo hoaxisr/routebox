@@ -108,12 +108,14 @@ func (h *Handler) TestRoute(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 
+	configDir := filepath.Dir(h.config.GetPath())
+
 	var matches []RuleMatch
 	var destination string
 	matchedRule := -1
 
 	for i, rule := range rules {
-		match := checkRuleMatch(req.Domain, inputType, rule, ruleSetMap)
+		match := checkRuleMatch(req.Domain, inputType, rule, ruleSetMap, configDir)
 		match.Index = i
 
 		matches = append(matches, match)
@@ -178,8 +180,10 @@ func (h *Handler) TestRoute(w http.ResponseWriter, r *http.Request) {
 	})
 }
 
-// checkRuleMatch checks if a domain/IP matches a rule
-func checkRuleMatch(input, inputType string, rule map[string]interface{}, ruleSetMap map[string]map[string]interface{}) RuleMatch {
+// checkRuleMatch checks if a domain/IP matches a rule. configDir is the
+// directory of the active config file; relative local rule-set paths resolve
+// against it (matching sing-box's filemanager behavior).
+func checkRuleMatch(input, inputType string, rule map[string]interface{}, ruleSetMap map[string]map[string]interface{}, configDir string) RuleMatch {
 	match := RuleMatch{
 		Matched: false,
 	}
@@ -218,7 +222,7 @@ func checkRuleMatch(input, inputType string, rule map[string]interface{}, ruleSe
 			var nestedMatches []bool
 			for _, nr := range nestedRules {
 				if nestedRule, ok := nr.(map[string]interface{}); ok {
-					nestedMatch := checkRuleMatch(input, inputType, nestedRule, ruleSetMap)
+					nestedMatch := checkRuleMatch(input, inputType, nestedRule, ruleSetMap, configDir)
 					nestedMatches = append(nestedMatches, nestedMatch.Matched)
 					if nestedMatch.Matched {
 						reasons = append(reasons, nestedMatch.Reason)
@@ -360,7 +364,7 @@ func checkRuleMatch(input, inputType string, rule map[string]interface{}, ruleSe
 		conditions = append(conditions, fmt.Sprintf("rule_set(%d)", len(ruleSetsRefs)))
 		for _, rsTag := range ruleSetsRefs {
 			if rs, exists := ruleSetMap[rsTag]; exists {
-				matched, err := checkRuleSetMatch(input, rs)
+				matched, err := checkRuleSetMatch(input, rs, configDir)
 				if err != nil {
 					reasons = append(reasons, fmt.Sprintf("rule_set %s: error - %v", rsTag, err))
 				} else if matched {
@@ -465,8 +469,9 @@ func checkRuleMatch(input, inputType string, rule map[string]interface{}, ruleSe
 	return match
 }
 
-// checkRuleSetMatch uses sing-box CLI to check if input matches a rule set
-func checkRuleSetMatch(input string, ruleSet map[string]interface{}) (bool, error) {
+// checkRuleSetMatch uses sing-box CLI to check if input matches a rule set.
+// Relative local paths resolve against configDir (the config file's directory).
+func checkRuleSetMatch(input string, ruleSet map[string]interface{}, configDir string) (bool, error) {
 	rsType, _ := ruleSet["type"].(string)
 	rsURL, _ := ruleSet["url"].(string)
 	rsPath, _ := ruleSet["path"].(string)
@@ -493,6 +498,9 @@ func checkRuleSetMatch(input string, ruleSet map[string]interface{}) (bool, erro
 		}
 	} else if rsType == "local" && rsPath != "" {
 		ruleSetPath = rsPath
+		if !filepath.IsAbs(ruleSetPath) && configDir != "" {
+			ruleSetPath = filepath.Join(configDir, ruleSetPath)
+		}
 		// Determine format from config or extension
 		if format == "" {
 			if strings.HasSuffix(rsPath, ".srs") {
