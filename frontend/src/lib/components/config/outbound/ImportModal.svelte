@@ -5,6 +5,7 @@
 		parseVless,
 		parseHysteria2,
 		parseShadowsocks,
+		parseNaive,
 		type ParsedVless,
 		type ParsedHysteria2,
 		type ParsedShadowsocks,
@@ -91,7 +92,20 @@
 			return;
 		}
 
-		importError = 'Unknown link format. Supported: vless://, hy2://, hysteria2://, ss://';
+		// Try Naive
+		if (text.startsWith('naive+https://') || text.startsWith('naive+quic://')) {
+			const result = parseNaive(text);
+			if (!result.success || !result.config) {
+				importError = result.error || 'Failed to parse Naive link';
+				return;
+			}
+			onImport(result.config as ParsedNaive);
+			notifications.success('Naive configuration imported');
+			onClose();
+			return;
+		}
+
+		importError = 'Unknown link format. Supported: vless://, hy2://, hysteria2://, ss://, naive+https://';
 	}
 
 	function handleClose() {
