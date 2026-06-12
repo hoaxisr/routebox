@@ -82,3 +82,46 @@ func TestGetUserLinkMissingHost(t *testing.T) {
 		t.Fatalf("expected 400, got %d", resp.StatusCode)
 	}
 }
+
+func TestGetUserLinkErrors(t *testing.T) {
+	h := newLinkHandler(t, linkSeedConfig)
+	srv := httptest.NewServer(linkRouter(h))
+	defer srv.Close()
+
+	cases := []struct {
+		name string
+		path string
+		want int
+	}{
+		{"unknown tag", "/api/inbounds/nope/users/0/link?host=h", http.StatusNotFound},
+		{"index out of range", "/api/inbounds/vless-in/users/9/link?host=h", http.StatusNotFound},
+		{"negative index", "/api/inbounds/vless-in/users/-1/link?host=h", http.StatusBadRequest},
+		{"non-numeric index", "/api/inbounds/vless-in/users/abc/link?host=h", http.StatusBadRequest},
+	}
+	for _, c := range cases {
+		resp, err := http.Get(srv.URL + c.path)
+		if err != nil {
+			t.Fatalf("%s: %v", c.name, err)
+		}
+		resp.Body.Close()
+		if resp.StatusCode != c.want {
+			t.Errorf("%s: got %d, want %d", c.name, resp.StatusCode, c.want)
+		}
+	}
+}
+
+func TestGetUserLinkUnsupportedType(t *testing.T) {
+	seed := `{"inbounds":[{"type":"mixed","tag":"mix","listen_port":1080,"users":[{"username":"u","password":"p"}]}]}`
+	h := newLinkHandler(t, seed)
+	srv := httptest.NewServer(linkRouter(h))
+	defer srv.Close()
+
+	resp, err := http.Get(srv.URL + "/api/inbounds/mix/users/0/link?host=h")
+	if err != nil {
+		t.Fatal(err)
+	}
+	resp.Body.Close()
+	if resp.StatusCode != http.StatusBadRequest {
+		t.Fatalf("got %d, want 400", resp.StatusCode)
+	}
+}
