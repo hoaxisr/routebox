@@ -47,8 +47,8 @@
 
 	const inboundTypes = ['tun', 'mixed', 'socks', 'http', 'vless', 'naive', 'hysteria2'] as const;
 	const serverTypes = ['vless', 'naive', 'hysteria2'] as const;
-	function isServerType(t: string): t is ServerInboundType {
-		return (serverTypes as readonly string[]).includes(t);
+	function isServerType(ty: string): ty is ServerInboundType {
+		return (serverTypes as readonly string[]).includes(ty);
 	}
 
 	const stackOptions = ['system', 'gvisor', 'mixed'] as const;
@@ -74,12 +74,18 @@
 		shareUserIndex = index;
 	}
 
-	// Switching protocol clears users, since credential fields differ per protocol
-	// (a vless user has uuid/flow, naive has username/password) and mixing them
-	// produces an invalid sing-box config.
+	// Switching server protocol clears users (credential fields differ per
+	// protocol) and normalizes the TLS mode (Reality is vless-only). serverState.type
+	// tracks which protocol the current users belong to.
 	function selectType(newType: (typeof inboundTypes)[number]) {
-		if (newType !== type && isServerType(newType)) {
-			serverState.users = [];
+		if (isServerType(newType)) {
+			if (serverState.type !== newType && serverState.users.length > 0) {
+				serverState.users = [];
+			}
+			if (newType !== 'vless' && serverState.tlsMode === 'reality') {
+				serverState.tlsMode = 'acme';
+			}
+			serverState.type = newType;
 		}
 		type = newType;
 	}
