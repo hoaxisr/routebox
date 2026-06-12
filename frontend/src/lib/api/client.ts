@@ -461,7 +461,6 @@ function createReconnectingStream(opts: StreamOptions): StreamHandle {
 		ws = new WebSocket(url);
 
 		ws.onopen = () => {
-			attempt = 0; // reset backoff on successful open
 			opts.onStatus?.('connected');
 		};
 
@@ -478,6 +477,10 @@ function createReconnectingStream(opts: StreamOptions): StreamHandle {
 				opts.onError?.(message);
 				return;
 			}
+			// Reset backoff only on real data, not on open: a connection that
+			// upgrades fine but immediately sends an in-band error and closes
+			// must keep backing off (stopped amnezia-box case).
+			attempt = 0;
 			opts.onMessage(data);
 		};
 

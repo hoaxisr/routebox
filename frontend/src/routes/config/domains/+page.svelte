@@ -194,7 +194,7 @@
 				domains.push(...rule.domain_suffix);
 			}
 		}
-		return domains;
+		return [...new Set(domains)];
 	});
 
 	// Filter domains based on input (used for both search and display)

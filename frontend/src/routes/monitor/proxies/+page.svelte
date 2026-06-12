@@ -21,7 +21,6 @@
 	let autoRefreshTimer: ReturnType<typeof setInterval> | null = null;
 
 	async function fetchProxies() {
-		loading = true;
 		try {
 			const data = await api.getProxies();
 			// Convert from object to array
@@ -35,7 +34,8 @@
 		}
 	}
 
-	async function testAllProxies() {
+	async function testAllProxies(silent = false) {
+		if (testingAll) return;
 		testingAll = true;
 		const testableProxies = proxies.filter(p =>
 			!['Direct', 'Reject', 'Block'].includes(p.type)
@@ -51,7 +51,9 @@
 
 		await fetchProxies();
 		testingAll = false;
-		notifications.success($t('proxies.allProxiesTested'));
+		if (!silent) {
+			notifications.success($t('proxies.allProxiesTested'));
+		}
 	}
 
 	const filteredProxies = $derived(() => {
@@ -92,7 +94,7 @@
 	function startAutoRefresh() {
 		stopAutoRefresh();
 		autoRefreshTimer = setInterval(async () => {
-			await testAllProxies();
+			await testAllProxies(true);
 		}, refreshInterval * 1000);
 	}
 
@@ -173,7 +175,7 @@
 				</svg>
 			</button>
 			<button
-				onclick={testAllProxies}
+				onclick={() => testAllProxies()}
 				disabled={testingAll || loading}
 				class="px-4 py-2 bg-[var(--ctp-primary)] text-white rounded-lg hover:opacity-90 disabled:opacity-50 transition-opacity flex items-center gap-2"
 			>
