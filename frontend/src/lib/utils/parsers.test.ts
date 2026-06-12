@@ -16,7 +16,10 @@ import {
 	parseReservedBytes,
 	formatReservedBytes,
 	parseNaive,
-	parseShadowsocks
+	parseShadowsocks,
+	splitHostPort,
+	parseVless,
+	parseHysteria2
 } from './parsers';
 
 describe('parseLines', () => {
@@ -398,5 +401,54 @@ describe('parseShadowsocks', () => {
 			method: 'aes-256-gcm',
 			password: 'password'
 		});
+	});
+});
+
+describe('splitHostPort', () => {
+	it('splits plain host:port', () => {
+		expect(splitHostPort('example.com:443')).toEqual({ host: 'example.com', port: 443 });
+	});
+
+	it('splits bracketed IPv6', () => {
+		expect(splitHostPort('[::1]:443')).toEqual({ host: '::1', port: 443 });
+		expect(splitHostPort('[2001:db8::1]:8443')).toEqual({ host: '2001:db8::1', port: 8443 });
+	});
+
+	it('returns null when port is missing', () => {
+		expect(splitHostPort('example.com')).toBeNull();
+		expect(splitHostPort('[::1]')).toBeNull();
+	});
+
+	it('returns null for invalid port or empty host', () => {
+		expect(splitHostPort('example.com:0')).toBeNull();
+		expect(splitHostPort('example.com:70000')).toBeNull();
+		expect(splitHostPort('example.com:abc')).toBeNull();
+		expect(splitHostPort(':443')).toBeNull();
+	});
+});
+
+describe('IPv6 bracket notation in link parsers', () => {
+	it('parseVless handles [IPv6]:port', () => {
+		const r = parseVless('vless://b831381d-6324-4d53-ad4f-8cca48b30811@[2001:db8::1]:443?security=tls#v6');
+		expect(r.success).toBe(true);
+		expect(r.config).toMatchObject({ server: '2001:db8::1', port: 443 });
+	});
+
+	it('parseHysteria2 handles [IPv6]:port', () => {
+		const r = parseHysteria2('hy2://pass@[2001:db8::1]:8443#v6');
+		expect(r.success).toBe(true);
+		expect(r.config).toMatchObject({ server: '2001:db8::1', port: 8443 });
+	});
+
+	it('parseShadowsocks handles [IPv6]:port', () => {
+		const r = parseShadowsocks('ss://YWVzLTI1Ni1nY206dGVzdDEyMzQ=@[2001:db8::1]:8388#v6');
+		expect(r.success).toBe(true);
+		expect(r.config).toMatchObject({ server: '2001:db8::1', port: 8388 });
+	});
+
+	it('parseNaive handles [IPv6]:port', () => {
+		const r = parseNaive('naive+https://u:p@[2001:db8::1]:443#v6');
+		expect(r.success).toBe(true);
+		expect(r.config).toMatchObject({ server: '2001:db8::1', port: 443 });
 	});
 });

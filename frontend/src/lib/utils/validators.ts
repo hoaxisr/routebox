@@ -109,8 +109,8 @@ export function validatePortRange(range: string | undefined | null): ValidationR
 	if (start < 1 || end > 65535) {
 		return { valid: false, error: 'Ports must be between 1 and 65535' };
 	}
-	if (start >= end) {
-		return { valid: false, error: 'Start port must be less than end port' };
+	if (start > end) {
+		return { valid: false, error: 'Start port must not be greater than end port' };
 	}
 	return { valid: true };
 }

@@ -158,9 +158,14 @@ describe('validatePortRange', () => {
 	});
 
 	it('rejects invalid ranges', () => {
-		expect(validatePortRange('2000-1000').valid).toBe(false); // start >= end
+		expect(validatePortRange('2000-1000').valid).toBe(false); // start > end
 		expect(validatePortRange('0-100').valid).toBe(false); // start < 1
 		expect(validatePortRange('1000-70000').valid).toBe(false); // end > 65535
+	});
+
+	it('accepts single-port range (start equals end)', () => {
+		expect(validatePortRange('443-443').valid).toBe(true);
+		expect(validatePortRange('8080:8080').valid).toBe(true);
 	});
 });
 

@@ -100,6 +100,32 @@ export interface ParseResult {
 }
 
 /**
+ * Split a "host:port" string into host and numeric port.
+ * Supports bracketed IPv6 notation: "[::1]:443" → { host: '::1', port: 443 }.
+ * Returns null when the host is empty, the port is missing, or the port
+ * is not an integer in 1-65535.
+ */
+export function splitHostPort(hostPort: string): { host: string; port: number } | null {
+	let host: string;
+	let portStr: string;
+	if (hostPort.startsWith('[')) {
+		const closeIdx = hostPort.indexOf(']');
+		if (closeIdx === -1 || hostPort[closeIdx + 1] !== ':') return null;
+		host = hostPort.slice(1, closeIdx);
+		portStr = hostPort.slice(closeIdx + 2);
+	} else {
+		const colonIndex = hostPort.lastIndexOf(':');
+		if (colonIndex === -1) return null;
+		host = hostPort.slice(0, colonIndex);
+		portStr = hostPort.slice(colonIndex + 1);
+	}
+	if (!host || !/^\d+$/.test(portStr)) return null;
+	const port = parseInt(portStr, 10);
+	if (port < 1 || port > 65535) return null;
+	return { host, port };
+}
+
+/**
  * Parse a vless:// URI
  * Format: vless://uuid@server:port?params#name
  */
@@ -128,18 +154,13 @@ export function parseVless(uri: string): ParseResult {
 		// Split by ? to get params
 		const [hostPort, queryString] = serverPart.split('?');
 
-		// Parse host:port
-		const colonIndex = hostPort.lastIndexOf(':');
-		if (colonIndex === -1) {
-			return { success: false, error: 'Invalid VLESS URI: missing port' };
+		// Parse host:port (supports [IPv6]:port)
+		const hp = splitHostPort(hostPort);
+		if (!hp) {
+			return { success: false, error: 'Invalid VLESS URI: invalid host:port' };
 		}
-
-		const server = hostPort.slice(0, colonIndex);
-		const port = parseInt(hostPort.slice(colonIndex + 1), 10);
-
-		if (isNaN(port) || port < 1 || port > 65535) {
-			return { success: false, error: 'Invalid VLESS URI: invalid port' };
-		}
+		const server = hp.host;
+		const port = hp.port;
 
 		// Parse query params
 		const params = new URLSearchParams(queryString || '');
@@ -202,18 +223,13 @@ export function parseHysteria2(uri: string): ParseResult {
 		// Split by ? to get params
 		const [hostPort, queryString] = serverPart.split('?');
 
-		// Parse host:port
-		const colonIndex = hostPort.lastIndexOf(':');
-		if (colonIndex === -1) {
-			return { success: false, error: 'Invalid Hysteria2 URI: missing port' };
+		// Parse host:port (supports [IPv6]:port)
+		const hp = splitHostPort(hostPort);
+		if (!hp) {
+			return { success: false, error: 'Invalid Hysteria2 URI: invalid host:port' };
 		}
-
-		const server = hostPort.slice(0, colonIndex);
-		const port = parseInt(hostPort.slice(colonIndex + 1), 10);
-
-		if (isNaN(port) || port < 1 || port > 65535) {
-			return { success: false, error: 'Invalid Hysteria2 URI: invalid port' };
-		}
+		const server = hp.host;
+		const port = hp.port;
 
 		// Parse query params
 		const params = new URLSearchParams(queryString || '');
@@ -302,9 +318,12 @@ export function parseShadowsocks(uri: string): ParseResult {
 				}
 				method = userinfo.slice(0, colonIdx);
 				password = userinfo.slice(colonIdx + 1);
-				const hostColonIdx = hostPart.lastIndexOf(':');
-				server = hostPart.slice(0, hostColonIdx);
-				port = parseInt(hostPart.slice(hostColonIdx + 1), 10);
+				const hp = splitHostPort(hostPart);
+				if (!hp) {
+					return { success: false, error: 'Invalid Shadowsocks URI: invalid host:port' };
+				}
+				server = hp.host;
+				port = hp.port;
 			} catch {
 				return { success: false, error: 'Invalid Shadowsocks URI: cannot decode base64' };
 			}
@@ -316,12 +335,12 @@ export function parseShadowsocks(uri: string): ParseResult {
 			const [hostPort, queryString] = serverPart.split('?');
 			// Remove trailing slash if present
 			const cleanHostPort = hostPort.replace(/\/$/, '');
-			const colonIndex = cleanHostPort.lastIndexOf(':');
-			if (colonIndex === -1) {
-				return { success: false, error: 'Invalid Shadowsocks URI: missing port' };
+			const hp = splitHostPort(cleanHostPort);
+			if (!hp) {
+				return { success: false, error: 'Invalid Shadowsocks URI: invalid host:port' };
 			}
-			server = cleanHostPort.slice(0, colonIndex);
-			port = parseInt(cleanHostPort.slice(colonIndex + 1), 10);
+			server = hp.host;
+			port = hp.port;
 
 			// Parse query params for plugin
 			if (queryString) {
@@ -346,10 +365,6 @@ export function parseShadowsocks(uri: string): ParseResult {
 			}
 			method = decoded.slice(0, colonIdx);
 			password = decoded.slice(colonIdx + 1);
-		}
-
-		if (isNaN(port) || port < 1 || port > 65535) {
-			return { success: false, error: 'Invalid Shadowsocks URI: invalid port' };
 		}
 
 		const config: ParsedShadowsocks = {
@@ -412,19 +427,13 @@ export function parseNaive(uri: string): ParseResult {
 			}
 		}
 
-		// Parse host:port
-		const colonIndex = hostPort.lastIndexOf(':');
-		if (colonIndex === -1) {
-			return { success: false, error: 'Invalid Naive URI: missing port' };
+		// Parse host:port (supports [IPv6]:port)
+		const hp = splitHostPort(hostPort);
+		if (!hp) {
+			return { success: false, error: 'Invalid Naive URI: invalid host:port' };
 		}
-		const server = hostPort.slice(0, colonIndex);
-		const port = parseInt(hostPort.slice(colonIndex + 1), 10);
-		if (!server) {
-			return { success: false, error: 'Invalid Naive URI: missing server' };
-		}
-		if (isNaN(port) || port < 1 || port > 65535) {
-			return { success: false, error: 'Invalid Naive URI: invalid port' };
-		}
+		const server = hp.host;
+		const port = hp.port;
 
 		const config: ParsedNaive = { type: 'naive', name, server, port };
 		if (username !== undefined) {
@@ -881,6 +890,8 @@ export function parseDuration(text: string | undefined | null): string {
 /**
  * Parse key=value pairs from multiline text
  * Returns Record<string, string>
+ * Note: both keys and values are trimmed of surrounding whitespace;
+ * values containing '=' are preserved (split on first '=' only).
  */
 export function parseKeyValuePairs(text: string | undefined | null): Record<string, string> {
 	if (!text) return {};
