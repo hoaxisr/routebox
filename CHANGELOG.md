@@ -2,6 +2,14 @@
 
 All notable changes to RouteBox are documented here.
 
+## [Unreleased]
+
+### New Features
+
+- **Updates page** — check, download and install new releases of amnezia-box and RouteBox from the UI: GitHub release checking (daily auto-check, `updates.auto_check`), sha256+ELF+smoke verification, atomic binary swap with automatic rollback, systemd-supervised RouteBox self-update. Release assets now ship sha256 checksums.
+
+---
+
 ## [0.17.0] - 2026-06-12
 
 ### New Features
