@@ -175,6 +175,7 @@ export interface TLSConfig {
 	max_version?: string;
 	cipher_suites?: string[];
 	certificate_path?: string;
+	certificate?: string[];
 	key_path?: string;
 	utls?: {
 		enabled?: boolean;
@@ -262,6 +263,12 @@ export interface Outbound {
 	idle_session_check_interval?: string;
 	idle_session_timeout?: string;
 	min_idle_session?: number;
+	// Naive specific
+	username?: string;
+	insecure_concurrency?: number;
+	extra_headers?: Record<string, string>;
+	quic?: boolean;
+	quic_congestion_control?: string;
 	// VLESS specific
 	uuid?: string;
 	flow?: string;
@@ -360,6 +367,20 @@ export interface OutboundAnytls extends Outbound {
 	min_idle_session?: number;
 }
 
+export interface OutboundNaive extends Outbound {
+	type: 'naive';
+	server: string;
+	server_port: number;
+	username?: string;
+	password?: string;
+	tls?: TLSConfig;
+	insecure_concurrency?: number;
+	extra_headers?: Record<string, string>;
+	quic?: boolean;
+	quic_congestion_control?: string;
+	udp_over_tcp?: boolean;
+}
+
 // Discriminated union for all typed outbounds
 export type OutboundTyped =
 	| OutboundDirect
@@ -371,7 +392,8 @@ export type OutboundTyped =
 	| OutboundHysteria2
 	| OutboundShadowsocks
 	| OutboundShadowtls
-	| OutboundAnytls;
+	| OutboundAnytls
+	| OutboundNaive;
 
 export interface Endpoint {
 	type: string;
