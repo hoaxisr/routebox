@@ -1,6 +1,9 @@
 package auth
 
-import "testing"
+import (
+	"sync"
+	"testing"
+)
 
 func TestHashAndVerify(t *testing.T) {
 	h, err := HashPassword("s3cret")
@@ -40,5 +43,36 @@ func TestCachedVerifier(t *testing.T) {
 	}
 	if !v.Verify(h2, "pw2") {
 		t.Fatal("new password should verify against new hash")
+	}
+}
+
+func TestCachedVerifierConcurrentRotation(t *testing.T) {
+	h1, _ := HashPassword("pw1")
+	h2, _ := HashPassword("pw2")
+	v := NewCachedVerifier()
+	v.Verify(h1, "pw1") // warm cache under h1
+
+	var wg sync.WaitGroup
+	wg.Add(2)
+	go func() {
+		defer wg.Done()
+		for i := 0; i < 50; i++ {
+			v.Verify(h1, "pw1")
+		}
+	}()
+	go func() {
+		defer wg.Done()
+		for i := 0; i < 50; i++ {
+			v.Verify(h2, "pw2")
+		}
+	}()
+	wg.Wait()
+
+	// After settling on h2, the old password must NOT verify.
+	if v.Verify(h2, "pw1") {
+		t.Fatal("old password must not verify against rotated hash")
+	}
+	if !v.Verify(h2, "pw2") {
+		t.Fatal("current password must verify")
 	}
 }

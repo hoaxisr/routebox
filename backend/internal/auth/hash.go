@@ -56,7 +56,9 @@ func (c *CachedVerifier) Verify(hash, plain string) bool {
 
 	if VerifyPassword(hash, plain) {
 		c.mu.Lock()
-		c.ok[key] = true
+		if hash == c.hash {
+			c.ok[key] = true
+		}
 		c.mu.Unlock()
 		return true
 	}
