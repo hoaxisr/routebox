@@ -1,6 +1,7 @@
 package settings
 
 import (
+	"encoding/json"
 	"fmt"
 	"log"
 	"os"
@@ -254,6 +255,28 @@ func (m *Manager) GetPath() string {
 	return m.path
 }
 
+// toInt converts a JSON-decoded numeric value to int. JSON numbers decode to
+// float64; TOML and direct callers may pass int; UseNumber decoders pass
+// json.Number. Fractional values are rejected.
+func toInt(v interface{}) (int, bool) {
+	switch n := v.(type) {
+	case int:
+		return n, true
+	case int64:
+		return int(n), true
+	case float64:
+		if n != float64(int(n)) {
+			return 0, false
+		}
+		return int(n), true
+	case json.Number:
+		if i, err := n.Int64(); err == nil {
+			return int(i), true
+		}
+	}
+	return 0, false
+}
+
 // Update applies partial updates to settings (runtime-safe fields only)
 func (m *Manager) Update(updates map[string]interface{}) error {
 	m.mu.Lock()
@@ -296,33 +319,45 @@ func (m *Manager) Update(updates map[string]interface{}) error {
 				m.settings.Monitoring.EnrichmentEnabled = v
 			}
 		case "monitoring.max_closed_connections":
-			if v, ok := value.(int); ok {
-				m.settings.Monitoring.MaxClosedConnections = v
+			v, ok := toInt(value)
+			if !ok {
+				return fmt.Errorf("setting %s requires an integer value, got %T", key, value)
 			}
+			m.settings.Monitoring.MaxClosedConnections = v
 		case "monitoring.poll_interval_ms":
-			if v, ok := value.(int); ok {
-				m.settings.Monitoring.PollIntervalMs = v
+			v, ok := toInt(value)
+			if !ok {
+				return fmt.Errorf("setting %s requires an integer value, got %T", key, value)
 			}
+			m.settings.Monitoring.PollIntervalMs = v
 		case "monitoring.proxies_refresh_ms":
-			if v, ok := value.(int); ok {
-				m.settings.Monitoring.ProxiesRefreshMs = v
+			v, ok := toInt(value)
+			if !ok {
+				return fmt.Errorf("setting %s requires an integer value, got %T", key, value)
 			}
+			m.settings.Monitoring.ProxiesRefreshMs = v
 
 		// Security runtime settings
 		case "security.session_timeout_minutes":
-			if v, ok := value.(int); ok {
-				m.settings.Security.SessionTimeoutMinutes = v
+			v, ok := toInt(value)
+			if !ok {
+				return fmt.Errorf("setting %s requires an integer value, got %T", key, value)
 			}
+			m.settings.Security.SessionTimeoutMinutes = v
 
 		// Advanced runtime settings
 		case "advanced.ws_ping_interval_sec":
-			if v, ok := value.(int); ok {
-				m.settings.Advanced.WsPingIntervalSec = v
+			v, ok := toInt(value)
+			if !ok {
+				return fmt.Errorf("setting %s requires an integer value, got %T", key, value)
 			}
+			m.settings.Advanced.WsPingIntervalSec = v
 		case "advanced.ws_pong_timeout_sec":
-			if v, ok := value.(int); ok {
-				m.settings.Advanced.WsPongTimeoutSec = v
+			v, ok := toInt(value)
+			if !ok {
+				return fmt.Errorf("setting %s requires an integer value, got %T", key, value)
 			}
+			m.settings.Advanced.WsPongTimeoutSec = v
 
 		default:
 			return fmt.Errorf("unknown or non-runtime setting: %s", key)
