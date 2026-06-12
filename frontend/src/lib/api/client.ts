@@ -1,4 +1,4 @@
-import type { ApiResponse, ProcessStatus, DetectedConfig, SingboxConfig, Endpoint, Outbound, Inbound, RuleSet, RuleSetUsage, RouteRule, RouteSettings, DnsServer, DnsRule, DnsSettings, LogSettings, ExperimentalSettings, ConnectionsResponse, ProxiesResponse, ClashProxy, TestRouteResponse, ConnectTestResponse, SettingsResponse, RouteBoxSettings, SingBoxVersion, DomainSetInfo, RuleSetSource, ClientEntry, TrafficHistoryResponse, TrafficRange } from '$lib/types';
+import type { ApiResponse, ProcessStatus, DetectedConfig, SingboxConfig, Endpoint, Outbound, Inbound, RuleSet, RuleSetUsage, RouteRule, RouteSettings, DnsServer, DnsRule, DnsSettings, LogSettings, ExperimentalSettings, ConnectionsResponse, ProxiesResponse, ClashProxy, TestRouteResponse, ConnectTestResponse, SettingsResponse, RouteBoxSettings, SingBoxVersion, DomainSetInfo, RuleSetSource, ClientEntry, TrafficHistoryResponse, TrafficRange, UpdatesStatus, UpdateProgress, UpdateTargetName } from '$lib/types';
 
 const API_BASE = '/api';
 
@@ -385,6 +385,19 @@ export const api = {
 		request<{ message: string; settings: RouteBoxSettings }>('/settings/reload', {
 			method: 'POST'
 		}),
+
+	// Binary updates
+	getUpdatesStatus: () => request<UpdatesStatus>('/updates/status'),
+	checkUpdates: () =>
+		request<UpdatesStatus>('/updates/check', {
+			method: 'POST'
+		}),
+	applyUpdate: (target: UpdateTargetName) =>
+		request<{ restarting?: boolean; version?: string }>('/updates/apply', {
+			method: 'POST',
+			body: JSON.stringify({ target })
+		}),
+	getUpdateProgress: () => request<UpdateProgress>('/updates/progress'),
 
 	// Domain Sets (custom rule set sources)
 	listDomainSets: () => request<DomainSetInfo[]>('/domains'),

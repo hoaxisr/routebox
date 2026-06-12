@@ -735,6 +735,7 @@ export interface RouteBoxSettings {
 	network: NetworkSettings;
 	singbox: SingboxSettings;
 	advanced: AdvancedSettings;
+	updates?: UpdatesSettings;
 }
 
 export interface GeoIPSettings {
@@ -797,6 +798,38 @@ export interface SettingsResponse {
 	settings: RouteBoxSettings;
 	settings_path: string;
 	geoip_loaded: boolean;
+}
+
+// Binary updates
+export type UpdateTargetName = 'amnezia-box' | 'routebox';
+export type UpdatePhase = 'idle' | 'download' | 'verify' | 'swap' | 'restart' | 'done' | 'error';
+
+export interface UpdateTarget {
+	name: UpdateTargetName;
+	supported: boolean;
+	current: string;
+	latest?: string;
+	notes?: string;
+	published_at?: string;
+	last_checked?: string;
+	update_available: boolean;
+	error?: string;
+}
+
+export interface UpdatesStatus {
+	targets: UpdateTarget[];
+}
+
+export interface UpdateProgress {
+	target: UpdateTargetName | '';
+	phase: UpdatePhase;
+	downloaded_bytes: number;
+	total_bytes: number;
+	error?: string;
+}
+
+export interface UpdatesSettings {
+	auto_check: boolean;
 }
 
 // Route Inspector
