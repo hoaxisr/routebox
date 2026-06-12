@@ -10,6 +10,7 @@ import type {
 	OutboundShadowsocks,
 	OutboundShadowtls,
 	OutboundAnytls,
+	OutboundNaive,
 	OutboundSelector,
 	OutboundUrltest,
 	OutboundDirect,
@@ -52,6 +53,13 @@ export function isAnytlsOutbound(ob: Outbound): ob is OutboundAnytls {
 }
 
 /**
+ * Check if outbound is Naive type
+ */
+export function isNaiveOutbound(ob: Outbound): ob is OutboundNaive {
+	return ob.type === 'naive';
+}
+
+/**
  * Check if outbound is selector type
  */
 export function isSelectorOutbound(ob: Outbound): ob is OutboundSelector {
@@ -91,8 +99,8 @@ export function isBlockOutbound(ob: Outbound): ob is OutboundBlock {
  */
 export function isProxyOutbound(
 	ob: Outbound
-): ob is OutboundVless | OutboundHysteria2 | OutboundShadowsocks | OutboundShadowtls | OutboundAnytls {
-	return ['vless', 'hysteria2', 'hy2', 'shadowsocks', 'ss', 'shadowtls', 'anytls'].includes(
+): ob is OutboundVless | OutboundHysteria2 | OutboundShadowsocks | OutboundShadowtls | OutboundAnytls | OutboundNaive {
+	return ['vless', 'hysteria2', 'hy2', 'shadowsocks', 'ss', 'shadowtls', 'anytls', 'naive'].includes(
 		ob.type
 	);
 }
@@ -102,8 +110,8 @@ export function isProxyOutbound(
  */
 export function supportsTls(
 	ob: Outbound
-): ob is OutboundVless | OutboundHysteria2 | OutboundShadowtls | OutboundAnytls {
-	return ['vless', 'hysteria2', 'hy2', 'shadowtls', 'anytls'].includes(ob.type);
+): ob is OutboundVless | OutboundHysteria2 | OutboundShadowtls | OutboundAnytls | OutboundNaive {
+	return ['vless', 'hysteria2', 'hy2', 'shadowtls', 'anytls', 'naive'].includes(ob.type);
 }
 
 /**

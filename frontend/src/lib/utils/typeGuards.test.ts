@@ -6,6 +6,7 @@ import {
 	isShadowsocksOutbound,
 	isShadowtlsOutbound,
 	isAnytlsOutbound,
+	isNaiveOutbound,
 	isSelectorOutbound,
 	isUrltestOutbound,
 	isServiceOutbound,
@@ -205,5 +206,25 @@ describe('getOutboundPort', () => {
 	it('returns undefined for non-proxy outbounds', () => {
 		const ob = createOutbound('direct');
 		expect(getOutboundPort(ob)).toBeUndefined();
+	});
+});
+
+describe('isNaiveOutbound', () => {
+	it('returns true for naive outbound', () => {
+		expect(isNaiveOutbound({ type: 'naive', tag: 'n' })).toBe(true);
+	});
+
+	it('returns false for other types', () => {
+		expect(isNaiveOutbound({ type: 'vless', tag: 'v' })).toBe(false);
+	});
+});
+
+describe('naive in aggregate guards', () => {
+	it('isProxyOutbound includes naive', () => {
+		expect(isProxyOutbound({ type: 'naive', tag: 'n' })).toBe(true);
+	});
+
+	it('supportsTls includes naive', () => {
+		expect(supportsTls({ type: 'naive', tag: 'n' })).toBe(true);
 	});
 });
