@@ -86,6 +86,9 @@
 				placeholder="user"
 				class="w-full px-3 py-2 bg-[var(--ctp-surface0)] border rounded-lg text-[var(--ctp-text)] placeholder-[var(--ctp-overlay0)] focus:outline-none focus:ring-2 focus:ring-[var(--ctp-primary)] {errors['username'] ? 'border-[var(--ctp-red)]' : 'border-[var(--ctp-surface2)]'}"
 			/>
+			{#if errors['username']}
+				<p class="mt-1 text-sm text-[var(--ctp-red)]">{errors['username']}</p>
+			{/if}
 		</div>
 		<div>
 			<label for="nv-password" class="block text-sm font-medium text-[var(--ctp-subtext1)] mb-1">
@@ -154,7 +157,7 @@
 			</div>
 			<div>
 				<label for="nv-quic-cc" class="block text-xs text-[var(--ctp-overlay0)] mb-1">
-					{$t('outbounds.congestionControl')}
+					{$t('outbounds.quicCongestionControl')}
 				</label>
 				<select
 					id="nv-quic-cc"

@@ -287,6 +287,7 @@
 			const hasUser = nvUsername.trim().length > 0;
 			const hasPass = nvPassword.length > 0;
 			if (hasUser !== hasPass) {
+				errors['username'] = 'Username and password must be set together';
 				errors['password'] = 'Username and password must be set together';
 			}
 		}
@@ -440,7 +441,7 @@
 				server_name: nvSni.trim() || server.trim()
 			};
 			if (nvCaCert.trim()) {
-				ob.tls.certificate = nvCaCert.trim().split('\n');
+				ob.tls.certificate = nvCaCert.trim().split('\n').filter((line) => line.trim().length > 0);
 			}
 			if (nvInsecureConcurrency > 0) ob.insecure_concurrency = nvInsecureConcurrency;
 			const headers = parseKeyValuePairs(nvExtraHeaders);

@@ -355,7 +355,7 @@
     "extraHeaders": "Extra Headers",
     "extraHeadersHint": "One per line: Header=Value",
     "enableQuic": "Use QUIC",
-    "congestionControl": "QUIC Congestion Control",
+    "quicCongestionControl": "QUIC Congestion Control",
     "importFromNaive": "Import from naive+https:// link",
     "method": "Method",
     "plugin": "Plugin",
