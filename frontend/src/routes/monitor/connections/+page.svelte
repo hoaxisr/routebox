@@ -17,10 +17,6 @@
 	);
 	let stream: { close: () => void } | null = null;
 
-	$effect(() => {
-		if (browser) localStorage.setItem('connections.liveUpdates', String(useWebSocket));
-	});
-
 	async function fetchConnections() {
 		try {
 			const data = await api.getConnections();
@@ -44,23 +40,34 @@
 		stream = createConnectionsStream(
 			updateData,
 			(error) => {
-				console.error('WebSocket error, falling back to polling:', error);
-				useWebSocket = false;
-				stopStream();
-				fetchConnections();
-				startPolling();
+				console.error('Connections stream error:', error);
 			},
-			() => {
-				// On close, try to reconnect after a delay if still using WebSocket
-				if (useWebSocket) {
-					setTimeout(() => {
-						if (useWebSocket && !stream) {
-							startStream();
-						}
-					}, 3000);
+			undefined,
+			(status) => {
+				if (status === 'connected') {
+					// WS (re)established — error-fallback polling must not keep running
+					stopPolling();
+				} else if (status === 'reconnecting') {
+					// Keep data fresh while the helper reconnects
+					fetchConnections();
+					startPolling();
 				}
 			}
 		);
+	}
+
+	function handleLiveUpdatesToggle(event: Event) {
+		const enabled = (event.currentTarget as HTMLInputElement).checked;
+		useWebSocket = enabled;
+		if (browser) localStorage.setItem('connections.liveUpdates', String(enabled));
+		if (enabled) {
+			stopPolling();
+			startStream();
+		} else {
+			stopStream();
+			fetchConnections();
+			startPolling();
+		}
 	}
 
 	let pollInterval: ReturnType<typeof setInterval> | null = null;
@@ -117,19 +124,6 @@
 		stopStream();
 		stopPolling();
 	});
-
-	onDestroy(() => {
-		stopStream();
-	});
-
-	$effect(() => {
-		if (useWebSocket && !stream) {
-			startStream();
-		} else if (!useWebSocket && stream) {
-			stopStream();
-			fetchConnections();
-		}
-	});
 </script>
 
 <svelte:head>
@@ -152,7 +146,8 @@
 			<label class="flex items-center gap-2 text-sm text-[var(--ctp-subtext1)]">
 				<input
 					type="checkbox"
-					bind:checked={useWebSocket}
+					checked={useWebSocket}
+					onchange={handleLiveUpdatesToggle}
 					class="w-4 h-4 rounded border-[var(--ctp-surface2)] text-[var(--ctp-primary)] focus:ring-[var(--ctp-primary)]"
 				/>
 				{$t('connections.liveUpdates')}
