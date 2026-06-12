@@ -122,10 +122,10 @@ func (u *Updater) apply(t Target, rel ReleaseInfo) (ApplyResult, error) {
 	newPath := path + ".new" // same dir → rename is atomic
 	oldPath := path + ".old" // single rollback slot, overwritten each update
 
-	// Refuse self-update without a published checksum: RouteBox runs as root
-	// and smoke-execs the new binary; a missing sha256 signals something wrong.
-	if t.SelfUpdate && rel.Sha256URL == "" {
-		return ApplyResult{}, fmt.Errorf("refusing to self-update without a published checksum")
+	// Refuse any update without a published checksum: both amnezia-box and
+	// RouteBox publish checksums, and we root-exec the result.
+	if rel.Sha256URL == "" {
+		return ApplyResult{}, fmt.Errorf("refusing to install %s without a published checksum", t.Name)
 	}
 
 	// 1. Download
@@ -135,13 +135,11 @@ func (u *Updater) apply(t Target, rel ReleaseInfo) (ApplyResult, error) {
 		return ApplyResult{}, fmt.Errorf("download: %w", err)
 	}
 
-	// 2. Verify: sha256 (when published) + ELF magic + smoke run
+	// 2. Verify: sha256 + ELF magic + smoke run
 	u.setPhase(t.Name, PhaseVerify)
-	if rel.Sha256URL != "" {
-		if err := u.verifySha256(newPath, rel); err != nil {
-			os.Remove(newPath)
-			return ApplyResult{}, err
-		}
+	if err := u.verifySha256(newPath, rel); err != nil {
+		os.Remove(newPath)
+		return ApplyResult{}, err
 	}
 	if err := checkELF(newPath); err != nil {
 		os.Remove(newPath)
@@ -228,6 +226,9 @@ func (u *Updater) download(url, dst string) error {
 }
 
 // verifySha256 fetches the checksum asset and compares it with the file.
+// Trust is anchored on the GitHub release: the sha256 comes from the same
+// release as the binary, defending against download corruption/MITM — NOT
+// against a compromised repo/account (no independent signature).
 func (u *Updater) verifySha256(path string, rel ReleaseInfo) error {
 	resp, err := u.client.Get(rel.Sha256URL)
 	if err != nil {

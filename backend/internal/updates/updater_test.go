@@ -307,22 +307,31 @@ func TestApplySingleFlight(t *testing.T) {
 	target, path := happyTarget(dir, &restarts, nil)
 	copyFile(t, "/bin/true", path)
 
+	binData, _ := os.ReadFile("/bin/true")
+	checksum := sha256Hex(binData)
+
 	release := make(chan struct{})
-	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+	mux := http.NewServeMux()
+	mux.HandleFunc("/asset", func(w http.ResponseWriter, r *http.Request) {
 		<-release // block first download until second Apply is rejected
-		data, _ := os.ReadFile("/bin/true")
-		w.Write(data)
-	}))
+		w.Write(binData)
+	})
+	mux.HandleFunc("/checksums.txt", func(w http.ResponseWriter, r *http.Request) {
+		fmt.Fprintf(w, "%s  a\n", checksum)
+	})
+	srv := httptest.NewServer(mux)
 	t.Cleanup(srv.Close)
+
+	rel := ReleaseInfo{AssetName: "a", AssetURL: srv.URL + "/asset", Sha256URL: srv.URL + "/checksums.txt"}
 
 	u := NewUpdater()
 	done := make(chan error, 1)
 	go func() {
-		_, err := u.Apply(target, ReleaseInfo{AssetName: "a", AssetURL: srv.URL})
+		_, err := u.Apply(target, rel)
 		done <- err
 	}()
 	time.Sleep(100 * time.Millisecond) // first Apply is inside download
-	if _, err := u.Apply(target, ReleaseInfo{AssetName: "a", AssetURL: srv.URL}); err != ErrBusy {
+	if _, err := u.Apply(target, rel); err != ErrBusy {
 		t.Errorf("second Apply err = %v, want ErrBusy", err)
 	}
 	close(release)
@@ -363,37 +372,69 @@ func TestRunDailyChecksRespectsSetting(t *testing.T) {
 	}
 }
 
-func TestApplySelfUpdateRequiresChecksum(t *testing.T) {
-	dir := t.TempDir()
-	path := filepath.Join(dir, "routebox")
-	copyFile(t, "/bin/true", path)
-
-	target := Target{
-		Name:           "routebox",
-		Repo:           "hoaxisr/routebox",
-		AssetSuffix:    func(string) (string, bool) { return "routebox-linux-amd64", true },
-		BinaryPath:     func() string { return path },
-		CurrentVersion: func() (string, error) { return "0.17.0", nil },
-		SelfUpdate:     true,
-	}
-
-	u := NewUpdater()
-	// Sha256URL is empty — Apply must refuse before downloading anything
-	_, err := u.Apply(target, ReleaseInfo{
-		AssetName: "routebox-linux-amd64",
-		AssetURL:  "http://127.0.0.1:0/should-not-be-fetched",
-		Sha256URL: "", // intentionally empty
-	})
-	if err == nil {
-		t.Fatal("Apply must return an error when Sha256URL is empty for SelfUpdate target")
-	}
-	if !strings.Contains(err.Error(), "checksum") {
-		t.Errorf("error should mention 'checksum', got: %v", err)
-	}
-	// Verify the binary was not modified
-	got, _ := os.ReadFile(path)
+func TestApplyRequiresChecksum(t *testing.T) {
 	orig, _ := os.ReadFile("/bin/true")
-	if string(got) != string(orig) {
-		t.Error("binary must be untouched when Apply is refused due to missing checksum")
+
+	cases := []struct {
+		name   string
+		target func(path string) Target
+	}{
+		{
+			name: "self-update target",
+			target: func(path string) Target {
+				return Target{
+					Name:           "routebox",
+					Repo:           "hoaxisr/routebox",
+					AssetSuffix:    func(string) (string, bool) { return "routebox-linux-amd64", true },
+					BinaryPath:     func() string { return path },
+					CurrentVersion: func() (string, error) { return "0.17.0", nil },
+					SelfUpdate:     true,
+				}
+			},
+		},
+		{
+			name: "non-self (amnezia-box) target",
+			target: func(path string) Target {
+				var restarts int32
+				return Target{
+					Name:           "amnezia-box",
+					Repo:           "amnezia-vpn/amnezia-wg-tools",
+					AssetSuffix:    func(string) (string, bool) { return "linux-amd64", true },
+					BinaryPath:     func() string { return path },
+					CurrentVersion: func() (string, error) { return "1.0.0", nil },
+					Restart: func() error {
+						atomic.AddInt32(&restarts, 1)
+						return nil
+					},
+				}
+			},
+		},
+	}
+
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			dir := t.TempDir()
+			path := filepath.Join(dir, "binary")
+			copyFile(t, "/bin/true", path)
+
+			u := NewUpdater()
+			// Sha256URL is empty — Apply must refuse before downloading anything
+			_, err := u.Apply(tc.target(path), ReleaseInfo{
+				AssetName: "some-asset",
+				AssetURL:  "http://127.0.0.1:0/should-not-be-fetched",
+				Sha256URL: "", // intentionally empty
+			})
+			if err == nil {
+				t.Fatal("Apply must return an error when Sha256URL is empty")
+			}
+			if !strings.Contains(err.Error(), "checksum") {
+				t.Errorf("error should mention 'checksum', got: %v", err)
+			}
+			// Verify the binary was not modified
+			got, _ := os.ReadFile(path)
+			if string(got) != string(orig) {
+				t.Error("binary must be untouched when Apply is refused due to missing checksum")
+			}
+		})
 	}
 }
