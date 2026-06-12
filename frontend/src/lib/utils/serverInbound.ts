@@ -16,6 +16,8 @@ export interface ServerFormState {
 		certificate_path: string;
 		key_path: string;
 	};
+	handshakeServer: string;
+	handshakePort: number;
 	users: ServerInboundUser[];
 	upMbps: number;
 	downMbps: number;
@@ -38,10 +40,12 @@ export function buildServerInbound(s: ServerFormState): Inbound {
 		tls.acme = { domain: s.tls.acme.domain.trim(), email: s.tls.acme.email.trim() };
 	} else if (s.tlsMode === 'reality') {
 		tls.server_name = s.tls.server_name.trim();
+		const hsServer = s.handshakeServer.trim() || s.tls.server_name.trim();
 		tls.reality = {
 			enabled: true,
-			private_key: s.tls.reality.private_key,
-			short_id: s.tls.reality.short_id.trim()
+			private_key: s.tls.reality.private_key.trim(),
+			short_id: s.tls.reality.short_id.trim(),
+			handshake: { server: hsServer, server_port: s.handshakePort || 443 }
 		};
 	} else {
 		tls.certificate_path = s.tls.certificate_path.trim();
@@ -68,8 +72,13 @@ export function parseServerInbound(ib: Inbound): ServerFormState {
 	if (tls.acme) tlsMode = 'acme';
 	else if (tls.reality) tlsMode = 'reality';
 
+	const serverTypes = ['vless', 'naive', 'hysteria2'] as const;
+	const type: ServerInboundType = (serverTypes as readonly string[]).includes(ib.type)
+		? (ib.type as ServerInboundType)
+		: 'vless';
+
 	return {
-		type: (ib.type as ServerInboundType) ?? 'vless',
+		type,
 		tag: ib.tag ?? '',
 		listen: ib.listen ?? '::',
 		listenPort: ib.listen_port ?? 443,
@@ -85,6 +94,8 @@ export function parseServerInbound(ib: Inbound): ServerFormState {
 			certificate_path: tls.certificate_path ?? '',
 			key_path: tls.key_path ?? ''
 		},
+		handshakeServer: tls.reality?.handshake?.server ?? '',
+		handshakePort: tls.reality?.handshake?.server_port ?? 443,
 		users: (ib.users ?? []).map((u) => ({ ...u })),
 		upMbps: ib.up_mbps ?? 0,
 		downMbps: ib.down_mbps ?? 0,
