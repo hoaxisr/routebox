@@ -155,7 +155,11 @@ func (m *Manager) Load() error {
 func (m *Manager) Save(config map[string]interface{}) error {
 	m.mu.Lock()
 	defer m.mu.Unlock()
+	return m.saveLocked(config)
+}
 
+// saveLocked is the body of Save without locking (caller must hold m.mu write lock).
+func (m *Manager) saveLocked(config map[string]interface{}) error {
 	// Check if read-only
 	if m.readOnly {
 		return fmt.Errorf("cannot save: config is read-only (run with sudo or stop the systemd service)")
@@ -420,7 +424,11 @@ func (m *Manager) DiscardDraft() error {
 func (m *Manager) ApplyDraft() error {
 	m.mu.Lock()
 	defer m.mu.Unlock()
+	return m.applyDraftLocked()
+}
 
+// applyDraftLocked is the body of ApplyDraft without locking (caller must hold m.mu write lock).
+func (m *Manager) applyDraftLocked() error {
 	if !m.hasDraft || m.draftConfig == nil {
 		return nil // Nothing to apply
 	}
@@ -717,17 +725,17 @@ func (m *Manager) getDraftExperimental() map[string]interface{} {
 	return exp
 }
 
-// SaveToDisk persists current draft (or active if no draft) to file
+// SaveToDisk persists current draft (or active if no draft) to file.
+// The draft check and the write happen in a single critical section so a
+// concurrent ApplyDraft/DiscardDraft cannot change state in between.
 func (m *Manager) SaveToDisk() error {
-	m.mu.RLock()
-	hasDraft := m.hasDraft
-	config := m.getWorkingConfig()
-	m.mu.RUnlock()
+	m.mu.Lock()
+	defer m.mu.Unlock()
 
-	if hasDraft {
+	if m.hasDraft {
 		// Apply draft to active
-		return m.ApplyDraft()
+		return m.applyDraftLocked()
 	}
 
-	return m.Save(config)
+	return m.saveLocked(m.deepCopy(m.activeConfig))
 }
