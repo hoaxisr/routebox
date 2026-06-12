@@ -2,6 +2,20 @@
 
 All notable changes to RouteBox are documented here.
 
+## [Unreleased]
+
+### New Features
+
+**Frontend:**
+- **NaiveProxy outbound type** — full form with server/port, username/password, SNI, CA fingerprint pinning, QUIC transport toggle, and extra HTTP headers. Supports import from `naive+https://` and `naive+quic://` URIs via the Import modal.
+
+**Backend:**
+- `naive` outbound tag recognized in the VPN-config detection heuristic.
+
+> **Note:** Requires amnezia-box `v1.13.13-awg2.0` or newer linux-amd64 binary (naive outbound is amd64-only).
+
+---
+
 ## [0.16.2] - 2026-05-10
 
 ### Improvements
