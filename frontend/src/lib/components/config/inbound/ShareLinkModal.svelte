@@ -28,8 +28,9 @@
 		try {
 			localStorage.setItem(HOST_KEY, host.trim());
 			const res = await api.getUserLink(tag, userIndex, host.trim());
+			const dataUrl = await QRCode.toDataURL(res.link, { width: 256, margin: 1 });
 			link = res.link;
-			qrDataUrl = await QRCode.toDataURL(link, { width: 256, margin: 1 });
+			qrDataUrl = dataUrl;
 		} catch (e) {
 			notifications.error(e instanceof Error ? e.message : $t('inbounds.server.linkFailed'));
 			link = '';
@@ -40,8 +41,24 @@
 	}
 
 	async function copyLink() {
-		await navigator.clipboard.writeText(link);
-		notifications.success($t('common.copied'));
+		try {
+			if (navigator.clipboard && window.isSecureContext) {
+				await navigator.clipboard.writeText(link);
+			} else {
+				const ta = document.createElement('textarea');
+				ta.value = link;
+				ta.style.position = 'fixed';
+				ta.style.opacity = '0';
+				document.body.appendChild(ta);
+				ta.select();
+				const ok = document.execCommand('copy');
+				document.body.removeChild(ta);
+				if (!ok) throw new Error('copy failed');
+			}
+			notifications.success($t('common.copied'));
+		} catch {
+			notifications.error($t('common.copyFailed'));
+		}
 	}
 </script>
 
