@@ -1,7 +1,9 @@
 package api
 
 import (
+	"crypto/sha256"
 	"crypto/subtle"
+	"log"
 	"net/http"
 
 	"routebox/backend/internal/settings"
@@ -25,10 +27,20 @@ func BasicAuth(settingsMgr *settings.Manager) func(http.Handler) http.Handler {
 				return
 			}
 
+			// Fail closed on misconfiguration: auth_enabled without a password
+			// would accept any client sending empty credentials.
+			if sec.AuthPassword == "" {
+				log.Printf("Warning: security.auth_enabled is true but auth_password is empty — denying all requests")
+				w.Header().Set("WWW-Authenticate", `Basic realm="RouteBox", charset="UTF-8"`)
+				http.Error(w, "Unauthorized: auth enabled without password", http.StatusUnauthorized)
+				return
+			}
+
 			user, pass, ok := r.BasicAuth()
-			// Constant-time comparison to avoid timing side channels.
-			userOK := subtle.ConstantTimeCompare([]byte(user), []byte(sec.AuthUsername)) == 1
-			passOK := subtle.ConstantTimeCompare([]byte(pass), []byte(sec.AuthPassword)) == 1
+			// Hash inputs before comparing so ConstantTimeCompare cannot leak
+			// credential length via a short-circuit on mismatched slice lengths.
+			userOK := subtle.ConstantTimeCompare(sha256Sum(user), sha256Sum(sec.AuthUsername)) == 1
+			passOK := subtle.ConstantTimeCompare(sha256Sum(pass), sha256Sum(sec.AuthPassword)) == 1
 			if !ok || !userOK || !passOK {
 				w.Header().Set("WWW-Authenticate", `Basic realm="RouteBox", charset="UTF-8"`)
 				http.Error(w, "Unauthorized", http.StatusUnauthorized)
@@ -37,4 +49,12 @@ func BasicAuth(settingsMgr *settings.Manager) func(http.Handler) http.Handler {
 			next.ServeHTTP(w, r)
 		})
 	}
+}
+
+// sha256Sum returns the SHA-256 digest of s as a byte slice.
+// Used to ensure ConstantTimeCompare always operates on fixed-length inputs,
+// preventing credential-length leakage via slice-length short-circuits.
+func sha256Sum(s string) []byte {
+	h := sha256.Sum256([]byte(s))
+	return h[:]
 }

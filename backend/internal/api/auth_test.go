@@ -34,6 +34,11 @@ auth_password = "secret"
 [security]
 auth_enabled = false
 `
+	// auth_enabled without a password is a misconfiguration; must be denied.
+	const enabledEmpty = `
+[security]
+auth_enabled = true
+`
 	okHandler := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.WriteHeader(http.StatusOK)
 	})
@@ -49,6 +54,7 @@ auth_enabled = false
 		{"enabled no creds", enabled, "", "", false, http.StatusUnauthorized},
 		{"enabled wrong creds", enabled, "admin", "wrong", true, http.StatusUnauthorized},
 		{"enabled right creds", enabled, "admin", "secret", true, http.StatusOK},
+		{"enabled empty creds misconfig denied", enabledEmpty, "", "", true, http.StatusUnauthorized},
 	}
 
 	for _, tc := range cases {
@@ -68,5 +74,20 @@ auth_enabled = false
 				t.Fatal("missing WWW-Authenticate header")
 			}
 		})
+	}
+}
+
+// TestBasicAuth_NilManager verifies that a nil settings manager (used in
+// development/testing without auth) passes all requests through.
+func TestBasicAuth_NilManager(t *testing.T) {
+	okHandler := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.WriteHeader(http.StatusOK)
+	})
+	handler := BasicAuth(nil)(okHandler)
+	req := httptest.NewRequest("GET", "/api/status", nil)
+	rec := httptest.NewRecorder()
+	handler.ServeHTTP(rec, req)
+	if rec.Code != http.StatusOK {
+		t.Fatalf("nil manager: status = %d, want %d", rec.Code, http.StatusOK)
 	}
 }
