@@ -40,6 +40,7 @@ type Manager struct {
 	configPath      string
 	serviceName     string // detected systemd service name
 	forceStandalone bool   // force standalone mode even if systemd service exists
+	startedPID      int    // PID of process started by us in standalone mode (0 if none)
 }
 
 // NewManager creates a new process manager
@@ -406,26 +407,57 @@ func (m *Manager) GetStatus() Status {
 	}
 }
 
-// findPID finds the PID of running amnezia-box process
+// findPID finds the PID of the running amnezia-box/sing-box process by
+// resolving /proc/<pid>/exe. This cannot be confused with processes that
+// merely mention the binary name in their arguments (e.g. RouteBox itself
+// started with "-config /opt/etc/sing-box/config.json").
 func (m *Manager) findPID() int {
-	// Use pgrep to find process
-	cmd := exec.Command("pgrep", "-f", "amnezia-box|sing-box")
-	output, err := cmd.Output()
+	self := os.Getpid()
+
+	// Prefer the PID we started ourselves in standalone mode
+	if m.startedPID != 0 && m.startedPID != self {
+		if m.exeMatches(m.startedPID) {
+			return m.startedPID
+		}
+		m.startedPID = 0 // stale: process exited or PID was reused
+	}
+
+	entries, err := os.ReadDir("/proc")
 	if err != nil {
 		return 0
 	}
-
-	lines := strings.Split(strings.TrimSpace(string(output)), "\n")
-	if len(lines) == 0 {
-		return 0
+	for _, entry := range entries {
+		if !entry.IsDir() {
+			continue
+		}
+		pid, err := strconv.Atoi(entry.Name())
+		if err != nil || pid == self {
+			continue
+		}
+		if m.exeMatches(pid) {
+			return pid
+		}
 	}
+	return 0
+}
 
-	pid, err := strconv.Atoi(lines[0])
+// exeMatches reports whether /proc/<pid>/exe points at the managed binary.
+func (m *Manager) exeMatches(pid int) bool {
+	exe, err := os.Readlink(fmt.Sprintf("/proc/%d/exe", pid))
 	if err != nil {
-		return 0
+		return false
 	}
-
-	return pid
+	exe = strings.TrimSuffix(exe, " (deleted)")
+	if m.binaryPath != "" {
+		if abs, err := filepath.Abs(m.binaryPath); err == nil && exe == abs {
+			return true
+		}
+		if filepath.Base(exe) == filepath.Base(m.binaryPath) {
+			return true
+		}
+	}
+	base := filepath.Base(exe)
+	return base == "amnezia-box" || base == "sing-box"
 }
 
 // getUptime returns process uptime as a human-readable string
@@ -556,6 +588,7 @@ func (m *Manager) Start(configPath string) error {
 	if err := cmd.Start(); err != nil {
 		return fmt.Errorf("failed to start: %w", err)
 	}
+	m.startedPID = cmd.Process.Pid
 
 	// Don't wait - let it run in background
 	go cmd.Wait()
