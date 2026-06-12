@@ -3,6 +3,7 @@
 package auth
 
 import (
+	"crypto/rand"
 	"crypto/sha256"
 	"encoding/hex"
 	"sync"
@@ -28,21 +29,38 @@ func VerifyPassword(hash, plain string) bool {
 // HTTP Basic on every request). Only SUCCESSFUL verifications are cached, keyed
 // by the password digest against the active hash; the cache is dropped whenever
 // the hash changes. Wrong passwords are never cached, so the cache cannot be
-// poisoned.
+// poisoned. It is intended for a single active credential (one hash at a time);
+// routing multiple distinct hashes through one verifier is safe but degrades to
+// no caching.
 type CachedVerifier struct {
 	mu   sync.Mutex
 	hash string
 	ok   map[string]bool
+	salt []byte
 }
 
-// NewCachedVerifier creates an empty verifier cache.
+// NewCachedVerifier creates an empty verifier cache with a per-process salt.
 func NewCachedVerifier() *CachedVerifier {
-	return &CachedVerifier{ok: map[string]bool{}}
+	salt := make([]byte, 16)
+	if _, err := rand.Read(salt); err != nil {
+		// crypto/rand failure is fatal-grade; fall back to an empty salt
+		// (digest still differs from a raw sha256 of the password is not
+		// guaranteed, but rand.Read effectively never fails on supported OSes).
+		salt = nil
+	}
+	return &CachedVerifier{ok: map[string]bool{}, salt: salt}
+}
+
+func (c *CachedVerifier) digest(plain string) string {
+	h := sha256.New()
+	h.Write(c.salt)
+	h.Write([]byte(plain))
+	return hex.EncodeToString(h.Sum(nil))
 }
 
 // Verify checks plain against hash, using/populating the success cache.
 func (c *CachedVerifier) Verify(hash, plain string) bool {
-	key := digest(plain)
+	key := c.digest(plain)
 	c.mu.Lock()
 	if hash != c.hash {
 		c.hash = hash
@@ -63,9 +81,4 @@ func (c *CachedVerifier) Verify(hash, plain string) bool {
 		return true
 	}
 	return false
-}
-
-func digest(s string) string {
-	h := sha256.Sum256([]byte(s))
-	return hex.EncodeToString(h[:])
 }
