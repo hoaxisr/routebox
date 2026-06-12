@@ -28,7 +28,8 @@
     "proxies": "Proxies",
     "routeInspector": "Route Inspector",
     "network": "Network",
-    "routing": "Routing"
+    "routing": "Routing",
+    "updates": "Updates"
   },
   "common": {
     "save": "Save",
@@ -1340,6 +1341,48 @@
     "udpOverTcp": "Tunnels UDP traffic over TCP. Useful when UDP is blocked or unreliable.",
     "reality": "Reality protocol provides additional TLS camouflage to avoid detection.",
     "flow": "VLESS flow control. xtls-rprx-vision provides better performance for proxied TLS traffic."
+  },
+  "updates": {
+    "title": "Updates",
+    "description": "Check for and install new releases of amnezia-box and RouteBox",
+    "checkNow": "Check now",
+    "checking": "Checking...",
+    "lastChecked": "Last checked {time}",
+    "neverChecked": "Never checked",
+    "currentVersion": "Current",
+    "latestVersion": "Latest",
+    "publishedAt": "Released {date}",
+    "releaseNotes": "Release notes",
+    "upToDate": "Up to date",
+    "updateAvailable": "Update available",
+    "update": "Update",
+    "updating": "Updating...",
+    "notSupported": "Not supported on this platform",
+    "confirmProxyRestart": "The proxy will restart and active connections will drop. Continue?",
+    "phases": {
+      "download": "Downloading...",
+      "verify": "Verifying...",
+      "swap": "Installing...",
+      "restart": "Restarting...",
+      "done": "Done",
+      "error": "Failed"
+    },
+    "restartingBanner": "RouteBox is restarting, waiting for it to come back...",
+    "updatedTo": "Updated to {version}",
+    "manualRestartNeeded": "Binary replaced. Restart RouteBox manually to finish the update.",
+    "updateFailed": "Update failed: {error}",
+    "checkFailed": "Check failed: {error}",
+    "loadFailed": "Failed to load update status: {error}",
+    "targets": {
+      "amnezia-box": "amnezia-box (sing-box)",
+      "routebox": "RouteBox"
+    },
+    "timeAgo": {
+      "justNow": "just now",
+      "minutes": "{n}m ago",
+      "hours": "{n}h ago",
+      "days": "{n}d ago"
+    }
   },
   "templates": {
     "google": "Google",
