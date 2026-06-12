@@ -580,7 +580,7 @@ export function parseConfig(input: string): ParseResult {
 
 	return {
 		success: false,
-		error: 'Unknown configuration format. Supported: vless://, hy2://, hysteria2://, ss://, naive+https://, or AmneziaWG config'
+		error: 'Unknown configuration format. Supported: vless://, hy2://, hysteria2://, ss://, naive+https://, naive+quic://, or AmneziaWG config'
 	};
 }
 

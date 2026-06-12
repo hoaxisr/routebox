@@ -354,4 +354,10 @@ describe('parseNaive', () => {
 		const r = parseNaive('https://example.com:443');
 		expect(r.success).toBe(false);
 	});
+
+	it('parses username without password colon', () => {
+		const r = parseNaive('naive+https://onlyuser@example.com:443');
+		expect(r.success).toBe(true);
+		expect(r.config).toMatchObject({ username: 'onlyuser', password: '' });
+	});
 });
