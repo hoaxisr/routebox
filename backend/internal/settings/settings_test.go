@@ -56,3 +56,17 @@ func TestUpdateBoolFieldsUnaffected(t *testing.T) {
 		t.Fatal("geoip.enabled not applied")
 	}
 }
+
+func TestUpdatesSettings(t *testing.T) {
+	def := Default()
+	if !def.Updates.AutoCheck {
+		t.Error("updates.auto_check must default to true")
+	}
+	m := &Manager{settings: Default()}
+	if err := m.Update(map[string]interface{}{"updates.auto_check": false}); err != nil {
+		t.Fatalf("Update: %v", err)
+	}
+	if m.Get().Updates.AutoCheck {
+		t.Error("updates.auto_check not applied")
+	}
+}

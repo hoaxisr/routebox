@@ -21,6 +21,12 @@ type Settings struct {
 	Network    NetworkSettings    `toml:"network" json:"network"`
 	Singbox    SingboxSettings    `toml:"singbox" json:"singbox"`
 	Advanced   AdvancedSettings   `toml:"advanced" json:"advanced"`
+	Updates    UpdatesSettings    `toml:"updates" json:"updates"`
+}
+
+// UpdatesSettings configures binary update checks
+type UpdatesSettings struct {
+	AutoCheck bool `toml:"auto_check" json:"auto_check"`
 }
 
 // GeoIPSettings configures GeoIP enrichment
@@ -81,11 +87,11 @@ type SingboxSettings struct {
 
 // AdvancedSettings for power users
 type AdvancedSettings struct {
-	DebugEndpoints   bool `toml:"debug_endpoints" json:"debug_endpoints"`
-	PprofEnabled     bool `toml:"pprof_enabled" json:"pprof_enabled"`
-	MaxBodySize      int  `toml:"max_body_size" json:"max_body_size"`
-	WsPingIntervalSec int `toml:"ws_ping_interval_sec" json:"ws_ping_interval_sec"`
-	WsPongTimeoutSec  int `toml:"ws_pong_timeout_sec" json:"ws_pong_timeout_sec"`
+	DebugEndpoints    bool `toml:"debug_endpoints" json:"debug_endpoints"`
+	PprofEnabled      bool `toml:"pprof_enabled" json:"pprof_enabled"`
+	MaxBodySize       int  `toml:"max_body_size" json:"max_body_size"`
+	WsPingIntervalSec int  `toml:"ws_ping_interval_sec" json:"ws_ping_interval_sec"`
+	WsPongTimeoutSec  int  `toml:"ws_pong_timeout_sec" json:"ws_pong_timeout_sec"`
 }
 
 // Manager handles settings loading, saving, and runtime updates
@@ -147,6 +153,7 @@ func Default() Settings {
 			WsPingIntervalSec: 30,
 			WsPongTimeoutSec:  10,
 		},
+		Updates: UpdatesSettings{AutoCheck: true},
 	}
 }
 
@@ -358,6 +365,12 @@ func (m *Manager) Update(updates map[string]interface{}) error {
 				return fmt.Errorf("setting %s: value must be a whole number", key)
 			}
 			m.settings.Advanced.WsPongTimeoutSec = v
+
+		// Updates runtime settings
+		case "updates.auto_check":
+			if v, ok := value.(bool); ok {
+				m.settings.Updates.AutoCheck = v
+			}
 
 		default:
 			return fmt.Errorf("unknown or non-runtime setting: %s", key)

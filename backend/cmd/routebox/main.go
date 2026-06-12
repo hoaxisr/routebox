@@ -25,6 +25,7 @@ import (
 	"routebox/backend/internal/process"
 	"routebox/backend/internal/settings"
 	"routebox/backend/internal/traffic"
+	"routebox/backend/internal/updates"
 )
 
 // Version is stamped at build time via -ldflags "-X main.Version=…".
@@ -207,6 +208,21 @@ func main() {
 		sampler := traffic.NewSampler(trafficStore)
 		go sampler.Run(resolvedClashAddr, 35, stopSampler)
 	}
+
+	// Updates: GitHub release checker + daily auto-check (Task 4 adds API)
+	updChecker := updates.NewChecker()
+	updUpdater := updates.NewUpdater()
+	updTargets := []updates.Target{
+		updates.AmneziaTarget(procMgr.GetBinaryPath, procMgr.GetVersion, func() error {
+			return procMgr.Restart(cfgMgr.GetPath())
+		}),
+		updates.RouteBoxTarget(Version),
+	}
+	stopUpdates := make(chan struct{})
+	go updates.RunDailyChecks(updChecker, updTargets, func() bool {
+		return settingsMgr.Get().Updates.AutoCheck
+	}, 24*time.Hour, stopUpdates)
+	_ = updUpdater // consumed by API wiring in Task 4
 
 	// Initialize API handlers
 	apiHandler := api.NewHandler(cfgMgr, procMgr, resolvedClashAddr, geoipDB, settingsMgr, clientsMgr, trafficStore)
@@ -445,6 +461,7 @@ func main() {
 	<-clientsDone // final clients.toml flush completes before exit
 	close(stopDiscovery)
 	close(stopSampler)
+	close(stopUpdates)
 	if trafficStore != nil {
 		trafficStore.Close()
 	}
