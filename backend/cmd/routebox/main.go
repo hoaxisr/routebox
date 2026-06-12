@@ -24,6 +24,7 @@ import (
 	"routebox/backend/internal/geoip"
 	"routebox/backend/internal/process"
 	"routebox/backend/internal/settings"
+	"routebox/backend/internal/subscriptions"
 	"routebox/backend/internal/traffic"
 	"routebox/backend/internal/updates"
 )
@@ -222,6 +223,26 @@ func main() {
 	go updates.RunDailyChecks(updChecker, updTargets, func() bool {
 		return settingsMgr.Get().Updates.AutoCheck
 	}, 24*time.Hour, stopUpdates)
+
+	// Subscriptions: TOML store + hourly auto-refresh of due subscriptions.
+	var subsPath string
+	if sp := settingsMgr.GetPath(); sp != "" {
+		subsPath = filepath.Join(filepath.Dir(sp), "subscriptions.toml")
+	}
+	subsMgr := subscriptions.NewManager(subsPath)
+	if subsPath != "" {
+		if err := subsMgr.Load(); err != nil {
+			log.Printf("Warning: failed to load subscriptions.toml: %v", err)
+		}
+	}
+	subsRefresh := func(s subscriptions.Subscription) (int, int, error) {
+		return subscriptions.Refresh(s, cfgMgr)
+	}
+	stopSubs := make(chan struct{})
+	go subscriptions.RunRefreshLoop(subsMgr, cfgMgr, subscriptions.Refresh, time.Hour, stopSubs)
+	// subsMgr/subsRefresh consumed by API wiring in Task 7
+	_ = subsRefresh
+
 	// Initialize API handlers
 	apiHandler := api.NewHandler(cfgMgr, procMgr, resolvedClashAddr, geoipDB, settingsMgr, clientsMgr, trafficStore)
 	apiHandler.SetRouteBoxVersion(Version)
@@ -473,6 +494,7 @@ func main() {
 	close(stopDiscovery)
 	close(stopSampler)
 	close(stopUpdates)
+	close(stopSubs)
 	if trafficStore != nil {
 		trafficStore.Close()
 	}
