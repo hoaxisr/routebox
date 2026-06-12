@@ -794,6 +794,7 @@
       "addUser": "Add User",
       "noUsers": "No users — add at least one",
       "needUser": "At least one user is required",
+      "needUserCred": "Every user needs its credentials filled in",
       "clientLink": "Client link",
       "password": "Password",
       "tlsMode": "TLS Mode",

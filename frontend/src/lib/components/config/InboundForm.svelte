@@ -69,6 +69,12 @@
 	);
 
 	const editingExisting = !!inbound?.tag;
+
+	// Share links resolve the user by index against the SAVED config, so only
+	// allow sharing when the in-form users still match the saved inbound.
+	const savedUsers = JSON.stringify(inbound?.users ?? []);
+	let usersUnchanged = $derived(JSON.stringify(serverState.users) === savedUsers);
+
 	let shareUserIndex = $state<number | null>(null);
 	function openShare(index: number) {
 		shareUserIndex = index;
@@ -99,6 +105,23 @@
 				errors['port'] = $t('form.minValue', { values: { value: 1 } });
 			}
 			if (serverState.users.length === 0) errors['users'] = $t('inbounds.server.needUser');
+			// TLS mode required fields
+			if (serverState.tlsMode === 'acme') {
+				if (!serverState.tls.acme.domain.trim()) errors['acmeDomain'] = $t('errors.requiredField');
+				if (!serverState.tls.acme.email.trim()) errors['acmeEmail'] = $t('errors.requiredField');
+			} else if (serverState.tlsMode === 'reality') {
+				if (!serverState.tls.server_name.trim()) errors['serverName'] = $t('errors.requiredField');
+				if (!serverState.tls.reality.private_key.trim()) errors['realityKey'] = $t('errors.requiredField');
+			} else {
+				if (!serverState.tls.certificate_path.trim()) errors['certPath'] = $t('errors.requiredField');
+				if (!serverState.tls.key_path.trim()) errors['keyPath'] = $t('errors.requiredField');
+			}
+			// Per-user credential required fields
+			for (const u of serverState.users) {
+				if (type === 'vless' && !u.uuid?.trim()) { errors['userCred'] = $t('inbounds.server.needUserCred'); break; }
+				if (type === 'naive' && (!u.username?.trim() || !u.password?.trim())) { errors['userCred'] = $t('inbounds.server.needUserCred'); break; }
+				if (type === 'hysteria2' && !u.password?.trim()) { errors['userCred'] = $t('inbounds.server.needUserCred'); break; }
+			}
 			const keys = Object.keys(errors);
 			if (keys.length > 0) {
 				notifications.error(errors[keys[0]]);
@@ -334,11 +357,11 @@
 	{/if}
 
 	{#if type === 'vless'}
-		<ServerVlessInbound bind:state={serverState} onShare={openShare} canShare={editingExisting} />
+		<ServerVlessInbound bind:state={serverState} onShare={openShare} canShare={editingExisting && usersUnchanged} />
 	{:else if type === 'naive'}
-		<ServerNaiveInbound bind:state={serverState} onShare={openShare} canShare={editingExisting} />
+		<ServerNaiveInbound bind:state={serverState} onShare={openShare} canShare={editingExisting && usersUnchanged} />
 	{:else if type === 'hysteria2'}
-		<ServerHysteria2Inbound bind:state={serverState} onShare={openShare} canShare={editingExisting} />
+		<ServerHysteria2Inbound bind:state={serverState} onShare={openShare} canShare={editingExisting && usersUnchanged} />
 	{/if}
 
 	{#if shareUserIndex !== null && inbound?.tag}
