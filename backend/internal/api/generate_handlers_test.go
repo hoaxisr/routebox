@@ -71,3 +71,27 @@ func TestParseRealityKeypairRejectsEmpty(t *testing.T) {
 		t.Fatal("expected error when keys absent")
 	}
 }
+
+func TestParseRealityKeypairPartial(t *testing.T) {
+	cases := []struct {
+		name string
+		out  string
+	}{
+		{"only private", "PrivateKey: SN5HcFLrdjYEYbYYowow0k8zRF5m2uvX6_vcun25p2s\n"},
+		{"only public", "PublicKey: onu9CnSwBGKrgJGKK_WkggznnOwUuvNjTHw4nBlSdwU\n"},
+		{"empty value", "PrivateKey:\nPublicKey:\n"},
+	}
+	for _, c := range cases {
+		if _, _, err := parseRealityKeypair(c.out); err == nil {
+			t.Errorf("%s: expected error, got nil", c.name)
+		}
+	}
+}
+
+func TestParseRealityKeypairCRLF(t *testing.T) {
+	out := "PrivateKey: SN5HcFLrdjYEYbYYowow0k8zRF5m2uvX6_vcun25p2s\r\nPublicKey: onu9CnSwBGKrgJGKK_WkggznnOwUuvNjTHw4nBlSdwU\r\n"
+	priv, pub, err := parseRealityKeypair(out)
+	if err != nil || priv == "" || pub == "" {
+		t.Fatalf("CRLF parse failed: priv=%q pub=%q err=%v", priv, pub, err)
+	}
+}

@@ -1,12 +1,14 @@
 package api
 
 import (
+	"context"
 	"crypto/rand"
 	"encoding/base64"
 	"fmt"
 	"net/http"
 	"os/exec"
 	"strings"
+	"time"
 
 	"github.com/google/uuid"
 )
@@ -52,10 +54,12 @@ func (h *Handler) GenerateReality(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusServiceUnavailable, "no amnezia-box binary detected")
 		return
 	}
-	out, err := exec.Command(bin, "generate", "reality-keypair").CombinedOutput()
+	ctx, cancel := context.WithTimeout(r.Context(), 5*time.Second)
+	defer cancel()
+	out, err := exec.CommandContext(ctx, bin, "generate", "reality-keypair").CombinedOutput()
 	if err != nil {
 		writeError(w, http.StatusServiceUnavailable,
-			fmt.Sprintf("binary does not support reality-keypair generation: %v", err))
+			fmt.Sprintf("failed to run reality-keypair generation: %v", err))
 		return
 	}
 	priv, pub, err := parseRealityKeypair(string(out))
