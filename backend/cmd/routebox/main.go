@@ -313,6 +313,14 @@ func main() {
 			r.Get("/{tag}", apiHandler.GetInbound)
 			r.Put("/{tag}", apiHandler.UpdateInbound)
 			r.Delete("/{tag}", apiHandler.DeleteInbound)
+			r.Get("/{tag}/users/{userKey}/link", apiHandler.GetUserLink)
+		})
+
+		// Credential generators (server inbounds)
+		r.Route("/generate", func(r chi.Router) {
+			r.Post("/reality", apiHandler.GenerateReality)
+			r.Post("/uuid", apiHandler.GenerateUUID)
+			r.Post("/password", apiHandler.GeneratePassword)
 		})
 
 		// Route Rule Sets CRUD
