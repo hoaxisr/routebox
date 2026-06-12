@@ -32,7 +32,6 @@ import { PRESETS as VOLUME_PRESETS, bytesFromUnit, splitBytes, type VolumeUnit }
 
 	let viewMode = $state<ViewMode>('live');
 	let historical = $state<TrafficBucket[] | null>(null);
-	let historyLoading = $state(false);
 
 	let resetOpen = $state(false);
 	let resetBusy = $state(false);
@@ -80,6 +79,7 @@ import { PRESETS as VOLUME_PRESETS, bytesFromUnit, splitBytes, type VolumeUnit }
 		// Track filter reads so historical views re-fetch when they change
 		void filters.source; void filters.domain; void filters.chain;
 		if (mode === 'live') {
+			historySeq++; // invalidate any in-flight historical fetch
 			historical = null;
 			return;
 		}
@@ -265,7 +265,6 @@ import { PRESETS as VOLUME_PRESETS, bytesFromUnit, splitBytes, type VolumeUnit }
 
 	async function loadHistorical(mode: TrafficRange) {
 		const id = ++historySeq;
-		historyLoading = true;
 		try {
 			const data = await api.getTrafficHistory(mode, {
 				source: filters.source ?? undefined,
@@ -277,8 +276,6 @@ import { PRESETS as VOLUME_PRESETS, bytesFromUnit, splitBytes, type VolumeUnit }
 		} catch {
 			if (id !== historySeq) return;
 			historical = [];
-		} finally {
-			if (id === historySeq) historyLoading = false;
 		}
 	}
 

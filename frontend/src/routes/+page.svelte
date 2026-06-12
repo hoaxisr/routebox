@@ -1,5 +1,5 @@
 <script lang="ts">
-	import { onMount, onDestroy } from 'svelte';
+	import { onMount } from 'svelte';
 	import { t } from 'svelte-i18n';
 	import { api, createTrafficStream, createConnectionsStream } from '$lib/api/client';
 	import { notifications, formatBytes, formatSpeed, clientNames } from '$lib/stores';
