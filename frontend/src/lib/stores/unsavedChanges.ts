@@ -10,8 +10,6 @@ interface UnsavedChangesState {
 	hasChanges: boolean;
 	changeCount: number;
 	changes: UnsavedChange[];      // Local descriptions (for UI hints)
-	showConfirmDialog: boolean;
-	pendingNavigation: string | null;
 	loading: boolean;
 }
 
@@ -20,8 +18,6 @@ function createUnsavedChangesStore() {
 		hasChanges: false,
 		changeCount: 0,
 		changes: [],
-		showConfirmDialog: false,
-		pendingNavigation: null,
 		loading: false
 	});
 
@@ -60,8 +56,6 @@ function createUnsavedChangesStore() {
 				hasChanges: false,
 				changeCount: 0,
 				changes: [],
-				showConfirmDialog: false,
-				pendingNavigation: null,
 				loading: false
 			});
 		},
@@ -69,44 +63,6 @@ function createUnsavedChangesStore() {
 		// Set loading state
 		setLoading: (loading: boolean) => {
 			update(state => ({ ...state, loading }));
-		},
-
-		// Show confirmation dialog when trying to navigate away
-		requestNavigation: (path: string) => {
-			const state = get({ subscribe });
-			if (state.hasChanges) {
-				update(s => ({
-					...s,
-					showConfirmDialog: true,
-					pendingNavigation: path
-				}));
-				return false; // Block navigation
-			}
-			return true; // Allow navigation
-		},
-
-		// Cancel pending navigation
-		cancelNavigation: () => {
-			update(state => ({
-				...state,
-				showConfirmDialog: false,
-				pendingNavigation: null
-			}));
-		},
-
-		// Confirm discard and navigate
-		confirmDiscard: () => {
-			const state = get({ subscribe });
-			const path = state.pendingNavigation;
-			set({
-				hasChanges: false,
-				changeCount: 0,
-				changes: [],
-				showConfirmDialog: false,
-				pendingNavigation: null,
-				loading: false
-			});
-			return path;
 		},
 
 		// Get current state

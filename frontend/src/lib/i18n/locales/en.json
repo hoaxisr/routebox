@@ -158,6 +158,7 @@
     "pending": "You have pending changes",
     "linesChanged": "{count} line changed",
     "linesChangedPlural": "{count} lines changed",
+    "changesCount": "{count} changes",
     "showDetails": "Show details",
     "hideDetails": "Hide details",
     "applyChanges": "Apply Changes",
@@ -545,7 +546,6 @@
     "ruleSetAdded": "Added {tag}",
     "templates": "Templates",
     "useTemplate": "Use Template",
-    "wizard": "Wizard",
     "inspector": {
       "title": "Route Inspector",
       "routeTest": "Route Test",

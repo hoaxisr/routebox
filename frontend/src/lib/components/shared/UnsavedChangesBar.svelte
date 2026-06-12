@@ -59,7 +59,11 @@
 					<div class="flex-1 min-w-0">
 						<span class="font-medium">{$t('changes.pending')}</span>
 						{#if displayCount > 0}
-							<span class="ml-2 text-sm opacity-80">({$t('changes.linesChanged', { values: { count: displayCount } })})</span>
+							<span class="ml-2 text-sm opacity-80">
+								({changesState.changeCount > 0
+									? $t('changes.linesChanged', { values: { count: displayCount } })
+									: $t('changes.changesCount', { values: { count: displayCount } })})
+							</span>
 						{/if}
 						<a
 							href="/config?tab=diff"
