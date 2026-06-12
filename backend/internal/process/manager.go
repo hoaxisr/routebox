@@ -45,6 +45,9 @@ type Manager struct {
 	serviceName     string // detected systemd service name (set once in NewManager)
 	forceStandalone bool   // force standalone mode even if systemd service exists
 	startedPID      int    // PID of process started by us in standalone mode (0 if none)
+
+	cachedVersion     string // memoized `<binary> version` output
+	cachedVersionPath string // binary path the cached version belongs to
 }
 
 func (m *Manager) getBinaryPath() string {
@@ -57,6 +60,12 @@ func (m *Manager) setBinaryPath(p string) {
 	m.stateMu.Lock()
 	defer m.stateMu.Unlock()
 	m.binaryPath = p
+	// Invalidate the version cache unless it already belongs to this path
+	// (GetVersion caches via runVersion(path) right before calling us).
+	if m.cachedVersionPath != p {
+		m.cachedVersion = ""
+		m.cachedVersionPath = ""
+	}
 }
 
 func (m *Manager) getStartedPID() int {
@@ -69,6 +78,17 @@ func (m *Manager) setStartedPID(pid int) {
 	m.stateMu.Lock()
 	defer m.stateMu.Unlock()
 	m.startedPID = pid
+}
+
+// clearStartedPIDIf zeroes startedPID only if it still equals old (CAS).
+// Prevents a stale-detection in findPID from wiping a PID that a concurrent
+// Start has just recorded.
+func (m *Manager) clearStartedPIDIf(old int) {
+	m.stateMu.Lock()
+	defer m.stateMu.Unlock()
+	if m.startedPID == old {
+		m.startedPID = 0
+	}
 }
 
 // NewManager creates a new process manager
@@ -355,8 +375,17 @@ func (m *Manager) GetVersion() (string, error) {
 	return "", fmt.Errorf("no working sing-box/amnezia-box binary found")
 }
 
-// runVersion executes binary with "version" command and returns the output
+// runVersion executes binary with "version" command and returns the output.
+// Results are memoized per binary path; setBinaryPath invalidates the cache.
 func (m *Manager) runVersion(binaryPath string) (string, error) {
+	m.stateMu.RLock()
+	if m.cachedVersionPath == binaryPath && m.cachedVersion != "" {
+		v := m.cachedVersion
+		m.stateMu.RUnlock()
+		return v, nil
+	}
+	m.stateMu.RUnlock()
+
 	cmd := exec.Command(binaryPath, "version")
 	output, err := cmd.Output()
 	if err != nil {
@@ -374,6 +403,11 @@ func (m *Manager) runVersion(binaryPath string) (string, error) {
 	if idx := strings.LastIndex(version, " "); idx > 0 {
 		version = version[idx+1:]
 	}
+
+	m.stateMu.Lock()
+	m.cachedVersion = version
+	m.cachedVersionPath = binaryPath
+	m.stateMu.Unlock()
 
 	return version, nil
 }
@@ -449,12 +483,14 @@ func (m *Manager) GetStatus() Status {
 func (m *Manager) findPID() int {
 	self := os.Getpid()
 
-	// Prefer the PID we started ourselves in standalone mode
+	// Prefer the PID we started ourselves in standalone mode. Signal(0) is a
+	// cheap liveness probe; exeMatches then guards against PID reuse.
 	if startedPID := m.getStartedPID(); startedPID != 0 && startedPID != self {
-		if m.exeMatches(startedPID) {
+		if proc, err := os.FindProcess(startedPID); err == nil &&
+			proc.Signal(syscall.Signal(0)) == nil && m.exeMatches(startedPID) {
 			return startedPID
 		}
-		m.setStartedPID(0) // stale: process exited or PID was reused
+		m.clearStartedPIDIf(startedPID) // stale: process exited or PID was reused
 	}
 
 	entries, err := os.ReadDir("/proc")
@@ -484,8 +520,15 @@ func (m *Manager) exeMatches(pid int) bool {
 	}
 	exe = strings.TrimSuffix(exe, " (deleted)")
 	if bp := m.getBinaryPath(); bp != "" {
-		if abs, err := filepath.Abs(bp); err == nil && exe == abs {
-			return true
+		if abs, err := filepath.Abs(bp); err == nil {
+			// /proc/<pid>/exe is always fully resolved; resolve symlinks on
+			// our side too so a symlinked binaryPath still exact-matches.
+			if resolved, err := filepath.EvalSymlinks(abs); err == nil {
+				abs = resolved
+			}
+			if exe == abs {
+				return true
+			}
 		}
 		if filepath.Base(exe) == filepath.Base(bp) {
 			return true
