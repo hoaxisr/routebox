@@ -57,7 +57,7 @@ func decodeSsUserinfo(userinfo string) (string, error) {
 	if b, err := base64.StdEncoding.DecodeString(normalized); err == nil {
 		return string(b), nil
 	}
-	dec, err := url.QueryUnescape(userinfo)
+	dec, err := url.PathUnescape(userinfo)
 	if err != nil {
 		return "", fmt.Errorf("decode userinfo: %w", err)
 	}
@@ -70,7 +70,7 @@ func splitName(content, fallback string) (main, name string) {
 	parts := strings.Split(content, "#")
 	if len(parts) > 1 {
 		raw := strings.Join(parts[1:], "#")
-		if dec, err := url.QueryUnescape(raw); err == nil {
+		if dec, err := url.PathUnescape(raw); err == nil {
 			return parts[0], dec
 		}
 		return parts[0], raw
@@ -148,7 +148,7 @@ func parseHysteria2(uri string) (map[string]interface{}, string, error) {
 	if atIdx == -1 {
 		return nil, "", fmt.Errorf("hysteria2: missing @")
 	}
-	password, err := url.QueryUnescape(mainPart[:atIdx])
+	password, err := url.PathUnescape(mainPart[:atIdx])
 	if err != nil {
 		password = mainPart[:atIdx]
 	}
@@ -264,9 +264,9 @@ func parseNaive(uri string) (map[string]interface{}, string, error) {
 		hostPort = authority[atIdx+1:]
 		hasCreds = true
 		if cIdx := strings.IndexByte(userinfo, ':'); cIdx == -1 {
-			username, password = queryUnescapeOr(userinfo), ""
+			username, password = pathUnescapeOr(userinfo), ""
 		} else {
-			username, password = queryUnescapeOr(userinfo[:cIdx]), queryUnescapeOr(userinfo[cIdx+1:])
+			username, password = pathUnescapeOr(userinfo[:cIdx]), pathUnescapeOr(userinfo[cIdx+1:])
 		}
 	}
 	host, port, ok := splitHostPort(hostPort)
@@ -294,8 +294,8 @@ func orElse(v, fallback string) string {
 	return v
 }
 
-func queryUnescapeOr(s string) string {
-	if dec, err := url.QueryUnescape(s); err == nil {
+func pathUnescapeOr(s string) string {
+	if dec, err := url.PathUnescape(s); err == nil {
 		return dec
 	}
 	return s

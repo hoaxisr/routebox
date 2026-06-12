@@ -167,6 +167,15 @@ func TestParseHysteria2(t *testing.T) {
 			t.Fatalf("err: %v", err)
 		}
 	})
+	t.Run("plus in password preserved", func(t *testing.T) {
+		ob, _, err := parseHysteria2("hy2://pa+ss@srv:8443#p")
+		if err != nil {
+			t.Fatalf("err: %v", err)
+		}
+		if ob["password"] != "pa+ss" {
+			t.Fatalf("password = %q, want pa+ss (decodeURIComponent leaves + intact)", ob["password"])
+		}
+	})
 }
 
 func TestParseShadowsocks(t *testing.T) {
@@ -280,6 +289,18 @@ func TestParseNaive(t *testing.T) {
 	t.Run("wrong prefix fails", func(t *testing.T) {
 		if _, _, err := parseNaive("https://example.com:443"); err == nil {
 			t.Fatal("want error")
+		}
+	})
+	t.Run("plus in username and password preserved", func(t *testing.T) {
+		ob, _, err := parseNaive("naive+https://u+1:p+2@example.com:443#x")
+		if err != nil {
+			t.Fatalf("err: %v", err)
+		}
+		if ob["username"] != "u+1" {
+			t.Fatalf("username = %q, want u+1 (decodeURIComponent leaves + intact)", ob["username"])
+		}
+		if ob["password"] != "p+2" {
+			t.Fatalf("password = %q, want p+2 (decodeURIComponent leaves + intact)", ob["password"])
 		}
 	})
 }
