@@ -1,6 +1,5 @@
 <script lang="ts">
 	import { t } from 'svelte-i18n';
-	import { goto } from '$app/navigation';
 	import { api } from '$lib/api/client';
 	import { notifications } from '$lib/stores';
 
@@ -12,7 +11,7 @@
 		busy = true;
 		try {
 			await api.login(username, password);
-			goto('/');
+			window.location.href = '/';
 		} catch {
 			notifications.error($t('auth.invalidCredentials'));
 		} finally {
@@ -27,12 +26,12 @@
 		<h1 class="text-lg font-semibold text-[var(--ctp-text)]">{$t('auth.signIn')}</h1>
 		<div>
 			<label for="u" class="block text-sm text-[var(--ctp-subtext1)] mb-1">{$t('auth.username')}</label>
-			<input id="u" type="text" bind:value={username} autocomplete="username"
+			<input id="u" type="text" bind:value={username} autocomplete="username" required
 				class="w-full px-3 py-2 bg-[var(--ctp-surface1)] border border-[var(--ctp-surface2)] rounded-lg text-[var(--ctp-text)] focus:outline-none focus:ring-2 focus:ring-[var(--ctp-primary)]" />
 		</div>
 		<div>
 			<label for="p" class="block text-sm text-[var(--ctp-subtext1)] mb-1">{$t('auth.password')}</label>
-			<input id="p" type="password" bind:value={password} autocomplete="current-password"
+			<input id="p" type="password" bind:value={password} autocomplete="current-password" required
 				class="w-full px-3 py-2 bg-[var(--ctp-surface1)] border border-[var(--ctp-surface2)] rounded-lg text-[var(--ctp-text)] focus:outline-none focus:ring-2 focus:ring-[var(--ctp-primary)]" />
 		</div>
 		<button type="submit" disabled={busy}

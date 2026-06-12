@@ -21,6 +21,12 @@
 	// Subscribe to theme for reactivity
 	let currentTheme = $derived($theme);
 
+	// Login route detection
+	let isLogin = $derived($page.url.pathname.startsWith('/login'));
+
+	// Auth state (for hiding logout when auth is disabled)
+	let authEnabled = $state(false);
+
 	// Mobile sidebar state
 	let sidebarOpen = $state(false);
 	let isMobile = $state(false);
@@ -82,6 +88,9 @@
 		api.getUpdatesStatus().then((s) => {
 			updateAvailable = s.targets.some((target) => target.update_available);
 		}).catch(() => {});
+
+		// Check whether auth is enabled (public endpoint, won't 401-loop)
+		try { authEnabled = (await api.getSession()).auth_enabled; } catch { authEnabled = false; }
 	});
 
 	onDestroy(() => {
@@ -110,6 +119,9 @@
 			</svg>
 		</div>
 	</div>
+{:else if isLogin}
+	<!-- Login page: full-screen, no chrome -->
+	{@render children()}
 {:else}
 	<!-- Normal layout with sidebar/header -->
 	<div class="min-h-screen bg-[var(--ctp-base)] text-[var(--ctp-text)]">
@@ -164,8 +176,8 @@
 							</svg>
 						{/if}
 					</button>
-					<!-- Logout (hidden on login page) -->
-					{#if !$page.url.pathname.startsWith('/login')}
+					<!-- Logout (hidden when auth is disabled) -->
+					{#if authEnabled}
 						<button
 							onclick={logout}
 							class="p-2 rounded-lg hover:bg-[var(--ctp-surface0)] transition-colors"
@@ -370,15 +382,14 @@
 			</nav>
 		</aside>
 
-		<!-- HTTP warning banner (non-localhost HTTP, hidden on login page) -->
-		{#if !$page.url.pathname.startsWith('/login') && typeof window !== 'undefined' && window.location.protocol === 'http:' && window.location.hostname !== 'localhost' && window.location.hostname !== '127.0.0.1'}
-			<div class="fixed top-14 left-0 right-0 z-40 bg-[var(--ctp-red)] text-white text-xs text-center py-1 px-2 {isMobile ? '' : 'pl-56'}">
-				{$t('auth.insecureWarning')}
-			</div>
-		{/if}
-
-		<!-- Main content -->
+		<!-- Main content (with HTTP warning banner in normal flow) -->
 		<main class="pt-14 {isMobile ? 'pl-0' : 'pl-56'}">
+			<!-- HTTP warning banner (non-localhost HTTP, in normal flow to push content down) -->
+			{#if typeof window !== 'undefined' && window.location.protocol === 'http:' && window.location.hostname !== 'localhost' && window.location.hostname !== '127.0.0.1'}
+				<div class="bg-[var(--ctp-red)] text-white text-xs text-center py-1 px-2">
+					{$t('auth.insecureWarning')}
+				</div>
+			{/if}
 			<div class="p-4 md:p-6">
 				{@render children()}
 			</div>
