@@ -156,6 +156,24 @@ import { PRESETS as VOLUME_PRESETS, bytesFromUnit, splitBytes, type VolumeUnit }
 		filters = { ...filters, [dim]: filters[dim] === value ? null : value };
 	}
 
+	// Domain navigation steps one level at a time: a specific host steps back to
+	// its apex (the subdomain list), an apex steps back to the apex list (null).
+	function domainBack() {
+		if (filters.domain === null) return;
+		const apex = apexDomain(filters.domain);
+		filters = { ...filters, domain: filters.domain === apex ? null : apex };
+	}
+
+	// Selecting a domain key drills in; re-selecting the active key steps back one
+	// level (instead of clearing to the apex list).
+	function onDomainSelect(k: string | null) {
+		if (k === null || k === filters.domain) {
+			domainBack();
+			return;
+		}
+		filters = { ...filters, domain: k };
+	}
+
 	function clearFilters() {
 		filters = { source: null, domain: null, chain: null };
 	}
@@ -525,9 +543,9 @@ import { PRESETS as VOLUME_PRESETS, bytesFromUnit, splitBytes, type VolumeUnit }
 			{#each ['source', 'domain', 'chain'] as Dimension[] as dim}
 				{#if filters[dim] !== null}
 					<button
-						onclick={() => toggleFilter(dim, filters[dim]!)}
+						onclick={() => dim === 'domain' ? domainBack() : toggleFilter(dim, filters[dim]!)}
 						class="flex items-center gap-1.5 px-2 py-0.5 text-xs rounded-full border border-[var(--ctp-primary)] bg-[color-mix(in_srgb,var(--ctp-primary)_10%,transparent)] text-[var(--ctp-primary)] hover:bg-[color-mix(in_srgb,var(--ctp-primary)_20%,transparent)]"
-						title="Remove filter"
+						title={dim === 'domain' ? 'Back one level' : 'Remove filter'}
 					>
 						<span class="text-[10px] uppercase tracking-wide opacity-70">{dim}</span>
 						<span>{filters[dim]}</span>
@@ -588,7 +606,7 @@ import { PRESETS as VOLUME_PRESETS, bytesFromUnit, splitBytes, type VolumeUnit }
 					centerNumber={buckets.length}
 					centerLabel={dim === 'source' ? $t('breakdown.clientsLabel') : dim === 'domain' ? $t('breakdown.domainsLabel') : $t('breakdown.chainsLabel')}
 					activeKey={filters[dim]}
-					onSelect={(k) => k === null ? clearOneFilter(dim) : toggleFilter(dim, k)}
+					onSelect={(k) => dim === 'domain' ? onDomainSelect(k) : (k === null ? clearOneFilter(dim) : toggleFilter(dim, k))}
 				/>
 			</div>
 		{/if}
@@ -610,7 +628,7 @@ import { PRESETS as VOLUME_PRESETS, bytesFromUnit, splitBytes, type VolumeUnit }
 				{#each visible as b (b.key)}
 					{@const active = filters[dim] === b.key}
 					<button
-						onclick={() => toggleFilter(dim, b.key)}
+						onclick={() => dim === 'domain' ? onDomainSelect(b.key) : toggleFilter(dim, b.key)}
 						class="w-full text-left px-4 py-2 hover:bg-[var(--ctp-surface1)] transition-colors relative overflow-hidden"
 						class:bg-[var(--ctp-surface1)]={active}
 					>
