@@ -231,6 +231,11 @@
 		nvPassword = config.password ?? '';
 		nvSni = config.server;
 		nvQuic = config.quic ?? false;
+		nvCaCert = '';
+		nvInsecureConcurrency = 0;
+		nvExtraHeaders = '';
+		nvQuicCC = '';
+		nvUdpOverTcp = false;
 	}
 
 	function validate(): boolean {

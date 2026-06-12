@@ -41,7 +41,7 @@
 		vless: 'vless://',
 		hysteria2: 'hy2:// or hysteria2://',
 		shadowsocks: 'ss://',
-		naive: 'naive+https://'
+		naive: 'naive+https:// or naive+quic://'
 	};
 
 	function parseImportLink() {
@@ -105,7 +105,7 @@
 			return;
 		}
 
-		importError = 'Unknown link format. Supported: vless://, hy2://, hysteria2://, ss://, naive+https://';
+		importError = 'Unknown link format. Supported: vless://, hy2://, hysteria2://, ss://, naive+https://, naive+quic://';
 	}
 
 	function handleClose() {
