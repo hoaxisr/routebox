@@ -6,6 +6,18 @@ All notable changes to RouteBox are documented here.
 
 ### New Features
 
+- **Server inbounds (VPS mode)** — vless/naive/hysteria2 server-side inbound support with full TLS configuration (ACME, Reality, or manual certificate), per-user credential management, and QR/share-link generation. See details below.
+
+**Backend:**
+- `serverlinks` package: builds vless/naive/hysteria2 client share-links from server inbounds; Reality public key is derived from the stored private key via X25519 (no extra config field required).
+- Credential generators: `POST /api/generate/reality` (via detected binary), `/api/generate/uuid`, `/api/generate/password`.
+- `GET /api/inbounds/{tag}/users/{userKey}/link` — per-user share link endpoint.
+
+**Frontend:**
+- InboundForm now supports vless/naive/hysteria2 server types with ACME/Reality/Manual TLS, user management with credential generation, and a QR share-link modal (`qrcode`).
+
+---
+
 - **Subscriptions** — manage proxy subscriptions from the UI: add a subscription by name + URL, RouteBox fetches the base64 link list (`ss://`, `vless://`, …), parses each into an outbound, and merges them into the working config as a `urltest` group named after the subscription with `«Name» · «Node»` member tags. On-demand refresh and an hourly auto-refresh ticker (`interval_hrs`) atomically replace that subscription's nodes — a transient empty/failed fetch leaves the existing group untouched. Deleting a subscription removes its group and nodes from the draft. New `CRUD /api/subscriptions` + `POST /api/subscriptions/{id}/refresh` endpoints and a TOML-backed store (`subscriptions.toml`).
 - **Updates page** — check, download and install new releases of amnezia-box and RouteBox from the UI: GitHub release checking (daily auto-check, `updates.auto_check`), sha256+ELF+smoke verification, atomic binary swap with automatic rollback, systemd-supervised RouteBox self-update. Release assets now ship sha256 checksums.
 
