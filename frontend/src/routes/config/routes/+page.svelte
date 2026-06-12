@@ -578,6 +578,7 @@
 						}}
 						onEdit={(index) => openEditRule(filteredRules[index].originalIndex)}
 						onDelete={(index) => handleDeleteRule(filteredRules[index].originalIndex)}
+						onAdd={openAddRule}
 					/>
 				</div>
 

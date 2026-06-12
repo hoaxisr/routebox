@@ -349,7 +349,7 @@
 					{#if groupedConnections.length === 0}
 						<tr>
 							<td colspan="7" class="px-4 py-8 text-center text-[var(--ctp-overlay0)]">
-								{filter ? $t('proxies.noProxiesMatchFilter') : $t('connections.noConnections')}
+								{filter ? $t('connections.noConnectionsMatchFilter') : $t('connections.noConnections')}
 							</td>
 						</tr>
 					{/if}
@@ -386,7 +386,7 @@
 					{#if chainGroupedConnections.length === 0}
 						<tr>
 							<td colspan="7" class="px-4 py-8 text-center text-[var(--ctp-overlay0)]">
-								{filter ? $t('proxies.noProxiesMatchFilter') : $t('connections.noConnections')}
+								{filter ? $t('connections.noConnectionsMatchFilter') : $t('connections.noConnections')}
 							</td>
 						</tr>
 					{/if}
@@ -397,7 +397,7 @@
 					{:else}
 						<tr>
 							<td colspan="7" class="px-4 py-8 text-center text-[var(--ctp-overlay0)]">
-								{filter ? $t('proxies.noProxiesMatchFilter') : $t('connections.noConnections')}
+								{filter ? $t('connections.noConnectionsMatchFilter') : $t('connections.noConnections')}
 							</td>
 						</tr>
 					{/each}
@@ -640,6 +640,6 @@
 
 {#snippet emptyCard()}
 	<div class="bg-[var(--ctp-surface0)] border border-[var(--ctp-surface2)] rounded-lg px-4 py-8 text-center text-[var(--ctp-overlay0)]">
-		{filter ? $t('proxies.noProxiesMatchFilter') : $t('connections.noConnections')}
+		{filter ? $t('connections.noConnectionsMatchFilter') : $t('connections.noConnections')}
 	</div>
 {/snippet}

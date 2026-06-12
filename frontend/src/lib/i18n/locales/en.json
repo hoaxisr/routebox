@@ -193,7 +193,8 @@
     "started": "amnezia-box started",
     "stopped": "amnezia-box stopped",
     "restarted": "amnezia-box restarted",
-    "configReloaded": "Configuration reloaded (SIGHUP)"
+    "configReloaded": "Configuration reloaded (SIGHUP)",
+    "confirmRestart": "Restart amnezia-box? Active connections will be dropped."
   },
   "overview": {
     "title": "Config Overview",
@@ -1094,7 +1095,8 @@
     "allConnectionsClosed": "All connections closed",
     "liveUpdates": "Live updates",
     "groupBySource": "Group by client",
-    "groupByChain": "Group by chain"
+    "groupByChain": "Group by chain",
+    "noConnectionsMatchFilter": "No connections match filter"
   },
   "breakdown": {
     "title": "Traffic Breakdown",

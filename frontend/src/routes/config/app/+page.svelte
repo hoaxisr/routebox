@@ -95,7 +95,7 @@
 </script>
 
 <svelte:head>
-	<title>App Settings - RouteBox</title>
+	<title>{$t('settings.title')} - RouteBox</title>
 </svelte:head>
 
 <div class="p-6 max-w-4xl mx-auto">

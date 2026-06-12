@@ -211,7 +211,7 @@
 				onclick={openCreate}
 				class="px-4 py-2 bg-[var(--ctp-primary)] text-white rounded-lg hover:opacity-90 transition-opacity"
 			>
-				{$t('endpoints.noEndpointsHint')}
+				+ {$t('endpoints.addEndpoint')}
 			</button>
 		</div>
 	{:else}

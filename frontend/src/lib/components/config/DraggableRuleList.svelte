@@ -1,4 +1,5 @@
 <script lang="ts">
+	import { t } from 'svelte-i18n';
 	import type { RouteRule } from '$lib/types';
 
 	interface Props {
@@ -6,9 +7,10 @@
 		onReorder: (from: number, to: number) => void;
 		onEdit: (index: number) => void;
 		onDelete: (index: number) => void;
+		onAdd?: () => void;
 	}
 
-	let { rules, onReorder, onEdit, onDelete }: Props = $props();
+	let { rules, onReorder, onEdit, onDelete, onAdd }: Props = $props();
 
 	let draggedIndex = $state<number | null>(null);
 	let dropTargetIndex = $state<number | null>(null);
@@ -311,8 +313,17 @@
 
 	{#if rules.length === 0}
 		<div class="p-8 text-center text-[var(--ctp-overlay0)] bg-[var(--ctp-surface0)] rounded-lg border border-dashed border-[var(--ctp-surface2)]">
-			<p>No routing rules configured.</p>
-			<p class="text-sm mt-1">Add rules to control how traffic is routed.</p>
+			<p>{$t('routes.noRules')}</p>
+			<p class="text-sm mt-1">{$t('routes.noRulesHint')}</p>
+			{#if onAdd}
+				<button
+					type="button"
+					onclick={onAdd}
+					class="mt-4 px-4 py-2 bg-[var(--ctp-primary)] text-white rounded-lg hover:opacity-90 transition-opacity"
+				>
+					+ {$t('routes.addRule')}
+				</button>
+			{/if}
 		</div>
 	{/if}
 </div>

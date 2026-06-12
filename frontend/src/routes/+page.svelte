@@ -77,6 +77,7 @@
 	}
 
 	async function handleRestart() {
+		if (!confirm($t('dashboard.confirmRestart'))) return;
 		actionLoading = 'restart';
 		try {
 			const result = await api.restart();

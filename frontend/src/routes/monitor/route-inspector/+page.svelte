@@ -29,7 +29,7 @@
 </script>
 
 <svelte:head>
-	<title>{$t('nav.routeInspector')} | RouteBox</title>
+	<title>{$t('nav.routeInspector')} - RouteBox</title>
 </svelte:head>
 
 <div class="space-y-6">
