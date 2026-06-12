@@ -199,3 +199,23 @@ func TestInvalidServerModeErrors(t *testing.T) {
 		t.Fatal("expected error for invalid server.mode, got nil")
 	}
 }
+
+// TestSaveCreatesParentDir verifies that Save creates all intermediate
+// directories so a fresh-VPS first run (no pre-existing config file) can
+// persist the bootstrapped auth settings without crashing.
+func TestSaveCreatesParentDir(t *testing.T) {
+	dir := t.TempDir()
+	path := filepath.Join(dir, "sub", "nested", "routebox.toml") // parent dirs don't exist
+	// NewManager with an explicit path succeeds even when the file does not yet
+	// exist (it falls back to defaults and logs a notice).
+	m, err := NewManager(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := m.Save(); err != nil {
+		t.Fatalf("Save must create parent dirs: %v", err)
+	}
+	if _, err := os.Stat(path); err != nil {
+		t.Fatalf("settings file should exist after Save: %v", err)
+	}
+}

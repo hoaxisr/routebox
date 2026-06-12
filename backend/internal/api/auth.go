@@ -3,6 +3,7 @@ package api
 import (
 	"crypto/sha256"
 	"crypto/subtle"
+	"encoding/hex"
 	"net"
 	"net/http"
 
@@ -52,7 +53,7 @@ func AuthMiddleware(settingsMgr *settings.Manager, sessions *auth.SessionStore, 
 				return
 			}
 			user, pass, ok := r.BasicAuth()
-			key := clientIP(r) + "|" + user
+			key := lockKey(r, user)
 			if !ok || (limiter != nil && !limiter.Allowed(key)) {
 				unauthorized(w)
 				return
@@ -92,3 +93,11 @@ func clientIP(r *http.Request) string {
 }
 
 func sha256Sum(s string) []byte { h := sha256.Sum256([]byte(s)); return h[:] }
+
+// lockKey builds a bounded lockout key: real client IP plus a short digest of
+// the (attacker-controlled, unbounded) username, so a flood of long/unique
+// usernames can't bloat the limiter map.
+func lockKey(r *http.Request, username string) string {
+	sum := sha256.Sum256([]byte(username))
+	return clientIP(r) + "|" + hex.EncodeToString(sum[:8])
+}

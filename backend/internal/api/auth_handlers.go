@@ -27,7 +27,7 @@ func (h *Handler) Login(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusUnauthorized, "invalid credentials")
 		return
 	}
-	key := clientIP(r) + "|" + req.Username
+	key := lockKey(r, req.Username)
 	if h.limiter != nil && !h.limiter.Allowed(key) {
 		writeError(w, http.StatusTooManyRequests, "too many attempts, try again later")
 		return

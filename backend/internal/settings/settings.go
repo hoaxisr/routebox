@@ -193,6 +193,12 @@ func NewManager(path string) (*Manager, error) {
 				}
 			}
 		}
+		// No existing file found at any candidate — default to the standard
+		// system location so Save() works on a fresh VPS (no config file yet).
+		if path == "" {
+			path = "/etc/routebox/routebox.toml"
+			m.path = path
+		}
 	}
 
 	// Load from file if exists
