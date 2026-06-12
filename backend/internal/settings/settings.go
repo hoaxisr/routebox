@@ -9,6 +9,7 @@ import (
 	"sync"
 
 	"github.com/BurntSushi/toml"
+	"routebox/backend/internal/auth"
 )
 
 // Settings represents the complete RouteBox configuration
@@ -19,6 +20,7 @@ type Settings struct {
 	Logging    LoggingSettings    `toml:"logging" json:"logging"`
 	Security   SecuritySettings   `toml:"security" json:"security"`
 	Network    NetworkSettings    `toml:"network" json:"network"`
+	Server     ServerSettings     `toml:"server" json:"server"`
 	Singbox    SingboxSettings    `toml:"singbox" json:"singbox"`
 	Advanced   AdvancedSettings   `toml:"advanced" json:"advanced"`
 	Updates    UpdatesSettings    `toml:"updates" json:"updates"`
@@ -64,7 +66,8 @@ type LoggingSettings struct {
 type SecuritySettings struct {
 	AuthEnabled           bool   `toml:"auth_enabled" json:"auth_enabled"`
 	AuthUsername          string `toml:"auth_username" json:"auth_username"`
-	AuthPassword          string `toml:"auth_password" json:"-"` // Never expose in JSON
+	AuthPassword          string `toml:"auth_password" json:"-"`      // Never expose in JSON; cleared after migration
+	AuthPasswordHash      string `toml:"auth_password_hash" json:"-"` // bcrypt hash; never expose in JSON
 	CorsOrigins           string `toml:"cors_origins" json:"cors_origins"`
 	SessionTimeoutMinutes int    `toml:"session_timeout_minutes" json:"session_timeout_minutes"`
 }
@@ -75,6 +78,13 @@ type NetworkSettings struct {
 	ReadTimeoutSec     int    `toml:"read_timeout_sec" json:"read_timeout_sec"`
 	WriteTimeoutSec    int    `toml:"write_timeout_sec" json:"write_timeout_sec"`
 	CompressionEnabled bool   `toml:"compression_enabled" json:"compression_enabled"`
+	TLSCertPath        string `toml:"tls_cert_path" json:"tls_cert_path"`
+	TLSKeyPath         string `toml:"tls_key_path" json:"tls_key_path"`
+}
+
+// ServerSettings holds panel operating-mode configuration.
+type ServerSettings struct {
+	Mode string `toml:"mode" json:"mode"` // "router" (default) | "vps"
 }
 
 // SingboxSettings configures sing-box integration
@@ -132,7 +142,7 @@ func Default() Settings {
 			AuthUsername:          "",
 			AuthPassword:          "",
 			CorsOrigins:           "*",
-			SessionTimeoutMinutes: 0,
+			SessionTimeoutMinutes: 720,
 		},
 		Network: NetworkSettings{
 			Listen:             "0.0.0.0:8080",
@@ -153,6 +163,7 @@ func Default() Settings {
 			WsPingIntervalSec: 30,
 			WsPongTimeoutSec:  10,
 		},
+		Server:  ServerSettings{Mode: "router"},
 		Updates: UpdatesSettings{AutoCheck: true},
 	}
 }
@@ -217,19 +228,29 @@ func (m *Manager) Load() error {
 	}
 
 	log.Printf("Loaded settings from %s", m.path)
+
+	// Migrate plaintext password to bcrypt hash (must run before releasing the lock).
+	if m.settings.Security.AuthPassword != "" && m.settings.Security.AuthPasswordHash == "" {
+		h, err := auth.HashPassword(m.settings.Security.AuthPassword)
+		if err != nil {
+			return fmt.Errorf("migrate password hash: %w", err)
+		}
+		m.settings.Security.AuthPasswordHash = h
+		m.settings.Security.AuthPassword = ""
+		if err := m.saveLocked(); err != nil {
+			return fmt.Errorf("persist migrated password: %w", err)
+		}
+	}
+
 	return nil
 }
 
-// Save writes current settings to file
-func (m *Manager) Save() error {
-	m.mu.RLock()
-	defer m.mu.RUnlock()
-
+// saveLocked writes current settings to disk. The caller must hold m.mu (any mode).
+func (m *Manager) saveLocked() error {
 	if m.path == "" {
 		return fmt.Errorf("no settings path configured")
 	}
 
-	// Ensure directory exists
 	dir := filepath.Dir(m.path)
 	if err := os.MkdirAll(dir, 0755); err != nil {
 		return fmt.Errorf("failed to create directory: %w", err)
@@ -248,6 +269,13 @@ func (m *Manager) Save() error {
 
 	log.Printf("Saved settings to %s", m.path)
 	return nil
+}
+
+// Save writes current settings to file
+func (m *Manager) Save() error {
+	m.mu.RLock()
+	defer m.mu.RUnlock()
+	return m.saveLocked()
 }
 
 // Get returns a copy of current settings
@@ -351,6 +379,27 @@ func (m *Manager) Update(updates map[string]interface{}) error {
 				return fmt.Errorf("setting %s: value must be a whole number", key)
 			}
 			m.settings.Security.SessionTimeoutMinutes = v
+		case "security.auth_password":
+			if v, ok := value.(string); ok && v != "" {
+				h, err := auth.HashPassword(v)
+				if err != nil {
+					return fmt.Errorf("hash password: %w", err)
+				}
+				m.settings.Security.AuthPasswordHash = h
+				m.settings.Security.AuthPassword = ""
+			}
+		case "network.tls_cert_path":
+			if v, ok := value.(string); ok {
+				m.settings.Network.TLSCertPath = v
+			}
+		case "network.tls_key_path":
+			if v, ok := value.(string); ok {
+				m.settings.Network.TLSKeyPath = v
+			}
+		case "server.mode":
+			if v, ok := value.(string); ok && (v == "router" || v == "vps") {
+				m.settings.Server.Mode = v
+			}
 
 		// Advanced runtime settings
 		case "advanced.ws_ping_interval_sec":

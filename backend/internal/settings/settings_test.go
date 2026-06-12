@@ -2,7 +2,11 @@ package settings
 
 import (
 	"encoding/json"
+	"os"
+	"path/filepath"
 	"testing"
+
+	"routebox/backend/internal/auth"
 )
 
 func TestUpdateNumericSettings(t *testing.T) {
@@ -68,5 +72,44 @@ func TestUpdatesSettings(t *testing.T) {
 	}
 	if m.Get().Updates.AutoCheck {
 		t.Error("updates.auto_check not applied")
+	}
+}
+
+func TestPasswordMigration(t *testing.T) {
+	dir := t.TempDir()
+	path := filepath.Join(dir, "routebox.toml")
+	if err := os.WriteFile(path, []byte("[security]\nauth_enabled = true\nauth_username = \"admin\"\nauth_password = \"plain123\"\n"), 0600); err != nil {
+		t.Fatal(err)
+	}
+	m, err := NewManager(path)
+	if err != nil {
+		t.Fatalf("NewManager: %v", err)
+	}
+	s := m.Get()
+	if s.Security.AuthPassword != "" {
+		t.Fatalf("plaintext password must be blanked after migration, got %q", s.Security.AuthPassword)
+	}
+	if s.Security.AuthPasswordHash == "" {
+		t.Fatal("hash must be populated by migration")
+	}
+	if !auth.VerifyPassword(s.Security.AuthPasswordHash, "plain123") {
+		t.Fatal("migrated hash must verify the original password")
+	}
+	m2, err := NewManager(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if m2.Get().Security.AuthPasswordHash == "" || m2.Get().Security.AuthPassword != "" {
+		t.Fatal("migration must persist to disk")
+	}
+}
+
+func TestDefaultsPhase1(t *testing.T) {
+	d := Default()
+	if d.Security.SessionTimeoutMinutes != 720 {
+		t.Fatalf("session timeout default should be 720, got %d", d.Security.SessionTimeoutMinutes)
+	}
+	if d.Server.Mode != "router" {
+		t.Fatalf("default mode should be router, got %q", d.Server.Mode)
 	}
 }
