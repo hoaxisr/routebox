@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"encoding/json"
 	"fmt"
+	"log"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -24,6 +25,7 @@ type Manager struct {
 	hasDraft     bool
 	mu           sync.RWMutex
 	readOnly     bool
+	checkBinary  string // binary used for `check` validation (detected sing-box/amnezia-box path)
 }
 
 // NewManager creates a new config manager and loads the config
@@ -83,6 +85,14 @@ func (m *Manager) SetPathWithoutLoad(path string) {
 	defer m.mu.Unlock()
 	m.path = path
 	m.draftPath = path + ".bak"
+}
+
+// SetCheckBinary sets the binary used for `check` validation (detected
+// sing-box/amnezia-box path from the process manager).
+func (m *Manager) SetCheckBinary(path string) {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	m.checkBinary = path
 }
 
 // Load reads config from file into activeConfig and clears any draft
@@ -510,9 +520,21 @@ func stripAnsi(s string) string {
 	return ansiEscapeRegex.ReplaceAllString(s, "")
 }
 
-// CheckConfig validates config using sing-box check command
+// CheckConfig validates config using the detected sing-box/amnezia-box binary
 func (m *Manager) CheckConfig(configPath string) (bool, []string) {
-	cmd := exec.Command("sing-box", "check", "-c", configPath)
+	m.mu.RLock()
+	binary := m.checkBinary
+	m.mu.RUnlock()
+	if binary == "" {
+		binary = "sing-box"
+	}
+
+	if _, err := exec.LookPath(binary); err != nil {
+		log.Printf("Warning: config validation skipped: binary not found: %s", binary)
+		return true, nil
+	}
+
+	cmd := exec.Command(binary, "check", "-c", configPath)
 	output, err := cmd.CombinedOutput()
 
 	if err != nil {
