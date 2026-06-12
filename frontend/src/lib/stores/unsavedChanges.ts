@@ -45,7 +45,6 @@ function createUnsavedChangesStore() {
 			update(state => ({
 				...state,
 				hasChanges: true,
-				changeCount: state.changeCount + 1,
 				changes: [...state.changes.filter(c => c.description !== description), { section, description }]
 			}));
 		},

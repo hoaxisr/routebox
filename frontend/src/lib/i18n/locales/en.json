@@ -157,7 +157,6 @@
   "changes": {
     "pending": "You have pending changes",
     "linesChanged": "{count} line changed",
-    "linesChangedPlural": "{count} lines changed",
     "changesCount": "{count} changes",
     "showDetails": "Show details",
     "hideDetails": "Hide details",
