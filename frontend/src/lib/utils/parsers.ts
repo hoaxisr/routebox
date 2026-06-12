@@ -47,6 +47,16 @@ export interface ParsedShadowsocks {
 	pluginOpts?: string;
 }
 
+export interface ParsedNaive {
+	type: 'naive';
+	name: string;
+	server: string;
+	port: number;
+	username?: string;
+	password?: string;
+	quic?: boolean;
+}
+
 export interface ParsedAWG {
 	type: 'awg';
 	name: string;
@@ -81,7 +91,7 @@ export interface ParsedAWG {
 	i5?: string;
 }
 
-export type ParsedConfig = ParsedVless | ParsedHysteria2 | ParsedShadowsocks | ParsedAWG;
+export type ParsedConfig = ParsedVless | ParsedHysteria2 | ParsedShadowsocks | ParsedNaive | ParsedAWG;
 
 export interface ParseResult {
 	success: boolean;
@@ -344,6 +354,75 @@ export function parseShadowsocks(uri: string): ParseResult {
 }
 
 /**
+ * Parse a naive+https:// or naive+quic:// URI
+ * Format: naive+https://[user:pass@]server:port[?params]#name
+ */
+export function parseNaive(uri: string): ParseResult {
+	try {
+		let content: string;
+		let quic = false;
+		if (uri.startsWith('naive+https://')) {
+			content = uri.slice(14);
+		} else if (uri.startsWith('naive+quic://')) {
+			content = uri.slice(13);
+			quic = true;
+		} else {
+			return { success: false, error: 'Invalid Naive URI: must start with naive+https:// or naive+quic://' };
+		}
+
+		// Split by # to get name
+		const [mainPart, ...nameParts] = content.split('#');
+		const name = nameParts.length > 0 ? decodeURIComponent(nameParts.join('#')) : 'NaiveProxy';
+
+		// Strip query params (none are used by sing-box)
+		const [authority] = mainPart.split('?');
+
+		// Optional userinfo
+		let username: string | undefined;
+		let password: string | undefined;
+		let hostPort = authority;
+		const atIndex = authority.lastIndexOf('@');
+		if (atIndex !== -1) {
+			const userinfo = authority.slice(0, atIndex);
+			hostPort = authority.slice(atIndex + 1);
+			const colonIdx = userinfo.indexOf(':');
+			if (colonIdx === -1) {
+				username = decodeURIComponent(userinfo);
+				password = '';
+			} else {
+				username = decodeURIComponent(userinfo.slice(0, colonIdx));
+				password = decodeURIComponent(userinfo.slice(colonIdx + 1));
+			}
+		}
+
+		// Parse host:port
+		const colonIndex = hostPort.lastIndexOf(':');
+		if (colonIndex === -1) {
+			return { success: false, error: 'Invalid Naive URI: missing port' };
+		}
+		const server = hostPort.slice(0, colonIndex);
+		const port = parseInt(hostPort.slice(colonIndex + 1), 10);
+		if (!server) {
+			return { success: false, error: 'Invalid Naive URI: missing server' };
+		}
+		if (isNaN(port) || port < 1 || port > 65535) {
+			return { success: false, error: 'Invalid Naive URI: invalid port' };
+		}
+
+		const config: ParsedNaive = { type: 'naive', name, server, port };
+		if (username !== undefined) {
+			config.username = username;
+			config.password = password;
+		}
+		if (quic) config.quic = true;
+
+		return { success: true, config };
+	} catch (err) {
+		return { success: false, error: `Failed to parse Naive URI: ${err}` };
+	}
+}
+
+/**
  * Parse an AmneziaWG/WireGuard configuration
  * INI-like format with [Interface] and [Peer] sections
  */
@@ -490,6 +569,10 @@ export function parseConfig(input: string): ParseResult {
 		return parseShadowsocks(trimmed);
 	}
 
+	if (trimmed.startsWith('naive+https://') || trimmed.startsWith('naive+quic://')) {
+		return parseNaive(trimmed);
+	}
+
 	// Try AWG config (starts with [Interface])
 	if (trimmed.includes('[Interface]') || trimmed.includes('[interface]')) {
 		return parseAWG(trimmed);
@@ -497,7 +580,7 @@ export function parseConfig(input: string): ParseResult {
 
 	return {
 		success: false,
-		error: 'Unknown configuration format. Supported: vless://, hy2://, hysteria2://, ss://, or AmneziaWG config'
+		error: 'Unknown configuration format. Supported: vless://, hy2://, hysteria2://, ss://, naive+https://, or AmneziaWG config'
 	};
 }
 
@@ -607,6 +690,24 @@ export function toSingboxConfig(parsed: ParsedConfig): { endpoint?: Endpoint; ou
 
 			if (parsed.plugin) outbound.plugin = parsed.plugin;
 			if (parsed.pluginOpts) outbound.plugin_opts = parsed.pluginOpts;
+
+			return { outbound: outbound as unknown as OutboundTyped, outboundTag: outbound.tag as string };
+		}
+
+		case 'naive': {
+			const outbound: Record<string, unknown> = {
+				type: 'naive',
+				tag: parsed.name.replace(/[^a-zA-Z0-9-_]/g, '-'),
+				server: parsed.server,
+				server_port: parsed.port,
+				tls: { enabled: true, server_name: parsed.server },
+			};
+
+			if (parsed.username) {
+				outbound.username = parsed.username;
+				outbound.password = parsed.password ?? '';
+			}
+			if (parsed.quic) outbound.quic = true;
 
 			return { outbound: outbound as unknown as OutboundTyped, outboundTag: outbound.tag as string };
 		}

@@ -14,7 +14,8 @@ import {
 	parsePortRanges,
 	extractDomain,
 	parseReservedBytes,
-	formatReservedBytes
+	formatReservedBytes,
+	parseNaive
 } from './parsers';
 
 describe('parseLines', () => {
@@ -298,5 +299,59 @@ describe('formatReservedBytes', () => {
 	it('returns empty string for empty array', () => {
 		expect(formatReservedBytes([])).toBe('');
 		expect(formatReservedBytes(null)).toBe('');
+	});
+});
+
+describe('parseNaive', () => {
+	it('parses full naive+https link', () => {
+		const r = parseNaive('naive+https://user:pass@example.com:443#My%20Proxy');
+		expect(r.success).toBe(true);
+		expect(r.config).toEqual({
+			type: 'naive',
+			name: 'My Proxy',
+			server: 'example.com',
+			port: 443,
+			username: 'user',
+			password: 'pass'
+		});
+	});
+
+	it('parses naive+quic link with quic flag', () => {
+		const r = parseNaive('naive+quic://user:pass@example.com:443#q');
+		expect(r.success).toBe(true);
+		expect(r.config).toMatchObject({ type: 'naive', quic: true });
+	});
+
+	it('parses link without credentials', () => {
+		const r = parseNaive('naive+https://example.com:8443');
+		expect(r.success).toBe(true);
+		expect(r.config).toEqual({
+			type: 'naive',
+			name: 'NaiveProxy',
+			server: 'example.com',
+			port: 8443
+		});
+	});
+
+	it('url-decodes credentials', () => {
+		const r = parseNaive('naive+https://user%40mail:p%40ss@example.com:443');
+		expect(r.success).toBe(true);
+		expect(r.config).toMatchObject({ username: 'user@mail', password: 'p@ss' });
+	});
+
+	it('ignores unknown query params', () => {
+		const r = parseNaive('naive+https://u:p@example.com:443?padding=1#x');
+		expect(r.success).toBe(true);
+		expect(r.config).toMatchObject({ server: 'example.com', port: 443 });
+	});
+
+	it('fails on missing port', () => {
+		const r = parseNaive('naive+https://user:pass@example.com');
+		expect(r.success).toBe(false);
+	});
+
+	it('fails on wrong prefix', () => {
+		const r = parseNaive('https://example.com:443');
+		expect(r.success).toBe(false);
 	});
 });
