@@ -128,7 +128,7 @@
 	}
 
 	async function handleDelete(tag: string) {
-		if (!confirm(`Delete endpoint "${tag}"?`)) return;
+		if (!confirm($t('endpoints.confirmDelete', { values: { name: tag } }))) return;
 
 		try {
 			await api.deleteEndpoint(tag);

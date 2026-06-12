@@ -102,6 +102,7 @@
 	}
 
 	async function closeAllConnections() {
+		if (!confirm($t('connections.confirmCloseAll'))) return;
 		try {
 			await api.closeAllConnections();
 			connections = [];
