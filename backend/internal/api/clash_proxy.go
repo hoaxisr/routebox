@@ -8,6 +8,8 @@ import (
 	"net/http"
 	"net/url"
 	"strings"
+	"sync"
+	"time"
 
 	"github.com/go-chi/chi/v5"
 	"github.com/gorilla/websocket"
@@ -186,10 +188,62 @@ func (h *Handler) ProxyClashWebSocket(w http.ResponseWriter, r *http.Request) {
 	}
 	defer clashConn.Close()
 
+	// Resolve keepalive intervals from settings (defaults: 30s ping, 10s pong)
+	pingInterval := 30 * time.Second
+	pongTimeout := 10 * time.Second
+	if h.settings != nil {
+		adv := h.settings.Get().Advanced
+		if adv.WsPingIntervalSec > 0 {
+			pingInterval = time.Duration(adv.WsPingIntervalSec) * time.Second
+		}
+		if adv.WsPongTimeoutSec > 0 {
+			pongTimeout = time.Duration(adv.WsPongTimeoutSec) * time.Second
+		}
+	}
+	const writeWait = 10 * time.Second
+	readWait := pingInterval + pongTimeout
+
+	// Half-dead client detection: require a pong (or any frame) within readWait.
+	// Pongs are consumed by the client->Clash reader goroutine's ReadMessage.
+	clientConn.SetReadDeadline(time.Now().Add(readWait))
+	clientConn.SetPongHandler(func(string) error {
+		clientConn.SetReadDeadline(time.Now().Add(readWait))
+		return nil
+	})
+
 	done := make(chan struct{})
+	stopPing := make(chan struct{})
 
 	// Check if this is the connections endpoint (needs GeoIP enrichment)
 	isConnections := strings.HasSuffix(path, "/connections")
+
+	// writeMu serializes writes to clientConn (data pump + ping ticker)
+	var writeMu sync.Mutex
+	writeToClient := func(msgType int, msg []byte) error {
+		writeMu.Lock()
+		defer writeMu.Unlock()
+		clientConn.SetWriteDeadline(time.Now().Add(writeWait))
+		return clientConn.WriteMessage(msgType, msg)
+	}
+
+	// Ping ticker: a client that stops reading/ponging fails the write or the
+	// read deadline, tearing down both connections instead of leaking them.
+	go func() {
+		ticker := time.NewTicker(pingInterval)
+		defer ticker.Stop()
+		for {
+			select {
+			case <-ticker.C:
+				if err := writeToClient(websocket.PingMessage, nil); err != nil {
+					clientConn.Close()
+					clashConn.Close()
+					return
+				}
+			case <-stopPing:
+				return
+			}
+		}
+	}()
 
 	// Proxy messages from Clash to client
 	go func() {
@@ -205,13 +259,16 @@ func (h *Handler) ProxyClashWebSocket(w http.ResponseWriter, r *http.Request) {
 				msg = h.enrichConnectionsMessage(msg)
 			}
 
-			if err := clientConn.WriteMessage(msgType, msg); err != nil {
+			if err := writeToClient(msgType, msg); err != nil {
 				return
 			}
 		}
 	}()
 
-	// Proxy messages from client to Clash
+	// Proxy messages from client to Clash. This ReadMessage loop also services
+	// incoming control frames (pongs), driving the pong handler above. On read
+	// deadline expiry or client error it closes clashConn, which unblocks the
+	// Clash->client pump and ends the handler.
 	go func() {
 		for {
 			msgType, msg, err := clientConn.ReadMessage()
@@ -226,6 +283,7 @@ func (h *Handler) ProxyClashWebSocket(w http.ResponseWriter, r *http.Request) {
 	}()
 
 	<-done
+	close(stopPing)
 }
 
 // enrichConnectionsMessage adds GeoIP data to connections response
