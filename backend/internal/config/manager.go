@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"io/fs"
 	"log"
 	"os"
 	"os/exec"
@@ -254,6 +255,7 @@ func (m *Manager) saveLocked(config map[string]interface{}) error {
 	// Clear draft after successful save to active
 	m.draftConfig = nil
 	m.hasDraft = false
+	m.draftGen++
 	// Remove draft file if exists
 	os.Remove(m.draftPath)
 	return nil
@@ -444,10 +446,10 @@ func (m *Manager) saveDraftToDisk() error {
 		return fmt.Errorf("failed to marshal draft config: %w", err)
 	}
 
+	m.draftGen++
 	if err := atomicWriteFile(m.draftPath, buf.Bytes(), 0644); err != nil {
 		return fmt.Errorf("failed to write draft config: %w", err)
 	}
-	m.draftGen++
 	return nil
 }
 
@@ -651,7 +653,7 @@ func (m *Manager) CheckConfig(configPath string) (bool, []string) {
 	}
 
 	if _, err := exec.LookPath(binary); err != nil {
-		if errors.Is(err, exec.ErrNotFound) || os.IsNotExist(err) {
+		if errors.Is(err, exec.ErrNotFound) || errors.Is(err, fs.ErrNotExist) {
 			log.Printf("Warning: config validation skipped: binary not found: %s", binary)
 			return true, nil
 		}

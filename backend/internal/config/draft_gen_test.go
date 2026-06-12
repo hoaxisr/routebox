@@ -70,3 +70,12 @@ func TestDiscardDraftBumpsGen(t *testing.T) {
 		t.Fatal("DiscardDraft must bump draft generation")
 	}
 }
+
+func TestCheckConfigSkipsWhenAbsoluteBinaryMissing(t *testing.T) {
+	m := newTestManager(t)
+	m.SetCheckBinaryProvider(func() string { return "/nonexistent/dir/amnezia-box" })
+	valid, errs := m.CheckConfig(m.GetPath())
+	if !valid || errs != nil {
+		t.Fatalf("expected skip (valid=true, no errors), got valid=%v errs=%v", valid, errs)
+	}
+}
