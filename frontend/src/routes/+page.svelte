@@ -379,7 +379,7 @@
 			{/if}
 
 			<!-- System metrics bar -->
-			<div class="bg-[var(--ctp-surface1)] rounded-lg px-4 py-3 flex items-center gap-4 sm:gap-5 flex-wrap mb-6">
+			<div class="bg-[var(--ctp-surface1)] rounded-lg px-4 py-3 grid grid-cols-2 gap-3 sm:flex sm:items-center sm:gap-5 sm:flex-wrap mb-6">
 				<div class="flex items-baseline gap-1.5">
 					<span class="text-[10px] uppercase tracking-wide text-[var(--ctp-overlay1)]">Managed by</span>
 					{#if status.managed_by === 'systemd'}
@@ -391,17 +391,17 @@
 						<span class="text-sm text-[var(--ctp-text)]">standalone</span>
 					{/if}
 				</div>
-				<div class="w-px h-[18px] bg-[var(--ctp-surface2)]"></div>
+				<div class="hidden sm:block w-px h-[18px] bg-[var(--ctp-surface2)]"></div>
 				<div class="flex items-baseline gap-1.5">
 					<span class="text-[10px] uppercase tracking-wide text-[var(--ctp-overlay1)]">PID</span>
 					<span class="text-sm text-[var(--ctp-text)]">{status.pid || '-'}</span>
 				</div>
-				<div class="w-px h-[18px] bg-[var(--ctp-surface2)]"></div>
+				<div class="hidden sm:block w-px h-[18px] bg-[var(--ctp-surface2)]"></div>
 				<div class="flex items-baseline gap-1.5">
 					<span class="text-[10px] uppercase tracking-wide text-[var(--ctp-overlay1)]">Uptime</span>
 					<span class="text-sm text-[var(--ctp-text)]">{status.uptime || '-'}</span>
 				</div>
-				<div class="w-px h-[18px] bg-[var(--ctp-surface2)]"></div>
+				<div class="hidden sm:block w-px h-[18px] bg-[var(--ctp-surface2)]"></div>
 				<div class="flex items-baseline gap-1.5">
 					<span class="text-[10px] uppercase tracking-wide text-[var(--ctp-overlay1)]">Connections</span>
 					<span class="text-sm text-[var(--ctp-text)]">{connectionCount}</span>
@@ -471,22 +471,22 @@
 	</div>
 
 	<!-- Quick Links -->
-	<div class="grid grid-cols-3 gap-2 sm:gap-4">
+	<div class="grid grid-cols-1 sm:grid-cols-3 gap-2 sm:gap-4">
 		<a
 			href="/config/endpoints"
 			class="bg-[var(--ctp-surface0)] rounded-xl p-3 sm:p-4 hover:bg-[var(--ctp-surface1)] transition-colors group"
 		>
-			<div class="flex flex-col items-center gap-1.5 sm:flex-row sm:items-center sm:gap-3">
+			<div class="flex items-center gap-3">
 				<div class="p-2 sm:p-2.5 bg-[var(--ctp-surface2)] rounded-lg flex-shrink-0">
 					<svg class="w-5 h-5 text-[var(--ctp-subtext1)]" fill="none" stroke="currentColor" viewBox="0 0 24 24">
 						<path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 12h14M5 12a2 2 0 01-2-2V6a2 2 0 012-2h14a2 2 0 012 2v4a2 2 0 01-2 2M5 12a2 2 0 00-2 2v4a2 2 0 002 2h14a2 2 0 002-2v-4a2 2 0 00-2-2m-2-4h.01M17 16h.01" />
 					</svg>
 				</div>
-				<div class="min-w-0 text-center sm:text-left">
+				<div class="min-w-0 text-left">
 					<h3 class="text-sm sm:text-base font-semibold text-[var(--ctp-text)] group-hover:text-[var(--ctp-primary)] transition-colors">
 						Endpoints
 					</h3>
-					<p class="text-xs text-[var(--ctp-overlay1)] truncate hidden sm:block">AWG, WireGuard</p>
+					<p class="text-xs text-[var(--ctp-overlay1)] truncate">AWG, WireGuard</p>
 				</div>
 			</div>
 		</a>
@@ -495,17 +495,17 @@
 			href="/config/outbounds"
 			class="bg-[var(--ctp-surface0)] rounded-xl p-3 sm:p-4 hover:bg-[var(--ctp-surface1)] transition-colors group"
 		>
-			<div class="flex flex-col items-center gap-1.5 sm:flex-row sm:items-center sm:gap-3">
+			<div class="flex items-center gap-3">
 				<div class="p-2 sm:p-2.5 bg-[var(--ctp-surface2)] rounded-lg flex-shrink-0">
 					<svg class="w-5 h-5 text-[var(--ctp-subtext1)]" fill="none" stroke="currentColor" viewBox="0 0 24 24">
 						<path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M8 7h12m0 0l-4-4m4 4l-4 4m0 6H4m0 0l4 4m-4-4l4-4" />
 					</svg>
 				</div>
-				<div class="min-w-0 text-center sm:text-left">
+				<div class="min-w-0 text-left">
 					<h3 class="text-sm sm:text-base font-semibold text-[var(--ctp-text)] group-hover:text-[var(--ctp-primary)] transition-colors">
 						Outbounds
 					</h3>
-					<p class="text-xs text-[var(--ctp-overlay1)] truncate hidden sm:block">VLESS, Hysteria2</p>
+					<p class="text-xs text-[var(--ctp-overlay1)] truncate">VLESS, Hysteria2</p>
 				</div>
 			</div>
 		</a>
@@ -514,17 +514,17 @@
 			href="/config/routes"
 			class="bg-[var(--ctp-surface0)] rounded-xl p-3 sm:p-4 hover:bg-[var(--ctp-surface1)] transition-colors group"
 		>
-			<div class="flex flex-col items-center gap-1.5 sm:flex-row sm:items-center sm:gap-3">
+			<div class="flex items-center gap-3">
 				<div class="p-2 sm:p-2.5 bg-[var(--ctp-surface2)] rounded-lg flex-shrink-0">
 					<svg class="w-5 h-5 text-[var(--ctp-subtext1)]" fill="none" stroke="currentColor" viewBox="0 0 24 24">
 						<path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 20l-5.447-2.724A1 1 0 013 16.382V5.618a1 1 0 011.447-.894L9 7m0 13l6-3m-6 3V7m6 10l4.553 2.276A1 1 0 0021 18.382V7.618a1 1 0 00-.553-.894L15 4m0 13V4m0 0L9 7" />
 					</svg>
 				</div>
-				<div class="min-w-0 text-center sm:text-left">
+				<div class="min-w-0 text-left">
 					<h3 class="text-sm sm:text-base font-semibold text-[var(--ctp-text)] group-hover:text-[var(--ctp-primary)] transition-colors">
 						Routes
 					</h3>
-					<p class="text-xs text-[var(--ctp-overlay1)] truncate hidden sm:block">Rules & rule sets</p>
+					<p class="text-xs text-[var(--ctp-overlay1)] truncate">Rules & rule sets</p>
 				</div>
 			</div>
 		</a>
