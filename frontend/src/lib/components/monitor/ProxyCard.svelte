@@ -75,8 +75,8 @@
 </script>
 
 <div class="bg-[var(--ctp-surface0)] rounded-lg p-4 border border-[var(--ctp-surface2)]">
-	<div class="flex items-center justify-between mb-2">
-		<div class="flex items-center gap-3">
+	<div class="flex flex-wrap items-center justify-between gap-y-2 mb-2">
+		<div class="flex items-center gap-3 min-w-0">
 			<div class="icon-badge" style="background-color: {getStatusBg(effectiveDelay)}">
 				<svg class="w-5 h-5" fill="none" stroke={getStatusStroke(effectiveDelay)} viewBox="0 0 24 24">
 					{#if isGroup}
@@ -87,7 +87,7 @@
 				</svg>
 			</div>
 			<div>
-				<h3 class="font-medium text-[var(--ctp-text)]">{proxy.name}</h3>
+				<h3 class="font-medium text-[var(--ctp-text)] truncate">{proxy.name}</h3>
 				<span class="text-xs px-2 py-0.5 rounded bg-[var(--ctp-surface2)] text-[var(--ctp-subtext1)]">
 					{proxy.type}
 				</span>
