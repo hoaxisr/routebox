@@ -81,3 +81,76 @@ func TestBuildShareLinkVlessPlainTLS(t *testing.T) {
 		t.Fatalf("plain TLS link should not carry reality params")
 	}
 }
+
+func TestBuildShareLinkErrors(t *testing.T) {
+	base := map[string]interface{}{"type": "vless", "listen_port": float64(443)}
+	user := map[string]interface{}{"uuid": "u"}
+	cases := []struct {
+		name    string
+		inbound map[string]interface{}
+		user    map[string]interface{}
+		host    string
+	}{
+		{"empty host", base, user, ""},
+		{"no port", map[string]interface{}{"type": "vless"}, user, "h"},
+		{"no uuid", base, map[string]interface{}{}, "h"},
+		{"bad type", map[string]interface{}{"type": "tun", "listen_port": float64(1)}, user, "h"},
+	}
+	for _, c := range cases {
+		if _, err := BuildShareLink(c.inbound, c.user, c.host); err == nil {
+			t.Errorf("%s: expected error, got nil", c.name)
+		}
+	}
+}
+
+func TestBuildShareLinkDisabledReality(t *testing.T) {
+	inbound := map[string]interface{}{
+		"type": "vless", "listen_port": float64(443),
+		"tls": map[string]interface{}{
+			"enabled":     true,
+			"server_name": "vpn.example.com",
+			"reality": map[string]interface{}{
+				"enabled":     false,
+				"private_key": fixturePriv,
+				"short_id":    "0123abcd",
+			},
+		},
+	}
+	user := map[string]interface{}{"name": "test", "uuid": "11111111-2222-3333-4444-555555555555"}
+
+	link, err := BuildShareLink(inbound, user, "vpn.example.com")
+	if err != nil {
+		t.Fatalf("BuildShareLink: %v", err)
+	}
+	if strings.Contains(link, "security=reality") {
+		t.Fatalf("disabled reality must not emit security=reality: %s", link)
+	}
+	ob := parseBack(t, link)
+	tls := ob["tls"].(map[string]interface{})
+	if _, hasReality := tls["reality"]; hasReality {
+		t.Fatalf("disabled reality link should not carry reality params after round-trip")
+	}
+}
+
+func TestBuildShareLinkIPv6Host(t *testing.T) {
+	inbound := map[string]interface{}{
+		"type": "vless", "listen_port": float64(443),
+	}
+	user := map[string]interface{}{"name": "ipv6user", "uuid": "11111111-2222-3333-4444-555555555555"}
+	host := "2001:db8::1"
+
+	link, err := BuildShareLink(inbound, user, host)
+	if err != nil {
+		t.Fatalf("BuildShareLink: %v", err)
+	}
+	if !strings.Contains(link, "[2001:db8::1]:443") {
+		t.Fatalf("IPv6 host not bracketed in link: %s", link)
+	}
+	ob := parseBack(t, link)
+	if ob["server"] != host {
+		t.Fatalf("server mismatch after round-trip: got %v want %v", ob["server"], host)
+	}
+	if ob["server_port"] != 443 {
+		t.Fatalf("server_port mismatch after round-trip: got %v", ob["server_port"])
+	}
+}

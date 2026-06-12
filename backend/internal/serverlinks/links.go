@@ -2,7 +2,9 @@ package serverlinks
 
 import (
 	"fmt"
+	"net"
 	"net/url"
+	"strconv"
 	"strings"
 )
 
@@ -43,7 +45,7 @@ func buildVless(inbound, user map[string]interface{}, host string, port int) (st
 
 	tls := mapOf(inbound["tls"])
 	sni := sniOf(tls, host)
-	if reality := mapOf(tls["reality"]); reality != nil {
+	if reality := mapOf(tls["reality"]); isEnabled(reality) {
 		priv, _ := reality["private_key"].(string)
 		pub, err := RealityPublicFromPrivate(priv)
 		if err != nil {
@@ -62,11 +64,20 @@ func buildVless(inbound, user map[string]interface{}, host string, port int) (st
 		q.Set("fp", defaultFingerprint)
 	}
 
-	return fmt.Sprintf("vless://%s@%s:%d?%s#%s",
-		uuid, host, port, q.Encode(), url.PathEscape(nameOf(user, "VLESS"))), nil
+	suffix := ""
+	if enc := q.Encode(); enc != "" {
+		suffix = "?" + enc
+	}
+	return fmt.Sprintf("vless://%s@%s%s#%s",
+		uuid, hostPort(host, port), suffix, url.PathEscape(nameOf(user, "VLESS"))), nil
 }
 
 // --- shared helpers ---
+
+// hostPort joins a host and port, bracketing IPv6 literals per RFC 3986.
+func hostPort(host string, port int) string {
+	return net.JoinHostPort(host, strconv.Itoa(port))
+}
 
 func portOf(m map[string]interface{}) int {
 	switch v := m["listen_port"].(type) {
