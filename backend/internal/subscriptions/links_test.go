@@ -1,7 +1,9 @@
 package subscriptions
 
 import (
+	"encoding/base64"
 	"reflect"
+	"strings"
 	"testing"
 )
 
@@ -301,6 +303,96 @@ func TestParseNaive(t *testing.T) {
 		}
 		if ob["password"] != "p+2" {
 			t.Fatalf("password = %q, want p+2 (decodeURIComponent leaves + intact)", ob["password"])
+		}
+	})
+}
+
+func TestDecodeSubscription(t *testing.T) {
+	t.Run("plaintext list passthrough", func(t *testing.T) {
+		body := []byte("ss://YWVzLTI1Ni1nY206dGVzdDEyMzQ=@example.com:8388#A\nvless://uuid@srv:443?security=tls#B")
+		if lines := decodeSubscription(body); len(lines) != 2 {
+			t.Fatalf("len = %d, want 2: %#v", len(lines), lines)
+		}
+	})
+	t.Run("base64 std encoded body", func(t *testing.T) {
+		plain := "ss://YWVzLTI1Ni1nY206dGVzdDEyMzQ=@example.com:8388#A\nvless://uuid@srv:443#B\nhy2://pass@srv:8443#C"
+		body := []byte(base64.StdEncoding.EncodeToString([]byte(plain)))
+		if lines := decodeSubscription(body); len(lines) != 3 {
+			t.Fatalf("len = %d, want 3: %#v", len(lines), lines)
+		}
+	})
+	t.Run("base64 unpadded body", func(t *testing.T) {
+		plain := "vless://uuid@srv:443#B"
+		body := []byte(base64.RawStdEncoding.EncodeToString([]byte(plain)))
+		lines := decodeSubscription(body)
+		if len(lines) != 1 || lines[0] != plain {
+			t.Fatalf("got %#v", lines)
+		}
+	})
+	t.Run("crlf and blank lines trimmed", func(t *testing.T) {
+		body := []byte("  ss://YWVzLTI1Ni1nY206dGVzdDEyMzQ=@h:1#A  \r\n\r\nvless://uuid@srv:443#B\n")
+		lines := decodeSubscription(body)
+		if len(lines) != 2 {
+			t.Fatalf("len = %d, want 2: %#v", len(lines), lines)
+		}
+		if strings.HasSuffix(lines[0], " ") || strings.HasPrefix(lines[0], " ") {
+			t.Fatalf("not trimmed: %q", lines[0])
+		}
+	})
+	t.Run("garbage body yields no link lines", func(t *testing.T) {
+		for _, l := range decodeSubscription([]byte("!!!not base64!!! no scheme here")) {
+			if strings.Contains(l, "://") {
+				t.Fatalf("unexpected link line: %q", l)
+			}
+		}
+	})
+	t.Run("empty body", func(t *testing.T) {
+		if lines := decodeSubscription(nil); len(lines) != 0 {
+			t.Fatalf("got %#v", lines)
+		}
+	})
+}
+
+func TestParseLinks(t *testing.T) {
+	t.Run("base64 multi-link subscription", func(t *testing.T) {
+		plain := strings.Join([]string{
+			"ss://YWVzLTI1Ni1nY206dGVzdDEyMzQ=@example.com:8388#A",
+			"vless://uuid@srv:443?security=tls#B",
+			"hy2://pass@srv:8443#C",
+			"naive+https://u:p@example.com:443#D",
+		}, "\n")
+		nodes, skipped := ParseLinks(decodeSubscription([]byte(base64.StdEncoding.EncodeToString([]byte(plain)))))
+		if len(nodes) != 4 || skipped != 0 {
+			t.Fatalf("nodes=%d skipped=%d", len(nodes), skipped)
+		}
+		if nodes[0].Outbound["type"] != "shadowsocks" || nodes[0].Name != "A" {
+			t.Fatalf("node0 = %#v %q", nodes[0].Outbound, nodes[0].Name)
+		}
+		if nodes[1].Outbound["type"] != "vless" || nodes[2].Outbound["type"] != "hysteria2" || nodes[3].Outbound["type"] != "naive" {
+			t.Fatalf("types wrong")
+		}
+	})
+	t.Run("plaintext list", func(t *testing.T) {
+		nodes, skipped := ParseLinks(decodeSubscription([]byte("vless://uuid@srv:443#B\nhysteria2://pass@srv:8443#C")))
+		if len(nodes) != 2 || skipped != 0 {
+			t.Fatalf("nodes=%d skipped=%d", len(nodes), skipped)
+		}
+	})
+	t.Run("one broken line is skipped", func(t *testing.T) {
+		nodes, skipped := ParseLinks([]string{"vless://uuid@srv:443#ok", "vless://broken-no-at:443#bad", "ss://YWVzLTI1Ni1nY206dGVzdDEyMzQ=@h:8388#ok2"})
+		if len(nodes) != 2 || skipped != 1 {
+			t.Fatalf("nodes=%d skipped=%d", len(nodes), skipped)
+		}
+	})
+	t.Run("unknown scheme skipped", func(t *testing.T) {
+		nodes, skipped := ParseLinks([]string{"trojan://x@srv:443#t", "garbage"})
+		if len(nodes) != 0 || skipped != 2 {
+			t.Fatalf("nodes=%d skipped=%d", len(nodes), skipped)
+		}
+	})
+	t.Run("empty input", func(t *testing.T) {
+		if nodes, skipped := ParseLinks(nil); len(nodes) != 0 || skipped != 0 {
+			t.Fatalf("nodes=%d skipped=%d", len(nodes), skipped)
 		}
 	})
 }

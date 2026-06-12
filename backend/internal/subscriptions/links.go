@@ -300,3 +300,69 @@ func pathUnescapeOr(s string) string {
 	}
 	return s
 }
+
+// decodeSubscription normalizes a subscription body into trimmed non-empty link
+// lines. If the raw body already contains "://" it is a plain link list;
+// otherwise base64 decode is attempted (std/url, padded/unpadded) and used only
+// if the decoded text contains "://".
+func decodeSubscription(body []byte) []string {
+	text := string(body)
+	if !strings.Contains(text, "://") {
+		trimmed := strings.TrimSpace(text)
+		for _, dec := range tryBase64Variants(trimmed) {
+			if strings.Contains(dec, "://") {
+				text = dec
+				break
+			}
+		}
+	}
+	raw := strings.Split(strings.ReplaceAll(text, "\r\n", "\n"), "\n")
+	lines := make([]string, 0, len(raw))
+	for _, l := range raw {
+		if l = strings.TrimSpace(l); l != "" {
+			lines = append(lines, l)
+		}
+	}
+	return lines
+}
+
+func tryBase64Variants(s string) []string {
+	var out []string
+	for _, enc := range []*base64.Encoding{base64.StdEncoding, base64.RawStdEncoding, base64.URLEncoding, base64.RawURLEncoding} {
+		if b, err := enc.DecodeString(s); err == nil {
+			out = append(out, string(b))
+		}
+	}
+	return out
+}
+
+// ParseLinks dispatches each line to the matching protocol parser; unknown
+// schemes or parse failures increment skipped.
+func ParseLinks(lines []string) (outbounds []ParsedNode, skipped int) {
+	for _, line := range lines {
+		var (
+			ob   map[string]interface{}
+			name string
+			err  error
+		)
+		switch {
+		case strings.HasPrefix(line, "vless://"):
+			ob, name, err = parseVless(line)
+		case strings.HasPrefix(line, "hy2://"), strings.HasPrefix(line, "hysteria2://"):
+			ob, name, err = parseHysteria2(line)
+		case strings.HasPrefix(line, "ss://"):
+			ob, name, err = parseShadowsocks(line)
+		case strings.HasPrefix(line, "naive+https://"), strings.HasPrefix(line, "naive+quic://"):
+			ob, name, err = parseNaive(line)
+		default:
+			skipped++
+			continue
+		}
+		if err != nil || ob == nil {
+			skipped++
+			continue
+		}
+		outbounds = append(outbounds, ParsedNode{Outbound: ob, Name: name})
+	}
+	return outbounds, skipped
+}
