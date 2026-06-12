@@ -292,8 +292,8 @@
 			const hasUser = nvUsername.trim().length > 0;
 			const hasPass = nvPassword.length > 0;
 			if (hasUser !== hasPass) {
-				errors['username'] = 'Username and password must be set together';
-				errors['password'] = 'Username and password must be set together';
+				errors['username'] = $t('validation.credentialsPaired');
+				errors['password'] = $t('validation.credentialsPaired');
 			}
 		}
 

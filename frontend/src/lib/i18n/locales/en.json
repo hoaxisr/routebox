@@ -357,7 +357,7 @@
     "shadowtlsDesc": "ShadowTLS handshake proxy",
     "anytls": "AnyTLS",
     "anytlsDesc": "AnyTLS multiplexed proxy",
-    "naive": "Naive",
+    "naive": "NaiveProxy",
     "naiveDesc": "NaiveProxy (Chromium stack)",
     "username": "Username",
     "caCertificate": "CA Certificate (PEM)",
@@ -390,12 +390,16 @@
     "minIdleSession": "Min Idle Sessions",
     "importFromSs": "Import from ss:// link",
     "serviceOutbounds": "Groups",
-    "realOutbounds": "Proxies",
+    "realOutbounds": "Servers",
     "members": "Members",
     "usedByRules": "Used by route rules",
     "rule": "rule",
     "rules": "rules",
-    "memberOf": "Member of"
+    "memberOf": "Member of",
+    "importSuccess": "{protocol} configuration imported",
+    "importEmptyLink": "Please paste a link",
+    "importParseFailed": "Failed to parse {protocol} link",
+    "importUnknownFormat": "Unknown link format. Supported: vless://, hy2://, hysteria2://, ss://, naive+https://, naive+quic://"
   },
   "ruleSets": {
     "title": "Rule Sets",
@@ -991,7 +995,13 @@
     "configExported": "Configuration exported",
     "configImported": "Configuration imported",
     "invalidConfig": "Invalid configuration file",
-    "savedAsDraft": "Config saved as draft — apply to activate"
+    "savedAsDraft": "Config saved as draft — apply to activate",
+    "downloadStarted": "Config download started",
+    "jsonFileRequired": "Please select a JSON file",
+    "configValidated": "Config validated successfully",
+    "validationErrorCount": "Config has {count} validation error(s)",
+    "parseFailed": "Failed to parse config: {error}",
+    "applyFailed": "Failed to apply config: {error}"
   },
   "jsonEditor": {
     "title": "JSON Editor",
@@ -1296,7 +1306,8 @@
     "passwordRequired": "Password is required",
     "methodRequired": "Encryption method is required",
     "outboundsRequired": "Select at least one outbound",
-    "positiveIntRequired": "{field} must be a positive integer"
+    "positiveIntRequired": "{field} must be a positive integer",
+    "credentialsPaired": "Username and password must be set together"
   },
   "import": {
     "pasteLink": "Paste a VLESS, Hysteria2, or Shadowsocks link",

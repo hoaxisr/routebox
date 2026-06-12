@@ -69,7 +69,7 @@
 			setLocale(settings.ui.language);
 			// Sync speed unit store
 			speedUnit.set(settings.ui.speed_unit);
-			notifications.success($t('common.success'));
+			notifications.success($t('settings.settingsSaved'));
 		} catch (err) {
 			notifications.error(`Failed to save settings: ${err}`);
 		} finally {
@@ -81,7 +81,7 @@
 		try {
 			await api.reloadSettings();
 			await loadSettings();
-			notifications.success('Settings reloaded from file');
+			notifications.success($t('settings.settingsReloaded'));
 		} catch (err) {
 			notifications.error(`Failed to reload: ${err}`);
 		}

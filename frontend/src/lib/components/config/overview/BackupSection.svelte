@@ -12,7 +12,7 @@
 
 	function handleExport() {
 		api.exportConfig();
-		notifications.success('Config download started');
+		notifications.success($t('backup.downloadStarted'));
 	}
 
 	function handleFileDrop(event: DragEvent) {
@@ -30,7 +30,7 @@
 
 	async function processFile(file: File) {
 		if (!file.name.endsWith('.json')) {
-			notifications.error('Please select a JSON file');
+			notifications.error($t('backup.jsonFileRequired'));
 			return;
 		}
 		importing = true;
@@ -41,12 +41,12 @@
 			importedConfig = result.config;
 			validationResult = { valid: result.valid, errors: result.errors };
 			if (result.valid) {
-				notifications.success('Config validated successfully');
+				notifications.success($t('backup.configValidated'));
 			} else {
-				notifications.warning(`Config has ${result.errors.length} validation error(s)`);
+				notifications.warning($t('backup.validationErrorCount', { values: { count: result.errors.length } }));
 			}
 		} catch (err) {
-			notifications.error(`Failed to parse config: ${err}`);
+			notifications.error($t('backup.parseFailed', { values: { error: String(err) } }));
 			importedConfig = null;
 			validationResult = null;
 		} finally {
@@ -65,7 +65,7 @@
 			importedConfig = null;
 			validationResult = null;
 		} catch (err) {
-			notifications.error(`Failed to apply config: ${err}`);
+			notifications.error($t('backup.applyFailed', { values: { error: String(err) } }));
 		} finally {
 			applying = false;
 		}

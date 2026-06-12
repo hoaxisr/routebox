@@ -27,7 +27,7 @@
 		vless: 'VLESS',
 		hysteria2: 'Hysteria2',
 		shadowsocks: 'Shadowsocks',
-		naive: 'Naive'
+		naive: 'NaiveProxy'
 	};
 
 	const placeholders = {
@@ -49,7 +49,7 @@
 		const text = importText.trim();
 
 		if (!text) {
-			importError = 'Please paste a link';
+			importError = $t('outbounds.importEmptyLink');
 			return;
 		}
 
@@ -57,11 +57,11 @@
 		if (text.startsWith('vless://')) {
 			const result = parseVless(text);
 			if (!result.success || !result.config) {
-				importError = result.error || 'Failed to parse VLESS link';
+				importError = result.error || $t('outbounds.importParseFailed', { values: { protocol: protocolNames.vless } });
 				return;
 			}
 			onImport(result.config as ParsedVless);
-			notifications.success('VLESS configuration imported');
+			notifications.success($t('outbounds.importSuccess', { values: { protocol: protocolNames.vless } }));
 			onClose();
 			return;
 		}
@@ -70,11 +70,11 @@
 		if (text.startsWith('hy2://') || text.startsWith('hysteria2://')) {
 			const result = parseHysteria2(text);
 			if (!result.success || !result.config) {
-				importError = result.error || 'Failed to parse Hysteria2 link';
+				importError = result.error || $t('outbounds.importParseFailed', { values: { protocol: protocolNames.hysteria2 } });
 				return;
 			}
 			onImport(result.config as ParsedHysteria2);
-			notifications.success('Hysteria2 configuration imported');
+			notifications.success($t('outbounds.importSuccess', { values: { protocol: protocolNames.hysteria2 } }));
 			onClose();
 			return;
 		}
@@ -83,29 +83,29 @@
 		if (text.startsWith('ss://')) {
 			const result = parseShadowsocks(text);
 			if (!result.success || !result.config) {
-				importError = result.error || 'Failed to parse Shadowsocks link';
+				importError = result.error || $t('outbounds.importParseFailed', { values: { protocol: protocolNames.shadowsocks } });
 				return;
 			}
 			onImport(result.config as ParsedShadowsocks);
-			notifications.success('Shadowsocks configuration imported');
+			notifications.success($t('outbounds.importSuccess', { values: { protocol: protocolNames.shadowsocks } }));
 			onClose();
 			return;
 		}
 
-		// Try Naive
+		// Try NaiveProxy
 		if (text.startsWith('naive+https://') || text.startsWith('naive+quic://')) {
 			const result = parseNaive(text);
 			if (!result.success || !result.config) {
-				importError = result.error || 'Failed to parse Naive link';
+				importError = result.error || $t('outbounds.importParseFailed', { values: { protocol: protocolNames.naive } });
 				return;
 			}
 			onImport(result.config as ParsedNaive);
-			notifications.success('Naive configuration imported');
+			notifications.success($t('outbounds.importSuccess', { values: { protocol: protocolNames.naive } }));
 			onClose();
 			return;
 		}
 
-		importError = 'Unknown link format. Supported: vless://, hy2://, hysteria2://, ss://, naive+https://, naive+quic://';
+		importError = $t('outbounds.importUnknownFormat');
 	}
 
 	function handleClose() {

@@ -166,7 +166,7 @@
 		}
 
 		if (peers.length === 0) {
-			errors['peers'] = 'At least one peer is required';
+			errors['peers'] = $t('validation.peersRequired');
 		}
 		peers.forEach((peer, i) => {
 			const addrResult = validateRequired(peer.address, 'Server address');
