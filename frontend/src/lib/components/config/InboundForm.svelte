@@ -2,6 +2,11 @@
 	import { t } from 'svelte-i18n';
 	import type { Inbound } from '$lib/types';
 	import { notifications } from '$lib/stores';
+	import ServerVlessInbound from './inbound/ServerVlessInbound.svelte';
+	import ServerNaiveInbound from './inbound/ServerNaiveInbound.svelte';
+	import ServerHysteria2Inbound from './inbound/ServerHysteria2Inbound.svelte';
+	import ShareLinkModal from './inbound/ShareLinkModal.svelte';
+	import { buildServerInbound, parseServerInbound, type ServerFormState, type ServerInboundType } from '$lib/utils/serverInbound';
 
 	interface Props {
 		inbound?: Inbound;
@@ -40,12 +45,61 @@
 
 	let errors = $state<Record<string, string>>({});
 
-	const inboundTypes = ['tun', 'mixed', 'socks', 'http'] as const;
+	const inboundTypes = ['tun', 'mixed', 'socks', 'http', 'vless', 'naive', 'hysteria2'] as const;
+	const serverTypes = ['vless', 'naive', 'hysteria2'] as const;
+	function isServerType(t: string): t is ServerInboundType {
+		return (serverTypes as readonly string[]).includes(t);
+	}
 
 	const stackOptions = ['system', 'gvisor', 'mixed'] as const;
 
+	let serverState = $state<ServerFormState>(
+		inbound && isServerType(inbound.type)
+			? parseServerInbound(inbound)
+			: {
+					type: 'vless', tag: '', listen: '::', listenPort: 443, tlsMode: 'reality',
+					tls: {
+						server_name: '', acme: { domain: '', email: '' },
+						reality: { enabled: true, private_key: '', short_id: '' },
+						certificate_path: '', key_path: ''
+					},
+					handshakeServer: '', handshakePort: 443,
+					users: [], upMbps: 0, downMbps: 0, obfsType: '', obfsPassword: ''
+				}
+	);
+
+	const editingExisting = !!inbound?.tag;
+	let shareUserIndex = $state<number | null>(null);
+	function openShare(index: number) {
+		shareUserIndex = index;
+	}
+
+	// Switching protocol clears users, since credential fields differ per protocol
+	// (a vless user has uuid/flow, naive has username/password) and mixing them
+	// produces an invalid sing-box config.
+	function selectType(newType: (typeof inboundTypes)[number]) {
+		if (newType !== type && isServerType(newType)) {
+			serverState.users = [];
+		}
+		type = newType;
+	}
+
 	function validate(): boolean {
 		errors = {};
+
+		if (isServerType(type)) {
+			if (!tag.trim()) errors['tag'] = $t('errors.requiredField');
+			if (serverState.listenPort < 1 || serverState.listenPort > 65535) {
+				errors['port'] = $t('form.minValue', { values: { value: 1 } });
+			}
+			if (serverState.users.length === 0) errors['users'] = $t('inbounds.server.needUser');
+			const keys = Object.keys(errors);
+			if (keys.length > 0) {
+				notifications.error(errors[keys[0]]);
+				return false;
+			}
+			return true;
+		}
 
 		if (!tag.trim()) {
 			errors['tag'] = $t('errors.requiredField');
@@ -78,6 +132,10 @@
 
 	function handleSubmit() {
 		if (!validate()) return;
+		if (isServerType(type)) {
+			onSave(buildServerInbound({ ...serverState, type: type as ServerInboundType, tag: tag.trim() }));
+			return;
+		}
 
 		const ib: Inbound = {
 			type,
@@ -125,7 +183,7 @@
 			{#each inboundTypes as inboundType}
 				<button
 					type="button"
-					onclick={() => type = inboundType}
+					onclick={() => selectType(inboundType)}
 					class="type-btn {type === inboundType ? 'selected' : ''}"
 				>
 					<div class="type-label">{$t(`inbounds.types.${inboundType}`)}</div>
@@ -221,7 +279,7 @@
 	{/if}
 
 	<!-- Proxy inbound options (mixed, socks, http) -->
-	{#if type !== 'tun'}
+	{#if type !== 'tun' && !isServerType(type)}
 		<div class="space-y-4">
 			<div class="grid grid-cols-3 gap-4">
 				<div class="col-span-2">
@@ -267,6 +325,18 @@
 				{$t(`inbounds.typeHints.${type}`)}
 			</div>
 		</div>
+	{/if}
+
+	{#if type === 'vless'}
+		<ServerVlessInbound bind:state={serverState} onShare={openShare} canShare={editingExisting} />
+	{:else if type === 'naive'}
+		<ServerNaiveInbound bind:state={serverState} onShare={openShare} canShare={editingExisting} />
+	{:else if type === 'hysteria2'}
+		<ServerHysteria2Inbound bind:state={serverState} onShare={openShare} canShare={editingExisting} />
+	{/if}
+
+	{#if shareUserIndex !== null && inbound?.tag}
+		<ShareLinkModal tag={inbound.tag} userIndex={shareUserIndex} onClose={() => (shareUserIndex = null)} />
 	{/if}
 
 	<!-- Actions -->
