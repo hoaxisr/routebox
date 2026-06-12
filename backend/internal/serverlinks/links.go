@@ -5,7 +5,6 @@ import (
 	"net"
 	"net/url"
 	"strconv"
-	"strings"
 )
 
 // defaultFingerprint is the uTLS fingerprint advertised to clients in TLS/Reality
@@ -28,6 +27,10 @@ func BuildShareLink(inbound, user map[string]interface{}, host string) (string, 
 	switch typ {
 	case "vless":
 		return buildVless(inbound, user, host, port)
+	case "naive":
+		return buildNaive(inbound, user, host, port)
+	case "hysteria2":
+		return buildHysteria2(inbound, user, host, port)
 	default:
 		return "", fmt.Errorf("unsupported inbound type for share link: %q", typ)
 	}
@@ -126,4 +129,32 @@ func nameOf(user map[string]interface{}, fallback string) string {
 	return fallback
 }
 
-var _ = strings.TrimSpace // keep strings import for later tasks
+func buildNaive(inbound, user map[string]interface{}, host string, port int) (string, error) {
+	username, _ := user["username"].(string)
+	password, _ := user["password"].(string)
+	if username == "" {
+		return "", fmt.Errorf("naive user has no username")
+	}
+	userinfo := url.PathEscape(username) + ":" + url.PathEscape(password)
+	return fmt.Sprintf("naive+https://%s@%s#%s",
+		userinfo, hostPort(host, port), url.PathEscape(nameOf(user, "NaiveProxy"))), nil
+}
+
+func buildHysteria2(inbound, user map[string]interface{}, host string, port int) (string, error) {
+	password, _ := user["password"].(string)
+	if password == "" {
+		return "", fmt.Errorf("hysteria2 user has no password")
+	}
+	q := url.Values{}
+	q.Set("sni", sniOf(mapOf(inbound["tls"]), host))
+	if obfs := mapOf(inbound["obfs"]); obfs != nil {
+		if t, _ := obfs["type"].(string); t != "" {
+			q.Set("obfs", t)
+			if p, _ := obfs["password"].(string); p != "" {
+				q.Set("obfs-password", p)
+			}
+		}
+	}
+	return fmt.Sprintf("hy2://%s@%s?%s#%s",
+		url.PathEscape(password), hostPort(host, port), q.Encode(), url.PathEscape(nameOf(user, "Hysteria2"))), nil
+}
