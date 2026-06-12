@@ -4,6 +4,7 @@ import (
 	"crypto/subtle"
 	"encoding/json"
 	"net/http"
+	"strings"
 	"time"
 )
 
@@ -14,19 +15,24 @@ type loginRequest struct {
 
 // Login verifies credentials and sets a session cookie.
 func (h *Handler) Login(w http.ResponseWriter, r *http.Request) {
+	r.Body = http.MaxBytesReader(w, r.Body, 4096)
 	var req loginRequest
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
 		writeError(w, http.StatusBadRequest, "invalid JSON")
 		return
 	}
 	sec := h.settings.Get().Security
+	if sec.AuthPasswordHash == "" || sec.AuthUsername == "" {
+		writeError(w, http.StatusUnauthorized, "invalid credentials")
+		return
+	}
 	key := clientIP(r) + "|" + req.Username
 	if h.limiter != nil && !h.limiter.Allowed(key) {
 		writeError(w, http.StatusTooManyRequests, "too many attempts, try again later")
 		return
 	}
 	userOK := subtle.ConstantTimeCompare(sha256Sum(req.Username), sha256Sum(sec.AuthUsername)) == 1
-	passOK := sec.AuthPasswordHash != "" && h.verifier != nil && h.verifier.Verify(sec.AuthPasswordHash, req.Password)
+	passOK := sec.AuthPasswordHash != "" && verifyPassword(h.verifier, sec.AuthPasswordHash, req.Password)
 	if !userOK || !passOK {
 		if h.limiter != nil {
 			h.limiter.Fail(key)
@@ -53,7 +59,6 @@ func (h *Handler) Login(w http.ResponseWriter, r *http.Request) {
 		HttpOnly: true,
 		SameSite: http.SameSiteStrictMode,
 		Secure:   isSecure(r),
-		MaxAge:   int(ttl.Seconds()),
 	})
 	writeSuccess(w, map[string]string{"username": sec.AuthUsername})
 }
@@ -77,14 +82,24 @@ func (h *Handler) Session(w http.ResponseWriter, r *http.Request) {
 			authed = true
 		}
 	}
-	writeSuccess(w, map[string]interface{}{
+	resp := map[string]interface{}{
 		"authenticated": authed,
 		"auth_enabled":  sec.AuthEnabled,
-		"username":      sec.AuthUsername,
-	})
+	}
+	if authed {
+		resp["username"] = sec.AuthUsername
+	}
+	writeSuccess(w, resp)
 }
 
 // isSecure reports whether the request arrived over TLS (direct or via a proxy).
 func isSecure(r *http.Request) bool {
-	return r.TLS != nil || r.Header.Get("X-Forwarded-Proto") == "https"
+	if r.TLS != nil {
+		return true
+	}
+	proto := r.Header.Get("X-Forwarded-Proto")
+	if i := strings.IndexByte(proto, ','); i >= 0 {
+		proto = proto[:i]
+	}
+	return strings.TrimSpace(proto) == "https"
 }

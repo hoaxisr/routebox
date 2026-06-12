@@ -56,8 +56,10 @@ func TestAuthMiddleware(t *testing.T) {
 		if rec.Code != http.StatusUnauthorized {
 			t.Fatalf("no creds: want 401, got %d", rec.Code)
 		}
-		if rec.Header().Get("WWW-Authenticate") == "" {
-			t.Fatal("missing WWW-Authenticate header")
+		// WWW-Authenticate is intentionally omitted (Fix I2) to prevent browsers
+		// from caching Basic credentials and showing the native password popup.
+		if rec.Header().Get("WWW-Authenticate") != "" {
+			t.Fatal("WWW-Authenticate header must not be sent (Fix I2)")
 		}
 	})
 

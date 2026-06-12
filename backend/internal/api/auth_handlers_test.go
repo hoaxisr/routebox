@@ -1,6 +1,7 @@
 package api
 
 import (
+	"encoding/json"
 	"net/http"
 	"net/http/cookiejar"
 	"net/http/httptest"
@@ -94,9 +95,64 @@ func TestSessionEndpoint(t *testing.T) {
 	h := newAuthHandler(t)
 	srv := httptest.NewServer(authRouter(h))
 	defer srv.Close()
-	// Public session endpoint: unauthenticated -> authenticated:false, auth_enabled:true
+	// Unauthenticated call: authenticated=false, auth_enabled=true, no username key.
 	resp, _ := srv.Client().Get(srv.URL + "/api/auth/session")
 	if resp.StatusCode != http.StatusOK {
 		t.Fatalf("session endpoint should be 200, got %d", resp.StatusCode)
+	}
+	var envelope struct {
+		Data map[string]interface{} `json:"data"`
+	}
+	if err := json.NewDecoder(resp.Body).Decode(&envelope); err != nil {
+		t.Fatalf("failed to decode session response: %v", err)
+	}
+	body := envelope.Data
+	if authed, _ := body["authenticated"].(bool); authed {
+		t.Fatalf("unauthenticated session should have authenticated=false")
+	}
+	if enabled, _ := body["auth_enabled"].(bool); !enabled {
+		t.Fatalf("auth_enabled should be true")
+	}
+	if _, hasUsername := body["username"]; hasUsername {
+		t.Fatalf("unauthenticated session must not expose username")
+	}
+}
+
+func TestEmptyUsernameDenied(t *testing.T) {
+	t.Helper()
+	dir := t.TempDir()
+	m, err := settings.NewManager(dir + "/routebox.toml")
+	if err != nil {
+		t.Fatal(err)
+	}
+	// Enable auth and set a password, but do NOT set auth_username (stays "").
+	if err := m.Update(map[string]interface{}{"security.auth_enabled": true}); err != nil {
+		t.Fatal(err)
+	}
+	if err := m.Update(map[string]interface{}{"security.auth_password": "pw"}); err != nil {
+		t.Fatal(err)
+	}
+	h := NewHandler(nil, nil, "", nil, m, nil, nil)
+	h.SetAuth(auth.NewSessionStore(), auth.NewLimiter(), auth.NewCachedVerifier())
+
+	srv := httptest.NewServer(authRouter(h))
+	defer srv.Close()
+
+	// Login with empty username should be 401.
+	loginResp, _ := srv.Client().Post(
+		srv.URL+"/api/auth/login",
+		"application/json",
+		strings.NewReader(`{"username":"","password":"pw"}`),
+	)
+	if loginResp.StatusCode != http.StatusUnauthorized {
+		t.Fatalf("empty-username login should be 401, got %d", loginResp.StatusCode)
+	}
+
+	// Protected route with empty Basic creds should also be 401.
+	req, _ := http.NewRequest("GET", srv.URL+"/api/secret", nil)
+	req.SetBasicAuth("", "pw")
+	secResp, _ := srv.Client().Do(req)
+	if secResp.StatusCode != http.StatusUnauthorized {
+		t.Fatalf("empty Basic username should be 401, got %d", secResp.StatusCode)
 	}
 }

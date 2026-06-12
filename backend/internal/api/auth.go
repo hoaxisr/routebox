@@ -3,9 +3,8 @@ package api
 import (
 	"crypto/sha256"
 	"crypto/subtle"
-	"log"
+	"net"
 	"net/http"
-	"strings"
 
 	"routebox/backend/internal/auth"
 	"routebox/backend/internal/settings"
@@ -13,6 +12,21 @@ import (
 
 // SessionCookieName is the cookie holding the panel session token.
 const SessionCookieName = "routebox_session"
+
+// bcryptGate bounds concurrent password verifications. Each bcrypt compare is
+// deliberately expensive; without a cap, a brute-force flood (or rotating
+// usernames that mint fresh lockout keys) could exhaust CPU on router-class
+// hardware. Cache hits pass through near-instantly; only misses run bcrypt.
+var bcryptGate = make(chan struct{}, 4)
+
+func verifyPassword(v *auth.CachedVerifier, hash, pass string) bool {
+	if v == nil {
+		return false
+	}
+	bcryptGate <- struct{}{}
+	defer func() { <-bcryptGate }()
+	return v.Verify(hash, pass)
+}
 
 // AuthMiddleware enforces auth when enabled. It accepts a valid session cookie
 // OR HTTP Basic credentials (bcrypt-verified, lockout-limited). Settings are
@@ -33,8 +47,7 @@ func AuthMiddleware(settingsMgr *settings.Manager, sessions *auth.SessionStore, 
 				next.ServeHTTP(w, r)
 				return
 			}
-			if sec.AuthPasswordHash == "" {
-				log.Printf("Warning: auth_enabled with no password hash — denying all requests")
+			if sec.AuthPasswordHash == "" || sec.AuthUsername == "" {
 				unauthorized(w)
 				return
 			}
@@ -45,7 +58,7 @@ func AuthMiddleware(settingsMgr *settings.Manager, sessions *auth.SessionStore, 
 				return
 			}
 			userOK := subtle.ConstantTimeCompare(sha256Sum(user), sha256Sum(sec.AuthUsername)) == 1
-			passOK := verifier != nil && verifier.Verify(sec.AuthPasswordHash, pass)
+			passOK := verifyPassword(verifier, sec.AuthPasswordHash, pass)
 			if !userOK || !passOK {
 				if limiter != nil {
 					limiter.Fail(key)
@@ -62,21 +75,18 @@ func AuthMiddleware(settingsMgr *settings.Manager, sessions *auth.SessionStore, 
 }
 
 func unauthorized(w http.ResponseWriter) {
-	w.Header().Set("WWW-Authenticate", `Basic realm="RouteBox", charset="UTF-8"`)
 	http.Error(w, "Unauthorized", http.StatusUnauthorized)
 }
 
-// clientIP extracts a best-effort client IP for lockout keying.
+// clientIP returns the TCP peer IP for lockout keying. X-Forwarded-For is NOT
+// trusted: it is attacker-controlled on a direct connection and would let a
+// flood evade per-IP lockout. Behind a reverse proxy this collapses to the
+// proxy IP, which (combined with the username in the key, and a valid session
+// bypassing the limiter) is an acceptable, fail-closed trade-off.
 func clientIP(r *http.Request) string {
-	if xff := r.Header.Get("X-Forwarded-For"); xff != "" {
-		if i := strings.IndexByte(xff, ','); i >= 0 {
-			return strings.TrimSpace(xff[:i])
-		}
-		return strings.TrimSpace(xff)
-	}
-	host := r.RemoteAddr
-	if i := strings.LastIndexByte(host, ':'); i >= 0 {
-		return host[:i]
+	host, _, err := net.SplitHostPort(r.RemoteAddr)
+	if err != nil {
+		return r.RemoteAddr
 	}
 	return host
 }
