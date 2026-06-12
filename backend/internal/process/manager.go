@@ -14,16 +14,16 @@ import (
 
 // Status represents the amnezia-box process status
 type Status struct {
-	Running       bool          `json:"running"`
-	PID           int           `json:"pid,omitempty"`
-	Uptime        string        `json:"uptime,omitempty"`
-	ManagedBy     string        `json:"managed_by,omitempty"`      // "systemd", "standalone", or ""
-	ServiceName   string        `json:"service_name,omitempty"`    // systemd service name if applicable
-	ConfigPath    string        `json:"config_path,omitempty"`     // detected config path
-	SupportsHUP   bool          `json:"supports_hup"`              // whether SIGHUP reload is supported
-	Version       string        `json:"version,omitempty"`         // binary version string
-	BinaryPath    string        `json:"binary_path,omitempty"`     // path to binary
-	SystemChecks  *SystemChecks `json:"system_checks,omitempty"`   // system requirements check
+	Running      bool          `json:"running"`
+	PID          int           `json:"pid,omitempty"`
+	Uptime       string        `json:"uptime,omitempty"`
+	ManagedBy    string        `json:"managed_by,omitempty"`    // "systemd", "standalone", or ""
+	ServiceName  string        `json:"service_name,omitempty"`  // systemd service name if applicable
+	ConfigPath   string        `json:"config_path,omitempty"`   // detected config path
+	SupportsHUP  bool          `json:"supports_hup"`            // whether SIGHUP reload is supported
+	Version      string        `json:"version,omitempty"`       // binary version string
+	BinaryPath   string        `json:"binary_path,omitempty"`   // path to binary
+	SystemChecks *SystemChecks `json:"system_checks,omitempty"` // system requirements check
 }
 
 // SystemChecks contains system requirement validation results

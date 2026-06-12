@@ -260,12 +260,12 @@ func validateOutbound(ob map[string]interface{}, index int) []string {
 			validMethods := map[string]bool{
 				"2022-blake3-aes-128-gcm":       true,
 				"2022-blake3-aes-256-gcm":       true,
-				"2022-blake3-chacha20-poly1305":  true,
+				"2022-blake3-chacha20-poly1305": true,
 				"aes-128-gcm":                   true,
 				"aes-192-gcm":                   true,
 				"aes-256-gcm":                   true,
-				"chacha20-ietf-poly1305":         true,
-				"xchacha20-ietf-poly1305":        true,
+				"chacha20-ietf-poly1305":        true,
+				"xchacha20-ietf-poly1305":       true,
 				"none":                          true,
 			}
 			if !validMethods[method] {
