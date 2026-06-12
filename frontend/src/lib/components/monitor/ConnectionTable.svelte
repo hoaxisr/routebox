@@ -235,7 +235,7 @@
 
 <div class="space-y-4">
 	<!-- Filter + Group toggle -->
-	<div class="flex items-center gap-3">
+	<div class="flex flex-col sm:flex-row sm:items-center gap-3">
 		<div class="relative flex-1">
 			<input
 				type="text"
@@ -247,22 +247,24 @@
 				<path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" />
 			</svg>
 		</div>
-		<label class="flex items-center gap-2 cursor-pointer flex-shrink-0 text-sm text-[var(--ctp-subtext1)]">
-			<input type="checkbox" checked={groupBySource}
-				onchange={(e) => toggleGroupBySource(e.currentTarget.checked)}
-				class="w-4 h-4 rounded border-[var(--ctp-surface2)] text-[var(--ctp-primary)] focus:ring-[var(--ctp-primary)]" />
-			{$t('connections.groupBySource')}
-		</label>
-		<label class="flex items-center gap-2 cursor-pointer flex-shrink-0 text-sm text-[var(--ctp-subtext1)]">
-			<input type="checkbox" checked={groupByChain}
-				onchange={(e) => toggleGroupByChain(e.currentTarget.checked)}
-				class="w-4 h-4 rounded border-[var(--ctp-surface2)] text-[var(--ctp-primary)] focus:ring-[var(--ctp-primary)]" />
-			{$t('connections.groupByChain')}
-		</label>
+		<div class="flex items-center gap-4 sm:gap-3 sm:contents">
+			<label class="flex items-center gap-2 cursor-pointer flex-shrink-0 text-sm text-[var(--ctp-subtext1)]">
+				<input type="checkbox" checked={groupBySource}
+					onchange={(e) => toggleGroupBySource(e.currentTarget.checked)}
+					class="w-4 h-4 rounded border-[var(--ctp-surface2)] text-[var(--ctp-primary)] focus:ring-[var(--ctp-primary)]" />
+				{$t('connections.groupBySource')}
+			</label>
+			<label class="flex items-center gap-2 cursor-pointer flex-shrink-0 text-sm text-[var(--ctp-subtext1)]">
+				<input type="checkbox" checked={groupByChain}
+					onchange={(e) => toggleGroupByChain(e.currentTarget.checked)}
+					class="w-4 h-4 rounded border-[var(--ctp-surface2)] text-[var(--ctp-primary)] focus:ring-[var(--ctp-primary)]" />
+				{$t('connections.groupByChain')}
+			</label>
+		</div>
 	</div>
 
 	<!-- Table -->
-	<div class="bg-[var(--ctp-surface0)] rounded-lg border border-[var(--ctp-surface2)] overflow-hidden">
+	<div class="hidden md:block bg-[var(--ctp-surface0)] rounded-lg border border-[var(--ctp-surface2)] overflow-hidden">
 		<div class="overflow-x-auto">
 		<table class="w-full min-w-[700px] table-fixed">
 			<colgroup>
@@ -405,6 +407,39 @@
 		</div>
 	</div>
 
+	<!-- Mobile card list -->
+	<div class="md:hidden space-y-2">
+		{#if groupBySource}
+			{#each groupedConnections as group}
+				{@render groupHeaderCard(group.sourceIP, $clientNames.get(group.sourceIP), group.connections.length, group.totalUpload, group.totalDownload)}
+				{#if expandedGroups.has(group.sourceIP)}
+					{#each group.connections as conn (conn.id)}
+						{@render connectionCard(conn)}
+					{/each}
+				{/if}
+			{:else}
+				{@render emptyCard()}
+			{/each}
+		{:else if groupByChain}
+			{#each chainGroupedConnections as group}
+				{@render groupHeaderCard(group.chain, undefined, group.connections.length, group.totalUpload, group.totalDownload)}
+				{#if expandedGroups.has(group.chain)}
+					{#each group.connections as conn (conn.id)}
+						{@render connectionCard(conn)}
+					{/each}
+				{/if}
+			{:else}
+				{@render emptyCard()}
+			{/each}
+		{:else}
+			{#each filteredConnections as conn (conn.id)}
+				{@render connectionCard(conn)}
+			{:else}
+				{@render emptyCard()}
+			{/each}
+		{/if}
+	</div>
+
 	{#if hasGeoIPData}
 		<div class="mt-3 text-xs text-[var(--ctp-overlay0)] text-right">
 			{$t('settings.geoip')}: <a href="https://iplocate.io" target="_blank" rel="noopener noreferrer" class="text-[var(--ctp-primary)] hover:underline">IPLocate.io</a>
@@ -537,4 +572,74 @@
 			</td>
 		</tr>
 	{/if}
+{/snippet}
+
+{#snippet groupHeaderCard(key: string, name: string | undefined, count: number, up: number, down: number)}
+	<button
+		onclick={() => toggleGroup(key)}
+		class="w-full flex items-center gap-2 bg-[var(--ctp-mantle)] border border-[var(--ctp-surface2)] rounded-lg px-3 py-2.5 text-left"
+	>
+		<svg class="w-4 h-4 flex-shrink-0 transition-transform text-[var(--ctp-overlay1)] {expandedGroups.has(key) ? 'rotate-90' : ''}" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+			<path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 5l7 7-7 7" />
+		</svg>
+		<span class="font-medium text-sm text-[var(--ctp-text)] truncate">
+			{#if name}{name}{:else}<span class="font-mono">{key}</span>{/if}
+		</span>
+		<span class="text-xs text-[var(--ctp-overlay0)] flex-shrink-0">({count})</span>
+		<span class="ml-auto font-mono text-xs text-[var(--ctp-subtext1)] tabular-nums whitespace-nowrap flex-shrink-0">
+			↑ {formatBytes(up)} ↓ {formatBytes(down)}
+		</span>
+	</button>
+{/snippet}
+
+{#snippet connectionCard(conn: ClashConnection)}
+	<div class="bg-[var(--ctp-surface0)] border border-[var(--ctp-surface2)] rounded-lg p-3">
+		<div class="flex items-start justify-between gap-2">
+			<button onclick={() => toggleExpand(conn.id)} class="text-left min-w-0 flex-1">
+				<div class="flex items-center gap-1.5">
+					{#if conn.geoip?.country_code}
+						<span class="text-base" title={getGeoTooltip(conn)}>{countryCodeToFlag(conn.geoip.country_code)}</span>
+					{/if}
+					<span class="font-medium text-[var(--ctp-text)] truncate" title={getHost(conn)}>{getHost(conn)}</span>
+					<span class="text-xs text-[var(--ctp-overlay0)] flex-shrink-0">:{conn.metadata.destinationPort}</span>
+				</div>
+			</button>
+			<button
+				onclick={() => onClose(conn.id)}
+				class="p-2 -m-1 flex-shrink-0 text-[var(--ctp-overlay0)] hover:text-[var(--ctp-red)] transition-colors"
+				title={$t('connections.closeConnection')}
+			>
+				<svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+					<path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12" />
+				</svg>
+			</button>
+		</div>
+		<div class="flex flex-wrap items-center gap-x-3 gap-y-1.5 mt-2 text-xs text-[var(--ctp-overlay1)]">
+			<span class="px-2 py-0.5 rounded bg-[var(--ctp-surface2)] text-[var(--ctp-subtext1)]">{conn.metadata.network.toUpperCase()}</span>
+			{#each conn.chains as chain}
+				<span class="selection-chip">{chain}</span>
+			{/each}
+			<span class="font-mono tabular-nums">↑ {formatBytes(conn.upload)}</span>
+			<span class="font-mono tabular-nums">↓ {formatBytes(conn.download)}</span>
+			<span>{timeAgo(conn.start)}</span>
+		</div>
+		{#if expandedIds.has(conn.id)}
+			<div class="mt-2 pt-2 border-t border-[var(--ctp-surface2)] text-xs space-y-1 text-[var(--ctp-subtext1)]">
+				<div>
+					<span class="text-[var(--ctp-overlay0)]">{$t('connections.sourceIP')}:</span>
+					<span class="font-mono">{conn.metadata.sourceIP}:{conn.metadata.sourcePort}</span>
+				</div>
+				<div>
+					<span class="text-[var(--ctp-overlay0)]">{$t('connections.rule')}:</span>
+					{conn.rule}{#if conn.rulePayload} <span class="text-[var(--ctp-overlay1)]">({conn.rulePayload})</span>{/if}
+				</div>
+			</div>
+		{/if}
+	</div>
+{/snippet}
+
+{#snippet emptyCard()}
+	<div class="bg-[var(--ctp-surface0)] border border-[var(--ctp-surface2)] rounded-lg px-4 py-8 text-center text-[var(--ctp-overlay0)]">
+		{filter ? $t('proxies.noProxiesMatchFilter') : $t('connections.noConnections')}
+	</div>
 {/snippet}
