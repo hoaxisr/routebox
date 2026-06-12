@@ -49,7 +49,7 @@
 		tabindex="-1"
 	>
 		<div
-			class="bg-[var(--ctp-base)] rounded-t-2xl sm:rounded-xl shadow-xl w-full {sizeClasses[size]} mx-0 sm:mx-4 max-h-[92vh] sm:max-h-[90vh] flex flex-col modal-content"
+			class="bg-[var(--ctp-base)] rounded-t-2xl sm:rounded-xl shadow-xl w-full {sizeClasses[size]} mx-0 sm:mx-4 max-h-[92vh] sm:max-h-[90vh] flex flex-col modal-content pb-[env(safe-area-inset-bottom)] sm:pb-0"
 		>
 			<!-- Mobile sheet grabber -->
 			<div class="sm:hidden pt-2 flex justify-center">

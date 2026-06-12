@@ -133,7 +133,7 @@
 
 <div class="p-6 max-w-6xl mx-auto">
 	<!-- Header -->
-	<div class="flex items-center justify-between mb-6">
+	<div class="flex flex-wrap items-center justify-between gap-3 mb-6">
 		<div>
 			<h1 class="text-2xl font-semibold text-[var(--ctp-text)]">{$t('connections.title')}</h1>
 			<p class="text-sm text-[var(--ctp-overlay1)] mt-1">
@@ -142,7 +142,7 @@
 					: $t('connections.activeConnectionPlural', { values: { count: connections.length } })}
 			</p>
 		</div>
-		<div class="flex items-center gap-3">
+		<div class="flex flex-wrap items-center gap-x-3 gap-y-2">
 			<!-- WebSocket toggle -->
 			<label class="flex items-center gap-2 text-sm text-[var(--ctp-subtext1)]">
 				<input

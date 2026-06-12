@@ -577,6 +577,7 @@
 {#snippet groupHeaderCard(key: string, name: string | undefined, count: number, up: number, down: number)}
 	<button
 		onclick={() => toggleGroup(key)}
+		aria-expanded={expandedGroups.has(key)}
 		class="w-full flex items-center gap-2 bg-[var(--ctp-mantle)] border border-[var(--ctp-surface2)] rounded-lg px-3 py-2.5 text-left"
 	>
 		<svg class="w-4 h-4 flex-shrink-0 transition-transform text-[var(--ctp-overlay1)] {expandedGroups.has(key) ? 'rotate-90' : ''}" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -595,7 +596,7 @@
 {#snippet connectionCard(conn: ClashConnection)}
 	<div class="bg-[var(--ctp-surface0)] border border-[var(--ctp-surface2)] rounded-lg p-3">
 		<div class="flex items-start justify-between gap-2">
-			<button onclick={() => toggleExpand(conn.id)} class="text-left min-w-0 flex-1">
+			<button onclick={() => toggleExpand(conn.id)} aria-expanded={expandedIds.has(conn.id)} class="text-left min-w-0 flex-1">
 				<div class="flex items-center gap-1.5">
 					{#if conn.geoip?.country_code}
 						<span class="text-base" title={getGeoTooltip(conn)}>{countryCodeToFlag(conn.geoip.country_code)}</span>
