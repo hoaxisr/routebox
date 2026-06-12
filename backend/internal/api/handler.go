@@ -6,6 +6,7 @@ import (
 	"routebox/backend/internal/geoip"
 	"routebox/backend/internal/process"
 	"routebox/backend/internal/settings"
+	"routebox/backend/internal/subscriptions"
 	"routebox/backend/internal/traffic"
 	"routebox/backend/internal/updates"
 )
@@ -21,6 +22,8 @@ type Handler struct {
 	traffic         *traffic.Store
 	routeboxVersion string
 	updates         *updates.Service
+	subs            *subscriptions.Manager
+	subsRefresh     func(subscriptions.Subscription) (int, int, error)
 }
 
 // SetRouteBoxVersion stores the build-time RouteBox version for API responses.
@@ -31,6 +34,12 @@ func (h *Handler) SetRouteBoxVersion(v string) {
 // SetUpdatesService wires the binary-updates service into the API.
 func (h *Handler) SetUpdatesService(s *updates.Service) {
 	h.updates = s
+}
+
+// SetSubscriptions wires the subscription store and refresh closure into the API.
+func (h *Handler) SetSubscriptions(mgr *subscriptions.Manager, refresh func(subscriptions.Subscription) (int, int, error)) {
+	h.subs = mgr
+	h.subsRefresh = refresh
 }
 
 // NewHandler creates a new API handler

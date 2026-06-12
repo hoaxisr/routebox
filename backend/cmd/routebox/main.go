@@ -240,8 +240,6 @@ func main() {
 	}
 	stopSubs := make(chan struct{})
 	go subscriptions.RunRefreshLoop(subsMgr, cfgMgr, subscriptions.Refresh, time.Hour, stopSubs)
-	// subsMgr/subsRefresh consumed by API wiring in Task 7
-	_ = subsRefresh
 
 	// Initialize API handlers
 	apiHandler := api.NewHandler(cfgMgr, procMgr, resolvedClashAddr, geoipDB, settingsMgr, clientsMgr, trafficStore)
@@ -251,6 +249,7 @@ func main() {
 		Updater: updUpdater,
 		Targets: updTargets,
 	})
+	apiHandler.SetSubscriptions(subsMgr, subsRefresh)
 
 	// Setup router
 	r := chi.NewRouter()
@@ -344,6 +343,15 @@ func main() {
 			r.Get("/", apiHandler.ListClients)
 			r.Put("/{ip}", apiHandler.UpdateClient)
 			r.Delete("/{ip}", apiHandler.DeleteClient)
+		})
+
+		// Subscriptions CRUD + refresh
+		r.Route("/subscriptions", func(r chi.Router) {
+			r.Get("/", apiHandler.ListSubscriptions)
+			r.Post("/", apiHandler.CreateSubscription)
+			r.Put("/{id}", apiHandler.UpdateSubscription)
+			r.Delete("/{id}", apiHandler.DeleteSubscription)
+			r.Post("/{id}/refresh", apiHandler.RefreshSubscription)
 		})
 
 		// Route Rules CRUD

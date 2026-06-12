@@ -43,12 +43,12 @@ type TestRouteRequest struct {
 
 // TestRouteResponse is the response for route testing
 type TestRouteResponse struct {
-	Input           string            `json:"input"`
-	InputType       string            `json:"input_type"` // "domain" or "ip"
-	Matches         []RuleMatch       `json:"matches"`
-	Destination     string            `json:"destination"`   // Final outbound
-	MatchedRule     int               `json:"matched_rule"`  // Index of matched rule, -1 if final
-	Debug           *InspectorDebug   `json:"debug,omitempty"`
+	Input       string          `json:"input"`
+	InputType   string          `json:"input_type"` // "domain" or "ip"
+	Matches     []RuleMatch     `json:"matches"`
+	Destination string          `json:"destination"`  // Final outbound
+	MatchedRule int             `json:"matched_rule"` // Index of matched rule, -1 if final
+	Debug       *InspectorDebug `json:"debug,omitempty"`
 }
 
 // InspectorDebug contains debug info for troubleshooting
@@ -63,11 +63,11 @@ type InspectorDebug struct {
 type RuleMatch struct {
 	Index      int      `json:"index"`
 	Matched    bool     `json:"matched"`
-	Action     string   `json:"action"`              // route, reject, sniff, hijack-dns
+	Action     string   `json:"action"` // route, reject, sniff, hijack-dns
 	Outbound   string   `json:"outbound,omitempty"`
-	Reason     string   `json:"reason,omitempty"`    // Why it matched/didn't match
+	Reason     string   `json:"reason,omitempty"`     // Why it matched/didn't match
 	Conditions []string `json:"conditions,omitempty"` // What conditions were checked
-	RuleKeys   []string `json:"rule_keys,omitempty"` // Debug: all keys in the rule
+	RuleKeys   []string `json:"rule_keys,omitempty"`  // Debug: all keys in the rule
 }
 
 // TestRoute tests which rule matches a given domain/IP
