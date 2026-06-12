@@ -76,18 +76,14 @@ import { PRESETS as VOLUME_PRESETS, bytesFromUnit, splitBytes, type VolumeUnit }
 	});
 
 	$effect(() => {
-		if (viewMode === 'live') {
+		const mode = viewMode;
+		// Track filter reads so historical views re-fetch when they change
+		void filters.source; void filters.domain; void filters.chain;
+		if (mode === 'live') {
 			historical = null;
 			return;
 		}
-		loadHistorical(viewMode);
-	});
-
-	$effect(() => {
-		if (viewMode === 'live') return;
-		// Track filter property reads so we re-fetch when they change
-		void filters.source; void filters.domain; void filters.chain;
-		loadHistorical(viewMode);
+		loadHistorical(mode);
 	});
 
 	$effect(() => {
@@ -265,7 +261,10 @@ import { PRESETS as VOLUME_PRESETS, bytesFromUnit, splitBytes, type VolumeUnit }
 		return Array.from(map.values()).sort((a, b) => b.total - a.total);
 	}
 
+	let historySeq = 0;
+
 	async function loadHistorical(mode: TrafficRange) {
+		const id = ++historySeq;
 		historyLoading = true;
 		try {
 			const data = await api.getTrafficHistory(mode, {
@@ -273,11 +272,13 @@ import { PRESETS as VOLUME_PRESETS, bytesFromUnit, splitBytes, type VolumeUnit }
 				domain: filters.domain ?? undefined,
 				chain: filters.chain ?? undefined
 			});
+			if (id !== historySeq) return;
 			historical = data.buckets;
 		} catch {
+			if (id !== historySeq) return;
 			historical = [];
 		} finally {
-			historyLoading = false;
+			if (id === historySeq) historyLoading = false;
 		}
 	}
 
@@ -324,15 +325,20 @@ import { PRESETS as VOLUME_PRESETS, bytesFromUnit, splitBytes, type VolumeUnit }
 				connections = data.connections || [];
 				loading = false;
 			},
-			() => {
-				// fallback poll if ws fails
-				fallbackPoll();
+			undefined,
+			undefined,
+			(status) => {
+				if (status === 'connected') {
+					stopFallbackPoll();
+				} else if (status === 'reconnecting') {
+					fallbackPoll();
+				}
 			}
 		);
 	}
 
 	let poll: ReturnType<typeof setInterval> | null = null;
-	async function fallbackPoll() {
+	function fallbackPoll() {
 		if (poll) return;
 		const tick = async () => {
 			try {
@@ -347,13 +353,20 @@ import { PRESETS as VOLUME_PRESETS, bytesFromUnit, splitBytes, type VolumeUnit }
 		poll = setInterval(tick, 2000);
 	}
 
+	function stopFallbackPoll() {
+		if (poll) {
+			clearInterval(poll);
+			poll = null;
+		}
+	}
+
 	onMount(() => {
 		startStream();
 	});
 
 	onDestroy(() => {
 		stream?.close();
-		if (poll) clearInterval(poll);
+		stopFallbackPoll();
 	});
 
 	function barWidth(b: Bucket, buckets: Bucket[]): string {
