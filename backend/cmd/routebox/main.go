@@ -175,7 +175,8 @@ func main() {
 		}
 	}
 	stopClients := make(chan struct{})
-	go clientsMgr.StartPersistLoop(30*time.Second, stopClients)
+	clientsDone := make(chan struct{})
+	go clientsMgr.StartPersistLoop(30*time.Second, stopClients, clientsDone)
 
 	// Auto-discover LAN clients from Clash /connections
 	stopDiscovery := make(chan struct{})
@@ -410,7 +411,6 @@ func main() {
 	}
 
 	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
-	defer stop()
 
 	errCh := make(chan error, 1)
 	go func() {
@@ -432,7 +432,8 @@ func main() {
 	}
 
 	// Stop background loops, then close the store they write to
-	close(stopClients) // PersistLoop flushes clients.toml on stop
+	close(stopClients)
+	<-clientsDone // final clients.toml flush completes before exit
 	close(stopDiscovery)
 	close(stopSampler)
 	if trafficStore != nil {

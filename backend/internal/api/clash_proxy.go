@@ -279,6 +279,7 @@ func (h *Handler) ProxyClashWebSocket(w http.ResponseWriter, r *http.Request) {
 			}
 			clashConn.SetWriteDeadline(time.Now().Add(writeWait))
 			if err := clashConn.WriteMessage(msgType, msg); err != nil {
+				clashConn.Close()
 				return
 			}
 		}

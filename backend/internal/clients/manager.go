@@ -179,8 +179,10 @@ func (m *Manager) listLocked() []Entry {
 	return out
 }
 
-// StartPersistLoop flushes dirty state to disk every interval.
-func (m *Manager) StartPersistLoop(interval time.Duration, stop <-chan struct{}) {
+// StartPersistLoop periodically saves dirty state; on stop it performs a
+// final flush and closes done.
+func (m *Manager) StartPersistLoop(interval time.Duration, stop <-chan struct{}, done chan<- struct{}) {
+	defer close(done)
 	if m.path == "" {
 		return
 	}
