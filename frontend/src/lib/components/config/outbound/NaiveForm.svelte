@@ -44,10 +44,10 @@
 
 	const congestionOptions = [
 		{ value: '', label: 'Default' },
-		{ value: 'TBBR', label: 'BBR' },
-		{ value: 'B2ON', label: 'BBRv2' },
-		{ value: 'QBIC', label: 'CUBIC' },
-		{ value: 'RENO', label: 'Reno' }
+		{ value: 'bbr', label: 'BBR' },
+		{ value: 'bbr2', label: 'BBRv2' },
+		{ value: 'cubic', label: 'CUBIC' },
+		{ value: 'reno', label: 'Reno' }
 	];
 </script>
 

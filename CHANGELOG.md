@@ -7,7 +7,7 @@ All notable changes to RouteBox are documented here.
 ### New Features
 
 **Frontend:**
-- **NaiveProxy outbound type** — full form with server/port, username/password, SNI, CA fingerprint pinning, QUIC transport toggle, and extra HTTP headers. Supports import from `naive+https://` and `naive+quic://` URIs via the Import modal.
+- **NaiveProxy outbound type** — full form with server/port, username/password, SNI, CA certificate (PEM) pinning, QUIC transport toggle, and extra HTTP headers. Supports import from `naive+https://` and `naive+quic://` URIs via the Import modal.
 
 **Backend:**
 - `naive` outbound tag recognized in the VPN-config detection heuristic.
