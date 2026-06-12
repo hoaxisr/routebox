@@ -1,5 +1,5 @@
 <script lang="ts">
-	import { onMount, onDestroy, type Snippet } from 'svelte';
+	import { onMount, type Snippet } from 'svelte';
 
 	interface Props {
 		open: boolean;
@@ -33,10 +33,7 @@
 
 	onMount(() => {
 		window.addEventListener('keydown', handleKeydown);
-	});
-
-	onDestroy(() => {
-		window.removeEventListener('keydown', handleKeydown);
+		return () => window.removeEventListener('keydown', handleKeydown);
 	});
 </script>
 

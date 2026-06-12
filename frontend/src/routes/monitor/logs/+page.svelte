@@ -152,7 +152,7 @@
 	});
 </script>
 
-<div class="space-y-4 h-full flex flex-col">
+<div class="space-y-4 h-full flex flex-col min-w-0">
 	<div class="flex items-center justify-between">
 		<h1 class="text-2xl font-bold text-[var(--ctp-text)]">{$t('logs.title')}</h1>
 		<div class="flex items-center gap-2">
@@ -168,7 +168,7 @@
 	</div>
 
 	<!-- Filters -->
-	<div class="flex items-center gap-4">
+	<div class="flex flex-wrap items-center gap-x-4 gap-y-2 w-full">
 		<select
 			bind:value={filter}
 			class="px-3 py-2 bg-[var(--ctp-surface0)] border border-[var(--ctp-surface2)] rounded-lg text-[var(--ctp-text)] focus:outline-none focus:ring-2 focus:ring-[var(--ctp-primary)]"
@@ -182,7 +182,7 @@
 			type="text"
 			bind:value={search}
 			placeholder={$t('logs.search')}
-			class="flex-1 px-3 py-2 bg-[var(--ctp-surface0)] border border-[var(--ctp-surface2)] rounded-lg text-[var(--ctp-text)] placeholder-[var(--ctp-overlay0)] focus:outline-none focus:ring-2 focus:ring-[var(--ctp-primary)]"
+			class="flex-1 min-w-0 basis-40 px-3 py-2 bg-[var(--ctp-surface0)] border border-[var(--ctp-surface2)] rounded-lg text-[var(--ctp-text)] placeholder-[var(--ctp-overlay0)] focus:outline-none focus:ring-2 focus:ring-[var(--ctp-primary)]"
 		/>
 
 		<label class="flex items-center gap-2 text-sm text-[var(--ctp-subtext1)]">
