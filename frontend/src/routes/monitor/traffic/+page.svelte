@@ -75,7 +75,6 @@
 				trafficDown = data.down;
 				totalUp += data.up;
 				totalDown += data.down;
-				connected = true;
 				wsError = '';
 
 				history = [
@@ -85,16 +84,11 @@
 			},
 			(error) => {
 				wsError = error;
-				connected = false;
 			},
-			() => {
-				// On close, try to reconnect after a delay
-				connected = false;
-				setTimeout(() => {
-					if (!stream) {
-						startStream();
-					}
-				}, 3000);
+			undefined,
+			(status) => {
+				connected = status === 'connected';
+				if (status === 'connected') wsError = '';
 			}
 		);
 	}
