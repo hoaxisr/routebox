@@ -2,7 +2,7 @@
 	import { onMount } from 'svelte';
 	import { t } from 'svelte-i18n';
 	import { api } from '$lib/api/client';
-	import { notifications } from '$lib/stores';
+	import { notifications, unsavedChanges } from '$lib/stores';
 	import Modal from '$lib/components/shared/Modal.svelte';
 	import type { Subscription } from '$lib/types';
 
@@ -68,6 +68,7 @@
 			subs = subs.map((s) => (s.id === sub.id ? updated : s));
 			now = Date.now();
 			notifications.success($t('subscriptions.refreshed', { values: { name: sub.name } }));
+			unsavedChanges.markChanged('Subscriptions', `Refreshed "${sub.name}"`);
 		} catch (e) {
 			notifications.error(`${e}`);
 			await load();
@@ -81,6 +82,7 @@
 		try {
 			await api.deleteSubscription(sub.id);
 			subs = subs.filter((s) => s.id !== sub.id);
+			unsavedChanges.markChanged('Subscriptions', `Removed "${sub.name}"`);
 		} catch (e) {
 			notifications.error(`${e}`);
 		}
@@ -97,6 +99,7 @@
 			addUrl = '';
 			addInterval = 12;
 			notifications.success($t('subscriptions.created', { values: { name: created.name } }));
+			unsavedChanges.markChanged('Subscriptions', `Added subscription "${created.name}"`);
 		} catch (e) {
 			notifications.error(`${e}`);
 		} finally {
