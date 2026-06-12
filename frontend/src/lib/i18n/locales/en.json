@@ -29,7 +29,8 @@
     "routeInspector": "Route Inspector",
     "network": "Network",
     "routing": "Routing",
-    "updates": "Updates"
+    "updates": "Updates",
+    "subscriptions": "Subscriptions"
   },
   "common": {
     "save": "Save",
@@ -1443,5 +1444,31 @@
     "categoryUaDesc": "All Ukrainian domain zones",
     "ads": "Block Ads",
     "adsDesc": "Block advertising domains"
+  },
+  "subscriptions": {
+    "title": "Subscriptions",
+    "description": "Import and auto-update outbound nodes from a subscription URL. Nodes appear on the Outbounds page with a prefix; manual edits are overwritten on refresh.",
+    "add": "Add Subscription",
+    "addTitle": "Add Subscription",
+    "adding": "Adding…",
+    "name": "Name",
+    "namePlaceholder": "My Provider",
+    "url": "Subscription URL",
+    "interval": "Update interval",
+    "intervalOff": "Off",
+    "intervalHours": "Every {n}h",
+    "refresh": "Refresh",
+    "refreshing": "Refreshing…",
+    "refreshed": "Refreshed {name}",
+    "delete": "Delete",
+    "deleteConfirm": "Delete subscription \"{name}\" and all its nodes?",
+    "created": "Added {name}",
+    "empty": "No subscriptions yet. Add one to import nodes.",
+    "loadFailed": "Failed to load subscriptions",
+    "revealUrl": "Click to reveal/hide URL",
+    "nodeCount": "{n} nodes",
+    "updated": "Updated {time}",
+    "never": "Never updated",
+    "timeAgo": { "justNow": "just now", "minutes": "{n}m ago", "hours": "{n}h ago", "days": "{n}d ago" }
   }
 }

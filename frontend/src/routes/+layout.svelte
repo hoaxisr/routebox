@@ -277,6 +277,14 @@
 					{$t('nav.clients')}
 				</a>
 
+				<!-- Subscriptions -->
+				<a href="/config/subscriptions" onclick={handleNavClick} class="flex items-center gap-3 px-3 py-2 rounded-lg hover:bg-[var(--ctp-surface0)] text-[var(--ctp-subtext1)] hover:text-[var(--ctp-text)] transition-colors">
+					<svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+						<path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 11a7 7 0 01-7 7m0 0a7 7 0 01-7-7m7 7v3m-4 0h8M5 8h14" />
+					</svg>
+					{$t('nav.subscriptions')}
+				</a>
+
 				<!-- Updates -->
 				<a href="/config/updates" onclick={handleNavClick} class="flex items-center gap-3 px-3 py-2 rounded-lg hover:bg-[var(--ctp-surface0)] text-[var(--ctp-subtext1)] hover:text-[var(--ctp-text)] transition-colors">
 					<svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">

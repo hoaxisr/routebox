@@ -612,6 +612,22 @@ export interface DomainSetInfo {
 	rules_count: number;
 }
 
+export interface Subscription {
+	id: string;
+	name: string;
+	url: string;
+	interval_hrs: number;
+	last_updated: number;
+	last_error: string;
+	node_count: number;
+}
+
+export interface SubscriptionInput {
+	name: string;
+	url: string;
+	interval_hrs: number;
+}
+
 // Client (LAN device) entry
 export interface ClientEntry {
 	ip: string;

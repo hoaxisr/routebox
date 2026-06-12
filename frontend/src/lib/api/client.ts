@@ -1,4 +1,4 @@
-import type { ApiResponse, ProcessStatus, DetectedConfig, SingboxConfig, Endpoint, Outbound, Inbound, RuleSet, RuleSetUsage, RouteRule, RouteSettings, DnsServer, DnsRule, DnsSettings, LogSettings, ExperimentalSettings, ConnectionsResponse, ProxiesResponse, ClashProxy, TestRouteResponse, ConnectTestResponse, SettingsResponse, RouteBoxSettings, SingBoxVersion, DomainSetInfo, RuleSetSource, ClientEntry, TrafficHistoryResponse, TrafficRange, UpdatesStatus, UpdateProgress, UpdateTargetName } from '$lib/types';
+import type { ApiResponse, ProcessStatus, DetectedConfig, SingboxConfig, Endpoint, Outbound, Inbound, RuleSet, RuleSetUsage, RouteRule, RouteSettings, DnsServer, DnsRule, DnsSettings, LogSettings, ExperimentalSettings, ConnectionsResponse, ProxiesResponse, ClashProxy, TestRouteResponse, ConnectTestResponse, SettingsResponse, RouteBoxSettings, SingBoxVersion, DomainSetInfo, RuleSetSource, ClientEntry, TrafficHistoryResponse, TrafficRange, UpdatesStatus, UpdateProgress, UpdateTargetName, Subscription, SubscriptionInput } from '$lib/types';
 
 const API_BASE = '/api';
 
@@ -439,7 +439,18 @@ export const api = {
 			body: JSON.stringify(body)
 		}),
 	deleteClient: (ip: string) =>
-		requestRaw<void>(`/clients/${encodeURIComponent(ip)}`, { method: 'DELETE' })
+		requestRaw<void>(`/clients/${encodeURIComponent(ip)}`, { method: 'DELETE' }),
+
+	// Subscriptions CRUD + refresh
+	getSubscriptions: () => request<Subscription[]>('/subscriptions'),
+	createSubscription: (body: SubscriptionInput) =>
+		request<Subscription>('/subscriptions', { method: 'POST', body: JSON.stringify(body) }),
+	updateSubscription: (id: string, body: { url: string; interval_hrs: number }) =>
+		request<Subscription>(`/subscriptions/${encodeURIComponent(id)}`, { method: 'PUT', body: JSON.stringify(body) }),
+	deleteSubscription: (id: string) =>
+		request<{ message: string }>(`/subscriptions/${encodeURIComponent(id)}`, { method: 'DELETE' }),
+	refreshSubscription: (id: string) =>
+		request<Subscription>(`/subscriptions/${encodeURIComponent(id)}/refresh`, { method: 'POST' })
 };
 
 // WebSocket helpers
