@@ -2,6 +2,7 @@ package settings
 
 import (
 	"encoding/json"
+	"fmt"
 	"os"
 	"path/filepath"
 	"testing"
@@ -111,5 +112,90 @@ func TestDefaultsPhase1(t *testing.T) {
 	}
 	if d.Server.Mode != "router" {
 		t.Fatalf("default mode should be router, got %q", d.Server.Mode)
+	}
+}
+
+// TestReHashOnNewPlaintext (Fix 1): after a previous migration (hash set, no
+// plaintext), writing a NEW plaintext auth_password alongside the old hash
+// must re-hash to the new password and discard the old hash.
+func TestReHashOnNewPlaintext(t *testing.T) {
+	dir := t.TempDir()
+	path := filepath.Join(dir, "routebox.toml")
+
+	// First load: migrate "oldpass" → hash
+	if err := os.WriteFile(path, []byte("[security]\nauth_enabled = true\nauth_username = \"admin\"\nauth_password = \"oldpass\"\n"), 0600); err != nil {
+		t.Fatal(err)
+	}
+	m, err := NewManager(path)
+	if err != nil {
+		t.Fatalf("NewManager (first load): %v", err)
+	}
+	oldHash := m.Get().Security.AuthPasswordHash
+	if oldHash == "" {
+		t.Fatal("expected hash after first migration")
+	}
+
+	// Simulate a password reset: write a new plaintext alongside the existing hash.
+	toml := fmt.Sprintf("[security]\nauth_enabled = true\nauth_username = \"admin\"\nauth_password = \"newpass\"\nauth_password_hash = %q\n", oldHash)
+	if err := os.WriteFile(path, []byte(toml), 0600); err != nil {
+		t.Fatal(err)
+	}
+
+	// Second load: plaintext present → must win over stale hash.
+	if err := m.Load(); err != nil {
+		t.Fatalf("Load (second): %v", err)
+	}
+	s := m.Get()
+
+	if s.Security.AuthPassword != "" {
+		t.Fatalf("plaintext must be blanked after re-migration, got %q", s.Security.AuthPassword)
+	}
+	if !auth.VerifyPassword(s.Security.AuthPasswordHash, "newpass") {
+		t.Error("new hash must verify the NEW password")
+	}
+	if auth.VerifyPassword(s.Security.AuthPasswordHash, "oldpass") {
+		t.Error("new hash must NOT verify the old password")
+	}
+}
+
+// TestMalformedReloadKeepsOldSettings (Fix 5): a decode error during Load must
+// leave m.settings unchanged (auth must not silently revert to defaults).
+func TestMalformedReloadKeepsOldSettings(t *testing.T) {
+	dir := t.TempDir()
+	path := filepath.Join(dir, "routebox.toml")
+
+	// Write a valid config with auth enabled.
+	if err := os.WriteFile(path, []byte("[security]\nauth_enabled = true\nauth_username = \"admin\"\n"), 0600); err != nil {
+		t.Fatal(err)
+	}
+	m, err := NewManager(path)
+	if err != nil {
+		t.Fatalf("NewManager: %v", err)
+	}
+	if !m.Get().Security.AuthEnabled {
+		t.Fatal("auth_enabled should be true after first load")
+	}
+
+	// Overwrite with malformed TOML.
+	if err := os.WriteFile(path, []byte("[[[[not valid toml"), 0600); err != nil {
+		t.Fatal(err)
+	}
+
+	loadErr := m.Load()
+	if loadErr == nil {
+		t.Fatal("Load must return an error for malformed TOML")
+	}
+	if !m.Get().Security.AuthEnabled {
+		t.Fatal("m.settings must remain unchanged after a failed Load (auth_enabled must still be true)")
+	}
+}
+
+// TestInvalidServerModeErrors (Fix 4): Update with an invalid server.mode must
+// return a non-nil error.
+func TestInvalidServerModeErrors(t *testing.T) {
+	m := &Manager{settings: Default()}
+	err := m.Update(map[string]interface{}{"server.mode": "nope"})
+	if err == nil {
+		t.Fatal("expected error for invalid server.mode, got nil")
 	}
 }

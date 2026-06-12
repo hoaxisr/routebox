@@ -209,7 +209,7 @@ func NewManager(path string) (*Manager, error) {
 	return m, nil
 }
 
-// Load reads settings from file
+// Load reads settings from file. A decode failure leaves m.settings unchanged.
 func (m *Manager) Load() error {
 	m.mu.Lock()
 	defer m.mu.Unlock()
@@ -218,34 +218,42 @@ func (m *Manager) Load() error {
 		return nil
 	}
 
-	// Start with defaults
-	m.settings = Default()
-
-	// Decode TOML on top of defaults
-	_, err := toml.DecodeFile(m.path, &m.settings)
+	// Decode into a local temp value so a failure leaves m.settings intact.
+	tmp := Default()
+	_, err := toml.DecodeFile(m.path, &tmp)
 	if err != nil {
 		return err
 	}
 
+	// Commit the successfully decoded settings.
+	m.settings = tmp
+
 	log.Printf("Loaded settings from %s", m.path)
 
-	// Migrate plaintext password to bcrypt hash (must run before releasing the lock).
-	if m.settings.Security.AuthPassword != "" && m.settings.Security.AuthPasswordHash == "" {
+	// Migrate plaintext password to bcrypt hash whenever plaintext is present
+	// (covers both first-time migration and "forgotten password" resets where a
+	// new plaintext is written alongside an existing hash). Must run before
+	// releasing the lock.
+	if m.settings.Security.AuthPassword != "" {
 		h, err := auth.HashPassword(m.settings.Security.AuthPassword)
 		if err != nil {
 			return fmt.Errorf("migrate password hash: %w", err)
 		}
 		m.settings.Security.AuthPasswordHash = h
 		m.settings.Security.AuthPassword = ""
+		// Fix 3: a read-only config file must not abort startup — keep the
+		// in-memory hash and warn instead of returning an error.
 		if err := m.saveLocked(); err != nil {
-			return fmt.Errorf("persist migrated password: %w", err)
+			log.Printf("WARNING: migrated password to bcrypt in memory but could not persist (config may be read-only): %v — plaintext remains on disk until writable", err)
 		}
 	}
 
 	return nil
 }
 
-// saveLocked writes current settings to disk. The caller must hold m.mu (any mode).
+// saveLocked writes current settings to disk atomically (write to temp file,
+// fsync, chmod 0600, rename over target). The caller must hold m.mu.Lock
+// (exclusive).
 func (m *Manager) saveLocked() error {
 	if m.path == "" {
 		return fmt.Errorf("no settings path configured")
@@ -256,25 +264,50 @@ func (m *Manager) saveLocked() error {
 		return fmt.Errorf("failed to create directory: %w", err)
 	}
 
-	f, err := os.Create(m.path)
+	tmp, err := os.CreateTemp(dir, filepath.Base(m.path)+".tmp-*")
 	if err != nil {
-		return fmt.Errorf("failed to create file: %w", err)
+		return fmt.Errorf("failed to create temp file: %w", err)
 	}
-	defer f.Close()
+	tmpName := tmp.Name()
+	// Deferred cleanup: remove the temp file if we haven't renamed it away.
+	defer func() {
+		if tmpName != "" {
+			tmp.Close()
+			os.Remove(tmpName)
+		}
+	}()
 
-	encoder := toml.NewEncoder(f)
+	if err := tmp.Chmod(0600); err != nil {
+		return fmt.Errorf("failed to set temp file permissions: %w", err)
+	}
+
+	encoder := toml.NewEncoder(tmp)
 	if err := encoder.Encode(m.settings); err != nil {
 		return fmt.Errorf("failed to encode settings: %w", err)
 	}
+
+	if err := tmp.Sync(); err != nil {
+		return fmt.Errorf("failed to sync temp file: %w", err)
+	}
+
+	if err := tmp.Close(); err != nil {
+		tmpName = "" // already closed; skip double-close in defer
+		return fmt.Errorf("failed to close temp file: %w", err)
+	}
+
+	if err := os.Rename(tmpName, m.path); err != nil {
+		return fmt.Errorf("failed to rename temp file: %w", err)
+	}
+	tmpName = "" // success: disable deferred cleanup
 
 	log.Printf("Saved settings to %s", m.path)
 	return nil
 }
 
-// Save writes current settings to file
+// Save writes current settings to file.
 func (m *Manager) Save() error {
-	m.mu.RLock()
-	defer m.mu.RUnlock()
+	m.mu.Lock()
+	defer m.mu.Unlock()
 	return m.saveLocked()
 }
 
@@ -397,9 +430,12 @@ func (m *Manager) Update(updates map[string]interface{}) error {
 				m.settings.Network.TLSKeyPath = v
 			}
 		case "server.mode":
-			if v, ok := value.(string); ok && (v == "router" || v == "vps") {
-				m.settings.Server.Mode = v
+			// Fix 4: reject invalid values instead of silently ignoring them.
+			v, ok := value.(string)
+			if !ok || (v != "router" && v != "vps") {
+				return fmt.Errorf("invalid server.mode %q (want router|vps)", value)
 			}
+			m.settings.Server.Mode = v
 
 		// Advanced runtime settings
 		case "advanced.ws_ping_interval_sec":
