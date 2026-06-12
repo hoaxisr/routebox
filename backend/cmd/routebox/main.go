@@ -218,6 +218,7 @@ func main() {
 		AllowCredentials: false,
 		MaxAge:           300,
 	}))
+	r.Use(api.BasicAuth(settingsMgr))
 
 	// API routes
 	r.Route("/api", func(r chi.Router) {
@@ -401,7 +402,13 @@ func main() {
 	}
 	fmt.Println()
 
-	if err := http.ListenAndServe(resolvedListenAddr, r); err != nil {
+	srv := &http.Server{
+		Addr:              resolvedListenAddr,
+		Handler:           r,
+		ReadHeaderTimeout: 10 * time.Second,
+		IdleTimeout:       120 * time.Second,
+	}
+	if err := srv.ListenAndServe(); err != nil {
 		log.Fatalf("Server error: %v", err)
 	}
 }
