@@ -9,6 +9,8 @@ import (
 	"os/exec"
 	"path/filepath"
 	"regexp"
+	"sort"
+	"strconv"
 	"strings"
 	"sync"
 	"time"
@@ -122,6 +124,42 @@ func atomicWriteFile(path string, data []byte, perm os.FileMode) error {
 	return nil
 }
 
+// pruneBackups keeps only the newest `keep` timestamped backups of base
+// (files named <base>.<unix-ts>.bak) in dir, deleting the rest. The draft
+// file <base>.bak has no numeric timestamp and is never touched. Best-effort:
+// errors are ignored.
+func pruneBackups(dir, base string, keep int) {
+	entries, err := os.ReadDir(dir)
+	if err != nil {
+		return
+	}
+	prefix := base + "."
+	type backup struct {
+		name string
+		ts   int64
+	}
+	var backups []backup
+	for _, e := range entries {
+		name := e.Name()
+		if e.IsDir() || !strings.HasPrefix(name, prefix) || !strings.HasSuffix(name, ".bak") {
+			continue
+		}
+		mid := strings.TrimSuffix(strings.TrimPrefix(name, prefix), ".bak")
+		ts, err := strconv.ParseInt(mid, 10, 64)
+		if err != nil {
+			continue // not a timestamped backup (e.g. the draft "config.json.bak")
+		}
+		backups = append(backups, backup{name: name, ts: ts})
+	}
+	if len(backups) <= keep {
+		return
+	}
+	sort.Slice(backups, func(i, j int) bool { return backups[i].ts > backups[j].ts })
+	for _, b := range backups[keep:] {
+		os.Remove(filepath.Join(dir, b.name))
+	}
+}
+
 // SetCheckBinary sets the binary used for `check` validation (detected
 // sing-box/amnezia-box path from the process manager).
 func (m *Manager) SetCheckBinary(path string) {
@@ -197,6 +235,7 @@ func (m *Manager) saveLocked(config map[string]interface{}) error {
 	if err := atomicWriteFile(m.path, data, 0644); err != nil {
 		return fmt.Errorf("failed to write config: %w", err)
 	}
+	pruneBackups(dir, filepath.Base(m.path), 5)
 
 	m.activeConfig = config
 	// Clear draft after successful save to active
@@ -463,6 +502,7 @@ func (m *Manager) applyDraftLocked() error {
 	if err := atomicWriteFile(m.path, buf.Bytes(), 0644); err != nil {
 		return fmt.Errorf("failed to write config: %w", err)
 	}
+	pruneBackups(dir, filepath.Base(m.path), 5)
 
 	// Update active config and clear draft
 	m.activeConfig = m.draftConfig
