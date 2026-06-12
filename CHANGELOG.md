@@ -6,6 +6,7 @@ All notable changes to RouteBox are documented here.
 
 ### New Features
 
+- **Subscriptions** — manage proxy subscriptions from the UI: add a subscription by name + URL, RouteBox fetches the base64 link list (`ss://`, `vless://`, …), parses each into an outbound, and merges them into the working config as a `urltest` group named after the subscription with `«Name» · «Node»` member tags. On-demand refresh and an hourly auto-refresh ticker (`interval_hrs`) atomically replace that subscription's nodes — a transient empty/failed fetch leaves the existing group untouched. Deleting a subscription removes its group and nodes from the draft. New `CRUD /api/subscriptions` + `POST /api/subscriptions/{id}/refresh` endpoints and a TOML-backed store (`subscriptions.toml`).
 - **Updates page** — check, download and install new releases of amnezia-box and RouteBox from the UI: GitHub release checking (daily auto-check, `updates.auto_check`), sha256+ELF+smoke verification, atomic binary swap with automatic rollback, systemd-supervised RouteBox self-update. Release assets now ship sha256 checksums.
 
 ---
