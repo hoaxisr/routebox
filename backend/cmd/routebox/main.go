@@ -2,10 +2,13 @@ package main
 
 import (
 	"context"
+	"crypto/rand"
+	"encoding/base64"
 	"encoding/json"
 	"flag"
 	"fmt"
 	"log"
+	"net"
 	"net/http"
 	"os"
 	"os/signal"
@@ -18,6 +21,7 @@ import (
 	"github.com/go-chi/cors"
 
 	"routebox/backend/internal/api"
+	"routebox/backend/internal/auth"
 	"routebox/backend/internal/clients"
 	"routebox/backend/internal/config"
 	"routebox/backend/internal/embedded"
@@ -40,6 +44,7 @@ var (
 	listenAddr = flag.String("listen", "", "HTTP listen address (overrides settings)")
 	clashAddr  = flag.String("clash", "", "Clash API address (overrides settings)")
 	geoipPath  = flag.String("geoip", "", "Path to GeoIP MMDB database (overrides settings)")
+	modeFlag   = flag.String("mode", "", "panel mode: router (default) or vps")
 )
 
 func main() {
@@ -71,6 +76,15 @@ func main() {
 		log.Fatalf("Failed to load settings: %v", err)
 	}
 	cfg := settingsMgr.Get()
+
+	// Resolve effective mode: CLI flag > settings > default
+	effectiveMode := cfg.Server.Mode
+	if *modeFlag != "" {
+		effectiveMode = *modeFlag
+	}
+	if effectiveMode == "" {
+		effectiveMode = "router"
+	}
 
 	// Print settings info
 	if settingsMgr.GetPath() != "" {
@@ -251,6 +265,20 @@ func main() {
 	})
 	apiHandler.SetSubscriptions(subsMgr, subsRefresh)
 
+	// Construct auth deps, wire onto handler, start cleanup ticker
+	sessions := auth.NewSessionStore()
+	limiter := auth.NewLimiter()
+	verifier := auth.NewCachedVerifier()
+	apiHandler.SetAuth(sessions, limiter, verifier)
+	go func() {
+		t := time.NewTicker(10 * time.Minute)
+		defer t.Stop()
+		for range t.C {
+			sessions.Cleanup()
+			limiter.Cleanup()
+		}
+	}()
+
 	// Setup router
 	r := chi.NewRouter()
 
@@ -267,206 +295,254 @@ func main() {
 		AllowCredentials: false,
 		MaxAge:           300,
 	}))
-	r.Use(api.BasicAuth(settingsMgr))
 
-	// API routes
+	// API routes: public group + protected group
 	r.Route("/api", func(r chi.Router) {
-		// Config (full)
-		r.Get("/config", apiHandler.GetConfig)
-		r.Put("/config", apiHandler.SaveConfig)
-		r.Post("/config/validate", apiHandler.ValidateConfig)
-		r.Post("/config/diff", apiHandler.GetConfigDiff)
-		r.Post("/config/apply", apiHandler.ApplyConfig)
-		r.Get("/config/export", apiHandler.ExportConfig)
-		r.Post("/config/import", apiHandler.ImportConfig)
-
-		// Config draft system
-		r.Get("/config/status", apiHandler.GetConfigStatus)
-		r.Post("/config/discard", apiHandler.DiscardConfig)
-		r.Get("/config/draft-diff", apiHandler.GetDraftDiff)
-		r.Post("/config/save", apiHandler.SaveConfigDraft)
-		r.Post("/config/check", apiHandler.CheckConfig)
-		r.Get("/config/active", apiHandler.GetActiveConfig)
-
-		// Endpoints CRUD
-		r.Route("/endpoints", func(r chi.Router) {
-			r.Get("/", apiHandler.ListEndpoints)
-			r.Post("/", apiHandler.CreateEndpoint)
-			r.Get("/{tag}", apiHandler.GetEndpoint)
-			r.Put("/{tag}", apiHandler.UpdateEndpoint)
-			r.Delete("/{tag}", apiHandler.DeleteEndpoint)
-		})
-
-		// Outbounds CRUD
-		r.Route("/outbounds", func(r chi.Router) {
-			r.Get("/", apiHandler.ListOutbounds)
-			r.Post("/", apiHandler.CreateOutbound)
-			r.Get("/{tag}", apiHandler.GetOutbound)
-			r.Put("/{tag}", apiHandler.UpdateOutbound)
-			r.Delete("/{tag}", apiHandler.DeleteOutbound)
-		})
-
-		// Inbounds CRUD
-		r.Route("/inbounds", func(r chi.Router) {
-			r.Get("/", apiHandler.ListInbounds)
-			r.Post("/", apiHandler.CreateInbound)
-			r.Get("/{tag}", apiHandler.GetInbound)
-			r.Put("/{tag}", apiHandler.UpdateInbound)
-			r.Delete("/{tag}", apiHandler.DeleteInbound)
-			r.Get("/{tag}/users/{userKey}/link", apiHandler.GetUserLink)
-		})
-
-		// Credential generators (server inbounds)
-		r.Route("/generate", func(r chi.Router) {
-			r.Post("/reality", apiHandler.GenerateReality)
-			r.Post("/uuid", apiHandler.GenerateUUID)
-			r.Post("/password", apiHandler.GeneratePassword)
-		})
-
-		// Route Rule Sets CRUD
-		r.Route("/route/rule-sets", func(r chi.Router) {
-			r.Get("/", apiHandler.ListRuleSets)
-			r.Post("/", apiHandler.CreateRuleSet)
-			r.Get("/usage", apiHandler.GetRuleSetsUsage)
-			r.Put("/{tag}", apiHandler.UpdateRuleSet)
-			r.Delete("/{tag}", apiHandler.DeleteRuleSet)
-		})
-
-		// Domain Sets (custom rule set sources)
-		r.Route("/domains", func(r chi.Router) {
-			r.Get("/", apiHandler.ListDomainSets)
-			r.Post("/", apiHandler.CreateDomainSet)
-			r.Route("/{tag}", func(r chi.Router) {
-				r.Get("/", apiHandler.GetDomainSet)
-				r.Put("/", apiHandler.SaveDomainSet)
-				r.Delete("/", apiHandler.DeleteDomainSet)
-				r.Post("/domain", apiHandler.AddDomain)
-				r.Delete("/domain/{domain}", apiHandler.RemoveDomain)
-				r.Post("/import", apiHandler.ImportDomains)
+		// PUBLIC: reachable without auth
+		r.Group(func(r chi.Router) {
+			r.Post("/auth/login", apiHandler.Login)
+			r.Post("/auth/logout", apiHandler.Logout)
+			r.Get("/auth/session", apiHandler.Session)
+			r.Get("/health", func(w http.ResponseWriter, _ *http.Request) {
+				w.WriteHeader(http.StatusOK)
+				w.Write([]byte(`{"status":"ok"}`))
 			})
 		})
+		// PROTECTED: everything else
+		r.Group(func(r chi.Router) {
+			r.Use(api.AuthMiddleware(settingsMgr, sessions, limiter, verifier))
 
-		// Clients (LAN device names)
-		r.Route("/clients", func(r chi.Router) {
-			r.Get("/", apiHandler.ListClients)
-			r.Put("/{ip}", apiHandler.UpdateClient)
-			r.Delete("/{ip}", apiHandler.DeleteClient)
-		})
+			// Config (full)
+			r.Get("/config", apiHandler.GetConfig)
+			r.Put("/config", apiHandler.SaveConfig)
+			r.Post("/config/validate", apiHandler.ValidateConfig)
+			r.Post("/config/diff", apiHandler.GetConfigDiff)
+			r.Post("/config/apply", apiHandler.ApplyConfig)
+			r.Get("/config/export", apiHandler.ExportConfig)
+			r.Post("/config/import", apiHandler.ImportConfig)
 
-		// Subscriptions CRUD + refresh
-		r.Route("/subscriptions", func(r chi.Router) {
-			r.Get("/", apiHandler.ListSubscriptions)
-			r.Post("/", apiHandler.CreateSubscription)
-			r.Put("/{id}", apiHandler.UpdateSubscription)
-			r.Delete("/{id}", apiHandler.DeleteSubscription)
-			r.Post("/{id}/refresh", apiHandler.RefreshSubscription)
-		})
+			// Config draft system
+			r.Get("/config/status", apiHandler.GetConfigStatus)
+			r.Post("/config/discard", apiHandler.DiscardConfig)
+			r.Get("/config/draft-diff", apiHandler.GetDraftDiff)
+			r.Post("/config/save", apiHandler.SaveConfigDraft)
+			r.Post("/config/check", apiHandler.CheckConfig)
+			r.Get("/config/active", apiHandler.GetActiveConfig)
 
-		// Route Rules CRUD
-		r.Route("/route/rules", func(r chi.Router) {
-			r.Get("/", apiHandler.ListRules)
-			r.Post("/", apiHandler.CreateRule)
-			r.Put("/{index}", apiHandler.UpdateRule)
-			r.Delete("/{index}", apiHandler.DeleteRule)
-			r.Put("/reorder", apiHandler.ReorderRules)
-		})
+			// Endpoints CRUD
+			r.Route("/endpoints", func(r chi.Router) {
+				r.Get("/", apiHandler.ListEndpoints)
+				r.Post("/", apiHandler.CreateEndpoint)
+				r.Get("/{tag}", apiHandler.GetEndpoint)
+				r.Put("/{tag}", apiHandler.UpdateEndpoint)
+				r.Delete("/{tag}", apiHandler.DeleteEndpoint)
+			})
 
-		// Route Settings
-		r.Get("/route/settings", apiHandler.GetRouteSettings)
-		r.Put("/route/settings", apiHandler.UpdateRouteSettings)
+			// Outbounds CRUD
+			r.Route("/outbounds", func(r chi.Router) {
+				r.Get("/", apiHandler.ListOutbounds)
+				r.Post("/", apiHandler.CreateOutbound)
+				r.Get("/{tag}", apiHandler.GetOutbound)
+				r.Put("/{tag}", apiHandler.UpdateOutbound)
+				r.Delete("/{tag}", apiHandler.DeleteOutbound)
+			})
 
-		// Route Inspector
-		r.Post("/route/test", apiHandler.TestRoute)
+			// Inbounds CRUD
+			r.Route("/inbounds", func(r chi.Router) {
+				r.Get("/", apiHandler.ListInbounds)
+				r.Post("/", apiHandler.CreateInbound)
+				r.Get("/{tag}", apiHandler.GetInbound)
+				r.Put("/{tag}", apiHandler.UpdateInbound)
+				r.Delete("/{tag}", apiHandler.DeleteInbound)
+				r.Get("/{tag}/users/{userKey}/link", apiHandler.GetUserLink)
+			})
 
-		// Connection Test (diagnostics)
-		r.Post("/diagnostics/connect", apiHandler.ConnectTest)
+			// Credential generators (server inbounds)
+			r.Route("/generate", func(r chi.Router) {
+				r.Post("/reality", apiHandler.GenerateReality)
+				r.Post("/uuid", apiHandler.GenerateUUID)
+				r.Post("/password", apiHandler.GeneratePassword)
+			})
 
-		// Traffic history (SQLite-backed)
-		r.Get("/traffic/history", apiHandler.GetTrafficHistory)
-		r.Post("/traffic/reset", apiHandler.ResetTrafficHistory)
+			// Route Rule Sets CRUD
+			r.Route("/route/rule-sets", func(r chi.Router) {
+				r.Get("/", apiHandler.ListRuleSets)
+				r.Post("/", apiHandler.CreateRuleSet)
+				r.Get("/usage", apiHandler.GetRuleSetsUsage)
+				r.Put("/{tag}", apiHandler.UpdateRuleSet)
+				r.Delete("/{tag}", apiHandler.DeleteRuleSet)
+			})
 
-		// DNS Servers CRUD
-		r.Route("/dns/servers", func(r chi.Router) {
-			r.Get("/", apiHandler.ListDnsServers)
-			r.Post("/", apiHandler.CreateDnsServer)
-			r.Put("/{tag}", apiHandler.UpdateDnsServer)
-			r.Delete("/{tag}", apiHandler.DeleteDnsServer)
-		})
+			// Domain Sets (custom rule set sources)
+			r.Route("/domains", func(r chi.Router) {
+				r.Get("/", apiHandler.ListDomainSets)
+				r.Post("/", apiHandler.CreateDomainSet)
+				r.Route("/{tag}", func(r chi.Router) {
+					r.Get("/", apiHandler.GetDomainSet)
+					r.Put("/", apiHandler.SaveDomainSet)
+					r.Delete("/", apiHandler.DeleteDomainSet)
+					r.Post("/domain", apiHandler.AddDomain)
+					r.Delete("/domain/{domain}", apiHandler.RemoveDomain)
+					r.Post("/import", apiHandler.ImportDomains)
+				})
+			})
 
-		// DNS Rules CRUD
-		r.Route("/dns/rules", func(r chi.Router) {
-			r.Get("/", apiHandler.ListDnsRules)
-			r.Post("/", apiHandler.CreateDnsRule)
-			r.Put("/{index}", apiHandler.UpdateDnsRule)
-			r.Delete("/{index}", apiHandler.DeleteDnsRule)
-			r.Put("/reorder", apiHandler.ReorderDnsRules)
-		})
+			// Clients (LAN device names)
+			r.Route("/clients", func(r chi.Router) {
+				r.Get("/", apiHandler.ListClients)
+				r.Put("/{ip}", apiHandler.UpdateClient)
+				r.Delete("/{ip}", apiHandler.DeleteClient)
+			})
 
-		// DNS Settings
-		r.Get("/dns/settings", apiHandler.GetDnsSettings)
-		r.Put("/dns/settings", apiHandler.UpdateDnsSettings)
+			// Subscriptions CRUD + refresh
+			r.Route("/subscriptions", func(r chi.Router) {
+				r.Get("/", apiHandler.ListSubscriptions)
+				r.Post("/", apiHandler.CreateSubscription)
+				r.Put("/{id}", apiHandler.UpdateSubscription)
+				r.Delete("/{id}", apiHandler.DeleteSubscription)
+				r.Post("/{id}/refresh", apiHandler.RefreshSubscription)
+			})
 
-		// Log Settings
-		r.Get("/log", apiHandler.GetLogSettings)
-		r.Put("/log", apiHandler.UpdateLogSettings)
+			// Route Rules CRUD
+			r.Route("/route/rules", func(r chi.Router) {
+				r.Get("/", apiHandler.ListRules)
+				r.Post("/", apiHandler.CreateRule)
+				r.Put("/{index}", apiHandler.UpdateRule)
+				r.Delete("/{index}", apiHandler.DeleteRule)
+				r.Put("/reorder", apiHandler.ReorderRules)
+			})
 
-		// Experimental Settings
-		r.Get("/experimental", apiHandler.GetExperimental)
-		r.Put("/experimental", apiHandler.UpdateExperimental)
+			// Route Settings
+			r.Get("/route/settings", apiHandler.GetRouteSettings)
+			r.Put("/route/settings", apiHandler.UpdateRouteSettings)
 
-		// Version & Feature Flags
-		r.Get("/version", apiHandler.GetVersion)
+			// Route Inspector
+			r.Post("/route/test", apiHandler.TestRoute)
 
-		// Binary updates (amnezia-box + RouteBox self-update)
-		r.Route("/updates", func(r chi.Router) {
-			r.Get("/status", apiHandler.GetUpdatesStatus)
-			r.Post("/check", apiHandler.CheckUpdates)
-			r.Post("/apply", apiHandler.ApplyUpdate)
-			r.Get("/progress", apiHandler.GetUpdatesProgress)
-		})
+			// Connection Test (diagnostics)
+			r.Post("/diagnostics/connect", apiHandler.ConnectTest)
 
-		// Status & Control
-		r.Get("/status", apiHandler.GetStatus)
-		r.Post("/control/start", apiHandler.Start)
-		r.Post("/control/stop", apiHandler.Stop)
-		r.Post("/control/restart", apiHandler.Restart)
-		r.Post("/control/reload", apiHandler.Reload)
+			// Traffic history (SQLite-backed)
+			r.Get("/traffic/history", apiHandler.GetTrafficHistory)
+			r.Post("/traffic/reset", apiHandler.ResetTrafficHistory)
 
-		// Config detection (kept for compatibility)
-		r.Get("/config/detected", apiHandler.GetDetectedConfig)
-		r.Post("/config/use-detected", apiHandler.UseDetectedConfig)
+			// DNS Servers CRUD
+			r.Route("/dns/servers", func(r chi.Router) {
+				r.Get("/", apiHandler.ListDnsServers)
+				r.Post("/", apiHandler.CreateDnsServer)
+				r.Put("/{tag}", apiHandler.UpdateDnsServer)
+				r.Delete("/{tag}", apiHandler.DeleteDnsServer)
+			})
 
-		// Systemd logs
-		r.Get("/logs/journal", apiHandler.GetJournalLogs)
+			// DNS Rules CRUD
+			r.Route("/dns/rules", func(r chi.Router) {
+				r.Get("/", apiHandler.ListDnsRules)
+				r.Post("/", apiHandler.CreateDnsRule)
+				r.Put("/{index}", apiHandler.UpdateDnsRule)
+				r.Delete("/{index}", apiHandler.DeleteDnsRule)
+				r.Put("/reorder", apiHandler.ReorderDnsRules)
+			})
 
-		// Clash API proxy - WebSocket routes MUST be registered before the wildcard
-		r.HandleFunc("/clash/traffic", apiHandler.ProxyClashWebSocket)
-		r.HandleFunc("/clash/logs", apiHandler.ProxyClashWebSocket)
-		r.HandleFunc("/clash/connections", apiHandler.ProxyClashWebSocket)
-		r.Get("/clash/*", apiHandler.ProxyClashAPI)
-		r.Delete("/clash/*", apiHandler.ProxyClashAPI)
+			// DNS Settings
+			r.Get("/dns/settings", apiHandler.GetDnsSettings)
+			r.Put("/dns/settings", apiHandler.UpdateDnsSettings)
 
-		// RouteBox Settings API
-		r.Get("/settings", apiHandler.GetSettings)
-		r.Put("/settings", apiHandler.UpdateSettings)
-		r.Post("/settings/reload", apiHandler.ReloadSettings)
+			// Log Settings
+			r.Get("/log", apiHandler.GetLogSettings)
+			r.Put("/log", apiHandler.UpdateLogSettings)
 
-		// Setup wizard
-		r.Get("/needs-setup", apiHandler.NeedsSetup)
+			// Experimental Settings
+			r.Get("/experimental", apiHandler.GetExperimental)
+			r.Put("/experimental", apiHandler.UpdateExperimental)
 
-		// Health
-		r.Get("/health", func(w http.ResponseWriter, r *http.Request) {
-			w.WriteHeader(http.StatusOK)
-			w.Write([]byte(`{"status":"ok"}`))
+			// Version & Feature Flags
+			r.Get("/version", apiHandler.GetVersion)
+
+			// Binary updates (amnezia-box + RouteBox self-update)
+			r.Route("/updates", func(r chi.Router) {
+				r.Get("/status", apiHandler.GetUpdatesStatus)
+				r.Post("/check", apiHandler.CheckUpdates)
+				r.Post("/apply", apiHandler.ApplyUpdate)
+				r.Get("/progress", apiHandler.GetUpdatesProgress)
+			})
+
+			// Status & Control
+			r.Get("/status", apiHandler.GetStatus)
+			r.Post("/control/start", apiHandler.Start)
+			r.Post("/control/stop", apiHandler.Stop)
+			r.Post("/control/restart", apiHandler.Restart)
+			r.Post("/control/reload", apiHandler.Reload)
+
+			// Config detection (kept for compatibility)
+			r.Get("/config/detected", apiHandler.GetDetectedConfig)
+			r.Post("/config/use-detected", apiHandler.UseDetectedConfig)
+
+			// Systemd logs
+			r.Get("/logs/journal", apiHandler.GetJournalLogs)
+
+			// Clash API proxy - WebSocket routes MUST be registered before the wildcard
+			r.HandleFunc("/clash/traffic", apiHandler.ProxyClashWebSocket)
+			r.HandleFunc("/clash/logs", apiHandler.ProxyClashWebSocket)
+			r.HandleFunc("/clash/connections", apiHandler.ProxyClashWebSocket)
+			r.Get("/clash/*", apiHandler.ProxyClashAPI)
+			r.Delete("/clash/*", apiHandler.ProxyClashAPI)
+
+			// RouteBox Settings API
+			r.Get("/settings", apiHandler.GetSettings)
+			r.Put("/settings", apiHandler.UpdateSettings)
+			r.Post("/settings/reload", apiHandler.ReloadSettings)
+
+			// Setup wizard
+			r.Get("/needs-setup", apiHandler.NeedsSetup)
 		})
 	})
 
 	// Serve embedded frontend (SPA)
 	r.Get("/*", embedded.Handler())
 
+	// VPS-mode bootstrap (force-auth) + router-mode warning
+	if effectiveMode == "vps" {
+		sec := settingsMgr.Get().Security
+		if !sec.AuthEnabled || sec.AuthPasswordHash == "" {
+			pw, err := generatePassword()
+			if err != nil {
+				log.Fatalf("generate bootstrap password: %v", err)
+			}
+			if err := settingsMgr.Update(map[string]interface{}{
+				"security.auth_enabled":  true,
+				"security.auth_username": orDefault(sec.AuthUsername, "admin"),
+				"security.auth_password": pw,
+			}); err != nil {
+				log.Fatalf("enable auth: %v", err)
+			}
+			if err := settingsMgr.Save(); err != nil {
+				log.Fatalf("persist auth: %v", err)
+			}
+			pwFile := filepath.Join(filepath.Dir(settingsMgr.GetPath()), "routebox-initial-password")
+			_ = os.WriteFile(pwFile, []byte(pw+"\n"), 0600)
+			fmt.Println("==================================================================")
+			fmt.Println(" VPS MODE: panel auth was OFF — generated admin credentials")
+			fmt.Printf("   username: %s\n", orDefault(sec.AuthUsername, "admin"))
+			fmt.Printf("   password: %s\n", pw)
+			fmt.Printf("   (also written to %s)\n", pwFile)
+			fmt.Println("==================================================================")
+		}
+	} else if isNonLoopback(resolvedListenAddr) && !settingsMgr.Get().Security.AuthEnabled {
+		log.Printf("WARNING: RouteBox is listening on a non-loopback address (%s) with auth DISABLED — the panel is open to the network. Enable security.auth_enabled or run with --mode=vps.", resolvedListenAddr)
+	}
+
+	// Compute TLS usage
+	certPath := settingsMgr.Get().Network.TLSCertPath
+	keyPath := settingsMgr.Get().Network.TLSKeyPath
+	useTLS := certPath != "" && keyPath != ""
+	scheme := "http"
+	if useTLS {
+		scheme = "https"
+	}
+
 	// Start server
 	fmt.Println()
-	fmt.Printf("RouteBox %s starting on http://%s\n", Version, resolvedListenAddr)
+	fmt.Printf("RouteBox %s starting on %s://%s\n", Version, scheme, resolvedListenAddr)
 	fmt.Printf("Config: %s\n", resolvedConfigPath)
 	if resolvedClashAddr != "" {
 		fmt.Printf("Clash API: %s\n", resolvedClashAddr)
@@ -476,9 +552,16 @@ func main() {
 	}
 	fmt.Println()
 
+	// WriteTimeout is intentionally left at 0 (unlimited) because the Clash
+	// WebSocket proxy endpoints (/api/clash/traffic, /clash/logs, /clash/connections)
+	// are long-lived streaming connections. A non-zero http.Server.WriteTimeout
+	// applies to all handlers globally and would terminate those streams after the
+	// deadline, breaking real-time monitoring. ReadTimeout is safe to set because
+	// it only covers the time to read the initial request headers/body.
 	srv := &http.Server{
 		Addr:              resolvedListenAddr,
 		Handler:           r,
+		ReadTimeout:       time.Duration(cfg.Network.ReadTimeoutSec) * time.Second,
 		ReadHeaderTimeout: 10 * time.Second,
 		IdleTimeout:       120 * time.Second,
 	}
@@ -487,7 +570,11 @@ func main() {
 
 	errCh := make(chan error, 1)
 	go func() {
-		errCh <- srv.ListenAndServe()
+		if useTLS {
+			errCh <- srv.ListenAndServeTLS(certPath, keyPath)
+		} else {
+			errCh <- srv.ListenAndServe()
+		}
 	}()
 
 	select {
@@ -514,6 +601,32 @@ func main() {
 	if trafficStore != nil {
 		trafficStore.Close()
 	}
+}
+
+// generatePassword returns a 24-character URL-safe random password.
+func generatePassword() (string, error) {
+	b := make([]byte, 18)
+	if _, err := rand.Read(b); err != nil {
+		return "", err
+	}
+	return base64.RawURLEncoding.EncodeToString(b), nil
+}
+
+// orDefault returns s if non-empty, otherwise def.
+func orDefault(s, def string) string {
+	if s == "" {
+		return def
+	}
+	return s
+}
+
+// isNonLoopback reports whether addr resolves to a non-loopback interface.
+func isNonLoopback(addr string) bool {
+	host, _, err := net.SplitHostPort(addr)
+	if err != nil {
+		host = addr
+	}
+	return host != "" && host != "127.0.0.1" && host != "::1" && host != "localhost"
 }
 
 // runClientDiscovery polls the Clash /connections endpoint every 60s and feeds
