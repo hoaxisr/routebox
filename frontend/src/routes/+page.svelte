@@ -381,30 +381,27 @@
 			{/if}
 
 			<!-- System metrics bar -->
-			<div class="bg-[var(--ctp-surface1)] rounded-lg px-4 py-3 grid grid-cols-2 gap-3 sm:flex sm:items-center sm:gap-5 sm:flex-wrap mb-6">
-				<div class="flex items-baseline gap-1.5">
-					<span class="text-[10px] uppercase tracking-wide text-[var(--ctp-overlay1)]">Managed by</span>
+			<div class="bg-[var(--ctp-surface1)] rounded-lg px-4 py-3 grid grid-cols-2 gap-x-3 gap-y-2.5 sm:flex sm:items-center sm:gap-5 sm:flex-wrap mb-6">
+				<div class="min-w-0 flex flex-col sm:flex-row sm:items-baseline sm:gap-1.5">
+					<span class="text-[10px] uppercase tracking-wide text-[var(--ctp-overlay1)] flex-shrink-0">Managed by</span>
 					{#if status.managed_by === 'systemd'}
-						<span class="text-sm text-[var(--ctp-primary)]">systemd</span>
-						{#if status.service_name}
-							<span class="text-[10px] text-[var(--ctp-overlay0)]">({status.service_name})</span>
-						{/if}
+						<span class="text-sm text-[var(--ctp-primary)] truncate">systemd{#if status.service_name} <span class="text-[10px] text-[var(--ctp-overlay0)]">({status.service_name})</span>{/if}</span>
 					{:else}
 						<span class="text-sm text-[var(--ctp-text)]">standalone</span>
 					{/if}
 				</div>
 				<div class="hidden sm:block w-px h-[18px] bg-[var(--ctp-surface2)]"></div>
-				<div class="flex items-baseline gap-1.5">
+				<div class="min-w-0 flex flex-col sm:flex-row sm:items-baseline sm:gap-1.5">
 					<span class="text-[10px] uppercase tracking-wide text-[var(--ctp-overlay1)]">PID</span>
 					<span class="text-sm text-[var(--ctp-text)]">{status.pid || '-'}</span>
 				</div>
 				<div class="hidden sm:block w-px h-[18px] bg-[var(--ctp-surface2)]"></div>
-				<div class="flex items-baseline gap-1.5">
+				<div class="min-w-0 flex flex-col sm:flex-row sm:items-baseline sm:gap-1.5">
 					<span class="text-[10px] uppercase tracking-wide text-[var(--ctp-overlay1)]">Uptime</span>
 					<span class="text-sm text-[var(--ctp-text)]">{status.uptime || '-'}</span>
 				</div>
 				<div class="hidden sm:block w-px h-[18px] bg-[var(--ctp-surface2)]"></div>
-				<div class="flex items-baseline gap-1.5">
+				<div class="min-w-0 flex flex-col sm:flex-row sm:items-baseline sm:gap-1.5">
 					<span class="text-[10px] uppercase tracking-wide text-[var(--ctp-overlay1)]">Connections</span>
 					<span class="text-sm text-[var(--ctp-text)]">{connectionCount}</span>
 				</div>

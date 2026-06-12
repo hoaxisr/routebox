@@ -506,11 +506,11 @@ import { PRESETS as VOLUME_PRESETS, bytesFromUnit, splitBytes, type VolumeUnit }
 			</div>
 		</div>
 		<div class="hidden sm:block flex-1"></div>
-		<div class="flex flex-wrap gap-1 bg-[var(--ctp-mantle)] rounded-md p-0.5 self-start sm:self-auto">
+		<div class="grid grid-cols-6 gap-0.5 bg-[var(--ctp-mantle)] rounded-md p-0.5 self-start sm:self-auto">
 			{#each [{m:'live',l:$t('breakdown.rangeLive')},{m:'1h',l:'1h'},{m:'3h',l:'3h'},{m:'24h',l:'24h'},{m:'week',l:'Week'},{m:'month',l:'Month'}] as r}
 				<button
 					onclick={() => viewMode = r.m as ViewMode}
-					class="px-2.5 py-1 text-xs rounded transition-colors {viewMode === r.m
+					class="px-1.5 py-1 text-xs text-center rounded truncate transition-colors {viewMode === r.m
 						? 'bg-[var(--ctp-surface2)] text-[var(--ctp-text)]'
 						: 'text-[var(--ctp-overlay1)] hover:text-[var(--ctp-text)]'}"
 				>{r.l}</button>

@@ -584,7 +584,9 @@
 			<path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 5l7 7-7 7" />
 		</svg>
 		<span class="font-medium text-sm text-[var(--ctp-text)] truncate">
-			{#if name}{name}{:else}<span class="font-mono">{key}</span>{/if}
+			{#if groupByChain}<span class="selection-chip">{key}</span>
+			{:else if name}{name}
+			{:else}<span class="font-mono">{key}</span>{/if}
 		</span>
 		<span class="text-xs text-[var(--ctp-overlay0)] flex-shrink-0">({count})</span>
 		<span class="ml-auto font-mono text-xs text-[var(--ctp-subtext1)] tabular-nums whitespace-nowrap flex-shrink-0">
@@ -617,9 +619,17 @@
 		</div>
 		<div class="flex flex-wrap items-center gap-x-3 gap-y-1.5 mt-2 text-xs text-[var(--ctp-overlay1)]">
 			<span class="px-2 py-0.5 rounded bg-[var(--ctp-surface2)] text-[var(--ctp-subtext1)]">{conn.metadata.network.toUpperCase()}</span>
-			{#each conn.chains as chain}
-				<span class="selection-chip">{chain}</span>
-			{/each}
+			{#if groupByChain}
+				{@const name = $clientNames.get(conn.metadata.sourceIP || '')}
+				<span class="text-[var(--ctp-subtext1)] whitespace-nowrap" title={conn.metadata.sourceIP}>
+					{#if name}{name}
+					{:else}<span class="font-mono">{conn.metadata.sourceIP || '-'}</span>{/if}
+				</span>
+			{:else}
+				{#each conn.chains as chain}
+					<span class="selection-chip">{chain}</span>
+				{/each}
+			{/if}
 			<span class="font-mono tabular-nums">↑ {formatBytes(conn.upload)}</span>
 			<span class="font-mono tabular-nums">↓ {formatBytes(conn.download)}</span>
 			<span>{timeAgo(conn.start)}</span>
