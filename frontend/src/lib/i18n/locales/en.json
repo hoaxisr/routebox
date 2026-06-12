@@ -110,7 +110,13 @@
     "notConfigured": "Not configured",
     "noData": "No data",
     "empty": "Empty",
-    "unknown": "Unknown"
+    "unknown": "Unknown",
+    "deleted": "Deleted",
+    "saved": "Saved",
+    "or": "or",
+    "selectFile": "Select file",
+    "invalidFileType": "Invalid file type",
+    "fileReadError": "Failed to read file"
   },
   "clients": {
     "title": "Clients",
@@ -992,7 +998,8 @@
     "formatJson": "Format JSON",
     "validateConfig": "Validate Config",
     "resetChanges": "Reset Changes",
-    "savedToDraft": "Config saved to draft"
+    "savedToDraft": "Config saved to draft",
+    "validationErrors": "Validation errors"
   },
   "traffic": {
     "title": "Traffic Monitor",
