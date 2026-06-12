@@ -63,7 +63,7 @@
 	}
 </script>
 
-<div class="flex items-center gap-3">
+<div class="flex flex-col sm:flex-row sm:items-center gap-3">
 	<div class="relative flex-shrink-0" style="width:{size}px;height:{size}px">
 		<svg width={size} height={size} viewBox="0 0 {size} {size}" style="transform: rotate(-90deg)">
 			<circle cx={cx} cy={cy} r={r} fill="none" stroke="var(--ctp-surface2)" stroke-width="14"/>
@@ -91,7 +91,7 @@
 			</div>
 		{/if}
 	</div>
-	<div class="flex-1 min-w-0 flex flex-col gap-1 text-xs">
+	<div class="w-full sm:w-auto sm:flex-1 min-w-0 flex flex-col gap-1 text-xs">
 		{#each slices as slice}
 			<button
 				onclick={() => handleSliceClick(slice)}
