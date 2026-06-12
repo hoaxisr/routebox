@@ -222,13 +222,13 @@ func (m *Manager) HasVpnConfig() bool {
 		}
 	}
 
-	// Check for VPN outbounds (vless, hysteria2)
+	// Check for VPN outbounds (vless, hysteria2, naive)
 	if outbounds, ok := config["outbounds"].([]interface{}); ok {
 		for _, ob := range outbounds {
 			if obj, ok := ob.(map[string]interface{}); ok {
 				if obType, ok := obj["type"].(string); ok {
-					// vless and hysteria2 are common VPN protocols
-					if obType == "vless" || obType == "hysteria2" {
+					// vless, hysteria2 and naive are common VPN protocols
+					if obType == "vless" || obType == "hysteria2" || obType == "naive" {
 						return true
 					}
 				}
