@@ -46,8 +46,10 @@ type Manager struct {
 	forceStandalone bool   // force standalone mode even if systemd service exists
 	startedPID      int    // PID of process started by us in standalone mode (0 if none)
 
-	cachedVersion     string // memoized `<binary> version` output
-	cachedVersionPath string // binary path the cached version belongs to
+	cachedVersion      string    // memoized `<binary> version` output
+	cachedVersionPath  string    // binary path the cached version belongs to
+	cachedVersionStamp time.Time // binary mtime at cache fill
+	cachedVersionSize  int64     // binary size at cache fill
 }
 
 func (m *Manager) getBinaryPath() string {
@@ -376,10 +378,19 @@ func (m *Manager) GetVersion() (string, error) {
 }
 
 // runVersion executes binary with "version" command and returns the output.
-// Results are memoized per binary path; setBinaryPath invalidates the cache.
+// Results are memoized per binary path; the cache is also invalidated when the
+// binary's mtime or size changes (handles in-place binary replacement).
+// setBinaryPath invalidates the cache when the path itself changes.
 func (m *Manager) runVersion(binaryPath string) (string, error) {
+	fi, statErr := os.Stat(binaryPath)
+
 	m.stateMu.RLock()
-	if m.cachedVersionPath == binaryPath && m.cachedVersion != "" {
+	cacheHit := m.cachedVersionPath == binaryPath &&
+		m.cachedVersion != "" &&
+		statErr == nil &&
+		fi.ModTime().Equal(m.cachedVersionStamp) &&
+		fi.Size() == m.cachedVersionSize
+	if cacheHit {
 		v := m.cachedVersion
 		m.stateMu.RUnlock()
 		return v, nil
@@ -407,6 +418,10 @@ func (m *Manager) runVersion(binaryPath string) (string, error) {
 	m.stateMu.Lock()
 	m.cachedVersion = version
 	m.cachedVersionPath = binaryPath
+	if statErr == nil {
+		m.cachedVersionStamp = fi.ModTime()
+		m.cachedVersionSize = fi.Size()
+	}
 	m.stateMu.Unlock()
 
 	return version, nil

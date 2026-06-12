@@ -5,6 +5,7 @@ import (
 	"os/exec"
 	"path/filepath"
 	"testing"
+	"time"
 )
 
 func TestExeMatchesSelf(t *testing.T) {
@@ -84,5 +85,56 @@ func TestExeMatchesResolvesSymlinkedBinaryPath(t *testing.T) {
 	m := &Manager{binaryPath: link}
 	if !m.exeMatches(os.Getpid()) {
 		t.Fatalf("expected exeMatches to resolve symlink %s -> %s", link, exe)
+	}
+}
+
+// TestRunVersionCacheInvalidatesOnInPlaceReplacement verifies that replacing a
+// binary at the same path (same path, new mtime/size) causes runVersion to
+// re-execute the binary and return the updated version string.
+func TestRunVersionCacheInvalidatesOnInPlaceReplacement(t *testing.T) {
+	dir := t.TempDir()
+	binaryPath := filepath.Join(dir, "fake-binary")
+
+	writeScript := func(versionOutput string) {
+		script := "#!/bin/sh\necho '" + versionOutput + "'\n"
+		if err := os.WriteFile(binaryPath, []byte(script), 0755); err != nil {
+			t.Fatalf("failed to write fake binary: %v", err)
+		}
+	}
+
+	// Ensure sh is available
+	if _, err := exec.LookPath("sh"); err != nil {
+		t.Skip("sh not available")
+	}
+
+	// Write first version of the script
+	writeScript("fake-box version 1.0.0")
+
+	m := &Manager{}
+
+	v1, err := m.runVersion(binaryPath)
+	if err != nil {
+		t.Fatalf("runVersion v1: %v", err)
+	}
+	if v1 != "1.0.0" {
+		t.Fatalf("runVersion v1 = %q, want %q", v1, "1.0.0")
+	}
+
+	// Replace binary in-place with a new version.
+	// Sleep briefly and use os.Chtimes to guarantee a distinct mtime even on
+	// filesystems with coarse (1-second) timestamp granularity.
+	time.Sleep(10 * time.Millisecond)
+	writeScript("fake-box version 2.0.0")
+	newMtime := time.Now().Add(time.Second)
+	if err := os.Chtimes(binaryPath, newMtime, newMtime); err != nil {
+		t.Fatalf("failed to update mtime: %v", err)
+	}
+
+	v2, err := m.runVersion(binaryPath)
+	if err != nil {
+		t.Fatalf("runVersion v2: %v", err)
+	}
+	if v2 != "2.0.0" {
+		t.Fatalf("runVersion after in-place replacement = %q, want %q (cache not invalidated)", v2, "2.0.0")
 	}
 }
