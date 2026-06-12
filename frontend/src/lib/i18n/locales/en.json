@@ -979,7 +979,8 @@
     "importWarning": "This will replace your current configuration",
     "configExported": "Configuration exported",
     "configImported": "Configuration imported",
-    "invalidConfig": "Invalid configuration file"
+    "invalidConfig": "Invalid configuration file",
+    "savedAsDraft": "Config saved as draft — apply to activate"
   },
   "jsonEditor": {
     "title": "JSON Editor",

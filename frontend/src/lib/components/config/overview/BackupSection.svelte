@@ -1,7 +1,7 @@
 <script lang="ts">
 	import { t } from 'svelte-i18n';
 	import { api } from '$lib/api/client';
-	import { notifications } from '$lib/stores';
+	import { notifications, unsavedChanges } from '$lib/stores';
 	import type { SingboxConfig } from '$lib/types';
 
 	let importing = $state(false);
@@ -59,7 +59,9 @@
 		applying = true;
 		try {
 			await api.saveConfig(importedConfig!);
-			notifications.success('Config applied successfully');
+			notifications.success($t('backup.savedAsDraft'));
+			unsavedChanges.markChanged('Config', 'Imported config from backup');
+			unsavedChanges.refresh();
 			importedConfig = null;
 			validationResult = null;
 		} catch (err) {
