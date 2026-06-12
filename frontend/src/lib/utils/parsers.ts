@@ -239,6 +239,28 @@ export function parseHysteria2(uri: string): ParseResult {
 }
 
 /**
+ * Decode SIP002 userinfo: try plain base64 first, then base64url
+ * (RFC 4648 §5: '-' for '+', '_' for '/', padding often stripped),
+ * finally fall back to percent-encoded plaintext.
+ */
+function decodeSsUserinfo(userinfo: string): string {
+	try {
+		return atob(userinfo);
+	} catch {
+		// not plain base64 — try base64url below
+	}
+	try {
+		const normalized = userinfo.replace(/-/g, '+').replace(/_/g, '/');
+		const padded = normalized + '='.repeat((4 - (normalized.length % 4)) % 4);
+		return atob(padded);
+	} catch {
+		// plain "method:password" userinfo always contains ':', which is never
+		// valid base64, so it safely lands here
+		return decodeURIComponent(userinfo);
+	}
+}
+
+/**
  * Parse an ss:// URI (SIP002 format)
  * Format: ss://BASE64(method:password)@server:port#name
  * Also handles: ss://BASE64(method:password)@server:port/?plugin=xxx#name
@@ -316,13 +338,8 @@ export function parseShadowsocks(uri: string): ParseResult {
 				}
 			}
 
-			// Decode userinfo (base64 or plain method:password)
-			let decoded: string;
-			try {
-				decoded = atob(userinfo);
-			} catch {
-				decoded = decodeURIComponent(userinfo);
-			}
+			// Decode userinfo (base64, base64url, or plain method:password)
+			const decoded = decodeSsUserinfo(userinfo);
 			const colonIdx = decoded.indexOf(':');
 			if (colonIdx === -1) {
 				return { success: false, error: 'Invalid Shadowsocks URI: missing method:password' };

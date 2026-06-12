@@ -15,7 +15,8 @@ import {
 	extractDomain,
 	parseReservedBytes,
 	formatReservedBytes,
-	parseNaive
+	parseNaive,
+	parseShadowsocks
 } from './parsers';
 
 describe('parseLines', () => {
@@ -359,5 +360,43 @@ describe('parseNaive', () => {
 		const r = parseNaive('naive+https://onlyuser@example.com:443');
 		expect(r.success).toBe(true);
 		expect(r.config).toMatchObject({ username: 'onlyuser', password: '' });
+	});
+});
+
+describe('parseShadowsocks', () => {
+	it('parses standard base64 userinfo', () => {
+		// btoa('aes-256-gcm:test1234') === 'YWVzLTI1Ni1nY206dGVzdDEyMzQ='
+		const r = parseShadowsocks('ss://YWVzLTI1Ni1nY206dGVzdDEyMzQ=@example.com:8388#MyServer');
+		expect(r.success).toBe(true);
+		expect(r.config).toMatchObject({
+			type: 'ss',
+			name: 'MyServer',
+			server: 'example.com',
+			port: 8388,
+			method: 'aes-256-gcm',
+			password: 'test1234'
+		});
+	});
+
+	it('parses unpadded base64url userinfo with - and _ characters', () => {
+		// base64url('aes-256-gcm:k+?/>~~') — std form is 'YWVzLTI1Ni1nY206ays/Lz5+fg=='
+		// → '+' becomes '-', '/' becomes '_', padding stripped
+		const r = parseShadowsocks('ss://YWVzLTI1Ni1nY206ays_Lz5-fg@example.com:8388#URLSafe');
+		expect(r.success).toBe(true);
+		expect(r.config).toMatchObject({
+			method: 'aes-256-gcm',
+			password: 'k+?/>~~',
+			server: 'example.com',
+			port: 8388
+		});
+	});
+
+	it('still falls back to percent-encoded plaintext userinfo', () => {
+		const r = parseShadowsocks('ss://aes-256-gcm%3Apassword@example.com:8388');
+		expect(r.success).toBe(true);
+		expect(r.config).toMatchObject({
+			method: 'aes-256-gcm',
+			password: 'password'
+		});
 	});
 });
