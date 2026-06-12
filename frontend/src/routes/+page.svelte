@@ -53,6 +53,7 @@
 			}
 			await fetchStatus();
 			startTrafficStream();
+			startConnectionsStream();
 		} catch (e) {
 			notifications.error(`Failed to start: ${e}`);
 		} finally {
@@ -67,6 +68,7 @@
 			notifications.success('amnezia-box stopped');
 			await fetchStatus();
 			stopTrafficStream();
+			stopConnectionsStream();
 		} catch (e) {
 			notifications.error(`Failed to stop: ${e}`);
 		} finally {
@@ -175,13 +177,12 @@
 		};
 	});
 
-	// Start/stop streams when status changes
+	// Start/stop streams when status changes (start/stop fns are idempotent)
 	$effect(() => {
-		if (status.running && !trafficStream) {
+		if (status.running) {
 			startTrafficStream();
 			startConnectionsStream();
-		}
-		if (!status.running && trafficStream) {
+		} else {
 			stopTrafficStream();
 			stopConnectionsStream();
 		}
