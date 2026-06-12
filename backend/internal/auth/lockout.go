@@ -72,3 +72,17 @@ func (l *Limiter) Reset(key string) {
 	delete(l.attempts, key)
 	l.mu.Unlock()
 }
+
+// Cleanup drops entries that are no longer doing useful work: those below the
+// lock threshold (transient failures) and those whose lock window has elapsed.
+// Call periodically to bound memory.
+func (l *Limiter) Cleanup() {
+	l.mu.Lock()
+	defer l.mu.Unlock()
+	now := l.now()
+	for k, a := range l.attempts {
+		if a.fails < l.threshold || now.After(a.until) {
+			delete(l.attempts, k)
+		}
+	}
+}
