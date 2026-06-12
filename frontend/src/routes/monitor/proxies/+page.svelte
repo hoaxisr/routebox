@@ -90,7 +90,7 @@
 	});
 
 	function startAutoRefresh() {
-		if (autoRefreshTimer) return;
+		stopAutoRefresh();
 		autoRefreshTimer = setInterval(async () => {
 			await testAllProxies();
 		}, refreshInterval * 1000);
@@ -104,10 +104,10 @@
 	}
 
 	$effect(() => {
+		void refreshInterval; // read unconditionally so interval changes re-run this effect
+		stopAutoRefresh();
 		if (autoRefresh) {
 			startAutoRefresh();
-		} else {
-			stopAutoRefresh();
 		}
 	});
 
