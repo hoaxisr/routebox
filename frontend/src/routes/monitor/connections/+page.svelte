@@ -186,7 +186,7 @@
 	</div>
 
 	<!-- Stats -->
-	<div class="grid grid-cols-3 gap-4 mb-6">
+	<div class="grid grid-cols-1 sm:grid-cols-3 gap-3 sm:gap-4 mb-6">
 		<div class="bg-[var(--ctp-surface0)] rounded-lg p-4 border border-[var(--ctp-surface2)]">
 			<div class="text-sm text-[var(--ctp-overlay1)]">{$t('connections.activeConnections')}</div>
 			<div class="text-2xl font-semibold text-[var(--ctp-text)]">{connections.length}</div>

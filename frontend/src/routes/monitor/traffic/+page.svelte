@@ -193,7 +193,7 @@
 	</div>
 
 	<!-- Current speed -->
-	<div class="grid grid-cols-2 gap-4">
+	<div class="grid grid-cols-1 sm:grid-cols-2 gap-4">
 		<div class="bg-[var(--ctp-surface0)] rounded-xl p-6">
 			<div class="flex items-center gap-3 mb-2">
 				<svg class="w-5 h-5 text-[var(--ctp-subtext1)]" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -201,7 +201,7 @@
 				</svg>
 				<span class="text-[var(--ctp-overlay1)]">{$t('traffic.upload')}</span>
 			</div>
-			<div class="text-3xl font-bold text-[var(--ctp-text)]">{formatSpeed(trafficUp)}</div>
+			<div class="text-2xl sm:text-3xl font-bold text-[var(--ctp-text)]">{formatSpeed(trafficUp)}</div>
 			<div class="text-sm text-[var(--ctp-overlay0)] mt-1">{$t('traffic.total')}: {formatBytes(totalUp)}</div>
 		</div>
 
@@ -212,7 +212,7 @@
 				</svg>
 				<span class="text-[var(--ctp-overlay1)]">{$t('traffic.download')}</span>
 			</div>
-			<div class="text-3xl font-bold text-[var(--ctp-text)]">{formatSpeed(trafficDown)}</div>
+			<div class="text-2xl sm:text-3xl font-bold text-[var(--ctp-text)]">{formatSpeed(trafficDown)}</div>
 			<div class="text-sm text-[var(--ctp-overlay0)] mt-1">{$t('traffic.total')}: {formatBytes(totalDown)}</div>
 		</div>
 	</div>
