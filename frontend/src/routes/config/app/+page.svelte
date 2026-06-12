@@ -63,6 +63,11 @@
 			updates['monitoring.poll_interval_ms'] = settings.monitoring.poll_interval_ms;
 			updates['monitoring.proxies_refresh_ms'] = settings.monitoring.proxies_refresh_ms;
 
+			// Updates settings (backend ships the field; guard for older backends)
+			if (settings.updates) {
+				updates['updates.auto_check'] = settings.updates.auto_check;
+			}
+
 			await api.updateSettings(updates);
 			originalSettings = JSON.stringify(settings);
 			// Update i18n locale if language changed
@@ -334,6 +339,27 @@
 					</div>
 				</div>
 			</section>
+
+			<!-- Updates Section -->
+			{#if settings.updates}
+				<section class="bg-[var(--ctp-mantle)] rounded-lg p-5 border border-[var(--ctp-surface0)]">
+					<div class="flex items-center gap-3 mb-4">
+						<svg class="w-5 h-5 text-[var(--ctp-primary)]" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+							<path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-8l-4-4m0 0L8 8m4-4v12" />
+						</svg>
+						<h2 class="text-lg font-medium text-[var(--ctp-text)]">{$t('settings.updatesSection')}</h2>
+					</div>
+
+					<label class="flex items-center gap-3 cursor-pointer">
+						<input
+							type="checkbox"
+							bind:checked={settings.updates.auto_check}
+							class="w-4 h-4 rounded border-[var(--ctp-surface2)] text-[var(--ctp-primary)] focus:ring-[var(--ctp-primary)]"
+						/>
+						<span class="text-sm text-[var(--ctp-text)]">{$t('settings.autoCheckUpdates')}</span>
+					</label>
+				</section>
+			{/if}
 
 			<!-- Read-only sections -->
 			<section class="bg-[var(--ctp-mantle)] rounded-lg p-5 border border-[var(--ctp-surface0)]">

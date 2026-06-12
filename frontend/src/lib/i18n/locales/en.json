@@ -980,7 +980,9 @@
     "singboxConfig": "sing-box Config",
     "binaryName": "Binary Name",
     "settingsSaved": "Settings saved",
-    "settingsReloaded": "Settings reloaded from file"
+    "settingsReloaded": "Settings reloaded from file",
+    "updatesSection": "Updates",
+    "autoCheckUpdates": "Check for updates automatically (once a day)"
   },
   "backup": {
     "title": "Backup",
