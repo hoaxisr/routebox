@@ -27,6 +27,10 @@ import (
 	"routebox/backend/internal/traffic"
 )
 
+// Version is stamped at build time via -ldflags "-X main.Version=…".
+// "dev" for plain `go build` / `go run`.
+var Version = "dev"
+
 var (
 	settingsPath = flag.String("settings", "", "Path to routebox.toml settings file (auto-detected if not specified)")
 	// Legacy flags - override settings file if specified
@@ -37,6 +41,10 @@ var (
 )
 
 func main() {
+	if len(os.Args) > 1 && os.Args[1] == "version" {
+		fmt.Printf("routebox version %s\n", Version)
+		return
+	}
 	flag.Parse()
 
 	// Require root privileges (needed for TUN interface)
@@ -202,6 +210,7 @@ func main() {
 
 	// Initialize API handlers
 	apiHandler := api.NewHandler(cfgMgr, procMgr, resolvedClashAddr, geoipDB, settingsMgr, clientsMgr, trafficStore)
+	apiHandler.SetRouteBoxVersion(Version)
 
 	// Setup router
 	r := chi.NewRouter()
@@ -393,7 +402,7 @@ func main() {
 
 	// Start server
 	fmt.Println()
-	fmt.Printf("RouteBox starting on http://%s\n", resolvedListenAddr)
+	fmt.Printf("RouteBox %s starting on http://%s\n", Version, resolvedListenAddr)
 	fmt.Printf("Config: %s\n", resolvedConfigPath)
 	if resolvedClashAddr != "" {
 		fmt.Printf("Clash API: %s\n", resolvedClashAddr)

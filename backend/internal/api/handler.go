@@ -11,13 +11,19 @@ import (
 
 // Handler holds API dependencies
 type Handler struct {
-	config    *config.Manager
-	process   *process.Manager
-	clashAddr string
-	geoip     *geoip.DB
-	settings  *settings.Manager
-	clients   *clients.Manager
-	traffic   *traffic.Store
+	config          *config.Manager
+	process         *process.Manager
+	clashAddr       string
+	geoip           *geoip.DB
+	settings        *settings.Manager
+	clients         *clients.Manager
+	traffic         *traffic.Store
+	routeboxVersion string
+}
+
+// SetRouteBoxVersion stores the build-time RouteBox version for API responses.
+func (h *Handler) SetRouteBoxVersion(v string) {
+	h.routeboxVersion = v
 }
 
 // NewHandler creates a new API handler

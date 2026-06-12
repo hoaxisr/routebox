@@ -5,7 +5,7 @@ import (
 	"net/http"
 )
 
-// GetVersion returns the sing-box version and feature flags
+// GetVersion returns the sing-box version, feature flags and RouteBox version
 func (h *Handler) GetVersion(w http.ResponseWriter, r *http.Request) {
 	version, err := h.process.GetVersion()
 	if err != nil {
@@ -13,8 +13,9 @@ func (h *Handler) GetVersion(w http.ResponseWriter, r *http.Request) {
 	}
 	features := h.process.GetFeatureFlags()
 	writeSuccess(w, map[string]interface{}{
-		"version":  version,
-		"features": features,
+		"version":          version,
+		"features":         features,
+		"routebox_version": h.routeboxVersion,
 	})
 }
 
