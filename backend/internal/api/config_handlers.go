@@ -3,6 +3,7 @@ package api
 import (
 	"bytes"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"net/http"
 	"path/filepath"
@@ -113,6 +114,8 @@ func (h *Handler) ImportConfig(w http.ResponseWriter, r *http.Request) {
 
 // ApplyConfig saves draft to disk and reloads/restarts (with optional validation)
 func (h *Handler) ApplyConfig(w http.ResponseWriter, r *http.Request) {
+	gen := h.config.GetDraftGen()
+
 	// Optionally validate draft before applying
 	if h.config.HasDraft() {
 		// Pre-check local rule-set paths so the user sees a friendly message
@@ -124,14 +127,19 @@ func (h *Handler) ApplyConfig(w http.ResponseWriter, r *http.Request) {
 			writeError(w, http.StatusBadRequest, fmt.Sprintf("Config validation failed: %v", pathErrs))
 			return
 		}
-		valid, errors := h.config.CheckDraft()
+		valid, checkErrs, checkedGen := h.config.CheckDraft()
 		if !valid {
-			writeError(w, http.StatusBadRequest, fmt.Sprintf("Config validation failed: %v", errors))
+			writeError(w, http.StatusBadRequest, fmt.Sprintf("Config validation failed: %v", checkErrs))
 			return
 		}
+		gen = checkedGen
 	}
 
-	if err := h.config.SaveToDisk(); err != nil {
+	if err := h.config.SaveToDiskIfGen(gen); err != nil {
+		if errors.Is(err, config.ErrDraftChanged) {
+			writeError(w, http.StatusConflict, "Draft changed since validation — re-check and retry")
+			return
+		}
 		writeError(w, http.StatusInternalServerError, fmt.Sprintf("Failed to save: %v", err))
 		return
 	}
@@ -260,14 +268,14 @@ func (h *Handler) CheckConfig(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	valid, errors := h.config.CheckDraft()
-	if errors == nil {
-		errors = []string{}
+	valid, checkErrs, _ := h.config.CheckDraft()
+	if checkErrs == nil {
+		checkErrs = []string{}
 	}
 
 	writeSuccess(w, map[string]interface{}{
 		"valid":  valid,
-		"errors": errors,
+		"errors": checkErrs,
 	})
 }
 

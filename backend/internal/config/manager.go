@@ -3,6 +3,7 @@ package config
 import (
 	"bytes"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"log"
 	"os"
@@ -20,15 +21,20 @@ import (
 // Changes are accumulated in a draft file (config.json.bak) and only applied
 // to the active config (config.json) when explicitly saved or applied.
 type Manager struct {
-	path         string                 // config.json path
-	draftPath    string                 // config.json.bak path
-	activeConfig map[string]interface{} // config on disk (read-only during editing)
-	draftConfig  map[string]interface{} // draft config (nil if no changes)
-	hasDraft     bool
-	mu           sync.RWMutex
-	readOnly     bool
-	checkBinary  string // binary used for `check` validation (detected sing-box/amnezia-box path)
+	path          string                 // config.json path
+	draftPath     string                 // config.json.bak path
+	activeConfig  map[string]interface{} // config on disk (read-only during editing)
+	draftConfig   map[string]interface{} // draft config (nil if no changes)
+	hasDraft      bool
+	draftGen      int64 // generation counter, bumped on every draft mutation (guarded by mu)
+	mu            sync.RWMutex
+	readOnly      bool
+	checkBinaryFn func() string // provider for the `check` validation binary (re-evaluated per check)
 }
+
+// ErrDraftChanged is returned by SaveToDiskIfGen when the draft was mutated
+// after the caller captured its generation (validate-then-apply TOCTOU).
+var ErrDraftChanged = errors.New("draft changed since validation")
 
 // NewManager creates a new config manager and loads the config
 func NewManager(path string) (*Manager, error) {
@@ -121,6 +127,11 @@ func atomicWriteFile(path string, data []byte, perm os.FileMode) error {
 		return err
 	}
 	tmpName = "" // success: disable deferred cleanup
+	// fsync the directory so the rename itself survives power loss
+	if d, err := os.Open(dir); err == nil {
+		d.Sync()
+		d.Close()
+	}
 	return nil
 }
 
@@ -160,12 +171,13 @@ func pruneBackups(dir, base string, keep int) {
 	}
 }
 
-// SetCheckBinary sets the binary used for `check` validation (detected
-// sing-box/amnezia-box path from the process manager).
-func (m *Manager) SetCheckBinary(path string) {
+// SetCheckBinaryProvider sets a provider for the binary used in `check`
+// validation. It is re-evaluated on every check so a binary detected or
+// installed after startup is picked up without restarting RouteBox.
+func (m *Manager) SetCheckBinaryProvider(fn func() string) {
 	m.mu.Lock()
 	defer m.mu.Unlock()
-	m.checkBinary = path
+	m.checkBinaryFn = fn
 }
 
 // Load reads config from file into activeConfig and clears any draft
@@ -186,6 +198,7 @@ func (m *Manager) Load() error {
 	m.activeConfig = config
 	m.draftConfig = nil
 	m.hasDraft = false
+	m.draftGen++
 	return nil
 }
 
@@ -372,7 +385,8 @@ func (m *Manager) HasDraft() bool {
 	return m.hasDraft
 }
 
-// CleanupDraft removes any existing draft file (call on startup)
+// CleanupDraft removes any existing draft file and orphaned atomic-write temp
+// files (<base>.tmp-* / <base>.bak.tmp-*) left by a crash (call on startup)
 func (m *Manager) CleanupDraft() {
 	m.mu.Lock()
 	defer m.mu.Unlock()
@@ -380,6 +394,23 @@ func (m *Manager) CleanupDraft() {
 	os.Remove(m.draftPath)
 	m.draftConfig = nil
 	m.hasDraft = false
+	m.draftGen++
+
+	dir := filepath.Dir(m.path)
+	base := filepath.Base(m.path)
+	entries, err := os.ReadDir(dir)
+	if err != nil {
+		return
+	}
+	for _, e := range entries {
+		name := e.Name()
+		if e.IsDir() {
+			continue
+		}
+		if strings.HasPrefix(name, base+".tmp-") || strings.HasPrefix(name, base+".bak.tmp-") {
+			os.Remove(filepath.Join(dir, name))
+		}
+	}
 }
 
 // EnsureDraft creates a draft from active config if one doesn't exist (lazy copy)
@@ -416,7 +447,7 @@ func (m *Manager) saveDraftToDisk() error {
 	if err := atomicWriteFile(m.draftPath, buf.Bytes(), 0644); err != nil {
 		return fmt.Errorf("failed to write draft config: %w", err)
 	}
-
+	m.draftGen++
 	return nil
 }
 
@@ -450,6 +481,7 @@ func (m *Manager) DiscardDraft() error {
 
 	m.draftConfig = nil
 	m.hasDraft = false
+	m.draftGen++
 
 	// Remove draft file
 	if err := os.Remove(m.draftPath); err != nil && !os.IsNotExist(err) {
@@ -508,6 +540,7 @@ func (m *Manager) applyDraftLocked() error {
 	m.activeConfig = m.draftConfig
 	m.draftConfig = nil
 	m.hasDraft = false
+	m.draftGen++
 
 	// Remove draft file
 	os.Remove(m.draftPath)
@@ -606,15 +639,24 @@ func stripAnsi(s string) string {
 // CheckConfig validates config using the detected sing-box/amnezia-box binary
 func (m *Manager) CheckConfig(configPath string) (bool, []string) {
 	m.mu.RLock()
-	binary := m.checkBinary
+	fn := m.checkBinaryFn
 	m.mu.RUnlock()
+
+	binary := ""
+	if fn != nil {
+		binary = fn() // outside m.mu: provider takes the process manager's lock
+	}
 	if binary == "" {
 		binary = "sing-box"
 	}
 
 	if _, err := exec.LookPath(binary); err != nil {
-		log.Printf("Warning: config validation skipped: binary not found: %s", binary)
-		return true, nil
+		if errors.Is(err, exec.ErrNotFound) || os.IsNotExist(err) {
+			log.Printf("Warning: config validation skipped: binary not found: %s", binary)
+			return true, nil
+		}
+		// Permission problems etc. are real failures — surface, don't skip
+		return false, []string{fmt.Sprintf("cannot run config check with %s: %v", binary, err)}
 	}
 
 	cmd := exec.Command(binary, "check", "-c", configPath)
@@ -624,33 +666,60 @@ func (m *Manager) CheckConfig(configPath string) (bool, []string) {
 		// Parse error output — strip ANSI color codes so the UI shows readable text
 		cleaned := stripAnsi(string(output))
 		lines := strings.Split(strings.TrimSpace(cleaned), "\n")
-		errors := make([]string, 0, len(lines))
+		checkErrs := make([]string, 0, len(lines))
 		for _, line := range lines {
 			if line != "" {
-				errors = append(errors, line)
+				checkErrs = append(checkErrs, line)
 			}
 		}
-		if len(errors) == 0 {
-			errors = append(errors, err.Error())
+		if len(checkErrs) == 0 {
+			checkErrs = append(checkErrs, err.Error())
 		}
-		return false, errors
+		return false, checkErrs
 	}
 
 	return true, nil
 }
 
-// CheckDraft validates draft config using sing-box check command
-func (m *Manager) CheckDraft() (bool, []string) {
+// CheckDraft validates draft config using sing-box check command. It returns
+// the draft generation observed at check time, for use with SaveToDiskIfGen.
+func (m *Manager) CheckDraft() (bool, []string, int64) {
 	m.mu.RLock()
 	hasDraft := m.hasDraft
 	draftPath := m.draftPath
+	gen := m.draftGen
 	m.mu.RUnlock()
 
 	if !hasDraft {
-		return true, nil
+		return true, nil, gen
 	}
 
-	return m.CheckConfig(draftPath)
+	valid, errs := m.CheckConfig(draftPath)
+	return valid, errs, gen
+}
+
+// GetDraftGen returns the current draft generation counter.
+func (m *Manager) GetDraftGen() int64 {
+	m.mu.RLock()
+	defer m.mu.RUnlock()
+	return m.draftGen
+}
+
+// SaveToDiskIfGen is SaveToDisk guarded by a draft generation check: if the
+// draft was mutated after gen was captured (e.g. between validation and
+// apply), it returns ErrDraftChanged and writes nothing.
+func (m *Manager) SaveToDiskIfGen(gen int64) error {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+
+	if m.draftGen != gen {
+		return ErrDraftChanged
+	}
+
+	if m.hasDraft {
+		return m.applyDraftLocked()
+	}
+	return m.saveLocked(m.deepCopy(m.activeConfig))
 }
 
 // --- Internal helpers ---

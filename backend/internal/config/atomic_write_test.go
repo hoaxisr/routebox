@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 )
 
@@ -49,5 +50,43 @@ func TestAtomicWriteFile(t *testing.T) {
 	got2, _ := os.ReadFile(path)
 	if !bytes.Equal(got2, data2) {
 		t.Fatalf("overwrite content mismatch: got %q", got2)
+	}
+}
+
+func TestCleanupDraftSweepsTempFiles(t *testing.T) {
+	dir := t.TempDir()
+	path := filepath.Join(dir, "config.json")
+	if err := os.WriteFile(path, []byte(`{}`), 0644); err != nil {
+		t.Fatal(err)
+	}
+	// Orphans a crashed atomicWriteFile would leave behind
+	for _, name := range []string{"config.json.tmp-12345", "config.json.bak.tmp-678", "config.json.bak"} {
+		if err := os.WriteFile(filepath.Join(dir, name), []byte(`{}`), 0644); err != nil {
+			t.Fatal(err)
+		}
+	}
+	// Unrelated file must survive
+	keep := filepath.Join(dir, "config.json.1700000000.bak")
+	if err := os.WriteFile(keep, []byte(`{}`), 0644); err != nil {
+		t.Fatal(err)
+	}
+
+	m, err := NewManager(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	m.CleanupDraft()
+
+	entries, err := os.ReadDir(dir)
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, e := range entries {
+		if strings.Contains(e.Name(), ".tmp-") || e.Name() == "config.json.bak" {
+			t.Fatalf("CleanupDraft left %s behind", e.Name())
+		}
+	}
+	if _, err := os.Stat(keep); err != nil {
+		t.Fatalf("timestamped backup was wrongly removed: %v", err)
 	}
 }

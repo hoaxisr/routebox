@@ -120,8 +120,9 @@ func main() {
 	// Clean up any stale draft from previous session
 	cfgMgr.CleanupDraft()
 
-	// Use the detected sing-box/amnezia-box binary for config validation
-	cfgMgr.SetCheckBinary(procMgr.GetBinaryPath())
+	// Use the currently detected sing-box/amnezia-box binary for config
+	// validation — provider, not a snapshot, so later detection is picked up
+	cfgMgr.SetCheckBinaryProvider(procMgr.GetBinaryPath)
 
 	// Set config path for process manager
 	procMgr.SetConfigPath(resolvedConfigPath)
