@@ -163,6 +163,36 @@ export interface Inbound {
 	inet6_address?: string;
 	// Common
 	tcp_fast_open?: boolean;
+	// Server inbound fields
+	users?: ServerInboundUser[];
+	tls?: ServerTlsConfig;
+	up_mbps?: number;     // hysteria2
+	down_mbps?: number;   // hysteria2
+	obfs?: { type: string; password?: string }; // hysteria2
+}
+
+export interface ServerInboundUser {
+	name?: string;       // vless / hysteria2
+	uuid?: string;       // vless
+	flow?: string;       // vless
+	username?: string;   // naive
+	password?: string;   // naive / hysteria2
+}
+
+export interface ServerRealityConfig {
+	enabled: boolean;
+	private_key?: string;
+	short_id?: string;
+	handshake?: { server: string; server_port: number };
+}
+
+export interface ServerTlsConfig {
+	enabled?: boolean;
+	server_name?: string;
+	acme?: { domain: string; email: string };
+	reality?: ServerRealityConfig;
+	certificate_path?: string;
+	key_path?: string;
 }
 
 // TLS configuration for outbound proxies

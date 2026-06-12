@@ -179,6 +179,18 @@ export const api = {
 			method: 'DELETE'
 		}),
 
+	// Server inbound: credential generators + share link
+	generateReality: () =>
+		request<{ private_key: string; public_key: string }>('/generate/reality', { method: 'POST' }),
+	generateUuid: () =>
+		request<{ uuid: string }>('/generate/uuid', { method: 'POST' }),
+	generatePassword: () =>
+		request<{ password: string }>('/generate/password', { method: 'POST' }),
+	getUserLink: (tag: string, userIndex: number, host: string) =>
+		request<{ link: string }>(
+			`/inbounds/${encodeURIComponent(tag)}/users/${userIndex}/link?host=${encodeURIComponent(host)}`
+		),
+
 	// Rule Sets CRUD
 	listRuleSets: () => request<RuleSet[]>('/route/rule-sets'),
 	createRuleSet: (ruleSet: RuleSet) =>
