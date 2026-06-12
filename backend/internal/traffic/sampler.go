@@ -36,6 +36,10 @@ type connState struct {
 	download int64
 }
 
+// clashHTTPClient bounds Clash API calls so a hung socket can't stall the
+// sampler loop indefinitely.
+var clashHTTPClient = &http.Client{Timeout: 10 * time.Second}
+
 // Sampler turns periodic Clash connection snapshots into per-minute byte deltas.
 type Sampler struct {
 	store    *Store
@@ -95,7 +99,7 @@ func (s *Sampler) computeDeltas(snapshot []ConnectionSample) []Delta {
 
 // fetchSnapshot pulls /connections from Clash and converts to our shape.
 func (s *Sampler) fetchSnapshot(clashAddr string) ([]ConnectionSample, error) {
-	resp, err := http.Get("http://" + clashAddr + "/connections")
+	resp, err := clashHTTPClient.Get("http://" + clashAddr + "/connections")
 	if err != nil {
 		return nil, err
 	}

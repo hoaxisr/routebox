@@ -1,13 +1,16 @@
 package main
 
 import (
+	"context"
 	"encoding/json"
 	"flag"
 	"fmt"
 	"log"
 	"net/http"
 	"os"
+	"os/signal"
 	"path/filepath"
+	"syscall"
 	"time"
 
 	"github.com/go-chi/chi/v5"
@@ -173,12 +176,10 @@ func main() {
 	}
 	stopClients := make(chan struct{})
 	go clientsMgr.StartPersistLoop(30*time.Second, stopClients)
-	defer close(stopClients)
 
 	// Auto-discover LAN clients from Clash /connections
 	stopDiscovery := make(chan struct{})
 	go runClientDiscovery(clientsMgr, resolvedClashAddr, stopDiscovery)
-	defer close(stopDiscovery)
 
 	// Open traffic history store (next to settings file)
 	var trafficStore *traffic.Store
@@ -188,7 +189,6 @@ func main() {
 			log.Printf("Warning: traffic store unavailable: %v", err)
 		} else {
 			trafficStore = ts
-			defer trafficStore.Close()
 		}
 	}
 
@@ -198,7 +198,6 @@ func main() {
 		sampler := traffic.NewSampler(trafficStore)
 		go sampler.Run(resolvedClashAddr, 35, stopSampler)
 	}
-	defer close(stopSampler)
 
 	// Initialize API handlers
 	apiHandler := api.NewHandler(cfgMgr, procMgr, resolvedClashAddr, geoipDB, settingsMgr, clientsMgr, trafficStore)
@@ -409,8 +408,35 @@ func main() {
 		ReadHeaderTimeout: 10 * time.Second,
 		IdleTimeout:       120 * time.Second,
 	}
-	if err := srv.ListenAndServe(); err != nil {
+
+	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
+	defer stop()
+
+	errCh := make(chan error, 1)
+	go func() {
+		errCh <- srv.ListenAndServe()
+	}()
+
+	select {
+	case err := <-errCh:
 		log.Fatalf("Server error: %v", err)
+	case <-ctx.Done():
+	}
+	stop() // restore default signal behavior: second Ctrl-C kills immediately
+
+	fmt.Println("\nShutting down...")
+	shutdownCtx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	defer cancel()
+	if err := srv.Shutdown(shutdownCtx); err != nil {
+		log.Printf("HTTP shutdown: %v", err)
+	}
+
+	// Stop background loops, then close the store they write to
+	close(stopClients) // PersistLoop flushes clients.toml on stop
+	close(stopDiscovery)
+	close(stopSampler)
+	if trafficStore != nil {
+		trafficStore.Close()
 	}
 }
 
@@ -420,10 +446,11 @@ func runClientDiscovery(mgr *clients.Manager, clashAddr string, stop <-chan stru
 	if clashAddr == "" {
 		return
 	}
+	client := &http.Client{Timeout: 10 * time.Second}
 	ticker := time.NewTicker(60 * time.Second)
 	defer ticker.Stop()
 	tick := func() {
-		resp, err := http.Get("http://" + clashAddr + "/connections")
+		resp, err := client.Get("http://" + clashAddr + "/connections")
 		if err != nil {
 			return
 		}
