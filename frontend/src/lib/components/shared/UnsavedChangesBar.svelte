@@ -50,7 +50,7 @@
 {#if changesState.hasChanges}
 	<div class="fixed bottom-0 left-0 right-0 z-50 bg-[var(--ctp-yellow)] text-[var(--ctp-base)] shadow-lg border-t-2 border-[var(--ctp-yellow)]">
 		<div class="max-w-7xl mx-auto px-4 py-3">
-			<div class="flex items-center justify-between gap-4">
+			<div class="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3 sm:gap-4">
 				<!-- Left: Warning icon and text -->
 				<div class="flex items-center gap-3 flex-1 min-w-0">
 					<svg class="w-5 h-5 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -80,7 +80,7 @@
 				</div>
 
 				<!-- Right: Action buttons -->
-				<div class="flex items-center gap-2 flex-shrink-0">
+				<div class="flex items-center gap-2 flex-shrink-0 self-end sm:self-auto">
 					<button
 						type="button"
 						onclick={handleDiscard}

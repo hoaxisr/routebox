@@ -103,7 +103,7 @@
 					{#if isMobile}
 						<button
 							onclick={toggleSidebar}
-							class="p-2 -ml-2 rounded-lg hover:bg-[var(--ctp-surface0)] transition-colors"
+							class="p-2.5 -ml-2.5 rounded-lg hover:bg-[var(--ctp-surface0)] transition-colors"
 							aria-label="Toggle menu"
 						>
 							<svg class="w-6 h-6 text-[var(--ctp-text)]" fill="none" stroke="currentColor" viewBox="0 0 24 24">
