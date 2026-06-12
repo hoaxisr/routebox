@@ -430,124 +430,146 @@ export const api = {
 };
 
 // WebSocket helpers
+
+export type StreamStatus = 'connected' | 'reconnecting' | 'closed';
+
+export interface StreamHandle {
+	close(): void;
+}
+
+interface StreamOptions {
+	path: string; // e.g. '/api/clash/traffic'
+	onMessage(data: unknown): void;
+	onStatus?(status: StreamStatus): void;
+	onError?(error: string): void; // backend in-band {error: "..."} payloads
+}
+
+const RECONNECT_BASE_MS = 1000;
+const RECONNECT_MAX_MS = 15000;
+
+function createReconnectingStream(opts: StreamOptions): StreamHandle {
+	let ws: WebSocket | null = null;
+	let disposed = false;
+	let attempt = 0;
+	let timer: ReturnType<typeof setTimeout> | null = null;
+
+	const proto = window.location.protocol === 'https:' ? 'wss' : 'ws';
+	const url = `${proto}://${window.location.host}${opts.path}`;
+
+	function connect() {
+		if (disposed) return;
+		ws = new WebSocket(url);
+
+		ws.onopen = () => {
+			attempt = 0; // reset backoff on successful open
+			opts.onStatus?.('connected');
+		};
+
+		ws.onmessage = (event) => {
+			let data: unknown;
+			try {
+				data = JSON.parse(event.data);
+			} catch {
+				return; // ignore non-JSON frames
+			}
+			if (data && typeof data === 'object' && 'error' in data && (data as { error?: unknown }).error) {
+				const message = String((data as { error: unknown }).error);
+				console.error(`Stream error (${opts.path}):`, message);
+				opts.onError?.(message);
+				return;
+			}
+			opts.onMessage(data);
+		};
+
+		ws.onerror = () => {
+			// onclose always follows; reconnect is scheduled there
+		};
+
+		ws.onclose = (event) => {
+			ws = null;
+			if (disposed) return;
+			if (!event.wasClean) {
+				console.warn(`WebSocket closed (${opts.path}):`, event.code);
+			}
+			scheduleReconnect();
+		};
+	}
+
+	function scheduleReconnect() {
+		if (disposed || timer) return;
+		const delay = Math.min(RECONNECT_BASE_MS * 2 ** attempt, RECONNECT_MAX_MS); // 1s,2s,4s,...,15s
+		attempt += 1;
+		opts.onStatus?.('reconnecting');
+		timer = setTimeout(() => {
+			timer = null;
+			connect();
+		}, delay);
+	}
+
+	connect();
+
+	return {
+		close() {
+			if (disposed) return;
+			disposed = true;
+			if (timer) {
+				clearTimeout(timer);
+				timer = null;
+			}
+			ws?.close();
+			ws = null;
+			opts.onStatus?.('closed');
+		}
+	};
+}
+
 export function createTrafficStream(
 	onMessage: (data: { up: number; down: number }) => void,
 	onError?: (error: string) => void,
-	onClose?: () => void
-) {
-	const ws = new WebSocket(`ws://${window.location.host}/api/clash/traffic`);
-	let connected = false;
-
-	ws.onopen = () => {
-		connected = true;
-	};
-
-	ws.onmessage = (event) => {
-		try {
-			const data = JSON.parse(event.data);
-			// Check if it's an error message from backend
-			if (data.error) {
-				console.error('Traffic stream error:', data.error);
-				onError?.(data.error);
-				return;
-			}
-			onMessage(data);
-		} catch {
-			// ignore parse errors
+	onClose?: () => void,
+	onStatus?: (status: StreamStatus) => void
+): StreamHandle {
+	return createReconnectingStream({
+		path: '/api/clash/traffic',
+		onMessage: (data) => onMessage(data as { up: number; down: number }),
+		onError,
+		onStatus: (status) => {
+			onStatus?.(status);
+			// Legacy semantics: onClose fired on connection loss. Do NOT fire it on
+			// intentional close ('closed') — that's what caused consumers'
+			// setTimeout-reconnect to resurrect streams after onDestroy.
+			if (status === 'reconnecting') onClose?.();
 		}
-	};
-
-	ws.onerror = () => {
-		if (!connected) {
-			onError?.('Failed to connect to traffic stream');
-		}
-	};
-
-	ws.onclose = (event) => {
-		if (!event.wasClean && connected) {
-			console.warn('Traffic WebSocket closed:', event.code);
-		}
-		onClose?.();
-	};
-
-	return {
-		close: () => ws.close()
-	};
+	});
 }
 
 export function createLogsStream(
 	onMessage: (data: { type: string; payload: string }) => void,
 	level = 'info',
-	onError?: (error: string) => void
-) {
-	const ws = new WebSocket(`ws://${window.location.host}/api/clash/logs?level=${level}`);
-
-	ws.onmessage = (event) => {
-		try {
-			const data = JSON.parse(event.data);
-			onMessage(data);
-		} catch {
-			// ignore parse errors
-		}
-	};
-
-	ws.onerror = (event) => {
-		console.error('Logs WebSocket error:', event);
-		onError?.('WebSocket connection failed');
-	};
-
-	ws.onclose = (event) => {
-		if (!event.wasClean) {
-			console.warn('Logs WebSocket closed unexpectedly:', event.code, event.reason);
-		}
-	};
-
-	return {
-		close: () => ws.close()
-	};
+	onError?: (error: string) => void,
+	onStatus?: (status: StreamStatus) => void
+): StreamHandle {
+	return createReconnectingStream({
+		path: `/api/clash/logs?level=${encodeURIComponent(level)}`,
+		onMessage: (data) => onMessage(data as { type: string; payload: string }),
+		onError,
+		onStatus
+	});
 }
 
 export function createConnectionsStream(
 	onMessage: (data: ConnectionsResponse) => void,
 	onError?: (error: string) => void,
-	onClose?: () => void
-) {
-	const ws = new WebSocket(`ws://${window.location.host}/api/clash/connections`);
-	let connected = false;
-
-	ws.onopen = () => {
-		connected = true;
-	};
-
-	ws.onmessage = (event) => {
-		try {
-			const data = JSON.parse(event.data);
-			// Check if it's an error message from backend
-			if (data.error) {
-				console.error('Connections stream error:', data.error);
-				onError?.(data.error);
-				return;
-			}
-			onMessage(data);
-		} catch {
-			// ignore parse errors
+	onClose?: () => void,
+	onStatus?: (status: StreamStatus) => void
+): StreamHandle {
+	return createReconnectingStream({
+		path: '/api/clash/connections',
+		onMessage: (data) => onMessage(data as ConnectionsResponse),
+		onError,
+		onStatus: (status) => {
+			onStatus?.(status);
+			if (status === 'reconnecting') onClose?.();
 		}
-	};
-
-	ws.onerror = () => {
-		if (!connected) {
-			onError?.('Failed to connect to connections stream');
-		}
-	};
-
-	ws.onclose = (event) => {
-		if (!event.wasClean && connected) {
-			console.warn('Connections WebSocket closed:', event.code);
-		}
-		onClose?.();
-	};
-
-	return {
-		close: () => ws.close()
-	};
+	});
 }
