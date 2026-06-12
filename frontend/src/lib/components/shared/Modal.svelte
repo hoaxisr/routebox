@@ -13,10 +13,10 @@
 	let { open, title, size = 'md', onClose, children, footer }: Props = $props();
 
 	const sizeClasses = {
-		sm: 'max-w-sm',
-		md: 'max-w-lg',
-		lg: 'max-w-2xl',
-		xl: 'max-w-4xl'
+		sm: 'sm:max-w-sm',
+		md: 'sm:max-w-lg',
+		lg: 'sm:max-w-2xl',
+		xl: 'sm:max-w-4xl'
 	};
 
 	function handleKeydown(e: KeyboardEvent) {

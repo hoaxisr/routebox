@@ -86,7 +86,7 @@
 					{/if}
 				</svg>
 			</div>
-			<div>
+			<div class="min-w-0">
 				<h3 class="font-medium text-[var(--ctp-text)] truncate">{proxy.name}</h3>
 				<span class="text-xs px-2 py-0.5 rounded bg-[var(--ctp-surface2)] text-[var(--ctp-subtext1)]">
 					{proxy.type}
@@ -100,16 +100,16 @@
 			<button
 				onclick={testLatency}
 				disabled={testing}
-				class="p-2 rounded-lg hover:bg-[var(--ctp-surface1)] transition-colors disabled:opacity-50"
+				class="p-2.5 rounded-lg hover:bg-[var(--ctp-surface1)] transition-colors disabled:opacity-50"
 				title={$t('proxies.testLatency')}
 			>
 				{#if testing}
-					<svg class="w-4 h-4 animate-spin text-[var(--ctp-primary)]" fill="none" viewBox="0 0 24 24">
+					<svg class="w-5 h-5 animate-spin text-[var(--ctp-primary)]" fill="none" viewBox="0 0 24 24">
 						<circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle>
 						<path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z"></path>
 					</svg>
 				{:else}
-					<svg class="w-4 h-4 text-[var(--ctp-overlay1)]" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+					<svg class="w-5 h-5 text-[var(--ctp-overlay1)]" fill="none" stroke="currentColor" viewBox="0 0 24 24">
 						<path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13 10V3L4 14h7v7l9-11h-7z" />
 					</svg>
 				{/if}
