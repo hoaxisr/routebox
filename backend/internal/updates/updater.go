@@ -8,6 +8,7 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"log"
 	"net/http"
 	"os"
 	"os/exec"
@@ -121,6 +122,12 @@ func (u *Updater) apply(t Target, rel ReleaseInfo) (ApplyResult, error) {
 	newPath := path + ".new" // same dir → rename is atomic
 	oldPath := path + ".old" // single rollback slot, overwritten each update
 
+	// Refuse self-update without a published checksum: RouteBox runs as root
+	// and smoke-execs the new binary; a missing sha256 signals something wrong.
+	if t.SelfUpdate && rel.Sha256URL == "" {
+		return ApplyResult{}, fmt.Errorf("refusing to self-update without a published checksum")
+	}
+
 	// 1. Download
 	u.setPhase(t.Name, PhaseDownload)
 	if err := u.download(rel.AssetURL, newPath); err != nil {
@@ -165,8 +172,12 @@ func (u *Updater) apply(t Target, rel ReleaseInfo) (ApplyResult, error) {
 		if err := t.Restart(); err != nil {
 			// Auto-rollback: keep the bad binary for inspection, restore old,
 			// restart again.
-			os.Rename(path, newPath+".failed")
-			os.Rename(oldPath, path)
+			if renErr := os.Rename(path, newPath+".failed"); renErr != nil {
+				log.Printf("updates: rollback rename: %v", renErr)
+			}
+			if renErr := os.Rename(oldPath, path); renErr != nil {
+				log.Printf("updates: rollback rename: %v", renErr)
+			}
 			if rerr := t.Restart(); rerr != nil {
 				return ApplyResult{}, fmt.Errorf(
 					"restart with new binary failed (%v); rollback restart also failed: %w", err, rerr)

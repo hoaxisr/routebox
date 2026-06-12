@@ -7,6 +7,7 @@ import (
 	"routebox/backend/internal/process"
 	"routebox/backend/internal/settings"
 	"routebox/backend/internal/traffic"
+	"routebox/backend/internal/updates"
 )
 
 // Handler holds API dependencies
@@ -19,11 +20,17 @@ type Handler struct {
 	clients         *clients.Manager
 	traffic         *traffic.Store
 	routeboxVersion string
+	updates         *updates.Service
 }
 
 // SetRouteBoxVersion stores the build-time RouteBox version for API responses.
 func (h *Handler) SetRouteBoxVersion(v string) {
 	h.routeboxVersion = v
+}
+
+// SetUpdatesService wires the binary-updates service into the API.
+func (h *Handler) SetUpdatesService(s *updates.Service) {
+	h.updates = s
 }
 
 // NewHandler creates a new API handler

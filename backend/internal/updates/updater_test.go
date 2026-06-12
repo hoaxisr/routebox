@@ -362,3 +362,38 @@ func TestRunDailyChecksRespectsSetting(t *testing.T) {
 		t.Fatal("RunDailyChecks did not stop")
 	}
 }
+
+func TestApplySelfUpdateRequiresChecksum(t *testing.T) {
+	dir := t.TempDir()
+	path := filepath.Join(dir, "routebox")
+	copyFile(t, "/bin/true", path)
+
+	target := Target{
+		Name:           "routebox",
+		Repo:           "hoaxisr/routebox",
+		AssetSuffix:    func(string) (string, bool) { return "routebox-linux-amd64", true },
+		BinaryPath:     func() string { return path },
+		CurrentVersion: func() (string, error) { return "0.17.0", nil },
+		SelfUpdate:     true,
+	}
+
+	u := NewUpdater()
+	// Sha256URL is empty — Apply must refuse before downloading anything
+	_, err := u.Apply(target, ReleaseInfo{
+		AssetName: "routebox-linux-amd64",
+		AssetURL:  "http://127.0.0.1:0/should-not-be-fetched",
+		Sha256URL: "", // intentionally empty
+	})
+	if err == nil {
+		t.Fatal("Apply must return an error when Sha256URL is empty for SelfUpdate target")
+	}
+	if !strings.Contains(err.Error(), "checksum") {
+		t.Errorf("error should mention 'checksum', got: %v", err)
+	}
+	// Verify the binary was not modified
+	got, _ := os.ReadFile(path)
+	orig, _ := os.ReadFile("/bin/true")
+	if string(got) != string(orig) {
+		t.Error("binary must be untouched when Apply is refused due to missing checksum")
+	}
+}

@@ -222,11 +222,14 @@ func main() {
 	go updates.RunDailyChecks(updChecker, updTargets, func() bool {
 		return settingsMgr.Get().Updates.AutoCheck
 	}, 24*time.Hour, stopUpdates)
-	_ = updUpdater // consumed by API wiring in Task 4
-
 	// Initialize API handlers
 	apiHandler := api.NewHandler(cfgMgr, procMgr, resolvedClashAddr, geoipDB, settingsMgr, clientsMgr, trafficStore)
 	apiHandler.SetRouteBoxVersion(Version)
+	apiHandler.SetUpdatesService(&updates.Service{
+		Checker: updChecker,
+		Updater: updUpdater,
+		Targets: updTargets,
+	})
 
 	// Setup router
 	r := chi.NewRouter()
@@ -376,6 +379,14 @@ func main() {
 
 		// Version & Feature Flags
 		r.Get("/version", apiHandler.GetVersion)
+
+		// Binary updates (amnezia-box + RouteBox self-update)
+		r.Route("/updates", func(r chi.Router) {
+			r.Get("/status", apiHandler.GetUpdatesStatus)
+			r.Post("/check", apiHandler.CheckUpdates)
+			r.Post("/apply", apiHandler.ApplyUpdate)
+			r.Get("/progress", apiHandler.GetUpdatesProgress)
+		})
 
 		// Status & Control
 		r.Get("/status", apiHandler.GetStatus)
