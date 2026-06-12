@@ -19,6 +19,8 @@ All notable changes to RouteBox are documented here.
 
 - **Backend:** process manager no longer matches RouteBox itself when finding the proxy PID; config validation uses the detected amnezia-box binary; atomic config writes (power-loss safe); numeric settings updates no longer silently ignored; process lifecycle serialized; optional HTTP basic auth (settings `[security]`) + server timeouts; WS proxy keepalive (no more leaked connections); backup rotation (keep 5)
 - **Frontend:** monitor streams auto-reconnect with honest status indicators (works behind HTTPS); dashboard start/stop manages both streams; live-updates toggle survives transient errors; proxies auto-refresh respects interval changes; `ss://` base64url import; backup import correctly reports draft state; missing i18n keys; confirmation for Close All connections and endpoint delete
+- **Backend:** process status polling no longer forks per call (version cache, Signal(0) liveness); draft apply guarded against concurrent edits (409); graceful shutdown flushes client data; Clash API calls bounded by timeouts; orphaned temp files swept at startup; note: `/api/health` requires credentials when basic auth is enabled
+- **Frontend:** stream backoff no longer busy-loops against a stopped proxy; IPv6 hosts in import links; NaiveProxy naming unified; "Servers" section; restart confirmation; localized remaining notifications and empty states; honest pending-changes counter; safe-area padding on mobile sheets
 
 ---
 
