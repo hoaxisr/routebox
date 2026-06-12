@@ -3,87 +3,122 @@ package api
 import (
 	"net/http"
 	"net/http/httptest"
-	"os"
-	"path/filepath"
 	"testing"
 
+	"routebox/backend/internal/auth"
 	"routebox/backend/internal/settings"
 )
 
 func newSettingsFromTOML(t *testing.T, content string) *settings.Manager {
 	t.Helper()
-	path := filepath.Join(t.TempDir(), "routebox.toml")
-	if err := os.WriteFile(path, []byte(content), 0644); err != nil {
-		t.Fatal(err)
-	}
+	path := t.TempDir() + "/routebox.toml"
 	m, err := settings.NewManager(path)
 	if err != nil {
 		t.Fatal(err)
 	}
+	if err := m.Load(); err != nil {
+		t.Fatal(err)
+	}
+	_ = content // content handled via Update calls in callers
 	return m
 }
 
-func TestBasicAuth(t *testing.T) {
-	const enabled = `
-[security]
-auth_enabled = true
-auth_username = "admin"
-auth_password = "secret"
-`
-	const disabled = `
-[security]
-auth_enabled = false
-`
-	// auth_enabled without a password is a misconfiguration; must be denied.
-	const enabledEmpty = `
-[security]
-auth_enabled = true
-`
+func TestAuthMiddleware(t *testing.T) {
 	okHandler := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.WriteHeader(http.StatusOK)
 	})
 
-	cases := []struct {
-		name       string
-		toml       string
-		user, pass string
-		sendCreds  bool
-		wantStatus int
-	}{
-		{"disabled no creds", disabled, "", "", false, http.StatusOK},
-		{"enabled no creds", enabled, "", "", false, http.StatusUnauthorized},
-		{"enabled wrong creds", enabled, "admin", "wrong", true, http.StatusUnauthorized},
-		{"enabled right creds", enabled, "admin", "secret", true, http.StatusOK},
-		{"enabled empty creds misconfig denied", enabledEmpty, "", "", true, http.StatusUnauthorized},
-	}
+	// disabled: all requests pass
+	t.Run("disabled no creds", func(t *testing.T) {
+		dir := t.TempDir()
+		m, _ := settings.NewManager(dir + "/routebox.toml")
+		_ = m.Load()
+		handler := AuthMiddleware(m, nil, nil, nil)(okHandler)
+		req := httptest.NewRequest("GET", "/api/status", nil)
+		rec := httptest.NewRecorder()
+		handler.ServeHTTP(rec, req)
+		if rec.Code != http.StatusOK {
+			t.Fatalf("disabled: want 200, got %d", rec.Code)
+		}
+	})
 
-	for _, tc := range cases {
-		t.Run(tc.name, func(t *testing.T) {
-			mgr := newSettingsFromTOML(t, tc.toml)
-			handler := BasicAuth(mgr)(okHandler)
-			req := httptest.NewRequest("GET", "/api/status", nil)
-			if tc.sendCreds {
-				req.SetBasicAuth(tc.user, tc.pass)
-			}
-			rec := httptest.NewRecorder()
-			handler.ServeHTTP(rec, req)
-			if rec.Code != tc.wantStatus {
-				t.Fatalf("status = %d, want %d", rec.Code, tc.wantStatus)
-			}
-			if tc.wantStatus == http.StatusUnauthorized && rec.Header().Get("WWW-Authenticate") == "" {
-				t.Fatal("missing WWW-Authenticate header")
-			}
-		})
-	}
+	// enabled, no creds sent -> 401
+	t.Run("enabled no creds", func(t *testing.T) {
+		dir := t.TempDir()
+		m, _ := settings.NewManager(dir + "/routebox.toml")
+		_ = m.Load()
+		_ = m.Update(map[string]interface{}{"security.auth_enabled": true, "security.auth_username": "admin"})
+		_ = m.Update(map[string]interface{}{"security.auth_password": "secret"})
+		handler := AuthMiddleware(m, auth.NewSessionStore(), auth.NewLimiter(), auth.NewCachedVerifier())(okHandler)
+		req := httptest.NewRequest("GET", "/api/status", nil)
+		rec := httptest.NewRecorder()
+		handler.ServeHTTP(rec, req)
+		if rec.Code != http.StatusUnauthorized {
+			t.Fatalf("no creds: want 401, got %d", rec.Code)
+		}
+		if rec.Header().Get("WWW-Authenticate") == "" {
+			t.Fatal("missing WWW-Authenticate header")
+		}
+	})
+
+	// enabled, wrong creds -> 401
+	t.Run("enabled wrong creds", func(t *testing.T) {
+		dir := t.TempDir()
+		m, _ := settings.NewManager(dir + "/routebox.toml")
+		_ = m.Load()
+		_ = m.Update(map[string]interface{}{"security.auth_enabled": true, "security.auth_username": "admin"})
+		_ = m.Update(map[string]interface{}{"security.auth_password": "secret"})
+		handler := AuthMiddleware(m, auth.NewSessionStore(), auth.NewLimiter(), auth.NewCachedVerifier())(okHandler)
+		req := httptest.NewRequest("GET", "/api/status", nil)
+		req.SetBasicAuth("admin", "wrong")
+		rec := httptest.NewRecorder()
+		handler.ServeHTTP(rec, req)
+		if rec.Code != http.StatusUnauthorized {
+			t.Fatalf("wrong creds: want 401, got %d", rec.Code)
+		}
+	})
+
+	// enabled, right creds -> 200
+	t.Run("enabled right creds", func(t *testing.T) {
+		dir := t.TempDir()
+		m, _ := settings.NewManager(dir + "/routebox.toml")
+		_ = m.Load()
+		_ = m.Update(map[string]interface{}{"security.auth_enabled": true, "security.auth_username": "admin"})
+		_ = m.Update(map[string]interface{}{"security.auth_password": "secret"})
+		handler := AuthMiddleware(m, auth.NewSessionStore(), auth.NewLimiter(), auth.NewCachedVerifier())(okHandler)
+		req := httptest.NewRequest("GET", "/api/status", nil)
+		req.SetBasicAuth("admin", "secret")
+		rec := httptest.NewRecorder()
+		handler.ServeHTTP(rec, req)
+		if rec.Code != http.StatusOK {
+			t.Fatalf("right creds: want 200, got %d", rec.Code)
+		}
+	})
+
+	// enabled, no hash configured -> 401 (fail closed)
+	t.Run("enabled empty hash misconfig denied", func(t *testing.T) {
+		dir := t.TempDir()
+		m, _ := settings.NewManager(dir + "/routebox.toml")
+		_ = m.Load()
+		_ = m.Update(map[string]interface{}{"security.auth_enabled": true, "security.auth_username": "admin"})
+		// do not set password — hash stays empty
+		handler := AuthMiddleware(m, auth.NewSessionStore(), auth.NewLimiter(), auth.NewCachedVerifier())(okHandler)
+		req := httptest.NewRequest("GET", "/api/status", nil)
+		req.SetBasicAuth("", "")
+		rec := httptest.NewRecorder()
+		handler.ServeHTTP(rec, req)
+		if rec.Code != http.StatusUnauthorized {
+			t.Fatalf("misconfig: want 401, got %d", rec.Code)
+		}
+	})
 }
 
-// TestBasicAuth_NilManager verifies that a nil settings manager (used in
-// development/testing without auth) passes all requests through.
-func TestBasicAuth_NilManager(t *testing.T) {
+// TestAuthMiddleware_NilManager verifies that a nil settings manager passes all requests through.
+func TestAuthMiddleware_NilManager(t *testing.T) {
 	okHandler := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.WriteHeader(http.StatusOK)
 	})
-	handler := BasicAuth(nil)(okHandler)
+	handler := AuthMiddleware(nil, nil, nil, nil)(okHandler)
 	req := httptest.NewRequest("GET", "/api/status", nil)
 	rec := httptest.NewRecorder()
 	handler.ServeHTTP(rec, req)

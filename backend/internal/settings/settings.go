@@ -406,6 +406,14 @@ func (m *Manager) Update(updates map[string]interface{}) error {
 			m.settings.Monitoring.ProxiesRefreshMs = v
 
 		// Security runtime settings
+		case "security.auth_enabled":
+			if v, ok := value.(bool); ok {
+				m.settings.Security.AuthEnabled = v
+			}
+		case "security.auth_username":
+			if v, ok := value.(string); ok {
+				m.settings.Security.AuthUsername = v
+			}
 		case "security.session_timeout_minutes":
 			v, ok := toInt(value)
 			if !ok {

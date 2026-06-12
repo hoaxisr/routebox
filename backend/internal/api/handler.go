@@ -1,6 +1,7 @@
 package api
 
 import (
+	"routebox/backend/internal/auth"
 	"routebox/backend/internal/clients"
 	"routebox/backend/internal/config"
 	"routebox/backend/internal/geoip"
@@ -24,6 +25,9 @@ type Handler struct {
 	updates         *updates.Service
 	subs            *subscriptions.Manager
 	subsRefresh     func(subscriptions.Subscription) (int, int, error)
+	sessions        *auth.SessionStore
+	limiter         *auth.Limiter
+	verifier        *auth.CachedVerifier
 }
 
 // SetRouteBoxVersion stores the build-time RouteBox version for API responses.
@@ -40,6 +44,13 @@ func (h *Handler) SetUpdatesService(s *updates.Service) {
 func (h *Handler) SetSubscriptions(mgr *subscriptions.Manager, refresh func(subscriptions.Subscription) (int, int, error)) {
 	h.subs = mgr
 	h.subsRefresh = refresh
+}
+
+// SetAuth wires the session store, lockout limiter, and password verifier.
+func (h *Handler) SetAuth(s *auth.SessionStore, l *auth.Limiter, v *auth.CachedVerifier) {
+	h.sessions = s
+	h.limiter = l
+	h.verifier = v
 }
 
 // NewHandler creates a new API handler
