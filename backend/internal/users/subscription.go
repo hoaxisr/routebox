@@ -65,6 +65,11 @@ func BuildSubscription(user *PanelUser, active map[string]interface{}, host stri
 // findUserByCredential returns the user map inside inbound whose field `key`
 // equals cred. Self-contained so subscription.go imports neither api nor config.
 func findUserByCredential(inbound map[string]interface{}, key, cred string) (map[string]interface{}, bool) {
+	if cred == "" {
+		// Mirror extract.go's blank-credential skip: an empty binding credential
+		// must never match a user merely missing the key field ("" == "").
+		return nil, false
+	}
 	arr, _ := inbound["users"].([]interface{})
 	for _, u := range arr {
 		um, ok := u.(map[string]interface{})
