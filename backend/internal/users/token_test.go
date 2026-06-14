@@ -69,6 +69,40 @@ func TestByToken_Unknown(t *testing.T) {
 	}
 }
 
+// TestByToken_RejectsDisabledWithNonEmptyToken pins the fail-closed `&&
+// !u.TokenDisabled` clause in ByToken. It seeds the INCONSISTENT state directly
+// (Token non-empty AND TokenDisabled=true) — bypassing RevokeToken, which would
+// also blank the Token — to mimic a hand-edited users.toml where the derived
+// invariant "TokenDisabled ⟹ Token==\"\"" has been violated. ByToken must STILL
+// refuse to resolve such a token (fail closed). The control case below — the same
+// token with TokenDisabled=false — MUST resolve, so removing the clause makes
+// only this test's disabled assertion fail, not the control: a true mutation kill.
+func TestByToken_RejectsDisabledWithNonEmptyToken(t *testing.T) {
+	m := NewManager("") // no persistence
+
+	// Inconsistent on-disk state: a non-empty token alongside token_disabled=true.
+	if err := m.Put(&PanelUser{ID: "u1", Name: "alice", Token: "tok-zombie", TokenDisabled: true}); err != nil {
+		t.Fatal(err)
+	}
+	if _, ok := m.ByToken("tok-zombie"); ok {
+		t.Fatal("ByToken resolved a TokenDisabled user with a non-empty token (must fail closed)")
+	}
+
+	// Control: same non-empty token, but enabled — this MUST resolve. If it does
+	// not, a green disabled-case above would be meaningless; together they fail
+	// specifically when the `&& !u.TokenDisabled` clause is removed.
+	if err := m.Put(&PanelUser{ID: "u2", Name: "bob", Token: "tok-live", TokenDisabled: false}); err != nil {
+		t.Fatal(err)
+	}
+	got, ok := m.ByToken("tok-live")
+	if !ok {
+		t.Fatal("control: ByToken must resolve an enabled user with a non-empty token")
+	}
+	if got.ID != "u2" {
+		t.Fatalf("control: ByToken resolved wrong user: %+v", got)
+	}
+}
+
 func TestRotateToken(t *testing.T) {
 	m := NewManager("")
 	if err := m.Put(&PanelUser{ID: "u1", Name: "a", Token: "old"}); err != nil {
