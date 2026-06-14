@@ -41,7 +41,7 @@ func TestValidateInboundServerTypes(t *testing.T) {
 			name: "naive with tls.enabled false",
 			inbound: map[string]interface{}{
 				"type": "naive", "tag": "n", "listen_port": float64(443),
-				"tls":  map[string]interface{}{"enabled": false},
+				"tls":   map[string]interface{}{"enabled": false},
 				"users": []interface{}{map[string]interface{}{"username": "a", "password": "p"}},
 			},
 			wantSub: "TLS",
@@ -50,7 +50,7 @@ func TestValidateInboundServerTypes(t *testing.T) {
 			name: "hysteria2 with tls.enabled false",
 			inbound: map[string]interface{}{
 				"type": "hysteria2", "tag": "h", "listen_port": float64(443),
-				"tls":  map[string]interface{}{"enabled": false},
+				"tls":   map[string]interface{}{"enabled": false},
 				"users": []interface{}{map[string]interface{}{"password": "p"}},
 			},
 			wantSub: "TLS",
@@ -59,7 +59,7 @@ func TestValidateInboundServerTypes(t *testing.T) {
 			name: "vless duplicate uuid",
 			inbound: map[string]interface{}{
 				"type": "vless", "tag": "v", "listen_port": float64(443),
-				"tls":  map[string]interface{}{"enabled": true},
+				"tls": map[string]interface{}{"enabled": true},
 				"users": []interface{}{
 					map[string]interface{}{"uuid": "dup"},
 					map[string]interface{}{"uuid": "dup"},
@@ -71,7 +71,7 @@ func TestValidateInboundServerTypes(t *testing.T) {
 			name: "naive duplicate username",
 			inbound: map[string]interface{}{
 				"type": "naive", "tag": "n", "listen_port": float64(443),
-				"tls":  map[string]interface{}{"enabled": true},
+				"tls": map[string]interface{}{"enabled": true},
 				"users": []interface{}{
 					map[string]interface{}{"username": "same", "password": "p1"},
 					map[string]interface{}{"username": "same", "password": "p2"},
@@ -83,7 +83,7 @@ func TestValidateInboundServerTypes(t *testing.T) {
 			name: "valid vless reality",
 			inbound: map[string]interface{}{
 				"type": "vless", "tag": "v", "listen_port": float64(443),
-				"tls":  map[string]interface{}{"enabled": true, "reality": map[string]interface{}{"enabled": true}},
+				"tls":   map[string]interface{}{"enabled": true, "reality": map[string]interface{}{"enabled": true}},
 				"users": []interface{}{map[string]interface{}{"uuid": "u1"}},
 			},
 			wantSub: "",
@@ -92,8 +92,70 @@ func TestValidateInboundServerTypes(t *testing.T) {
 			name: "valid hysteria2 with tls enabled",
 			inbound: map[string]interface{}{
 				"type": "hysteria2", "tag": "h", "listen_port": float64(443),
-				"tls":  map[string]interface{}{"enabled": true},
+				"tls":   map[string]interface{}{"enabled": true},
 				"users": []interface{}{map[string]interface{}{"password": "p1"}},
+			},
+			wantSub: "",
+		},
+		{
+			// Guard: vless must NOT require TLS — plain/Reality are valid without
+			// a tls object. If this fails, the validator over-restricts vless.
+			name: "valid vless without any tls",
+			inbound: map[string]interface{}{
+				"type": "vless", "tag": "v", "listen_port": float64(443),
+				"users": []interface{}{map[string]interface{}{"uuid": "u1"}},
+			},
+			wantSub: "",
+		},
+		{
+			name: "hysteria2 duplicate password",
+			inbound: map[string]interface{}{
+				"type": "hysteria2", "tag": "h", "listen_port": float64(443),
+				"tls": map[string]interface{}{"enabled": true},
+				"users": []interface{}{
+					map[string]interface{}{"password": "dup"},
+					map[string]interface{}{"password": "dup"},
+				},
+			},
+			wantSub: "duplicate",
+		},
+		{
+			name: "naive missing port",
+			inbound: map[string]interface{}{
+				"type": "naive", "tag": "n",
+				"tls":   map[string]interface{}{"enabled": true},
+				"users": []interface{}{map[string]interface{}{"username": "a", "password": "p"}},
+			},
+			wantSub: "listen_port",
+		},
+		{
+			name: "hysteria2 missing port",
+			inbound: map[string]interface{}{
+				"type": "hysteria2", "tag": "h",
+				"tls":   map[string]interface{}{"enabled": true},
+				"users": []interface{}{map[string]interface{}{"password": "p"}},
+			},
+			wantSub: "listen_port",
+		},
+		{
+			// Guard against an over-aggressive dup check: distinct usernames are fine.
+			name: "naive distinct usernames valid",
+			inbound: map[string]interface{}{
+				"type": "naive", "tag": "n", "listen_port": float64(443),
+				"tls": map[string]interface{}{"enabled": true},
+				"users": []interface{}{
+					map[string]interface{}{"username": "alice", "password": "p1"},
+					map[string]interface{}{"username": "bob", "password": "p2"},
+				},
+			},
+			wantSub: "",
+		},
+		{
+			// Empty/absent users is valid (no port/TLS issues either).
+			name: "vless no users valid",
+			inbound: map[string]interface{}{
+				"type": "vless", "tag": "v", "listen_port": float64(443),
+				"tls": map[string]interface{}{"enabled": true},
 			},
 			wantSub: "",
 		},
@@ -112,4 +174,20 @@ func TestValidateInboundServerTypes(t *testing.T) {
 			}
 		})
 	}
+}
+
+// TestValidateInboundMalformedUsers ensures a malformed users slice — a non-map
+// element alongside a blank-credential user — does not panic. Errors may or may
+// not be present; the point is panic-safety (non-map entries are skipped).
+func TestValidateInboundMalformedUsers(t *testing.T) {
+	inbound := map[string]interface{}{
+		"type": "vless", "tag": "v", "listen_port": float64(443),
+		"tls": map[string]interface{}{"enabled": true},
+		"users": []interface{}{
+			"not-a-map",
+			map[string]interface{}{"uuid": ""},
+		},
+	}
+	// validateInbound must return without crashing.
+	_ = validateInbound(inbound, 0)
 }
