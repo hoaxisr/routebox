@@ -56,7 +56,11 @@ func buildVless(inbound, user map[string]interface{}, host string, port int) (st
 		}
 		q.Set("security", "reality")
 		q.Set("pbk", pub)
-		if sid, _ := reality["short_id"].(string); sid != "" {
+		// sing-box stores short_id as a JSON array (["abcd",...]); older/manual
+		// configs may use a bare string. Emit the first non-empty short_id — the
+		// client MUST present it or the server rejects the Reality handshake
+		// ("processed invalid connection") and silently serves the decoy site.
+		if sid := firstShortID(reality["short_id"]); sid != "" {
 			q.Set("sid", sid)
 		}
 		q.Set("sni", sni)
@@ -95,6 +99,29 @@ func portOf(m map[string]interface{}) int {
 func mapOf(v interface{}) map[string]interface{} {
 	m, _ := v.(map[string]interface{})
 	return m
+}
+
+// firstShortID returns the first non-empty Reality short_id. sing-box stores
+// short_id as a JSON array ([]interface{} after decode); manual/legacy configs
+// may use a bare string. Both are handled so the client always receives a sid.
+func firstShortID(v interface{}) string {
+	switch s := v.(type) {
+	case string:
+		return s
+	case []interface{}:
+		for _, e := range s {
+			if str, _ := e.(string); str != "" {
+				return str
+			}
+		}
+	case []string:
+		for _, str := range s {
+			if str != "" {
+				return str
+			}
+		}
+	}
+	return ""
 }
 
 func isEnabled(m map[string]interface{}) bool {

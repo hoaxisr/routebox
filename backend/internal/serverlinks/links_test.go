@@ -23,8 +23,11 @@ func TestBuildShareLinkVlessReality(t *testing.T) {
 		"type": "vless", "tag": "vless-in", "listen": "::", "listen_port": float64(443),
 		"tls": map[string]interface{}{
 			"enabled": true, "server_name": "www.microsoft.com",
+			// sing-box stores short_id as a JSON array — this is the real
+			// on-disk shape (a bare string here previously hid a bug where the
+			// builder dropped sid for array configs → Reality rejects clients).
 			"reality": map[string]interface{}{
-				"enabled": true, "private_key": fixturePriv, "short_id": "0123abcd",
+				"enabled": true, "private_key": fixturePriv, "short_id": []interface{}{"0123abcd"},
 			},
 		},
 	}
@@ -267,5 +270,25 @@ func TestBuildShareLinkSpecialCharCredentials(t *testing.T) {
 	}
 	if ob2["password"] != "p@ss:w0rd" {
 		t.Fatalf("hy2 password corrupted: %v", ob2["password"])
+	}
+}
+
+func TestFirstShortID(t *testing.T) {
+	cases := []struct {
+		name string
+		in   interface{}
+		want string
+	}{
+		{"array", []interface{}{"0123456789abcdef"}, "0123456789abcdef"},
+		{"array-first-nonempty", []interface{}{"", "abcd"}, "abcd"},
+		{"bare-string", "0123abcd", "0123abcd"},
+		{"typed-string-slice", []string{"deadbeef"}, "deadbeef"},
+		{"empty-array", []interface{}{}, ""},
+		{"nil", nil, ""},
+	}
+	for _, c := range cases {
+		if got := firstShortID(c.in); got != c.want {
+			t.Errorf("%s: firstShortID(%v) = %q, want %q", c.name, c.in, got, c.want)
+		}
 	}
 }
