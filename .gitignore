@@ -3,6 +3,8 @@
 !.gitignore
 !README.md
 !install.sh
+!vps-install.sh
+
 
 !LICENSE
 !routebox.toml
