@@ -46,10 +46,15 @@ type Manager struct {
 	forceStandalone bool   // force standalone mode even if systemd service exists
 	startedPID      int    // PID of process started by us in standalone mode (0 if none)
 
-	cachedVersion      string    // memoized `<binary> version` output
+	cachedVersion      string    // memoized parsed version (e.g. "1.13.13")
 	cachedVersionPath  string    // binary path the cached version belongs to
 	cachedVersionStamp time.Time // binary mtime at cache fill
 	cachedVersionSize  int64     // binary size at cache fill
+
+	cachedVersionFull      string    // memoized full `<binary> version` output (incl. Tags: line)
+	cachedVersionFullPath  string    // binary path the cached full output belongs to
+	cachedVersionFullStamp time.Time // binary mtime at full-output cache fill
+	cachedVersionFullSize  int64     // binary size at full-output cache fill
 }
 
 func (m *Manager) getBinaryPath() string {
@@ -67,6 +72,10 @@ func (m *Manager) setBinaryPath(p string) {
 	if m.cachedVersionPath != p {
 		m.cachedVersion = ""
 		m.cachedVersionPath = ""
+	}
+	if m.cachedVersionFullPath != p {
+		m.cachedVersionFull = ""
+		m.cachedVersionFullPath = ""
 	}
 }
 
@@ -425,6 +434,99 @@ func (m *Manager) runVersion(binaryPath string) (string, error) {
 	m.stateMu.Unlock()
 
 	return version, nil
+}
+
+// runVersionFull executes `<binary> version` and returns the FULL multi-line
+// output (unlike runVersion, which keeps only the parsed version number). The
+// full output includes the build "Tags: ..." line, which is what tells us
+// whether the binary was compiled with optional features such as
+// with_v2ray_api. Memoized per binary path and invalidated on mtime/size change
+// (same scheme as runVersion), so feature detection follows in-place binary
+// replacement / downgrades.
+func (m *Manager) runVersionFull(binaryPath string) (string, error) {
+	fi, statErr := os.Stat(binaryPath)
+
+	m.stateMu.RLock()
+	cacheHit := m.cachedVersionFullPath == binaryPath &&
+		m.cachedVersionFull != "" &&
+		statErr == nil &&
+		fi.ModTime().Equal(m.cachedVersionFullStamp) &&
+		fi.Size() == m.cachedVersionFullSize
+	if cacheHit {
+		v := m.cachedVersionFull
+		m.stateMu.RUnlock()
+		return v, nil
+	}
+	m.stateMu.RUnlock()
+
+	cmd := exec.Command(binaryPath, "version")
+	output, err := cmd.Output()
+	if err != nil {
+		return "", fmt.Errorf("failed to run %s version: %w", binaryPath, err)
+	}
+
+	full := string(output)
+
+	m.stateMu.Lock()
+	m.cachedVersionFull = full
+	m.cachedVersionFullPath = binaryPath
+	if statErr == nil {
+		m.cachedVersionFullStamp = fi.ModTime()
+		m.cachedVersionFullSize = fi.Size()
+	}
+	m.stateMu.Unlock()
+
+	return full, nil
+}
+
+// parseSupportsV2RayAPI reports whether a `<binary> version` output advertises
+// the with_v2ray_api build tag. It scans the "Tags:" line and matches
+// with_v2ray_api as a whole comma/space-delimited token, so a longer tag that
+// merely contains the string (e.g. "with_v2ray_api_extra") does NOT
+// false-positive. PURE.
+func parseSupportsV2RayAPI(versionOutput string) bool {
+	const tag = "with_v2ray_api"
+	for _, line := range strings.Split(versionOutput, "\n") {
+		line = strings.TrimSpace(line)
+		rest, ok := strings.CutPrefix(line, "Tags:")
+		if !ok {
+			continue
+		}
+		// Tags are comma-separated; tolerate stray surrounding whitespace.
+		for _, t := range strings.Split(rest, ",") {
+			if strings.TrimSpace(t) == tag {
+				return true
+			}
+		}
+	}
+	return false
+}
+
+// SupportsV2RayAPI reports whether the running amnezia-box binary was built with
+// the with_v2ray_api feature (required for the experimental.v2ray_api config
+// block). It runs/uses the cached full `<binary> version` output and inspects
+// its Tags line. FAIL-CLOSED: any exec/lookup error returns false, so RouteBox
+// never writes a config block a binary cannot accept.
+func (m *Manager) SupportsV2RayAPI() bool {
+	if bp := m.getBinaryPath(); bp != "" {
+		if out, err := m.runVersionFull(bp); err == nil {
+			return parseSupportsV2RayAPI(out)
+		}
+	}
+	// Fall back to PATH lookups, mirroring GetVersion's discovery order.
+	if path, err := exec.LookPath("amnezia-box"); err == nil {
+		if out, err := m.runVersionFull(path); err == nil {
+			m.setBinaryPath(path)
+			return parseSupportsV2RayAPI(out)
+		}
+	}
+	if path, err := exec.LookPath("sing-box"); err == nil {
+		if out, err := m.runVersionFull(path); err == nil {
+			m.setBinaryPath(path)
+			return parseSupportsV2RayAPI(out)
+		}
+	}
+	return false
 }
 
 // GetStatus returns the current process status

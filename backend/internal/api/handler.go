@@ -31,6 +31,20 @@ type Handler struct {
 	verifier        *auth.CachedVerifier
 	panelUsers      *users.Manager
 	subLimiter      *auth.Limiter
+
+	// v2rayAPISupported reports whether the running binary supports the
+	// experimental.v2ray_api block (with_v2ray_api build tag). Defaults to
+	// h.process.SupportsV2RayAPI when nil; overridable in tests.
+	v2rayAPISupported func() bool
+}
+
+// supportsV2RayAPI reports whether the active binary supports the v2ray_api
+// block, using the test override if set, else the process manager.
+func (h *Handler) supportsV2RayAPI() bool {
+	if h.v2rayAPISupported != nil {
+		return h.v2rayAPISupported()
+	}
+	return h.process.SupportsV2RayAPI()
 }
 
 // SetRouteBoxVersion stores the build-time RouteBox version for API responses.

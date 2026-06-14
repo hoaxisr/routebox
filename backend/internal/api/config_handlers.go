@@ -161,7 +161,16 @@ func (h *Handler) ApplyConfig(w http.ResponseWriter, r *http.Request) {
 		if listen == "" {
 			listen = "127.0.0.1:8081"
 		}
-		if _, err := h.config.SyncV2RayAPI(listen, panelUserNames(h.panelUsers)); err != nil {
+		// Additivity guard: only write the v2ray_api block when the running
+		// binary advertises with_v2ray_api. An old/forked binary without it
+		// REJECTS the block and the apply's reload/restart would fail the VPN.
+		// Unsupported (incl. fail-closed detection error) → nil names so
+		// SyncV2RayAPI REMOVES any stale block (a downgrade self-heals).
+		var names []string
+		if h.supportsV2RayAPI() {
+			names = panelUserNames(h.panelUsers)
+		}
+		if _, err := h.config.SyncV2RayAPI(listen, names); err != nil {
 			log.Printf("users: v2ray_api sync failed: %v", err)
 		}
 	}

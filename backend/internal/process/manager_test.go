@@ -138,3 +138,121 @@ func TestRunVersionCacheInvalidatesOnInPlaceReplacement(t *testing.T) {
 		t.Fatalf("runVersion after in-place replacement = %q, want %q (cache not invalidated)", v2, "2.0.0")
 	}
 }
+
+func TestParseSupportsV2RayAPI(t *testing.T) {
+	cases := []struct {
+		name string
+		out  string
+		want bool
+	}{
+		{
+			name: "present among many tags",
+			out:  "sing-box version 1.13.13-awg2.1\n\nEnvironment: go1.25 linux/amd64\nTags: with_gvisor,with_quic,with_v2ray_api,with_utls\nRevision: abc123\n",
+			want: true,
+		},
+		{
+			name: "present alone",
+			out:  "amnezia-box version 1.13.13\nTags: with_v2ray_api\n",
+			want: true,
+		},
+		{
+			name: "present with surrounding spaces in list",
+			out:  "Tags: with_gvisor , with_v2ray_api , with_utls\n",
+			want: true,
+		},
+		{
+			name: "absent (older binary)",
+			out:  "sing-box version 1.13.12\nTags: with_gvisor,with_quic,with_utls\n",
+			want: false,
+		},
+		{
+			name: "empty output",
+			out:  "",
+			want: false,
+		},
+		{
+			name: "no tags line",
+			out:  "amnezia-box version 1.13.13\nEnvironment: go1.25\n",
+			want: false,
+		},
+		{
+			name: "substring of longer tag must NOT match",
+			out:  "Tags: with_gvisor,with_v2ray_api_extra,with_utls\n",
+			want: false,
+		},
+		{
+			name: "prefix of token must NOT match",
+			out:  "Tags: with_v2ray,with_gvisor\n",
+			want: false,
+		},
+		{
+			name: "tag-named token elsewhere (not on Tags line) must NOT match",
+			out:  "Comment: this build is with_v2ray_api compatible\nTags: with_gvisor\n",
+			want: false,
+		},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			if got := parseSupportsV2RayAPI(tc.out); got != tc.want {
+				t.Errorf("parseSupportsV2RayAPI(%q) = %v, want %v", tc.out, got, tc.want)
+			}
+		})
+	}
+}
+
+// TestSupportsV2RayAPIFailClosed verifies that when the binary cannot be
+// executed (path points at a non-runnable file and nothing is on PATH),
+// SupportsV2RayAPI fails closed by returning false.
+func TestSupportsV2RayAPIFailClosed(t *testing.T) {
+	// A path that exists but is not executable as a `version` command would
+	// still error from exec; use a guaranteed-missing path to force the error.
+	m := &Manager{binaryPath: filepath.Join(t.TempDir(), "does-not-exist")}
+	// Best-effort: if a real amnezia-box/sing-box happens to be on PATH this
+	// test environment could differ; skip in that rare case to avoid a false
+	// failure (the unit covers the no-binary fail-closed path).
+	if _, err := exec.LookPath("amnezia-box"); err == nil {
+		t.Skip("amnezia-box present on PATH; fail-closed path not exercised")
+	}
+	if _, err := exec.LookPath("sing-box"); err == nil {
+		t.Skip("sing-box present on PATH; fail-closed path not exercised")
+	}
+	if m.SupportsV2RayAPI() {
+		t.Fatal("SupportsV2RayAPI must fail closed (false) when the binary cannot run")
+	}
+}
+
+// TestSupportsV2RayAPIDetectsFromFakeBinary wires a fake `version` script and
+// confirms SupportsV2RayAPI reads its Tags line end-to-end (exec + parse).
+func TestSupportsV2RayAPIDetectsFromFakeBinary(t *testing.T) {
+	if _, err := exec.LookPath("sh"); err != nil {
+		t.Skip("sh not available")
+	}
+	dir := t.TempDir()
+	bin := filepath.Join(dir, "fake-box")
+	script := "#!/bin/sh\n" +
+		"echo 'fake-box version 1.13.13'\n" +
+		"echo 'Tags: with_gvisor,with_v2ray_api,with_utls'\n"
+	if err := os.WriteFile(bin, []byte(script), 0755); err != nil {
+		t.Fatal(err)
+	}
+	m := &Manager{binaryPath: bin}
+	if !m.SupportsV2RayAPI() {
+		t.Fatal("expected SupportsV2RayAPI=true for fake binary advertising with_v2ray_api")
+	}
+
+	// Replace with a binary lacking the tag (in-place, new mtime) → must flip.
+	time.Sleep(10 * time.Millisecond)
+	script2 := "#!/bin/sh\n" +
+		"echo 'fake-box version 1.13.12'\n" +
+		"echo 'Tags: with_gvisor,with_utls'\n"
+	if err := os.WriteFile(bin, []byte(script2), 0755); err != nil {
+		t.Fatal(err)
+	}
+	newMtime := time.Now().Add(time.Second)
+	if err := os.Chtimes(bin, newMtime, newMtime); err != nil {
+		t.Fatal(err)
+	}
+	if m.SupportsV2RayAPI() {
+		t.Fatal("expected SupportsV2RayAPI=false after binary downgraded to drop with_v2ray_api (cache not invalidated)")
+	}
+}

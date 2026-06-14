@@ -51,6 +51,11 @@ func newApplyHandler(t *testing.T, names ...string) (*Handler, string) {
 	}
 
 	h := &Handler{config: m, settings: sm, process: process.NewManager()}
+	// Force the additivity guard to report "supported" so these tests exercise
+	// the sync logic on machines that have no amnezia-box binary installed (the
+	// real SupportsV2RayAPI fail-closes to false there). The unsupported branch
+	// is covered separately in TestApplyConfig_V2RayAPI_UnsupportedBinary.
+	h.v2rayAPISupported = func() bool { return true }
 	h.SetUsers(reg)
 	return h, path
 }
@@ -125,5 +130,56 @@ func TestApplyConfig_SyncsV2RayAPI_NoUsers(t *testing.T) {
 
 	if v := readDiskV2RayAPI(t, path); v != nil {
 		t.Errorf("no users: expected no v2ray_api block, got %v", v)
+	}
+}
+
+// TestApplyConfig_V2RayAPI_UnsupportedBinary proves the additivity guard: when
+// the running binary does NOT support with_v2ray_api, apply writes NO v2ray_api
+// block even though panel users exist — so an old/forked binary isn't fed a
+// config block it would reject.
+func TestApplyConfig_V2RayAPI_UnsupportedBinary(t *testing.T) {
+	h, path := newApplyHandler(t, "alice", "bob")
+	h.v2rayAPISupported = func() bool { return false } // binary lacks with_v2ray_api
+
+	req := httptest.NewRequest(http.MethodPost, "/api/config/apply", nil)
+	w := httptest.NewRecorder()
+	h.ApplyConfig(w, req)
+
+	if w.Code != http.StatusOK {
+		t.Fatalf("apply status = %d, want 200; body=%s", w.Code, w.Body.String())
+	}
+	if v := readDiskV2RayAPI(t, path); v != nil {
+		t.Errorf("unsupported binary: expected no v2ray_api block, got %v", v)
+	}
+}
+
+// TestApplyConfig_V2RayAPI_UnsupportedBinary_RemovesStaleBlock proves a
+// downgrade self-heals: a config that ALREADY has a v2ray_api block has it
+// REMOVED on apply when the (now unsupported) binary cannot accept it.
+func TestApplyConfig_V2RayAPI_UnsupportedBinary_RemovesStaleBlock(t *testing.T) {
+	h, path := newApplyHandler(t, "alice")
+
+	// Seed a stale block via a "supported" apply, then verify it's present.
+	h.v2rayAPISupported = func() bool { return true }
+	seedReq := httptest.NewRequest(http.MethodPost, "/api/config/apply", nil)
+	seedW := httptest.NewRecorder()
+	h.ApplyConfig(seedW, seedReq)
+	if seedW.Code != http.StatusOK {
+		t.Fatalf("setup apply status = %d, want 200; body=%s", seedW.Code, seedW.Body.String())
+	}
+	if v := readDiskV2RayAPI(t, path); v == nil {
+		t.Fatal("setup: expected v2ray_api block after supported apply")
+	}
+
+	// Now the binary no longer supports it: apply must remove the block.
+	h.v2rayAPISupported = func() bool { return false }
+	req := httptest.NewRequest(http.MethodPost, "/api/config/apply", nil)
+	w := httptest.NewRecorder()
+	h.ApplyConfig(w, req)
+	if w.Code != http.StatusOK {
+		t.Fatalf("apply status = %d, want 200; body=%s", w.Code, w.Body.String())
+	}
+	if v := readDiskV2RayAPI(t, path); v != nil {
+		t.Errorf("downgrade: expected stale v2ray_api block removed, got %v", v)
 	}
 }
