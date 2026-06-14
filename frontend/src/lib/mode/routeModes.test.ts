@@ -3,8 +3,7 @@ import {
 	SECTIONS,
 	isPathAllowed,
 	inboundTypesFor,
-	visibleInboundTypes,
-	type Mode
+	visibleInboundTypes
 } from './routeModes';
 
 describe('SECTIONS table (DRY single source)', () => {
@@ -120,6 +119,3 @@ describe('visibleInboundTypes — edit-safety', () => {
 		expect(visibleInboundTypes('vps', undefined)).toEqual(['vless', 'naive', 'hysteria2']);
 	});
 });
-
-// compile-time sanity: Mode is the two literals
-const _m: Mode[] = ['router', 'vps'];
