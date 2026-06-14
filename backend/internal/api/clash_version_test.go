@@ -30,6 +30,12 @@ func TestParseClashVersion(t *testing.T) {
 			wantOK:  true,
 		},
 		{
+			name:    "sing-box product prefix stripped",
+			body:    `{"meta":true,"premium":true,"version":"sing-box 1.13.13-awg2.1"}`,
+			wantVer: "1.13.13-awg2.1",
+			wantOK:  true,
+		},
+		{
 			name:    "missing version field",
 			body:    `{"meta":true}`,
 			wantVer: "",

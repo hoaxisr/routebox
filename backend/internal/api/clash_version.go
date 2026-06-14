@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"io"
 	"net/http"
+	"strings"
 	"time"
 )
 
@@ -27,7 +28,17 @@ func parseClashVersion(body []byte) (string, bool) {
 	if v.Version == "" {
 		return "", false
 	}
-	return v.Version, true
+	// sing-box's clash /version reports e.g. "sing-box 1.13.13-awg2.1"; strip the
+	// product prefix so the result matches the on-disk runVersion format
+	// ("1.13.13-awg2.1") — keep the last space-separated token.
+	ver := v.Version
+	if i := strings.LastIndex(ver, " "); i >= 0 {
+		ver = ver[i+1:]
+	}
+	if ver == "" {
+		return "", false
+	}
+	return ver, true
 }
 
 // runningSingboxVersion queries the running sing-box process for its self-reported
