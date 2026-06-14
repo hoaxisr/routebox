@@ -55,18 +55,30 @@ EOF
 
 # parse_args populates DOMAIN/EMAIL/PORT/STAGING + ACTION/PURGE. Defaults PORT to 8443.
 parse_args() {
+	# parse_args is a sourced function (test harness loads it via VPS_INSTALL_LIB);
+	# on any error it routes to help via ACTION + return, never exit.
+	# Value-flags MUST guard that a value follows: a bare trailing "--domain" would
+	# make "shift 2" fail with only 1 arg left. Because parse_args runs before
+	# `set -e`, that failure is swallowed and the while-loop never advances —
+	# an infinite loop as root. The `$# -lt 2` guards below prevent that.
 	while [ "$#" -gt 0 ]; do
 		case "$1" in
-			--domain)    DOMAIN="${2:-}"; shift 2 ;;
-			--email)     EMAIL="${2:-}";  shift 2 ;;
-			--port)      PORT="${2:-}";   shift 2 ;;
+			--domain)
+				if [ "$#" -lt 2 ]; then echo "Error: --domain requires a value" >&2; ACTION="help"; return 0; fi
+				DOMAIN="$2"; shift 2 ;;
+			--email)
+				if [ "$#" -lt 2 ]; then echo "Error: --email requires a value" >&2; ACTION="help"; return 0; fi
+				EMAIL="$2"; shift 2 ;;
+			--port)
+				if [ "$#" -lt 2 ]; then echo "Error: --port requires a value" >&2; ACTION="help"; return 0; fi
+				PORT="$2"; shift 2 ;;
 			--staging)   STAGING="true";  shift ;;
 			--update)    ACTION="update"; shift ;;
 			--uninstall) ACTION="uninstall"; shift ;;
 			--purge)     PURGE="true";    shift ;;
 			--dry-run)   ACTION="dry-run"; shift ;;
 			-h|--help)   ACTION="help";   shift ;;
-			*) echo "Unknown argument: $1" >&2; ACTION="help"; shift ;;
+			*) echo "Unknown argument: $1" >&2; ACTION="help"; return 0 ;;
 		esac
 	done
 	[ -z "$PORT" ] && PORT="8443"
@@ -74,6 +86,19 @@ parse_args() {
 
 # dns_matches RESOLVED SERVER -> 0 when non-empty and equal.
 dns_matches() { [ -n "$1" ] && [ "$1" = "$2" ]; }
+
+# validate_port PORT -> 0 if usable; nonzero + message on stderr otherwise.
+# Rejects non-numeric, out-of-range, 443 (vless+Reality collision — security
+# load-bearing), and 80 (reserved for the ACME HTTP-01 challenge). Pure logic,
+# sourceable under VPS_INSTALL_LIB for testing without root.
+validate_port() {
+	local port="$1"
+	case "$port" in ''|*[!0-9]*) err "--port must be numeric"; return 1 ;; esac
+	if [ "$port" -lt 1 ] || [ "$port" -gt 65535 ]; then err "--port must be 1..65535"; return 1; fi
+	[ "$port" = "443" ] && { err "--port 443 collides with vless+Reality; pick another (default 8443)"; return 1; }
+	[ "$port" = "80" ]  && { err "--port 80 is reserved for the ACME HTTP-01 challenge; pick another"; return 1; }
+	return 0
+}
 
 # resolve_ip DOMAIN -> first A record (getent, then dig, then host).
 resolve_ip() {
@@ -193,6 +218,11 @@ write_config() {
 	install -d -m 0700 "${ACME_DIR}"
 	if [ -f "${CONFIG_DIR}/${SETTINGS_FILE}" ]; then
 		info "Existing ${SETTINGS_FILE} found — keeping it (auth/credentials preserved)."
+		# Keep the existing config (preserving [security] bcrypt hash), but still
+		# reconcile ONLY the acme_staging line so a re-run without --staging actually
+		# switches to production certs. A targeted sed touches just that one line —
+		# the toml format is `acme_staging = true|false` (see gen_toml).
+		sed -i "s/^acme_staging = .*/acme_staging = ${STAGING}/" "${CONFIG_DIR}/${SETTINGS_FILE}"
 		return
 	fi
 	info "Writing ${CONFIG_DIR}/${SETTINGS_FILE}..."
@@ -253,6 +283,8 @@ AEOF
 	systemctl daemon-reload
 	systemctl enable --now "${SERVICE_NAME}"
 	if [ -f "/etc/systemd/system/${AMNEZIABOX_SERVICE}.service" ]; then
+		# amnezia-box has no config.json yet — the panel writes it post-install
+		# (mirrors install.sh). `|| true` tolerates this expected first-start failure.
 		systemctl enable --now "${AMNEZIABOX_SERVICE}" || true
 	fi
 }
@@ -280,10 +312,7 @@ prompt_inputs() {
 prechecks() {
 	command -v systemctl >/dev/null 2>&1 || { err "systemd is required"; exit 1; }
 	command -v curl >/dev/null 2>&1 || { err "curl is required"; exit 1; }
-	case "$PORT" in ''|*[!0-9]*) err "--port must be numeric"; exit 1 ;; esac
-	if [ "$PORT" -lt 1 ] || [ "$PORT" -gt 65535 ]; then err "--port must be 1..65535"; exit 1; fi
-	[ "$PORT" = "443" ] && { err "--port 443 collides with vless+Reality; pick another (default 8443)"; exit 1; }
-	[ "$PORT" = "80" ]  && { err "--port 80 is reserved for the ACME HTTP-01 challenge; pick another"; exit 1; }
+	validate_port "$PORT" || exit 1
 
 	# :80 must be free for HTTP-01 (issuance + every renewal).
 	if command -v ss >/dev/null 2>&1 && ss -ltnH 2>/dev/null | awk '{print $4}' | grep -qE '(:|\.)80$'; then
@@ -339,7 +368,7 @@ do_install() {
 	warn "  - DNS A-record ${DOMAIN} -> this server must stay valid."
 	warn "  - Keep :80 open permanently (cert renewals re-run HTTP-01)."
 	warn "  - vless+Reality stays on :443, untouched."
-	[ "$STAGING" = "true" ] && warn "  - Staging cert is UNTRUSTED. Re-run WITHOUT --staging for a real cert."
+	[ "$STAGING" = "true" ] && warn "  - Staging cert is UNTRUSTED. Re-running this installer WITHOUT --staging flips acme_staging to production (config is otherwise preserved); restart with: systemctl restart ${SERVICE_NAME}"
 }
 
 do_update() {
@@ -374,7 +403,7 @@ do_uninstall() {
 
 do_dry_run() {
 	prompt_inputs
-	case "$PORT" in ''|*[!0-9]*) err "--port must be numeric"; exit 1 ;; esac
+	validate_port "$PORT" || exit 1
 	echo "# --- routebox.toml that would be written to ${CONFIG_DIR}/${SETTINGS_FILE} ---"
 	gen_toml "$DOMAIN" "$EMAIL" "$PORT" "$STAGING"
 }
