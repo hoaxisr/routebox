@@ -32,6 +32,9 @@ GEOIP_URL="https://github.com/iplocate/ip-address-databases/raw/main/ip-to-count
 # Parsed-arg state (defaults).
 DOMAIN=""; EMAIL=""; PORT=""; STAGING="false"
 ACTION="install"; PURGE="false"
+# Set by write_config when the acme_staging flag flips and the cert cache is
+# wiped; do_install then forces a restart so the new cert is re-issued.
+STAGING_CHANGED="false"
 
 err()  { echo -e "${RED}Error: $*${NC}" >&2; }
 info() { echo -e "${GREEN}$*${NC}"; }
@@ -211,24 +214,60 @@ install_geoip() {
 	fi
 }
 
+# acme_staging_of CONFIG_FILE -> current acme_staging value (true|false) or empty.
+acme_staging_of() {
+	grep -oP '^acme_staging = \K\w+' "$1" 2>/dev/null | head -1 || true
+}
+
+# acme_cache_dir_of CONFIG_FILE -> configured acme_cache_dir (quotes stripped),
+# defaulting to ${ACME_DIR} when the key is absent. Pure read, sourceable.
+acme_cache_dir_of() {
+	local dir
+	dir="$(grep -oP '^acme_cache_dir = "\K[^"]+' "$1" 2>/dev/null | head -1 || true)"
+	[ -n "$dir" ] && echo "$dir" || echo "${ACME_DIR}"
+}
+
+# reconcile_staging CURRENT REQUESTED -> exit 0 (signal CHANGE) when CURRENT is
+# non-empty AND differs from REQUESTED; otherwise exit 1 (no change). An empty
+# CURRENT (key missing / fresh config) is treated as "no change" so we never wipe
+# a cache we can't reason about. Pure logic, sourceable for the test harness.
+reconcile_staging() {
+	local current="$1" requested="$2"
+	[ -n "$current" ] && [ "$current" != "$requested" ]
+}
+
 # write_config — idempotent: never overwrite an existing routebox.toml (it holds
 # the bootstrap bcrypt auth hash in [security]). Write it only if absent.
 write_config() {
 	mkdir -p "${CONFIG_DIR}" "${SINGBOX_CONFIG_DIR}"
 	install -d -m 0700 "${ACME_DIR}"
-	if [ -f "${CONFIG_DIR}/${SETTINGS_FILE}" ]; then
+	local cfg="${CONFIG_DIR}/${SETTINGS_FILE}"
+	if [ -f "$cfg" ]; then
 		info "Existing ${SETTINGS_FILE} found — keeping it (auth/credentials preserved)."
 		# Keep the existing config (preserving [security] bcrypt hash), but still
 		# reconcile ONLY the acme_staging line so a re-run without --staging actually
 		# switches to production certs. A targeted sed touches just that one line —
 		# the toml format is `acme_staging = true|false` (see gen_toml).
-		sed -i "s/^acme_staging = .*/acme_staging = ${STAGING}/" "${CONFIG_DIR}/${SETTINGS_FILE}"
+		local current; current="$(acme_staging_of "$cfg")"
+		sed -i "s/^acme_staging = .*/acme_staging = ${STAGING}/" "$cfg"
+		# If the staging flag actually FLIPPED, the autocert cache holds a cert from
+		# the OLD ACME directory (e.g. an untrusted staging cert). autocert serves
+		# any cached valid cert and will NOT re-issue from the new directory, so the
+		# stale cert would keep being served. Wipe the cache contents (keep the dir)
+		# so the next start re-issues from the correct directory. Only on change —
+		# clearing every re-run would burn Let's Encrypt rate limits.
+		if reconcile_staging "$current" "$STAGING"; then
+			local cache; cache="$(acme_cache_dir_of "$cfg")"
+			rm -rf "${cache:?}"/* 2>/dev/null || true
+			STAGING_CHANGED="true"
+			warn "ACME staging flag changed (${current}->${STAGING}) — cleared cert cache; RouteBox will re-issue on next start."
+		fi
 		return
 	fi
-	info "Writing ${CONFIG_DIR}/${SETTINGS_FILE}..."
+	info "Writing ${cfg}..."
 	umask 077
-	gen_toml "$DOMAIN" "$EMAIL" "$PORT" "$STAGING" > "${CONFIG_DIR}/${SETTINGS_FILE}"
-	chmod 0600 "${CONFIG_DIR}/${SETTINGS_FILE}"
+	gen_toml "$DOMAIN" "$EMAIL" "$PORT" "$STAGING" > "$cfg"
+	chmod 0600 "$cfg"
 }
 
 install_units() {
@@ -350,6 +389,14 @@ do_install() {
 	write_config
 	install_units
 	configure_firewall
+
+	# install_units' `enable --now` does NOT restart an already-running service, so
+	# on a re-run where the staging flag flipped (cache just wiped) the new cert
+	# would not be fetched until the next manual restart. Force one here.
+	if [ "$STAGING_CHANGED" = "true" ]; then
+		info "Restarting ${SERVICE_NAME} to re-issue cert from the new ACME directory..."
+		systemctl restart "${SERVICE_NAME}"
+	fi
 
 	echo ""
 	info "╔═══════════════════════════════════════════╗"
