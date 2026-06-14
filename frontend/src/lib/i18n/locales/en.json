@@ -4,6 +4,9 @@
     "loading": "Loading...",
     "version": "Version"
   },
+  "mode": {
+    "redirected": "That section isn't available in the current mode."
+  },
   "nav": {
     "dashboard": "Dashboard",
     "config": "Config",

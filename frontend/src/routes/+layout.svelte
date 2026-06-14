@@ -2,11 +2,12 @@
 	import '../app.css';
 	import { onMount, onDestroy, type Snippet } from 'svelte';
 	import { page } from '$app/stores';
-	import { theme, notifications, loadVersion, speedUnit, loadClientNames, routerMode, panelMode, loadMode } from '$lib/stores';
+	import { theme, notifications, loadVersion, speedUnit, loadClientNames, routerMode, panelMode, loadMode, serverMode } from '$lib/stores';
 	import { api } from '$lib/api/client';
 	import UnsavedChangesBar from '$lib/components/shared/UnsavedChangesBar.svelte';
 	import { t, isLoading as i18nLoading } from 'svelte-i18n';
 	import { initI18n } from '$lib/i18n';
+	import { isPathAllowed } from '$lib/mode/routeModes';
 	import { goto } from '$app/navigation';
 
 	// Initialize i18n
@@ -50,6 +51,19 @@
 		if (routingPaths.some(p => path.startsWith(p))) {
 			routingExpanded = true;
 		}
+	});
+
+	// Soft-redirect guard: if the current path is not allowed in the active mode,
+	// bounce to Overview with a hint. router mode allows everything (full UI), so
+	// this only fires in vps mode for router-only URLs. Never fires on /login.
+	// Reactive on both path and mode, so a live mode switch re-guards automatically.
+	$effect(() => {
+		if (isLogin) return;
+		const path = $page.url.pathname;
+		const mode = $serverMode;
+		if (isPathAllowed(path, mode)) return;
+		notifications.info($t('mode.redirected'));
+		goto('/');
 	});
 
 	function checkMobile() {
