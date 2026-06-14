@@ -283,6 +283,11 @@ func main() {
 	apiHandler.SetSubscriptions(subsMgr, subsRefresh)
 	apiHandler.SetUsers(usersMgr)
 
+	// Dedicated per-IP rate-limiter for the PUBLIC /sub/{token} endpoint, kept
+	// separate from the auth/lockout limiter. Keyed on clientIP(r) = RemoteAddr.
+	subLimiter := auth.NewLimiter()
+	apiHandler.SetSubLimiter(subLimiter)
+
 	// Construct auth deps, wire onto handler, start cleanup ticker
 	sessions := auth.NewSessionStore()
 	limiter := auth.NewLimiter()
@@ -294,6 +299,7 @@ func main() {
 		for range t.C {
 			sessions.Cleanup()
 			limiter.Cleanup()
+			subLimiter.Cleanup()
 		}
 	}()
 
@@ -301,7 +307,10 @@ func main() {
 	r := chi.NewRouter()
 
 	// Middleware
-	r.Use(middleware.Logger)
+	// Root access log with /sub/<token> scrubbing — the subscription token is a
+	// credential and must NEVER reach the log (chi's middleware.Logger formats its
+	// line from r.RequestURI, which would leak it). All other paths log verbatim.
+	r.Use(api.SubTokenScrubber(log.Default()))
 	r.Use(middleware.Recoverer)
 	if cfg.Network.CompressionEnabled {
 		r.Use(middleware.Compress(5))
@@ -429,6 +438,8 @@ func main() {
 				r.Delete("/{id}", apiHandler.DeleteUser)
 				r.Post("/{id}/bindings", apiHandler.AddBinding)
 				r.Get("/{id}/link", apiHandler.GetUserLinkByID)
+				r.Post("/{id}/token/rotate", apiHandler.RotateUserToken)
+				r.Delete("/{id}/token", apiHandler.RevokeUserToken)
 			})
 
 			// Route Rules CRUD
@@ -524,6 +535,13 @@ func main() {
 			r.Get("/needs-setup", apiHandler.NeedsSetup)
 		})
 	})
+
+	// PUBLIC per-user subscription — registered OUTSIDE the /api auth group so
+	// clients (which have no panel credentials) can fetch it. Anti-enumeration,
+	// per-IP rate-limit, the 503-no-host policy, and log scrubbing are enforced in
+	// the handler / root middleware. Sibling of /api and the SPA wildcard; chi's
+	// longest-prefix match makes this win over /*.
+	r.Get("/sub/{token}", apiHandler.GetSubscription)
 
 	// Serve embedded frontend (SPA)
 	r.Get("/*", embedded.Handler())
