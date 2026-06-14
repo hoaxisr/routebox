@@ -93,3 +93,18 @@ func TestResolveTLSMode(t *testing.T) {
 		}
 	})
 }
+
+func TestACMEDirectoryURL(t *testing.T) {
+	t.Run("staging => LE staging directory", func(t *testing.T) {
+		want := "https://acme-staging-v02.api.letsencrypt.org/directory"
+		if got := acmeDirectoryURL(true); got != want {
+			t.Fatalf("got %q, want %q", got, want)
+		}
+	})
+
+	t.Run("production => empty (autocert default)", func(t *testing.T) {
+		if got := acmeDirectoryURL(false); got != "" {
+			t.Fatalf("got %q, want empty string", got)
+		}
+	})
+}

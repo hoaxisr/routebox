@@ -645,26 +645,45 @@ func main() {
 	errCh := make(chan error, 2)
 	switch tlsM {
 	case tlsModeACME:
-		domain := cfg.Server.PublicHost // guaranteed non-empty by resolveTLSMode
+		// guaranteed non-empty by resolveTLSMode. Re-sanitize the loaded value:
+		// SanitizePublicHost only runs on the write path, so a hand-edited TOML
+		// could smuggle a scheme/port that would corrupt the HostWhitelist match.
+		domain := cfg.Server.PublicHost
+		if clean, err := settings.SanitizePublicHost(domain); err == nil && clean != "" {
+			domain = clean
+		}
+		// Default an empty cache dir so autocert.DirCache("") never caches certs
+		// (incl. the account key) in the process CWD.
+		cacheDir := cfg.Network.ACMECacheDir
+		if cacheDir == "" {
+			cacheDir = "/etc/routebox/acme"
+		}
 		am := &autocert.Manager{
 			Prompt:     autocert.AcceptTOS,
 			HostPolicy: autocert.HostWhitelist(domain), // only our own domain (anti-abuse) — mandatory
-			Cache:      autocert.DirCache(cfg.Network.ACMECacheDir),
+			Cache:      autocert.DirCache(cacheDir),
 			Email:      cfg.Network.ACMEEmail,
 		}
-		if cfg.Network.ACMEStaging {
-			// LE staging directory: lax rate limits, untrusted (fake) chain. Dev/e2e only.
-			am.Client = &acme.Client{DirectoryURL: "https://acme-staging-v02.api.letsencrypt.org/directory"}
+		if url := acmeDirectoryURL(cfg.Network.ACMEStaging); url != "" {
+			am.Client = &acme.Client{DirectoryURL: url}
 		}
 		// HTTP-01 challenge listener on :80. TLS-ALPN-01 is impossible (LE would
 		// connect on :443 = vless+Reality). :80 must stay open for renewals too.
-		go func() { errCh <- http.ListenAndServe(":80", am.HTTPHandler(nil)) }()
+		go func() {
+			errCh <- fmt.Errorf("acme http-01 listener (:80): %w", http.ListenAndServe(":80", am.HTTPHandler(nil)))
+		}()
 		srv.TLSConfig = am.TLSConfig()
-		go func() { errCh <- srv.ListenAndServeTLS("", "") }() // certs from autocert cache
+		go func() {
+			errCh <- fmt.Errorf("https listener: %w", srv.ListenAndServeTLS("", "")) // certs from autocert cache
+		}()
 	case tlsModeManual:
-		go func() { errCh <- srv.ListenAndServeTLS(certPath, keyPath) }() // manual (Phase 1)
+		go func() {
+			errCh <- fmt.Errorf("https listener: %w", srv.ListenAndServeTLS(certPath, keyPath)) // manual (Phase 1)
+		}()
 	default:
-		go func() { errCh <- srv.ListenAndServe() }()
+		go func() {
+			errCh <- fmt.Errorf("http listener: %w", srv.ListenAndServe())
+		}()
 	}
 
 	select {
@@ -727,6 +746,16 @@ func resolveTLSMode(cfg settings.Settings) (tlsMode, error) {
 		return tlsModeManual, nil
 	}
 	return tlsModeOff, nil
+}
+
+// acmeDirectoryURL returns the ACME directory endpoint. Empty string means the
+// autocert default (Let's Encrypt production). Staging has lax rate limits and
+// an UNTRUSTED chain — dev/e2e only.
+func acmeDirectoryURL(staging bool) string {
+	if staging {
+		return "https://acme-staging-v02.api.letsencrypt.org/directory"
+	}
+	return ""
 }
 
 // orDefault returns s if non-empty, otherwise def.
