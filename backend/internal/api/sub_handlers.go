@@ -68,6 +68,9 @@ func (h *Handler) GetSubscription(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Profile-Update-Interval", "12")
 	w.Header().Set("Content-Disposition",
 		"attachment; filename=\""+sanitizeFilename(user.Name)+"\"")
+	// Body carries live VPN credentials on a PUBLIC endpoint: forbid shared-cache
+	// retention (proxies/CDNs) of the per-user subscription.
+	w.Header().Set("Cache-Control", "no-store")
 	w.WriteHeader(http.StatusOK)
 	_, _ = w.Write([]byte(body)) // may be empty base64 ("") — that is valid
 }

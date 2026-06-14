@@ -78,14 +78,20 @@ func TestSub_OK_ReturnsBase64WithHeaders(t *testing.T) {
 	if rec.Code != http.StatusOK {
 		t.Fatalf("status = %d, want 200; body=%q", rec.Code, rec.Body.String())
 	}
-	if ct := rec.Header().Get("Content-Type"); !strings.HasPrefix(ct, "text/plain") {
-		t.Fatalf("Content-Type = %q", ct)
+	// Assert EXACT header values, not mere presence (a header-shape regression
+	// — wrong charset, missing no-store, a mangled filename — must fail here).
+	if ct := rec.Header().Get("Content-Type"); ct != "text/plain; charset=utf-8" {
+		t.Fatalf("Content-Type = %q, want %q", ct, "text/plain; charset=utf-8")
 	}
-	if rec.Header().Get("Profile-Update-Interval") == "" {
-		t.Fatal("missing Profile-Update-Interval header")
+	if pui := rec.Header().Get("Profile-Update-Interval"); pui != "12" {
+		t.Fatalf("Profile-Update-Interval = %q, want %q", pui, "12")
 	}
-	if cd := rec.Header().Get("Content-Disposition"); !strings.Contains(cd, "attachment") {
-		t.Fatalf("Content-Disposition = %q", cd)
+	// alice's name sanitizes to "alice"; the FULL disposition incl. filename.
+	if cd := rec.Header().Get("Content-Disposition"); cd != `attachment; filename="alice"` {
+		t.Fatalf("Content-Disposition = %q, want %q", cd, `attachment; filename="alice"`)
+	}
+	if cc := rec.Header().Get("Cache-Control"); cc != "no-store" {
+		t.Fatalf("Cache-Control = %q, want %q", cc, "no-store")
 	}
 	raw, err := base64.StdEncoding.DecodeString(rec.Body.String())
 	if err != nil {
@@ -126,6 +132,18 @@ func TestSub_UnknownAndRevoked_IdenticalNotFound(t *testing.T) {
 		t.Fatalf("anti-enumeration broken: unknown body %q != revoked body %q",
 			unknown.Body.String(), revoked.Body.String())
 	}
+	// Headers must be byte-identical too: a header-based oracle (e.g. a header
+	// present on one path but not the other) would defeat the identical 404.
+	uh, rh := unknown.Header(), revoked.Header()
+	if len(uh) != len(rh) {
+		t.Fatalf("anti-enumeration header oracle: unknown headers %v != revoked %v", uh, rh)
+	}
+	for k, uv := range uh {
+		rv, ok := rh[k]
+		if !ok || strings.Join(uv, ",") != strings.Join(rv, ",") {
+			t.Fatalf("anti-enumeration header oracle on %q: unknown %v != revoked %v", k, uv, rv)
+		}
+	}
 }
 
 func TestSub_NoPublicHost_503(t *testing.T) {
@@ -155,5 +173,69 @@ func TestSub_RateLimitedPerIP(t *testing.T) {
 	other := serveSub(h, tok, "198.51.100.8")
 	if other.Code != http.StatusOK {
 		t.Fatalf("unrelated IP got %d, want 200 (rate-limit is per-IP)", other.Code)
+	}
+}
+
+// TestSanitizeFilename_RejectsHeaderInjection pins the header-injection-safety
+// property: whatever the user name, the emitted filename must never contain a
+// double-quote (which would close the quoted-string), a CR/LF (which would inject
+// a new header / split the response), or a NUL. It also pins the documented
+// fallbacks and that a benign name survives intact.
+func TestSanitizeFilename_RejectsHeaderInjection(t *testing.T) {
+	hostile := []string{
+		`a"b`,                  // double-quote: would terminate filename="..."
+		"a\r\nSet-Cookie: x=y", // CRLF header injection
+		"a\x00b",               // NUL
+		"../../etc",            // path traversal
+		"\"\r\n\x00",           // every dangerous byte at once
+	}
+	for _, in := range hostile {
+		out := sanitizeFilename(in)
+		for _, bad := range []string{"\"", "\r", "\n", "\x00"} {
+			if strings.Contains(out, bad) {
+				t.Fatalf("sanitizeFilename(%q) = %q leaks %q", in, out, bad)
+			}
+		}
+	}
+
+	// All-illegal input and the empty string fall back to "subscription".
+	for _, in := range []string{"", "\"\r\n", "///", "@@@"} {
+		if out := sanitizeFilename(in); out != "subscription" {
+			t.Fatalf("sanitizeFilename(%q) = %q, want fallback %q", in, out, "subscription")
+		}
+	}
+
+	// A normal name is preserved verbatim (no over-zealous mangling).
+	if out := sanitizeFilename("alice-1.txt"); out != "alice-1.txt" {
+		t.Fatalf("sanitizeFilename(%q) = %q, want it preserved", "alice-1.txt", out)
+	}
+}
+
+// TestSub_EmptySubscription_Returns200NotError proves a valid-token user whose
+// bindings resolve to NO active nodes is served 200 with an empty (base64 of "")
+// body — the PUBLIC endpoint must never 500 on a buildable-empty user.
+func TestSub_EmptySubscription_Returns200NotError(t *testing.T) {
+	h, um := newSubHandler(t, "vpn.example.com")
+	// Take the reconciled tokened user and rewrite its bindings to point at an
+	// inbound tag that is ABSENT from active. BuildSubscription skips every stale
+	// binding → base64 of "" rather than an error.
+	u := um.List()[0]
+	tok := u.Token
+	u.Bindings = []users.Binding{{
+		InboundTag: "gone-from-active",
+		Credential: "u-1",
+		Protocol:   "vless",
+	}}
+	if err := um.Put(&u); err != nil {
+		t.Fatal(err)
+	}
+
+	rec := serveSub(h, tok, "203.0.113.9")
+	if rec.Code != http.StatusOK {
+		t.Fatalf("status = %d, want 200; body=%q", rec.Code, rec.Body.String())
+	}
+	// Empty subscription == base64 of "" == "".
+	if got := rec.Body.String(); got != "" {
+		t.Fatalf("body = %q, want empty (base64 of \"\")", got)
 	}
 }
