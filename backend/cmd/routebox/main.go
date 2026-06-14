@@ -5,6 +5,7 @@ import (
 	"crypto/rand"
 	"encoding/base64"
 	"encoding/json"
+	"errors"
 	"flag"
 	"fmt"
 	"log"
@@ -660,6 +661,33 @@ func generatePassword() (string, error) {
 		return "", err
 	}
 	return base64.RawURLEncoding.EncodeToString(b), nil
+}
+
+// tlsMode is the resolved TLS termination strategy for the panel.
+type tlsMode int
+
+const (
+	tlsModeOff    tlsMode = iota // plain HTTP
+	tlsModeManual                // ListenAndServeTLS with cert/key paths (Phase 1)
+	tlsModeACME                  // embedded Let's Encrypt via autocert
+)
+
+// resolveTLSMode decides the TLS strategy from settings, with priority
+// acme → manual → off. ACME requires Server.PublicHost (the cert domain);
+// enabling it without one would make autocert attempt issuance for an empty
+// SNI on every handshake — a guaranteed failure loop that can hit Let's
+// Encrypt rate limits — so this returns an error and the caller fails fast.
+func resolveTLSMode(cfg settings.Settings) (tlsMode, error) {
+	if cfg.Network.ACMEEnabled {
+		if cfg.Server.PublicHost == "" {
+			return tlsModeOff, errors.New("network.acme_enabled requires server.public_host (the certificate domain) to be set")
+		}
+		return tlsModeACME, nil
+	}
+	if cfg.Network.TLSCertPath != "" && cfg.Network.TLSKeyPath != "" {
+		return tlsModeManual, nil
+	}
+	return tlsModeOff, nil
 }
 
 // orDefault returns s if non-empty, otherwise def.
