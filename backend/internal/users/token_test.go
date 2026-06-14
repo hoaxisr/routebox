@@ -112,6 +112,50 @@ func TestRevokeToken(t *testing.T) {
 	}
 }
 
+// TestRotateTokenClearsDisabled proves that rotating a revoked (TokenDisabled)
+// user re-enables it: TokenDisabled flips back to false, the new token resolves,
+// and a subsequent Reconcile against the still-bound active does NOT clear or
+// re-mint it (the rotated token survives).
+func TestRotateTokenClearsDisabled(t *testing.T) {
+	m := NewManager("")
+	if err := m.Put(&PanelUser{ID: "u1", Name: "a", Token: "live",
+		Bindings: []Binding{{InboundTag: "vless-in", Credential: "u-1", Protocol: "vless"}}}); err != nil {
+		t.Fatal(err)
+	}
+	if err := m.RevokeToken("u1"); err != nil {
+		t.Fatalf("RevokeToken: %v", err)
+	}
+	if got, _ := m.Get("u1"); !got.TokenDisabled {
+		t.Fatal("revoke must set TokenDisabled=true")
+	}
+	newTok, err := m.RotateToken("u1")
+	if err != nil {
+		t.Fatalf("RotateToken: %v", err)
+	}
+	if newTok == "" {
+		t.Fatal("RotateToken returned empty token")
+	}
+	got, _ := m.Get("u1")
+	if got.TokenDisabled {
+		t.Fatal("rotate must clear TokenDisabled (re-enable)")
+	}
+	if _, ok := m.ByToken(newTok); !ok {
+		t.Fatal("rotated token must resolve via ByToken")
+	}
+	// A reconcile against the still-bound active must NOT change the rotated token.
+	active := cfg(vlessIn("vless-in", map[string]interface{}{"name": "a", "uuid": "u-1"}))
+	if _, err := m.Reconcile(active); err != nil {
+		t.Fatalf("Reconcile: %v", err)
+	}
+	after, _ := m.Get("u1")
+	if after.Token != newTok {
+		t.Fatalf("reconcile must not alter rotated token: %q -> %q", newTok, after.Token)
+	}
+	if after.TokenDisabled {
+		t.Fatal("reconcile must not re-disable a rotated user")
+	}
+}
+
 // TestRotateTokenPersists proves a rotated token survives a reload: a fresh
 // Manager loading the same file resolves the NEW token and rejects the OLD one.
 func TestRotateTokenPersists(t *testing.T) {
@@ -164,6 +208,9 @@ func TestRevokeTokenPersists(t *testing.T) {
 	}
 	if got.Token != "" {
 		t.Fatalf("revoke not persisted: token = %q, want empty", got.Token)
+	}
+	if !got.TokenDisabled {
+		t.Fatal("TokenDisabled must round-trip to disk: reloaded user has TokenDisabled=false")
 	}
 	if _, ok := m2.ByToken("live"); ok {
 		t.Fatal("revoked token still resolvable after reload")

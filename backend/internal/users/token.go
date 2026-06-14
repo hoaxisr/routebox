@@ -49,18 +49,21 @@ func (m *Manager) RotateToken(id string) (string, error) {
 	if !ok {
 		return "", fmt.Errorf("user %q not found", id)
 	}
-	prev := u.Token
+	prevTok, prevDisabled := u.Token, u.TokenDisabled
 	u.Token = tok
+	u.TokenDisabled = false // rotating re-enables a revoked user (deliberate re-issue)
 	if err := m.saveLocked(); err != nil {
-		u.Token = prev // keep memory consistent with disk on failure
+		u.Token, u.TokenDisabled = prevTok, prevDisabled // keep memory consistent with disk on failure
 		return "", err
 	}
 	return tok, nil
 }
 
-// RevokeToken clears the user's token (Token=""), persists, and returns. After
-// this ByToken can never find the user again (subscription disabled). Unknown id
-// is an error.
+// RevokeToken clears the user's token (Token="") AND sets TokenDisabled=true,
+// persists, and returns. After this ByToken can never find the user again
+// (subscription disabled). TokenDisabled makes the revoke STICKY: the reconciler
+// will not auto-re-mint a token while the user is still bound — only Rotate
+// re-enables. Unknown id is an error.
 func (m *Manager) RevokeToken(id string) error {
 	m.mu.Lock()
 	defer m.mu.Unlock()
@@ -68,10 +71,11 @@ func (m *Manager) RevokeToken(id string) error {
 	if !ok {
 		return fmt.Errorf("user %q not found", id)
 	}
-	prev := u.Token
+	prevTok, prevDisabled := u.Token, u.TokenDisabled
 	u.Token = ""
+	u.TokenDisabled = true // sticky: the reconciler will not auto-re-mint until Rotate re-enables
 	if err := m.saveLocked(); err != nil {
-		u.Token = prev
+		u.Token, u.TokenDisabled = prevTok, prevDisabled
 		return err
 	}
 	return nil

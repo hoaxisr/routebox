@@ -485,6 +485,50 @@ func TestReconcile_A1RemovesUserAndToken(t *testing.T) {
 	}
 }
 
+// TestRevokeTokenIsStickyAcrossReconcile proves a deliberately-revoked user is
+// NOT auto-re-minted by Reconcile even while still bound to an active inbound:
+// Token stays "" and TokenDisabled stays true, and neither the empty nor the old
+// token resolves via ByToken.
+func TestRevokeTokenIsStickyAcrossReconcile(t *testing.T) {
+	m := newStore(t)
+	active := cfg(vlessIn("vless-in", map[string]interface{}{"name": "alice", "uuid": "u-1"}))
+	if _, err := m.Reconcile(active); err != nil {
+		t.Fatalf("initial Reconcile: %v", err)
+	}
+	list := m.List()
+	if len(list) != 1 {
+		t.Fatalf("want 1 user after import, got %d", len(list))
+	}
+	id := list[0].ID
+	oldTok := list[0].Token
+	if oldTok == "" {
+		t.Fatal("import should have minted a token")
+	}
+	if err := m.RevokeToken(id); err != nil {
+		t.Fatalf("RevokeToken: %v", err)
+	}
+	// Reconcile against the SAME active that still contains the binding.
+	if _, err := m.Reconcile(active); err != nil {
+		t.Fatalf("Reconcile after revoke: %v", err)
+	}
+	got, ok := m.Get(id)
+	if !ok {
+		t.Fatal("revoked user must survive reconcile (still bound)")
+	}
+	if got.Token != "" {
+		t.Fatalf("sticky revoke violated: reconcile re-minted token %q", got.Token)
+	}
+	if !got.TokenDisabled {
+		t.Fatal("TokenDisabled must remain true after reconcile")
+	}
+	if _, ok := m.ByToken(oldTok); ok {
+		t.Fatal("old token must not resolve after revoke")
+	}
+	if _, ok := m.ByToken(""); ok {
+		t.Fatal("empty token must never resolve")
+	}
+}
+
 func TestReconcile_MintsTokenForPreexistingEmptyToken(t *testing.T) {
 	m := NewManager("")
 	// Simulate a Phase-2 user (no token) already bound to active's credential.

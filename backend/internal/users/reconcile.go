@@ -75,12 +75,13 @@ func (m *Manager) Reconcile(active map[string]interface{}) (bool, error) {
 	}
 
 	// Auto-mint: any panel user still lacking a token gets one. Idempotent —
-	// users that already have a token are untouched (the guard is exactly
-	// Token==""), so a steady-state reconcile after Apply does NOT re-mint
-	// (which would invalidate live subscriptions). changed=true ONLY when a
+	// users that already have a token are untouched, so a steady-state reconcile
+	// after Apply does NOT re-mint (which would invalidate live subscriptions).
+	// A deliberately-revoked user (TokenDisabled) is NEVER auto-re-minted here —
+	// the revoke is sticky; only Rotate re-enables it. changed=true ONLY when a
 	// token is actually minted here.
 	for _, u := range m.byID {
-		if u.Token == "" {
+		if u.Token == "" && !u.TokenDisabled {
 			tok, err := GenerateToken()
 			if err != nil {
 				return changed, err

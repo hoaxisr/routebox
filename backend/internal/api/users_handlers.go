@@ -19,13 +19,14 @@ import (
 // (true for draft-only users not yet in the registry). KEEP A's choice: ONE
 // unified list; pending entries carry pending:true and an empty ID.
 type userView struct {
-	ID        string          `json:"id"`
-	Name      string          `json:"name"`
-	Enabled   bool            `json:"enabled"`
-	ExpiresAt int64           `json:"expires_at"`
-	Pending   bool            `json:"pending"`
-	Token     string          `json:"token"`
-	Bindings  []users.Binding `json:"bindings"`
+	ID            string          `json:"id"`
+	Name          string          `json:"name"`
+	Enabled       bool            `json:"enabled"`
+	ExpiresAt     int64           `json:"expires_at"`
+	Pending       bool            `json:"pending"`
+	Token         string          `json:"token"`
+	TokenDisabled bool            `json:"token_disabled"`
+	Bindings      []users.Binding `json:"bindings"`
 }
 
 // ListUsers returns registry (applied) users plus pending users that exist only
@@ -45,7 +46,7 @@ func (h *Handler) ListUsers(w http.ResponseWriter, r *http.Request) {
 		}
 		views = append(views, userView{
 			ID: u.ID, Name: u.Name, Enabled: u.Enabled, ExpiresAt: u.ExpiresAt,
-			Pending: false, Token: u.Token, Bindings: u.Bindings,
+			Pending: false, Token: u.Token, TokenDisabled: u.TokenDisabled, Bindings: u.Bindings,
 		})
 	}
 

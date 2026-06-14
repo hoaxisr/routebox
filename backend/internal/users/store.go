@@ -18,12 +18,16 @@ import (
 // to one or more server inbounds. Enabled/ExpiresAt/Token are stored but NOT
 // enforced in Phase 2 (Phases 3-4).
 type PanelUser struct {
-	ID        string    `toml:"id" json:"id"`
-	Name      string    `toml:"name" json:"name"`
-	Enabled   bool      `toml:"enabled" json:"enabled"`
-	ExpiresAt int64     `toml:"expires_at" json:"expires_at"` // unix; 0 = never
-	Token     string    `toml:"token" json:"token"`           // Phase 3
-	Bindings  []Binding `toml:"bindings" json:"bindings"`
+	ID        string `toml:"id" json:"id"`
+	Name      string `toml:"name" json:"name"`
+	Enabled   bool   `toml:"enabled" json:"enabled"`
+	ExpiresAt int64  `toml:"expires_at" json:"expires_at"` // unix; 0 = never
+	Token     string `toml:"token" json:"token"`           // Phase 3
+	// TokenDisabled marks a deliberately-revoked subscription. While true, the
+	// reconciler never auto-re-mints a token for this user (sticky revoke); a
+	// Rotate clears it (re-enables). Distinct from Enabled (Phase 4 lifecycle).
+	TokenDisabled bool      `toml:"token_disabled" json:"token_disabled"` // Phase 3
+	Bindings      []Binding `toml:"bindings" json:"bindings"`
 }
 
 // Binding ties a PanelUser to a credential inside one server inbound. Name/Flow
