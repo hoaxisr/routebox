@@ -29,6 +29,7 @@
 	// Subscription modal state.
 	let subUser = $state<PanelUser | null>(null);
 	let publicHost = $state('');
+	let publicPort = $state<number | undefined>(undefined);
 
 	const serverTypes = ['vless', 'naive', 'hysteria2'];
 
@@ -44,6 +45,7 @@
 			try {
 				const s = await api.getSettings();
 				publicHost = s.settings.server?.public_host ?? '';
+				publicPort = s.settings.server?.public_port;
 			} catch {
 				/* public host optional */
 			}
@@ -264,7 +266,7 @@
 {/if}
 
 {#if subUser}
-	<SubscriptionModal user={subUser} {publicHost}
+	<SubscriptionModal user={subUser} {publicHost} {publicPort}
 		onClose={() => (subUser = null)}
 		onChanged={load} />
 {/if}

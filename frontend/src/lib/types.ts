@@ -794,6 +794,7 @@ export interface ProxiesResponse {
 export interface ServerSettings {
 	mode?: 'router' | 'vps';
 	public_host?: string;
+	public_port?: number; // external panel port for sub-URLs; 0/undefined = none/443
 }
 
 export interface RouteBoxSettings {

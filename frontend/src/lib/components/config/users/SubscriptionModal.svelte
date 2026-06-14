@@ -9,17 +9,20 @@
 	interface Props {
 		user: PanelUser;
 		publicHost: string; // server.public_host ("" if unset)
+		publicPort?: number; // server.public_port (0/undefined = none/443)
 		onClose: () => void;
 		onChanged: () => void; // parent reloads the user list
 	}
-	let { user, publicHost, onClose, onChanged }: Props = $props();
+	let { user, publicHost, publicPort, onClose, onChanged }: Props = $props();
 
 	let token = $state(user.token ?? '');
 	let disabled = $state(user.token_disabled === true);
 	let qrDataUrl = $state('');
 	let busy = $state(false);
 
-	const subUrl = $derived(effectiveSubUrl({ token, token_disabled: disabled }, publicHost));
+	const subUrl = $derived(
+		effectiveSubUrl({ token, token_disabled: disabled }, publicHost, publicPort)
+	);
 
 	async function renderQr() {
 		if (!subUrl) {
