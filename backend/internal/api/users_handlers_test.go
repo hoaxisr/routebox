@@ -556,3 +556,98 @@ func TestGetUsersPendingDedup(t *testing.T) {
 		t.Fatalf("id mismatch: got %q want %q", got.ID, um.List()[0].ID)
 	}
 }
+
+func TestRotateUserToken(t *testing.T) {
+	h, _, um := newUsersTestHandler(t)
+	id := um.List()[0].ID
+	old := um.List()[0].Token
+
+	r := chi.NewRouter()
+	r.Post("/users/{id}/token/rotate", h.RotateUserToken)
+	req := httptest.NewRequest(http.MethodPost, "/users/"+id+"/token/rotate", nil)
+	rec := httptest.NewRecorder()
+	r.ServeHTTP(rec, req)
+
+	if rec.Code != http.StatusOK {
+		t.Fatalf("status = %d, body=%q", rec.Code, rec.Body.String())
+	}
+	var resp struct {
+		Success bool `json:"success"`
+		Data    struct {
+			Token string `json:"token"`
+		} `json:"data"`
+	}
+	if err := json.Unmarshal(rec.Body.Bytes(), &resp); err != nil {
+		t.Fatal(err)
+	}
+	if resp.Data.Token == "" || resp.Data.Token == old {
+		t.Fatalf("rotate returned %q (old %q)", resp.Data.Token, old)
+	}
+	if _, ok := um.ByToken(old); ok {
+		t.Fatal("old token still valid after rotate")
+	}
+}
+
+func TestRevokeUserToken(t *testing.T) {
+	h, _, um := newUsersTestHandler(t)
+	id := um.List()[0].ID
+	old := um.List()[0].Token
+
+	r := chi.NewRouter()
+	r.Delete("/users/{id}/token", h.RevokeUserToken)
+	req := httptest.NewRequest(http.MethodDelete, "/users/"+id+"/token", nil)
+	rec := httptest.NewRecorder()
+	r.ServeHTTP(rec, req)
+
+	if rec.Code != http.StatusOK {
+		t.Fatalf("status = %d, body=%q", rec.Code, rec.Body.String())
+	}
+	if _, ok := um.ByToken(old); ok {
+		t.Fatal("token still valid after revoke")
+	}
+}
+
+func TestRotateUserToken_UnknownID_404(t *testing.T) {
+	h, _, _ := newUsersTestHandler(t)
+	r := chi.NewRouter()
+	r.Post("/users/{id}/token/rotate", h.RotateUserToken)
+	req := httptest.NewRequest(http.MethodPost, "/users/nope/token/rotate", nil)
+	rec := httptest.NewRecorder()
+	r.ServeHTTP(rec, req)
+	if rec.Code != http.StatusNotFound {
+		t.Fatalf("status = %d, want 404", rec.Code)
+	}
+}
+
+func TestListUsers_IncludesToken(t *testing.T) {
+	h, _, um := newUsersTestHandler(t)
+	want := um.List()[0].Token
+
+	r := chi.NewRouter()
+	r.Get("/users", h.ListUsers)
+	req := httptest.NewRequest(http.MethodGet, "/users", nil)
+	rec := httptest.NewRecorder()
+	r.ServeHTTP(rec, req)
+
+	var resp struct {
+		Data []struct {
+			Token   string `json:"token"`
+			Pending bool   `json:"pending"`
+		} `json:"data"`
+	}
+	if err := json.Unmarshal(rec.Body.Bytes(), &resp); err != nil {
+		t.Fatal(err)
+	}
+	found := false
+	for _, u := range resp.Data {
+		if !u.Pending && u.Token == want {
+			found = true
+		}
+		if u.Pending && u.Token != "" {
+			t.Fatalf("pending user must have empty token, got %q", u.Token)
+		}
+	}
+	if !found {
+		t.Fatalf("GET /api/users did not include the registry user's token")
+	}
+}

@@ -24,6 +24,7 @@ type userView struct {
 	Enabled   bool            `json:"enabled"`
 	ExpiresAt int64           `json:"expires_at"`
 	Pending   bool            `json:"pending"`
+	Token     string          `json:"token"`
 	Bindings  []users.Binding `json:"bindings"`
 }
 
@@ -44,7 +45,7 @@ func (h *Handler) ListUsers(w http.ResponseWriter, r *http.Request) {
 		}
 		views = append(views, userView{
 			ID: u.ID, Name: u.Name, Enabled: u.Enabled, ExpiresAt: u.ExpiresAt,
-			Pending: false, Bindings: u.Bindings,
+			Pending: false, Token: u.Token, Bindings: u.Bindings,
 		})
 	}
 
@@ -290,6 +291,38 @@ func genCredential(protocol string) (string, error) {
 		return uuid.NewString(), nil
 	}
 	return randomPassword()
+}
+
+// RotateUserToken mints a fresh subscription token for the registry user,
+// invalidating the previous one. Registry-only: it does NOT touch the config
+// draft (no pending-changes bar). PROTECTED route.
+func (h *Handler) RotateUserToken(w http.ResponseWriter, r *http.Request) {
+	if h.panelUsers == nil {
+		writeError(w, http.StatusServiceUnavailable, "users not initialized")
+		return
+	}
+	id := chi.URLParam(r, "id")
+	tok, err := h.panelUsers.RotateToken(id)
+	if err != nil {
+		writeError(w, http.StatusNotFound, "user not found")
+		return
+	}
+	writeSuccess(w, map[string]string{"token": tok})
+}
+
+// RevokeUserToken clears the registry user's subscription token, disabling
+// /sub/{token} for it (subsequent requests 404). Registry-only. PROTECTED route.
+func (h *Handler) RevokeUserToken(w http.ResponseWriter, r *http.Request) {
+	if h.panelUsers == nil {
+		writeError(w, http.StatusServiceUnavailable, "users not initialized")
+		return
+	}
+	id := chi.URLParam(r, "id")
+	if err := h.panelUsers.RevokeToken(id); err != nil {
+		writeError(w, http.StatusNotFound, "user not found")
+		return
+	}
+	writeSuccess(w, map[string]string{"message": "token revoked"})
 }
 
 // findActiveInbound returns the inbound with tag from an active config map.
