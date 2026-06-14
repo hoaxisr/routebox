@@ -796,7 +796,6 @@
       "noUsers": "No users — add at least one",
       "needUser": "At least one user is required",
       "needUserCred": "Every user needs its credentials filled in",
-      "clientLink": "Client link",
       "password": "Password",
       "tlsMode": "TLS Mode",
       "tlsModes": { "acme": "ACME", "reality": "Reality", "manual": "Manual" },
@@ -817,10 +816,7 @@
       "upMbps": "Up (Mbps)",
       "downMbps": "Down (Mbps)",
       "obfsType": "Obfuscation",
-      "obfsPassword": "Obfs Password",
-      "publicHost": "Public host (domain or IP)",
-      "hostRequired": "Enter the server's public host first",
-      "linkFailed": "Failed to build share link"
+      "obfsPassword": "Obfs Password"
     },
     "inboundCreated": "Inbound created",
     "inboundUpdated": "Inbound updated",
@@ -1501,7 +1497,14 @@
     "created": "Staged user \"{name}\" (apply to finalize)",
     "loadFailed": "Failed to load users",
     "noServerInbounds": "No server inbounds (vless/naive/hysteria2) configured.",
-    "pendingNoLink": "Link available after Apply"
+    "pendingNoLink": "Link available after Apply",
+    "publicHost": "Public host (domain or IP)",
+    "hostRequired": "Enter the server's public host first",
+    "linkFailed": "Failed to build share link",
+    "addBinding": "Add binding",
+    "addBindingTitle": "Add binding",
+    "noAvailableInbounds": "No other inbounds",
+    "bindingAdded": "Staged binding on \"{tag}\" (apply to finalize)"
   },
   "subscriptions": {
     "title": "Subscriptions",

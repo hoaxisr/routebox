@@ -34,7 +34,7 @@
 
 	async function generate() {
 		if (!host.trim()) {
-			notifications.error($t('inbounds.server.hostRequired'));
+			notifications.error($t('users.hostRequired'));
 			return;
 		}
 		loading = true;
@@ -45,7 +45,7 @@
 			link = res.link;
 			qrDataUrl = dataUrl;
 		} catch (e) {
-			notifications.error(e instanceof Error ? e.message : $t('inbounds.server.linkFailed'));
+			notifications.error(e instanceof Error ? e.message : $t('users.linkFailed'));
 			link = '';
 			qrDataUrl = '';
 		} finally {
@@ -78,7 +78,7 @@
 <div class="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4">
 	<div class="bg-[var(--ctp-base)] border border-[var(--ctp-surface2)] rounded-xl p-6 w-full max-w-md space-y-4">
 		<div class="flex items-center justify-between">
-			<h2 class="text-lg font-semibold text-[var(--ctp-text)]">{$t('inbounds.server.clientLink')}</h2>
+			<h2 class="text-lg font-semibold text-[var(--ctp-text)]">{$t('users.clientLink')}</h2>
 			<button
 				type="button"
 				onclick={onClose}
@@ -93,7 +93,7 @@
 
 		<div class="flex items-end gap-2">
 			<div class="flex-1">
-				<label for="shareHost" class="block text-sm font-medium text-[var(--ctp-subtext1)] mb-1">{$t('inbounds.server.publicHost')}</label>
+				<label for="shareHost" class="block text-sm font-medium text-[var(--ctp-subtext1)] mb-1">{$t('users.publicHost')}</label>
 				<input id="shareHost" type="text" bind:value={host} placeholder="vpn.example.com"
 					class="w-full px-3 py-2 bg-[var(--ctp-surface0)] border border-[var(--ctp-surface2)] rounded-lg text-[var(--ctp-text)] focus:outline-none focus:ring-2 focus:ring-[var(--ctp-primary)]" />
 			</div>

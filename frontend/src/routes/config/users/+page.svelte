@@ -20,6 +20,11 @@
 	let shareId = $state<string | null>(null);
 	let shareTag = $state('');
 
+	// Add-binding modal state.
+	let bindUser = $state<PanelUser | null>(null);
+	let bindTag = $state('');
+	let binding = $state(false);
+
 	const serverTypes = ['vless', 'naive', 'hysteria2'];
 
 	async function load() {
@@ -77,6 +82,35 @@
 		shareTag = u.bindings[0].inbound_tag;
 	}
 
+	// Server inbounds the user is NOT already bound to.
+	function availableInbounds(u: PanelUser): { tag: string; type: string }[] {
+		const bound = new Set(u.bindings.map((b) => b.inbound_tag));
+		return serverInbounds.filter((i) => !bound.has(i.tag));
+	}
+
+	function openAddBinding(u: PanelUser) {
+		const avail = availableInbounds(u);
+		if (avail.length === 0) return;
+		bindUser = u;
+		bindTag = avail[0].tag;
+	}
+
+	async function submitBinding() {
+		if (!bindUser || !bindTag) return;
+		binding = true;
+		try {
+			await api.addUserBinding(bindUser.id, { protocol: protocolOf(bindTag), inbound_tag: bindTag });
+			notifications.success($t('users.bindingAdded', { values: { tag: bindTag } }));
+			unsavedChanges.markChanged('Users', `Added binding "${bindTag}" to "${bindUser.name}"`);
+			bindUser = null;
+			await load();
+		} catch (e) {
+			notifications.error(`${e}`);
+		} finally {
+			binding = false;
+		}
+	}
+
 	onMount(load);
 </script>
 
@@ -130,6 +164,13 @@
 								</button>
 							{/if}
 							{#if u.id}
+								<button onclick={() => openAddBinding(u)} disabled={availableInbounds(u).length === 0}
+									title={availableInbounds(u).length === 0 ? $t('users.noAvailableInbounds') : ''}
+									class="px-3 py-1.5 text-[var(--ctp-text)] border border-[var(--ctp-surface2)] rounded-lg hover:bg-[var(--ctp-surface0)] transition-colors text-sm disabled:opacity-50">
+									{$t('users.addBinding')}
+								</button>
+							{/if}
+							{#if u.id}
 								<button onclick={() => remove(u)}
 									class="px-3 py-1.5 text-[var(--ctp-red)] hover:bg-[var(--ctp-red)]/10 rounded-lg transition-colors text-sm">
 									{$t('users.delete')}
@@ -168,6 +209,31 @@
 			<button onclick={submitAdd} disabled={adding || !addName.trim() || !addTag}
 				class="px-4 py-2 bg-[var(--ctp-primary)] text-white rounded-lg hover:opacity-90 transition-opacity disabled:opacity-50">
 				{adding ? $t('common.loading') : $t('users.add')}
+			</button>
+		</div>
+	{/snippet}
+</Modal>
+
+<Modal open={!!bindUser} title={$t('users.addBindingTitle')} size="md" onClose={() => (bindUser = null)}>
+	{#if bindUser}
+		<label class="block">
+			<span class="text-sm text-[var(--ctp-subtext1)]">{$t('users.inbound')}</span>
+			<select bind:value={bindTag}
+				class="mt-1 w-full px-3 py-2 bg-[var(--ctp-mantle)] border border-[var(--ctp-surface2)] rounded text-[var(--ctp-text)] text-sm focus:outline-none focus:ring-2 focus:ring-[var(--ctp-primary)]">
+				{#each availableInbounds(bindUser) as i}
+					<option value={i.tag}>{i.tag} ({i.type})</option>
+				{/each}
+			</select>
+		</label>
+	{/if}
+	{#snippet footer()}
+		<div class="flex justify-end gap-2">
+			<button onclick={() => (bindUser = null)} class="px-4 py-2 text-[var(--ctp-subtext1)] hover:bg-[var(--ctp-surface0)] rounded-lg transition-colors">
+				{$t('common.cancel')}
+			</button>
+			<button onclick={submitBinding} disabled={binding || !bindTag}
+				class="px-4 py-2 bg-[var(--ctp-primary)] text-white rounded-lg hover:opacity-90 transition-opacity disabled:opacity-50">
+				{binding ? $t('common.loading') : $t('users.addBinding')}
 			</button>
 		</div>
 	{/snippet}
