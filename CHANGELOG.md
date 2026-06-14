@@ -23,6 +23,22 @@ All notable changes to RouteBox are documented here.
 
 ---
 
+### Added — Subscription export (VPS Phase 3)
+
+Per-user subscription URLs: each panel user gets an opaque token and a public `GET /sub/{token}` endpoint that returns the user's client share-links (base64), so clients can self-provision and auto-update from a single link.
+
+**Backend:**
+- Per-user subscription token auto-minted during reconcile (`base64url` of 32 `crypto/rand` bytes), idempotent (only mints when empty) and stored in `PanelUser.Token`. A1 (user removed from active config) deletes the record and its token; re-adding the user mints a fresh token.
+- `users.ByToken` (deep-copy value lookup, empty token rejected), `RotateToken`, and `RevokeToken`. Revoke is **sticky / fail-closed**: it clears the token and sets `TokenDisabled=true`, so a subsequent reconcile does **not** re-mint a token for that user (verified end to end across a restart).
+- Host-agnostic `BuildSubscription`: base64 of the user's client share-links built from the **active** config and `Server.PublicHost`; bindings whose inbound is missing from the active config are gracefully skipped. Self-contained (no API resolvers).
+- **PUBLIC** `GET /sub/{token}` (registered outside auth): identical `404` for unknown and revoked tokens (anti-enumeration), `503` when `server.public_host` is unset, dedicated per-IP rate-limit (Allowed+Fail on every request), `Cache-Control: no-store`, `Content-Type: text/plain`, `Profile-Update-Interval`, and `Content-Disposition` headers. Access-log token scrubbing renders the path as `/sub/<redacted>` so the token never reaches logs.
+- **PROTECTED** `POST /api/users/{id}/token/rotate` and `DELETE /api/users/{id}/token`; `token` (and `token_disabled`) added to `GET /api/users`.
+
+**Frontend:**
+- Subscription modal on the Users page: subscription URL + QR code + copy, plus rotate and revoke actions. Scheme-less public hosts are forced to `https`. Hints shown when the public host is unset or the user has no token yet (pending users).
+
+---
+
 ### Added — Panel users (VPS Phase 2)
 
 A unified Users registry that mirrors the active server config. Panel users are kept in a `users.toml` sidecar (next to `routebox.toml`, mode 0600) that is reconciled against the live config on startup and after every Apply, so the panel always reflects what amnezia-box is actually running.
