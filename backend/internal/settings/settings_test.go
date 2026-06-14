@@ -425,6 +425,56 @@ func TestUpdateV2RayAPI(t *testing.T) {
 	}
 }
 
+// TestLoadResetsNonLoopbackV2RayAPI (defense-in-depth): a hand-edited
+// routebox.toml with a non-loopback singbox.v2ray_api must be reset to the
+// loopback default on Load, while a valid loopback value survives unchanged.
+func TestLoadResetsNonLoopbackV2RayAPI(t *testing.T) {
+	t.Run("non-loopback reset to default", func(t *testing.T) {
+		dir := t.TempDir()
+		path := filepath.Join(dir, "routebox.toml")
+		if err := os.WriteFile(path, []byte("[singbox]\nv2ray_api = \"0.0.0.0:8081\"\n"), 0600); err != nil {
+			t.Fatal(err)
+		}
+		m, err := NewManager(path)
+		if err != nil {
+			t.Fatalf("NewManager: %v", err)
+		}
+		if got := m.Get().Singbox.V2RayAPI; got != "127.0.0.1:8081" {
+			t.Fatalf("non-loopback v2ray_api must be reset to 127.0.0.1:8081; got %q", got)
+		}
+	})
+
+	t.Run("public ip reset to default", func(t *testing.T) {
+		dir := t.TempDir()
+		path := filepath.Join(dir, "routebox.toml")
+		if err := os.WriteFile(path, []byte("[singbox]\nv2ray_api = \"203.0.113.5:8081\"\n"), 0600); err != nil {
+			t.Fatal(err)
+		}
+		m, err := NewManager(path)
+		if err != nil {
+			t.Fatalf("NewManager: %v", err)
+		}
+		if got := m.Get().Singbox.V2RayAPI; got != "127.0.0.1:8081" {
+			t.Fatalf("public-ip v2ray_api must be reset to 127.0.0.1:8081; got %q", got)
+		}
+	})
+
+	t.Run("valid loopback survives unchanged", func(t *testing.T) {
+		dir := t.TempDir()
+		path := filepath.Join(dir, "routebox.toml")
+		if err := os.WriteFile(path, []byte("[singbox]\nv2ray_api = \"127.0.0.1:9099\"\n"), 0600); err != nil {
+			t.Fatal(err)
+		}
+		m, err := NewManager(path)
+		if err != nil {
+			t.Fatalf("NewManager: %v", err)
+		}
+		if got := m.Get().Singbox.V2RayAPI; got != "127.0.0.1:9099" {
+			t.Fatalf("valid loopback v2ray_api must survive Load unchanged; got %q", got)
+		}
+	})
+}
+
 func TestUpdateServerPublicPort(t *testing.T) {
 	cases := []struct {
 		name    string

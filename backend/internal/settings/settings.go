@@ -251,6 +251,17 @@ func (m *Manager) Load() error {
 		return err
 	}
 
+	// Defense-in-depth: a hand-edited file could set singbox.v2ray_api to a
+	// non-loopback address (e.g. "0.0.0.0:8081"), which would later be written
+	// into experimental.v2ray_api.listen and dialed — exposing the
+	// unauthenticated StatsService gRPC socket off-host. Update() validates this,
+	// but Load() must too. Fail closed: reset any non-loopback value to the
+	// default before committing.
+	if tmp.Singbox.V2RayAPI != "" && validateLoopbackAddr(tmp.Singbox.V2RayAPI) != nil {
+		log.Printf("settings: singbox.v2ray_api %q is not loopback; resetting to 127.0.0.1:8081", tmp.Singbox.V2RayAPI)
+		tmp.Singbox.V2RayAPI = "127.0.0.1:8081"
+	}
+
 	// Commit the successfully decoded settings.
 	m.settings = tmp
 
