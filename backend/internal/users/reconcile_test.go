@@ -245,6 +245,150 @@ func TestReconcileMirrorsOnlyGivenMap(t *testing.T) {
 	}
 }
 
+// Guard: a rename in active must refresh ONLY the binding's cached Name/Flow and
+// must NOT touch the PanelUser's identity/metadata (ID, Token, ExpiresAt, Enabled).
+// The reconciler is the config→registry mirror; it owns cached binding fields, not
+// panel-owned metadata.
+func TestReconcilePreservesMetadataOnRename(t *testing.T) {
+	m := newStore(t)
+	_ = m.Put(&PanelUser{
+		ID: "fixed", Name: "alice", Enabled: false, ExpiresAt: 1893456000, Token: "tok-keep",
+		Bindings: []Binding{
+			{InboundTag: "vless-in", Credential: "u-1", Protocol: "vless", Name: "alice", Flow: "f1"},
+		},
+	})
+	// Same (tag, credential), CHANGED name + flow.
+	active := cfg(vlessIn("vless-in",
+		map[string]interface{}{"name": "alice-renamed", "uuid": "u-1", "flow": "f2"}))
+	changed, err := m.Reconcile(active)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !changed {
+		t.Fatalf("rename/flow change should mark changed")
+	}
+	u, ok := m.Get("fixed")
+	if !ok {
+		t.Fatalf("user must survive rename")
+	}
+	// Cache refreshed.
+	if len(u.Bindings) != 1 || u.Bindings[0].Name != "alice-renamed" || u.Bindings[0].Flow != "f2" {
+		t.Fatalf("cached Name/Flow must refresh: %#v", u.Bindings)
+	}
+	// Panel-owned metadata untouched.
+	if u.ID != "fixed" {
+		t.Fatalf("ID must be unchanged, got %q", u.ID)
+	}
+	if u.Token != "tok-keep" {
+		t.Fatalf("Token must be preserved, got %q", u.Token)
+	}
+	if u.ExpiresAt != 1893456000 {
+		t.Fatalf("ExpiresAt must be preserved, got %d", u.ExpiresAt)
+	}
+	if u.Enabled != false {
+		t.Fatalf("Enabled must be preserved (false), got %v", u.Enabled)
+	}
+}
+
+// Guard: an imported user's ID must be stable across an unchanged reconcile (the
+// second pass must match the existing binding, not re-mint a fresh ID).
+func TestReconcileStableIDAcrossReconcile(t *testing.T) {
+	m := newStore(t)
+	active := cfg(vlessIn("vless-in", map[string]interface{}{"name": "alice", "uuid": "u-1"}))
+	if _, err := m.Reconcile(active); err != nil {
+		t.Fatal(err)
+	}
+	list := m.List()
+	if len(list) != 1 {
+		t.Fatalf("want 1 user after import, got %d", len(list))
+	}
+	id := list[0].ID
+	changed, err := m.Reconcile(active)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if changed {
+		t.Fatalf("identical active should be a no-op (changed=false)")
+	}
+	again := m.List()
+	if len(again) != 1 || again[0].ID != id {
+		t.Fatalf("ID must be stable, not re-minted: was %q, now %#v", id, again)
+	}
+}
+
+// Guard: dropping the FIRST of two bindings must keep exactly the SECOND. This
+// exercises the in-place Bindings[:0] compaction against index/aliasing bugs (the
+// sibling drop-test drops the second binding instead).
+func TestReconcileDropsFirstBindingKeepsSecond(t *testing.T) {
+	m := newStore(t)
+	_ = m.Put(&PanelUser{
+		ID: "fixed", Name: "alice", Enabled: true,
+		Bindings: []Binding{
+			{InboundTag: "a", Credential: "cred-a", Protocol: "vless", Name: "alice"},
+			{InboundTag: "b", Credential: "cred-b", Protocol: "vless", Name: "alice"},
+		},
+	})
+	// Active retains only the SECOND binding's (tag, credential).
+	active := cfg(vlessIn("b", map[string]interface{}{"name": "alice", "uuid": "cred-b"}))
+	changed, err := m.Reconcile(active)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !changed {
+		t.Fatalf("dropping the first binding should mark changed")
+	}
+	u, ok := m.Get("fixed")
+	if !ok || len(u.Bindings) != 1 {
+		t.Fatalf("expected exactly one surviving binding, got %#v", u)
+	}
+	if u.Bindings[0].InboundTag != "b" || u.Bindings[0].Credential != "cred-b" {
+		t.Fatalf("surviving binding must be the second (tag=b), got %#v", u.Bindings[0])
+	}
+}
+
+// Guard: renaming ONE of two bindings must refresh only that binding's cache and
+// leave the other binding intact; both bindings survive and changed=true.
+func TestReconcileMultiBindingPartialUpdate(t *testing.T) {
+	m := newStore(t)
+	_ = m.Put(&PanelUser{
+		ID: "fixed", Name: "alice", Enabled: true,
+		Bindings: []Binding{
+			{InboundTag: "vless-in", Credential: "u-1", Protocol: "vless", Name: "alice"},
+			{InboundTag: "hy2-in", Credential: "p-1", Protocol: "hysteria2", Name: "alice"},
+		},
+	})
+	// Change the name of ONLY the vless binding; hysteria2 binding unchanged.
+	active := map[string]interface{}{
+		"inbounds": []interface{}{
+			map[string]interface{}{"type": "vless", "tag": "vless-in", "users": []interface{}{
+				map[string]interface{}{"name": "alice-renamed", "uuid": "u-1"}}},
+			map[string]interface{}{"type": "hysteria2", "tag": "hy2-in", "users": []interface{}{
+				map[string]interface{}{"name": "alice", "password": "p-1"}}},
+		},
+	}
+	changed, err := m.Reconcile(active)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !changed {
+		t.Fatalf("renaming one binding should mark changed")
+	}
+	u, ok := m.Get("fixed")
+	if !ok || len(u.Bindings) != 2 {
+		t.Fatalf("both bindings must survive, got %#v", u)
+	}
+	byTag := map[string]Binding{}
+	for _, b := range u.Bindings {
+		byTag[b.InboundTag] = b
+	}
+	if got := byTag["vless-in"].Name; got != "alice-renamed" {
+		t.Fatalf("vless binding name must refresh to alice-renamed, got %q", got)
+	}
+	if got := byTag["hy2-in"].Name; got != "alice" {
+		t.Fatalf("hysteria2 binding must be untouched (name=alice), got %q", got)
+	}
+}
+
 func TestReconcileNaiveAndHysteria2(t *testing.T) {
 	m := newStore(t)
 	active := map[string]interface{}{"inbounds": []interface{}{
