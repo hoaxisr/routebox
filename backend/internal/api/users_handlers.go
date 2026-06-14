@@ -27,6 +27,8 @@ type userView struct {
 	Token         string          `json:"token"`
 	TokenDisabled bool            `json:"token_disabled"`
 	Bindings      []users.Binding `json:"bindings"`
+	Upload        int64           `json:"upload"`
+	Download      int64           `json:"download"`
 }
 
 // ListUsers returns registry (applied) users plus pending users that exist only
@@ -44,9 +46,20 @@ func (h *Handler) ListUsers(w http.ResponseWriter, r *http.Request) {
 		for _, b := range u.Bindings {
 			registered[b.InboundTag+"\x00"+b.Credential] = true
 		}
+		var up, down int64
+		if h.traffic != nil {
+			for _, name := range userTrafficNames(u) {
+				nu, nd, err := h.traffic.QueryUserTotals(0, 1<<62, name)
+				if err == nil {
+					up += nu
+					down += nd
+				}
+			}
+		}
 		views = append(views, userView{
 			ID: u.ID, Name: u.Name, Enabled: u.Enabled, ExpiresAt: u.ExpiresAt,
 			Pending: false, Token: u.Token, TokenDisabled: u.TokenDisabled, Bindings: u.Bindings,
+			Upload: up, Download: down,
 		})
 	}
 
