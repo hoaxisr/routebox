@@ -130,6 +130,19 @@
 	}
 
 	onMount(load);
+
+	// The global pending-changes bar applies/discards the draft elsewhere. When it
+	// does, the server reconciles the registry (pending users materialize, removed
+	// ones vanish), so re-fetch on the hasChanges true→false transition — otherwise
+	// the list keeps showing a stale "pending" entry after Apply.
+	let prevHasChanges = false;
+	$effect(() => {
+		const has = $unsavedChanges.hasChanges;
+		if (prevHasChanges && !has) {
+			load();
+		}
+		prevHasChanges = has;
+	});
 </script>
 
 <svelte:head><title>{$t('users.title')} - RouteBox</title></svelte:head>
