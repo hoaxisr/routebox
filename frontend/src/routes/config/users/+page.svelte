@@ -5,6 +5,7 @@
 	import { notifications, unsavedChanges } from '$lib/stores';
 	import Modal from '$lib/components/shared/Modal.svelte';
 	import ShareLinkModal from '$lib/components/config/inbound/ShareLinkModal.svelte';
+	import SubscriptionModal from '$lib/components/config/users/SubscriptionModal.svelte';
 	import type { PanelUser, Inbound } from '$lib/types';
 
 	let users = $state<PanelUser[]>([]);
@@ -25,6 +26,10 @@
 	let bindTag = $state('');
 	let binding = $state(false);
 
+	// Subscription modal state.
+	let subUser = $state<PanelUser | null>(null);
+	let publicHost = $state('');
+
 	const serverTypes = ['vless', 'naive', 'hysteria2'];
 
 	async function load() {
@@ -36,6 +41,12 @@
 				.filter((i) => serverTypes.includes(i.type))
 				.map((i) => ({ tag: i.tag, type: i.type }));
 			if (!addTag && serverInbounds.length > 0) addTag = serverInbounds[0].tag;
+			try {
+				const s = await api.getSettings();
+				publicHost = s.settings.server?.public_host ?? '';
+			} catch {
+				/* public host optional */
+			}
 		} catch (e) {
 			notifications.error(`${$t('users.loadFailed')}: ${e}`);
 		} finally {
@@ -80,6 +91,11 @@
 		if (u.pending || u.bindings.length === 0) return;
 		shareId = u.id;
 		shareTag = u.bindings[0].inbound_tag;
+	}
+
+	function openSubscription(u: PanelUser) {
+		if (u.pending) return;
+		subUser = u;
 	}
 
 	// Server inbounds the user is NOT already bound to.
@@ -162,6 +178,10 @@
 									class="px-3 py-1.5 bg-[var(--ctp-primary)] text-white rounded-lg hover:opacity-90 transition-opacity text-sm">
 									{$t('users.clientLink')}
 								</button>
+								<button onclick={() => openSubscription(u)}
+									class="px-3 py-1.5 text-[var(--ctp-text)] border border-[var(--ctp-surface2)] rounded-lg hover:bg-[var(--ctp-surface0)] transition-colors text-sm">
+									{$t('users.subscription')}
+								</button>
 							{/if}
 							{#if u.id}
 								<button onclick={() => openAddBinding(u)} disabled={availableInbounds(u).length === 0}
@@ -241,4 +261,10 @@
 
 {#if shareId}
 	<ShareLinkModal id={shareId} tag={shareTag} onClose={() => (shareId = null)} />
+{/if}
+
+{#if subUser}
+	<SubscriptionModal user={subUser} {publicHost}
+		onClose={() => (subUser = null)}
+		onChanged={load} />
 {/if}
