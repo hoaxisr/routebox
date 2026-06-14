@@ -71,6 +71,10 @@ func (h *Handler) GetSubscription(w http.ResponseWriter, r *http.Request) {
 	// Body carries live VPN credentials on a PUBLIC endpoint: forbid shared-cache
 	// retention (proxies/CDNs) of the per-user subscription.
 	w.Header().Set("Cache-Control", "no-store")
+	// Per-user subscription usage (informational; total=0 = no quota this phase).
+	// Bytes summed across the user's binding names; expire from ExpiresAt (0=never).
+	up, down := h.userAllTimeTraffic(user)
+	w.Header().Set("Subscription-Userinfo", formatUserinfo(up, down, 0, user.ExpiresAt))
 	w.WriteHeader(http.StatusOK)
 	_, _ = w.Write([]byte(body)) // may be empty base64 ("") — that is valid
 }
