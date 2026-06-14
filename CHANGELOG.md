@@ -23,6 +23,26 @@ All notable changes to RouteBox are documented here.
 
 ---
 
+### Added — Panel users (VPS Phase 2)
+
+A unified Users registry that mirrors the active server config. Panel users are kept in a `users.toml` sidecar (next to `routebox.toml`, mode 0600) that is reconciled against the live config on startup and after every Apply, so the panel always reflects what amnezia-box is actually running.
+
+**Backend:**
+- `users` package: TOML-backed registry (`PanelUser`/`Binding`) with atomic 0600 saves, deep-copy reads, and a pure server-inbound credential extractor (vless=uuid, naive=username, hysteria2=password via a shared `CredentialKey` helper).
+- Reconciler mirrors the **active** config into the registry: imports newly-seen credentials with a fresh stable id, updates cached metadata, collapses duplicate credentials, preserves multi-binding users, and **auto-deletes** registry entries whose credential vanished from the active config (A1). Idempotent; runs at startup and after Apply, outside the config manager's lock (no import cycle, `users` → `config` only).
+- `CRUD /api/users`: `GET` returns ONE unified list (registered users plus draft-only entries flagged `pending:true` with an empty id); `POST` stages a new user (generated credential) into the draft inbound only; `POST /api/users/{id}/bindings` adds the user to another inbound's draft; `DELETE /api/users/{id}` removes the draft bindings (registry cleaned by reconcile on Apply).
+- `GET /api/users/{id}/link?tag=&host=` builds a client share link by user id, resolved against the **active** config; `host` defaults to `server.public_host` when omitted and is passed through the same sanitizer.
+- New `server.public_host` setting with a strict sanitizer (strips scheme/userinfo/path/port/trailing dot, rejects non-hostname/non-IP input).
+- Validator hardening for server inbounds: `listen_port` required, naive/hysteria2 require TLS **enabled**, and duplicate credentials within an inbound are rejected.
+- Removed the old index-based per-inbound share-link route and handler.
+
+**Frontend:**
+- New **Users** page (`/config/users`) and nav entry: unified list with a pending badge, Add user, Delete, and a Client-link action.
+- Share-link modal repurposed to the by-id link route with `server.public_host` prefill (typed; `PanelUser`/`PanelBinding`/`ServerSettings` added to `types.ts`, no `as any`).
+- API client gains `getUsers`/`createUser`/`addUserBinding`/`deleteUser`/`getUserLink(id, tag, host)`.
+- Public host field added to the Settings page; `users.*` i18n namespace added.
+- Removed the per-inbound share button and its wiring from the server inbound forms.
+
 ### Added — Panel security (VPS Phase 1)
 
 **Backend:**
