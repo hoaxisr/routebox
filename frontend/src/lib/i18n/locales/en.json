@@ -34,7 +34,8 @@
     "routing": "Routing",
     "updates": "Updates",
     "subscriptions": "Subscriptions",
-    "users": "Users"
+    "users": "Users",
+    "perUserTraffic": "Per-User Traffic"
   },
   "common": {
     "save": "Save",
@@ -1546,7 +1547,16 @@
     "openSettings": "Open Settings",
     "noToken": "No token yet — available after Apply.",
     "rotateFailed": "Failed to rotate token",
-    "revokeFailed": "Failed to revoke token"
+    "revokeFailed": "Failed to revoke token",
+    "upload": "Upload",
+    "download": "Download",
+    "usage": "Usage",
+    "trafficLoadFailed": "Failed to load traffic"
+  },
+  "monitor": {
+    "perUserTitle": "Per-User Traffic",
+    "usersEmpty": "No panel users yet.",
+    "usersLoadFailed": "Failed to load user traffic"
   },
   "subscriptions": {
     "title": "Subscriptions",

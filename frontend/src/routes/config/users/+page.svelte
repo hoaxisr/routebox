@@ -2,11 +2,12 @@
 	import { onMount } from 'svelte';
 	import { t } from 'svelte-i18n';
 	import { api } from '$lib/api/client';
-	import { notifications, unsavedChanges } from '$lib/stores';
+	import { notifications, unsavedChanges, formatBytes } from '$lib/stores';
 	import Modal from '$lib/components/shared/Modal.svelte';
 	import ShareLinkModal from '$lib/components/config/inbound/ShareLinkModal.svelte';
 	import SubscriptionModal from '$lib/components/config/users/SubscriptionModal.svelte';
-	import type { PanelUser, Inbound } from '$lib/types';
+	import Sparkline from '$lib/components/shared/Sparkline.svelte';
+	import type { PanelUser, Inbound, UserTrafficResponse } from '$lib/types';
 
 	let users = $state<PanelUser[]>([]);
 	let serverInbounds = $state<{ tag: string; type: string }[]>([]);
@@ -32,6 +33,26 @@
 	let publicPort = $state<number | undefined>(undefined);
 
 	const serverTypes = ['vless', 'naive', 'hysteria2'];
+
+	// Per-user traffic history, lazily fetched on expand. Keyed by user id.
+	// 'loading' marks an in-flight fetch so the row can show a placeholder.
+	let expanded = $state<Record<string, UserTrafficResponse | 'loading'>>({});
+
+	async function toggleTraffic(id: string) {
+		if (expanded[id]) {
+			delete expanded[id];
+			expanded = { ...expanded };
+			return;
+		}
+		expanded = { ...expanded, [id]: 'loading' };
+		try {
+			expanded = { ...expanded, [id]: await api.getUserTraffic(id, '24h') };
+		} catch (e) {
+			delete expanded[id];
+			expanded = { ...expanded };
+			notifications.error(`${$t('users.trafficLoadFailed')}: ${e}`);
+		}
+	}
 
 	async function load() {
 		loading = true;
@@ -184,6 +205,19 @@
 									<span class="status-badge">{b.inbound_tag}</span>
 								{/each}
 							</div>
+							{#if !u.pending && u.id}
+								<div class="mt-3 flex items-center gap-3 flex-wrap">
+									<button class="traffic-cell" onclick={() => u.id && toggleTraffic(u.id)} title={$t('users.usage')}>
+										<span class="up">↑ {formatBytes(u.upload ?? 0)}</span>
+										<span class="down">↓ {formatBytes(u.download ?? 0)}</span>
+									</button>
+									{#if expanded[u.id] === 'loading'}
+										<span class="text-xs text-[var(--ctp-overlay0)]">{$t('common.loading')}</span>
+									{:else if expanded[u.id]}
+										<Sparkline values={(expanded[u.id] as UserTrafficResponse).history.map((p) => p.upload + p.download)} />
+									{/if}
+								</div>
+							{/if}
 						</div>
 						<div class="flex items-center gap-2 flex-wrap">
 							{#if u.pending}
@@ -283,3 +317,26 @@
 		onClose={() => (subUser = null)}
 		onChanged={load} />
 {/if}
+
+<style>
+	.traffic-cell {
+		display: inline-flex;
+		align-items: center;
+		gap: 0.75rem;
+		padding: 0.25rem 0.5rem;
+		border-radius: 0.375rem;
+		font-size: 0.8125rem;
+		font-variant-numeric: tabular-nums;
+		background: var(--ctp-surface0);
+		transition: background-color 0.15s;
+	}
+	.traffic-cell:hover {
+		background: var(--ctp-surface1);
+	}
+	.traffic-cell .up {
+		color: var(--ctp-primary);
+	}
+	.traffic-cell .down {
+		color: var(--ctp-overlay1);
+	}
+</style>
