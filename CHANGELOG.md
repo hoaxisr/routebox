@@ -6,6 +6,20 @@ All notable changes to RouteBox are documented here.
 
 ### New Features
 
+- **Per-user traffic accounting (VPS Phase 5)** — RouteBox now records accurate per-user upload/download via sing-box's v2ray_api StatsService. See details below.
+
+**Backend:**
+- New `v2stats` gRPC client polling the StatsService; `user_traffic` table + reset-safe cumulative-diff sampler (survives sing-box reloads without losing/negativing totals).
+- RouteBox writes & syncs the `experimental.v2ray_api` block (`stats.users` kept in sync with the panel registry, change-gated to avoid reload churn; loopback-only listener).
+- `GET /api/users/{id}/traffic` (totals + per-bucket history) and up/down sums in `GET /api/users`; `Subscription-Userinfo` header on `/sub`.
+
+**Frontend:**
+- Per-user up/download counters + sparkline on the Users page; a per-user traffic monitor (the panel-mode "Part B" view).
+
+**Requires** an amnezia-box build with `with_v2ray_api` (fork release `v1.13.13-awg2.1`); additive — on a binary without it, accounting is simply absent. Quotas/auto-disable are out of scope (future, needs Phase 4 enforcement).
+
+---
+
 - **Mode-aware UI (panel vs router)** — the WebUI now adapts to `server.mode` (router|vps). See details below.
 
 **Frontend:**
