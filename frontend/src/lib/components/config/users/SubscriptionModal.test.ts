@@ -33,6 +33,30 @@ describe('buildSubUrl', () => {
 	it('returns empty when host normalizes to empty', () => {
 		expect(buildSubUrl('  \n ', 'tok')).toBe('');
 	});
+	it('appends the port when port>0 and port!==443', () => {
+		expect(buildSubUrl('panel.example.com', 'tok', 8443)).toBe(
+			'https://panel.example.com:8443/sub/tok'
+		);
+	});
+	it('omits the port when port===443', () => {
+		expect(buildSubUrl('panel.example.com', 'tok', 443)).toBe('https://panel.example.com/sub/tok');
+	});
+	it('omits the port when port===0', () => {
+		expect(buildSubUrl('panel.example.com', 'tok', 0)).toBe('https://panel.example.com/sub/tok');
+	});
+	it('omits the port when port is undefined (back-compat)', () => {
+		expect(buildSubUrl('panel.example.com', 'tok')).toBe('https://panel.example.com/sub/tok');
+	});
+	it('does not double-append when host already carries a port', () => {
+		expect(buildSubUrl('1.2.3.4:8080', 'tok', 8443)).toBe('https://1.2.3.4:8080/sub/tok');
+	});
+	it('appends the port to a bare (unbracketed) IPv6 host without misfiring', () => {
+		// no explicit port present on a raw IPv6 literal → append it
+		expect(buildSubUrl('[2001:db8::1]', 'tok', 8443)).toBe('https://[2001:db8::1]:8443/sub/tok');
+	});
+	it('does not double-append on a bracketed IPv6 host that already has a port', () => {
+		expect(buildSubUrl('[2001:db8::1]:8080', 'tok', 8443)).toBe('https://[2001:db8::1]:8080/sub/tok');
+	});
 });
 
 describe('effectiveSubUrl (sticky-revoke gate)', () => {
@@ -47,5 +71,15 @@ describe('effectiveSubUrl (sticky-revoke gate)', () => {
 	});
 	it('returns empty for a pending user (no token, not disabled)', () => {
 		expect(effectiveSubUrl({ token: '', token_disabled: false }, 'vpn.example.com')).toBe('');
+	});
+	it('threads the port through for an active user', () => {
+		expect(
+			effectiveSubUrl({ token: 'tok', token_disabled: false }, 'panel.example.com', 8443)
+		).toBe('https://panel.example.com:8443/sub/tok');
+	});
+	it('stays empty for a revoked user even with a port', () => {
+		expect(
+			effectiveSubUrl({ token: 'tok', token_disabled: true }, 'panel.example.com', 8443)
+		).toBe('');
 	});
 });
