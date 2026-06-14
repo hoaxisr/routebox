@@ -72,6 +72,34 @@ func (s *UserSampler) computeUserDeltas(cur map[string]v2stats.Counters) map[str
 	return out
 }
 
+// sampleOnce performs one query+attribute cycle and returns the next state of the
+// first-failure-then-silent log gate. On query error it logs once (when failed was
+// false) and leaves lastSeen/store untouched — counters stay flat, never zeroed.
+// On the first success after failure it logs recovery once. Extracted from Run so
+// the gate + no-mutation-on-error behaviour is deterministically unit-testable.
+func (s *UserSampler) sampleOnce(query userQuerier, timeout time.Duration, failed bool) bool {
+	snap, err := query.QueryUsersTimeout(timeout)
+	if err != nil {
+		if !failed {
+			log.Printf("v2stats: per-user traffic unavailable (counters stay flat): %v", err)
+		}
+		return true // skip: NO state change, counters flat — never zero them
+	}
+	if failed {
+		log.Printf("v2stats: per-user traffic available again")
+	}
+	deltas := s.computeUserDeltas(snap)
+	bucket := (time.Now().Unix() / 60) * 60
+	for name, d := range deltas {
+		if s.store != nil {
+			if err := s.store.UpsertUser(bucket, name, d.Upload, d.Download); err != nil {
+				log.Printf("user_traffic upsert: %v", err)
+			}
+		}
+	}
+	return false
+}
+
 // Run polls the StatsService every intervalSec, writing per-minute deltas, and
 // prunes hourly. No-op if store or query is nil. Graceful: the FIRST query
 // failure logs once, subsequent consecutive failures are silent (no spam) until
@@ -90,29 +118,16 @@ func (s *UserSampler) Run(query userQuerier, intervalSec, retentionDays int, sto
 	prune := time.NewTicker(time.Hour)
 	defer prune.Stop()
 
+	// Per-tick query timeout derived from the interval so a short interval can't be
+	// overrun by a long-running query; capped at 10s (default 30s interval → 10s).
+	to := time.Duration(intervalSec)*time.Second - time.Second
+	if to <= 0 || to > 10*time.Second {
+		to = 10 * time.Second
+	}
+
 	failed := false // first-failure-then-silent log gate (loop-local)
 
-	doSample := func() {
-		snap, err := query.QueryUsersTimeout(10 * time.Second)
-		if err != nil {
-			if !failed {
-				log.Printf("v2stats: per-user traffic unavailable (counters stay flat): %v", err)
-				failed = true
-			}
-			return // skip tick: NO state change, counters flat — never zero them
-		}
-		if failed {
-			log.Printf("v2stats: per-user traffic available again")
-			failed = false
-		}
-		deltas := s.computeUserDeltas(snap)
-		bucket := (time.Now().Unix() / 60) * 60
-		for name, d := range deltas {
-			if err := s.store.UpsertUser(bucket, name, d.Upload, d.Download); err != nil {
-				log.Printf("user_traffic upsert: %v", err)
-			}
-		}
-	}
+	doSample := func() { failed = s.sampleOnce(query, to, failed) }
 	doPrune := func() {
 		if retentionDays <= 0 {
 			return

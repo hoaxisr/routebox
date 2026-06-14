@@ -24,6 +24,7 @@ func TestAggregateStats(t *testing.T) {
 		{Name: "user>>>bob>>>traffic>>>uplink", Value: 7},
 		{Name: "inbound>>>tun>>>traffic>>>uplink", Value: 9999}, // ignored
 		{Name: "garbage", Value: 1},                             // ignored
+		nil,                                                     // nil-stat guard (client.go: if s == nil { continue })
 	}
 	got := aggregateStats(in)
 	if len(got) != 2 {
