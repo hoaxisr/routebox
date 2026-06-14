@@ -1,6 +1,8 @@
 package users
 
 import (
+	"os"
+	"path/filepath"
 	"strings"
 	"testing"
 )
@@ -107,5 +109,103 @@ func TestRevokeToken(t *testing.T) {
 	}
 	if err := m.RevokeToken("missing"); err == nil {
 		t.Fatal("RevokeToken on unknown id should error")
+	}
+}
+
+// TestRotateTokenPersists proves a rotated token survives a reload: a fresh
+// Manager loading the same file resolves the NEW token and rejects the OLD one.
+func TestRotateTokenPersists(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "users.toml")
+	m := NewManager(path)
+	if err := m.Put(&PanelUser{ID: "u1", Name: "alice", Token: "old"}); err != nil {
+		t.Fatalf("Put: %v", err)
+	}
+	newTok, err := m.RotateToken("u1")
+	if err != nil {
+		t.Fatalf("RotateToken: %v", err)
+	}
+
+	m2 := NewManager(path)
+	if err := m2.Load(); err != nil {
+		t.Fatalf("reload: %v", err)
+	}
+	got, ok := m2.ByToken(newTok)
+	if !ok {
+		t.Fatal("rotated token not resolvable after reload")
+	}
+	if got.ID != "u1" {
+		t.Fatalf("rotated token resolved to wrong user: %+v", got)
+	}
+	if _, ok := m2.ByToken("old"); ok {
+		t.Fatal("old token still resolvable after reload")
+	}
+}
+
+// TestRevokeTokenPersists proves a revoked token survives a reload: a fresh
+// Manager loading the same file has the user with Token=="" and the old token
+// no longer resolves.
+func TestRevokeTokenPersists(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "users.toml")
+	m := NewManager(path)
+	if err := m.Put(&PanelUser{ID: "u1", Name: "alice", Token: "live"}); err != nil {
+		t.Fatalf("Put: %v", err)
+	}
+	if err := m.RevokeToken("u1"); err != nil {
+		t.Fatalf("RevokeToken: %v", err)
+	}
+
+	m2 := NewManager(path)
+	if err := m2.Load(); err != nil {
+		t.Fatalf("reload: %v", err)
+	}
+	got, ok := m2.Get("u1")
+	if !ok {
+		t.Fatal("user missing after reload")
+	}
+	if got.Token != "" {
+		t.Fatalf("revoke not persisted: token = %q, want empty", got.Token)
+	}
+	if _, ok := m2.ByToken("live"); ok {
+		t.Fatal("revoked token still resolvable after reload")
+	}
+}
+
+// TestRotateTokenRollsBackOnSaveError forces saveLocked to fail (by swapping the
+// manager's path to one whose parent component is a regular file, so MkdirAll
+// fails) and asserts RotateToken returns an error AND leaves the in-memory token
+// unchanged — the OLD token must still resolve via ByToken.
+func TestRotateTokenRollsBackOnSaveError(t *testing.T) {
+	dir := t.TempDir()
+	goodPath := filepath.Join(dir, "users.toml")
+	m := NewManager(goodPath)
+
+	// Seed a user and rotate once successfully so a real token is on disk + memory.
+	if err := m.Put(&PanelUser{ID: "u1", Name: "alice", Token: "seed"}); err != nil {
+		t.Fatalf("Put: %v", err)
+	}
+	tok, err := m.RotateToken("u1")
+	if err != nil {
+		t.Fatalf("initial RotateToken: %v", err)
+	}
+
+	// Now point the manager at an unwritable path: a regular file used as a
+	// directory component makes os.MkdirAll (and thus saveLocked) fail reliably.
+	blocker := filepath.Join(dir, "not-a-dir")
+	if err := os.WriteFile(blocker, []byte("x"), 0600); err != nil {
+		t.Fatalf("write blocker: %v", err)
+	}
+	m.path = filepath.Join(blocker, "users.toml")
+
+	if _, err := m.RotateToken("u1"); err == nil {
+		t.Fatal("expected RotateToken save error, got nil")
+	}
+	// Rollback must keep memory consistent with the (unchanged) disk: the token
+	// from the last successful rotate must still resolve.
+	got, ok := m.ByToken(tok)
+	if !ok {
+		t.Fatal("RotateToken must roll back token on save failure: old token no longer resolves")
+	}
+	if got.ID != "u1" {
+		t.Fatalf("old token resolved to wrong user after rollback: %+v", got)
 	}
 }
