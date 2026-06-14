@@ -311,6 +311,124 @@ func TestGetUserLinkByIDFallsBackToPublicHost(t *testing.T) {
 	}
 }
 
+// TestCreateUserDoesNotMutateActive proves the discard-safety invariant at the
+// staging level: POST /api/users must add the user to the draft/working config
+// ONLY; the active (on-disk) config must be byte-for-byte unchanged. Regression
+// for the live-reference mutation bug (GetInbound returned the active map and the
+// handler mutated inbound["users"] in place, corrupting active before EnsureDraft).
+func TestCreateUserDoesNotMutateActive(t *testing.T) {
+	cfg, dir := newConfigWithVless(t)
+	// Drop the seeded user so active starts with ZERO users on the inbound.
+	{
+		active := cfg.GetActive()
+		ib, _ := findActiveInbound(active, "vless-in")
+		ib["users"] = []interface{}{}
+		if err := cfg.Save(active); err != nil {
+			t.Fatal(err)
+		}
+	}
+	um := users.NewManager(filepath.Join(dir, "users.toml"))
+	if _, err := um.Reconcile(cfg.GetActive()); err != nil {
+		t.Fatal(err)
+	}
+	h := &Handler{config: cfg}
+	h.SetUsers(um)
+
+	r := chi.NewRouter()
+	r.Post("/api/users", h.CreateUser)
+	body := `{"name":"bob","protocol":"vless","inbound_tag":"vless-in"}`
+	req := httptest.NewRequest(http.MethodPost, "/api/users", strings.NewReader(body))
+	w := httptest.NewRecorder()
+	r.ServeHTTP(w, req)
+	if w.Code != http.StatusOK {
+		t.Fatalf("status %d: %s", w.Code, w.Body.String())
+	}
+
+	// Active must be UNTOUCHED: still zero users on the inbound.
+	activeIB, ok := findActiveInbound(cfg.GetActive(), "vless-in")
+	if !ok {
+		t.Fatal("vless-in missing from active config")
+	}
+	if us, _ := activeIB["users"].([]interface{}); len(us) != 0 {
+		t.Fatalf("active inbound must still have 0 users (not mutated), got %d", len(us))
+	}
+
+	// Working/draft must show the staged user.
+	draftIB, _ := cfg.GetInbound("vless-in")
+	if us, _ := draftIB["users"].([]interface{}); len(us) != 1 {
+		t.Fatalf("draft inbound must show 1 staged user, got %d", len(us))
+	}
+}
+
+// TestDiscardRemovesStagedUser reproduces the e2e failure: stage a user via
+// POST /api/users, then DiscardDraft. Because staging must not touch active, the
+// discard must fully remove the staged user — GetActive shows none, and
+// GET /api/users returns it neither as registered nor pending.
+func TestDiscardRemovesStagedUser(t *testing.T) {
+	cfg, dir := newConfigWithVless(t)
+	// Active starts with zero users on the inbound.
+	{
+		active := cfg.GetActive()
+		ib, _ := findActiveInbound(active, "vless-in")
+		ib["users"] = []interface{}{}
+		if err := cfg.Save(active); err != nil {
+			t.Fatal(err)
+		}
+	}
+	um := users.NewManager(filepath.Join(dir, "users.toml"))
+	if _, err := um.Reconcile(cfg.GetActive()); err != nil {
+		t.Fatal(err)
+	}
+	h := &Handler{config: cfg}
+	h.SetUsers(um)
+
+	r := chi.NewRouter()
+	r.Post("/api/users", h.CreateUser)
+	r.Get("/api/users", h.ListUsers)
+
+	// Stage a user.
+	body := `{"name":"bob","protocol":"vless","inbound_tag":"vless-in"}`
+	req := httptest.NewRequest(http.MethodPost, "/api/users", strings.NewReader(body))
+	w := httptest.NewRecorder()
+	r.ServeHTTP(w, req)
+	if w.Code != http.StatusOK {
+		t.Fatalf("stage status %d: %s", w.Code, w.Body.String())
+	}
+
+	// Discard the draft.
+	if err := cfg.DiscardDraft(); err != nil {
+		t.Fatal(err)
+	}
+
+	// Active has no such user (it was never mutated).
+	activeIB, _ := findActiveInbound(cfg.GetActive(), "vless-in")
+	if us, _ := activeIB["users"].([]interface{}); len(us) != 0 {
+		t.Fatalf("after discard, active must have 0 users, got %d", len(us))
+	}
+
+	// GET /api/users returns nothing: neither registered nor pending.
+	req = httptest.NewRequest(http.MethodGet, "/api/users", nil)
+	w = httptest.NewRecorder()
+	r.ServeHTTP(w, req)
+	if w.Code != http.StatusOK {
+		t.Fatalf("list status %d: %s", w.Code, w.Body.String())
+	}
+	var resp struct {
+		Data []struct {
+			Name    string `json:"name"`
+			Pending bool   `json:"pending"`
+		} `json:"data"`
+	}
+	if err := json.Unmarshal(w.Body.Bytes(), &resp); err != nil {
+		t.Fatal(err)
+	}
+	for _, u := range resp.Data {
+		if u.Name == "bob" {
+			t.Fatalf("staged user must be gone after discard, found %+v", u)
+		}
+	}
+}
+
 func TestGetUsersPendingDedup(t *testing.T) {
 	// alice exists in BOTH active (registry, via Reconcile) AND the draft
 	// (same tag+credential). She must appear ONCE, as registered (with id).

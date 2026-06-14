@@ -237,9 +237,20 @@ func (h *Handler) stageUserInDraft(tag, protocol, name string) (string, error) {
 	default:
 		return "", fmt.Errorf("unsupported protocol %q", protocol)
 	}
-	users, _ := inbound["users"].([]interface{})
-	inbound["users"] = append(users, user)
-	if err := h.config.UpdateInbound(tag, inbound); err != nil {
+	// Build a NEW users slice and a CLONED inbound map; never mutate the map
+	// returned by GetInbound (it aliases the live active/working config).
+	existing, _ := inbound["users"].([]interface{})
+	newUsers := make([]interface{}, len(existing), len(existing)+1)
+	copy(newUsers, existing)
+	newUsers = append(newUsers, user)
+
+	updated := make(map[string]interface{}, len(inbound))
+	for k, v := range inbound {
+		updated[k] = v
+	}
+	updated["users"] = newUsers
+
+	if err := h.config.UpdateInbound(tag, updated); err != nil {
 		return "", err
 	}
 	return cred, nil
@@ -256,6 +267,8 @@ func (h *Handler) removeUserFromDraft(tag, protocol, cred string) error {
 	if field == "" {
 		return nil // unknown protocol: nothing to match/remove
 	}
+	// Build a FILTERED new users slice and a CLONED inbound map; never mutate
+	// the slice/map returned by GetInbound (it aliases the live config).
 	arr, _ := inbound["users"].([]interface{})
 	kept := make([]interface{}, 0, len(arr))
 	for _, u := range arr {
@@ -268,8 +281,14 @@ func (h *Handler) removeUserFromDraft(tag, protocol, cred string) error {
 		}
 		kept = append(kept, u)
 	}
-	inbound["users"] = kept
-	return h.config.UpdateInbound(tag, inbound)
+
+	updated := make(map[string]interface{}, len(inbound))
+	for k, v := range inbound {
+		updated[k] = v
+	}
+	updated["users"] = kept
+
+	return h.config.UpdateInbound(tag, updated)
 }
 
 // genCredential returns a fresh credential for the protocol: a UUIDv4 for vless,
