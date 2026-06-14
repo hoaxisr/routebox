@@ -309,9 +309,10 @@ func TestSaveCreatesParentDir(t *testing.T) {
 
 func TestUpdateACMEStringAndBoolFields(t *testing.T) {
 	m := &Manager{settings: Default()}
+	// Distinct values per field so a field mis-wired to its sibling is caught.
 	if err := m.Update(map[string]interface{}{
 		"network.acme_enabled":   true,
-		"network.acme_staging":   true,
+		"network.acme_staging":   false,
 		"network.acme_email":     "ops@example.com",
 		"network.acme_cache_dir": "/var/lib/routebox/acme",
 	}); err != nil {
@@ -321,14 +322,28 @@ func TestUpdateACMEStringAndBoolFields(t *testing.T) {
 	if !s.Network.ACMEEnabled {
 		t.Error("acme_enabled not applied")
 	}
-	if !s.Network.ACMEStaging {
-		t.Error("acme_staging not applied")
+	if s.Network.ACMEStaging {
+		t.Error("acme_staging wrongly set (enabled↔staging swap?)")
 	}
 	if s.Network.ACMEEmail != "ops@example.com" {
 		t.Errorf("acme_email got %q", s.Network.ACMEEmail)
 	}
 	if s.Network.ACMECacheDir != "/var/lib/routebox/acme" {
 		t.Errorf("acme_cache_dir got %q", s.Network.ACMECacheDir)
+	}
+	// Inverse update proves the two bools are independently wired.
+	if err := m.Update(map[string]interface{}{
+		"network.acme_enabled": false,
+		"network.acme_staging": true,
+	}); err != nil {
+		t.Fatalf("Update inverse: %v", err)
+	}
+	s = m.Get()
+	if s.Network.ACMEEnabled {
+		t.Error("acme_enabled not cleared (enabled↔staging swap?)")
+	}
+	if !s.Network.ACMEStaging {
+		t.Error("acme_staging not applied (enabled↔staging swap?)")
 	}
 }
 
