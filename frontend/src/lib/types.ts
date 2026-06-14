@@ -179,6 +179,23 @@ export interface ServerInboundUser {
 	password?: string;   // naive / hysteria2
 }
 
+export interface PanelBinding {
+	inbound_tag: string;
+	credential: string;
+	protocol: string;
+	name: string;
+	flow: string;
+}
+
+export interface PanelUser {
+	id: string;
+	name: string;
+	enabled: boolean;
+	expires_at: number;
+	pending: boolean;
+	bindings: PanelBinding[];
+}
+
 export interface ServerRealityConfig {
 	enabled: boolean;
 	private_key?: string;
@@ -772,6 +789,11 @@ export interface ProxiesResponse {
 }
 
 // RouteBox Settings
+export interface ServerSettings {
+	mode?: 'router' | 'vps';
+	public_host?: string;
+}
+
 export interface RouteBoxSettings {
 	geoip: GeoIPSettings;
 	ui: UISettings;
@@ -782,6 +804,7 @@ export interface RouteBoxSettings {
 	singbox: SingboxSettings;
 	advanced: AdvancedSettings;
 	updates?: UpdatesSettings;
+	server?: ServerSettings; // panel mode + public_host (Phase 1/2)
 }
 
 export interface GeoIPSettings {

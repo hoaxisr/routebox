@@ -5,7 +5,6 @@
 	import ServerVlessInbound from './inbound/ServerVlessInbound.svelte';
 	import ServerNaiveInbound from './inbound/ServerNaiveInbound.svelte';
 	import ServerHysteria2Inbound from './inbound/ServerHysteria2Inbound.svelte';
-	import ShareLinkModal from './inbound/ShareLinkModal.svelte';
 	import { buildServerInbound, parseServerInbound, type ServerFormState, type ServerInboundType } from '$lib/utils/serverInbound';
 
 	interface Props {
@@ -67,18 +66,6 @@
 					users: [], upMbps: 0, downMbps: 0, obfsType: '', obfsPassword: ''
 				}
 	);
-
-	const editingExisting = !!inbound?.tag;
-
-	// Share links resolve the user by index against the SAVED config, so only
-	// allow sharing when the in-form users still match the saved inbound.
-	const savedUsers = JSON.stringify(inbound?.users ?? []);
-	let usersUnchanged = $derived(JSON.stringify(serverState.users) === savedUsers);
-
-	let shareUserIndex = $state<number | null>(null);
-	function openShare(index: number) {
-		shareUserIndex = index;
-	}
 
 	// Switching server protocol clears users (credential fields differ per
 	// protocol) and normalizes the TLS mode (Reality is vless-only). serverState.type
@@ -357,15 +344,11 @@
 	{/if}
 
 	{#if type === 'vless'}
-		<ServerVlessInbound bind:state={serverState} onShare={openShare} canShare={editingExisting && usersUnchanged} />
+		<ServerVlessInbound bind:state={serverState} />
 	{:else if type === 'naive'}
-		<ServerNaiveInbound bind:state={serverState} onShare={openShare} canShare={editingExisting && usersUnchanged} />
+		<ServerNaiveInbound bind:state={serverState} />
 	{:else if type === 'hysteria2'}
-		<ServerHysteria2Inbound bind:state={serverState} onShare={openShare} canShare={editingExisting && usersUnchanged} />
-	{/if}
-
-	{#if shareUserIndex !== null && inbound?.tag}
-		<ShareLinkModal tag={inbound.tag} userIndex={shareUserIndex} onClose={() => (shareUserIndex = null)} />
+		<ServerHysteria2Inbound bind:state={serverState} />
 	{/if}
 
 	<!-- Actions -->

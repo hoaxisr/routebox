@@ -6,10 +6,8 @@
 
 	interface Props {
 		state: ServerFormState;
-		onShare?: (index: number) => void;
-		canShare: boolean;
 	}
-	let { state = $bindable(), onShare, canShare }: Props = $props();
+	let { state = $bindable() }: Props = $props();
 </script>
 
 <div class="space-y-4">
@@ -40,5 +38,5 @@
 		allowReality={true}
 	/>
 
-	<ServerUsers bind:users={state.users} protocol="vless" {onShare} {canShare} />
+	<ServerUsers bind:users={state.users} protocol="vless" />
 </div>

@@ -1,4 +1,4 @@
-import type { ApiResponse, ProcessStatus, DetectedConfig, SingboxConfig, Endpoint, Outbound, Inbound, RuleSet, RuleSetUsage, RouteRule, RouteSettings, DnsServer, DnsRule, DnsSettings, LogSettings, ExperimentalSettings, ConnectionsResponse, ProxiesResponse, ClashProxy, TestRouteResponse, ConnectTestResponse, SettingsResponse, RouteBoxSettings, SingBoxVersion, DomainSetInfo, RuleSetSource, ClientEntry, TrafficHistoryResponse, TrafficRange, UpdatesStatus, UpdateProgress, UpdateTargetName, Subscription, SubscriptionInput } from '$lib/types';
+import type { ApiResponse, ProcessStatus, DetectedConfig, SingboxConfig, Endpoint, Outbound, Inbound, RuleSet, RuleSetUsage, RouteRule, RouteSettings, DnsServer, DnsRule, DnsSettings, LogSettings, ExperimentalSettings, ConnectionsResponse, ProxiesResponse, ClashProxy, TestRouteResponse, ConnectTestResponse, SettingsResponse, RouteBoxSettings, SingBoxVersion, DomainSetInfo, RuleSetSource, ClientEntry, TrafficHistoryResponse, TrafficRange, UpdatesStatus, UpdateProgress, UpdateTargetName, Subscription, SubscriptionInput, PanelUser } from '$lib/types';
 
 const API_BASE = '/api';
 
@@ -192,9 +192,21 @@ export const api = {
 		request<{ uuid: string }>('/generate/uuid', { method: 'POST' }),
 	generatePassword: () =>
 		request<{ password: string }>('/generate/password', { method: 'POST' }),
-	getUserLink: (tag: string, userIndex: number, host: string) =>
+
+	// Panel users
+	getUsers: () => request<PanelUser[]>('/users'),
+	createUser: (body: { name: string; protocol: string; inbound_tag: string }) =>
+		request<PanelUser>('/users', { method: 'POST', body: JSON.stringify(body) }),
+	addUserBinding: (id: string, body: { protocol: string; inbound_tag: string }) =>
+		request<{ message: string }>(`/users/${encodeURIComponent(id)}/bindings`, {
+			method: 'POST',
+			body: JSON.stringify(body)
+		}),
+	deleteUser: (id: string) =>
+		request<{ message: string }>(`/users/${encodeURIComponent(id)}`, { method: 'DELETE' }),
+	getUserLink: (id: string, tag: string, host: string) =>
 		request<{ link: string }>(
-			`/inbounds/${encodeURIComponent(tag)}/users/${userIndex}/link?host=${encodeURIComponent(host)}`
+			`/users/${encodeURIComponent(id)}/link?tag=${encodeURIComponent(tag)}&host=${encodeURIComponent(host)}`
 		),
 
 	// Rule Sets CRUD

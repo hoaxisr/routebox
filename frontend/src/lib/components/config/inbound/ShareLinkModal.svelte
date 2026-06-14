@@ -1,20 +1,33 @@
 <script lang="ts">
+	import { onMount } from 'svelte';
 	import { t } from 'svelte-i18n';
 	import QRCode from 'qrcode';
 	import { api } from '$lib/api/client';
 	import { notifications } from '$lib/stores';
 
 	interface Props {
+		id: string;
 		tag: string;
-		userIndex: number;
 		onClose: () => void;
 	}
-	let { tag, userIndex, onClose }: Props = $props();
+	let { id, tag, onClose }: Props = $props();
 
 	const HOST_KEY = 'routebox:serverPublicHost';
-	let host = $state(
-		typeof localStorage !== 'undefined' ? (localStorage.getItem(HOST_KEY) ?? '') : ''
-	);
+	let host = $state('');
+
+	onMount(async () => {
+		// Prefer the configured public_host; fall back to last-used localStorage.
+		try {
+			const s = await api.getSettings();
+			host = s.settings.server?.public_host ?? '';
+		} catch {
+			/* ignore */
+		}
+		if (!host && typeof localStorage !== 'undefined') {
+			host = localStorage.getItem(HOST_KEY) ?? '';
+		}
+	});
+
 	let link = $state('');
 	let qrDataUrl = $state('');
 	let loading = $state(false);
@@ -27,7 +40,7 @@
 		loading = true;
 		try {
 			localStorage.setItem(HOST_KEY, host.trim());
-			const res = await api.getUserLink(tag, userIndex, host.trim());
+			const res = await api.getUserLink(id, tag, host.trim());
 			const dataUrl = await QRCode.toDataURL(res.link, { width: 256, margin: 1 });
 			link = res.link;
 			qrDataUrl = dataUrl;

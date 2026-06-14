@@ -8,11 +8,9 @@
 	interface Props {
 		users: ServerInboundUser[];
 		protocol: ServerInboundType;
-		onShare?: (index: number) => void;
-		canShare: boolean;
 	}
 
-	let { users = $bindable(), protocol, onShare, canShare }: Props = $props();
+	let { users = $bindable(), protocol }: Props = $props();
 
 	async function addUser() {
 		const u: ServerInboundUser = {};
@@ -64,12 +62,6 @@
 						class="flex-1 px-2 py-1.5 bg-[var(--ctp-surface1)] border border-[var(--ctp-surface2)] rounded text-sm text-[var(--ctp-text)]" />
 				{/if}
 				<div class="flex items-center gap-1">
-					{#if canShare && onShare}
-						<button type="button" onclick={() => onShare?.(i)}
-							class="text-xs px-2 py-1.5 bg-[var(--ctp-primary)] text-white rounded hover:opacity-90">
-							{$t('inbounds.server.clientLink')}
-						</button>
-					{/if}
 					<button type="button" onclick={() => removeUser(i)}
 						class="action-btn-danger text-xs px-2 py-1.5 rounded">✕</button>
 				</div>

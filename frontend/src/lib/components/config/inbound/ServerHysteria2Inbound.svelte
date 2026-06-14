@@ -6,10 +6,8 @@
 
 	interface Props {
 		state: ServerFormState;
-		onShare?: (index: number) => void;
-		canShare: boolean;
 	}
-	let { state = $bindable(), onShare, canShare }: Props = $props();
+	let { state = $bindable() }: Props = $props();
 </script>
 
 <div class="space-y-4">
@@ -65,5 +63,5 @@
 		allowReality={false}
 	/>
 
-	<ServerUsers bind:users={state.users} protocol="hysteria2" {onShare} {canShare} />
+	<ServerUsers bind:users={state.users} protocol="hysteria2" />
 </div>
