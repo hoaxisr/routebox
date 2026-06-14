@@ -1504,7 +1504,22 @@
     "addBinding": "Add binding",
     "addBindingTitle": "Add binding",
     "noAvailableInbounds": "No other inbounds",
-    "bindingAdded": "Staged binding on \"{tag}\" (apply to finalize)"
+    "bindingAdded": "Staged binding on \"{tag}\" (apply to finalize)",
+    "subscription": "Subscription",
+    "subscriptionTitle": "Subscription link",
+    "subscriptionUrl": "Subscription URL",
+    "subscriptionHint": "Add this URL to your client (v2rayN / NekoBox / Streisand). It auto-updates.",
+    "rotate": "Rotate",
+    "rotateConfirm": "Rotate the token? The current subscription URL will stop working immediately.",
+    "rotated": "Subscription token rotated",
+    "revoke": "Revoke",
+    "revokeConfirm": "Revoke the subscription? The URL will return 404 until you rotate a new one.",
+    "revoked": "Subscription revoked",
+    "noPublicHost": "Set a Public host in Settings to build subscription URLs.",
+    "openSettings": "Open Settings",
+    "noToken": "No token yet — available after Apply.",
+    "rotateFailed": "Failed to rotate token",
+    "revokeFailed": "Failed to revoke token"
   },
   "subscriptions": {
     "title": "Subscriptions",

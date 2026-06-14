@@ -208,6 +208,14 @@ export const api = {
 		request<{ link: string }>(
 			`/users/${encodeURIComponent(id)}/link?tag=${encodeURIComponent(tag)}&host=${encodeURIComponent(host)}`
 		),
+	rotateUserToken: (id: string) =>
+		request<{ token: string }>(`/users/${encodeURIComponent(id)}/token/rotate`, {
+			method: 'POST'
+		}),
+	revokeUserToken: (id: string) =>
+		request<{ message: string }>(`/users/${encodeURIComponent(id)}/token`, {
+			method: 'DELETE'
+		}),
 
 	// Rule Sets CRUD
 	listRuleSets: () => request<RuleSet[]>('/route/rule-sets'),

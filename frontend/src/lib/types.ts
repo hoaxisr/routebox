@@ -193,6 +193,8 @@ export interface PanelUser {
 	enabled: boolean;
 	expires_at: number;
 	pending: boolean;
+	token?: string;
+	token_disabled?: boolean;
 	bindings: PanelBinding[];
 }
 
