@@ -104,6 +104,10 @@ type SingboxSettings struct {
 	ClashAPI    string `toml:"clash_api" json:"clash_api"`
 	BinaryName  string `toml:"binary_name" json:"binary_name"`
 	ServiceName string `toml:"service_name" json:"service_name"`
+	// V2RayAPI is the loopback gRPC StatsService listen address RouteBox writes
+	// into experimental.v2ray_api and dials for per-user traffic. MUST be
+	// loopback (never exposed). Empty => 127.0.0.1:8081.
+	V2RayAPI string `toml:"v2ray_api" json:"v2ray_api"`
 }
 
 // AdvancedSettings for power users
@@ -170,6 +174,7 @@ func Default() Settings {
 			ClashAPI:    "",
 			BinaryName:  "amnezia-box",
 			ServiceName: "",
+			V2RayAPI:    "127.0.0.1:8081",
 		},
 		Advanced: AdvancedSettings{
 			DebugEndpoints:    false,
@@ -420,6 +425,25 @@ func SanitizePublicHost(in string) (string, error) {
 	return s, nil
 }
 
+// validateLoopbackAddr ensures a host:port address binds a loopback interface
+// only. The v2ray_api StatsService exposes per-user traffic over an
+// unauthenticated gRPC socket and MUST never be reachable off-host. Accepts a
+// bracketed IPv6 literal (net.SplitHostPort strips the brackets).
+func validateLoopbackAddr(addr string) error {
+	host, port, err := net.SplitHostPort(addr)
+	if err != nil {
+		return fmt.Errorf("invalid host:port address %q", addr)
+	}
+	if port == "" {
+		return fmt.Errorf("address %q missing port", addr)
+	}
+	ip := net.ParseIP(host)
+	if ip == nil || !ip.IsLoopback() {
+		return fmt.Errorf("address %q must be loopback (127.0.0.0/8 or ::1)", addr)
+	}
+	return nil
+}
+
 func isPlausibleHostname(s string) bool {
 	if len(s) > 253 {
 		return false
@@ -605,6 +629,17 @@ func (m *Manager) Update(updates map[string]interface{}) error {
 			if v, ok := value.(bool); ok {
 				m.settings.Updates.AutoCheck = v
 			}
+
+		// Singbox runtime settings
+		case "singbox.v2ray_api":
+			v, ok := value.(string)
+			if !ok {
+				return fmt.Errorf("setting %s: value must be a string", key)
+			}
+			if err := validateLoopbackAddr(v); err != nil {
+				return fmt.Errorf("setting %s: %w", key, err)
+			}
+			m.settings.Singbox.V2RayAPI = v
 
 		default:
 			return fmt.Errorf("unknown or non-runtime setting: %s", key)

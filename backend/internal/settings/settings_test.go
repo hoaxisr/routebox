@@ -367,6 +367,64 @@ func TestUpdateACMEWrongTypesRejected(t *testing.T) {
 	}
 }
 
+// TestV2RayAPIDefault verifies the loopback StatsService address default.
+func TestV2RayAPIDefault(t *testing.T) {
+	d := Default()
+	if d.Singbox.V2RayAPI != "127.0.0.1:8081" {
+		t.Fatalf("singbox.v2ray_api default should be 127.0.0.1:8081, got %q", d.Singbox.V2RayAPI)
+	}
+}
+
+// TestUpdateV2RayAPI verifies the singbox.v2ray_api Update() whitelist case:
+// round-trips a valid loopback value, rejects wrong types, rejects non-loopback,
+// and leaves the stored value unchanged on a rejected update.
+func TestUpdateV2RayAPI(t *testing.T) {
+	cases := []struct {
+		name    string
+		value   interface{}
+		wantErr bool
+		want    string
+	}{
+		{"loopback round-trip", "127.0.0.1:9099", false, "127.0.0.1:9099"},
+		{"ipv6 loopback", "[::1]:8081", false, "[::1]:8081"},
+		{"int rejected", 8081, true, ""},
+		{"bool rejected", true, true, ""},
+		{"non-loopback rejected", "0.0.0.0:8081", true, ""},
+		{"public ip rejected", "203.0.113.5:8081", true, ""},
+		{"no port rejected", "127.0.0.1", true, ""},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			m := &Manager{settings: Default()}
+			err := m.Update(map[string]interface{}{"singbox.v2ray_api": tc.value})
+			if tc.wantErr {
+				if err == nil {
+					t.Fatalf("expected error for %v, got nil", tc.value)
+				}
+				return
+			}
+			if err != nil {
+				t.Fatalf("unexpected error: %v", err)
+			}
+			if got := m.Get().Singbox.V2RayAPI; got != tc.want {
+				t.Fatalf("got %q, want %q", got, tc.want)
+			}
+		})
+	}
+
+	// A rejected update must not mutate the stored value.
+	m := &Manager{settings: Default()}
+	if err := m.Update(map[string]interface{}{"singbox.v2ray_api": "127.0.0.1:9099"}); err != nil {
+		t.Fatalf("valid update: %v", err)
+	}
+	if err := m.Update(map[string]interface{}{"singbox.v2ray_api": "0.0.0.0:8081"}); err == nil {
+		t.Fatal("expected error for non-loopback address")
+	}
+	if got := m.Get().Singbox.V2RayAPI; got != "127.0.0.1:9099" {
+		t.Fatalf("rejected update must not modify V2RayAPI; got %q", got)
+	}
+}
+
 func TestUpdateServerPublicPort(t *testing.T) {
 	cases := []struct {
 		name    string
