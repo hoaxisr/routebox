@@ -2,12 +2,14 @@ package api
 
 import (
 	"encoding/json"
+	"errors"
 	"fmt"
 	"net/http"
 
 	"github.com/go-chi/chi/v5"
 	"github.com/google/uuid"
 
+	"routebox/backend/internal/config"
 	"routebox/backend/internal/serverlinks"
 	"routebox/backend/internal/settings"
 	"routebox/backend/internal/users"
@@ -209,15 +211,11 @@ func (h *Handler) GetUserLinkByID(w http.ResponseWriter, r *http.Request) {
 // --- draft mutation helpers (operate on the working/draft config) ---
 
 // stageUserInDraft generates a credential for the protocol, appends the user to
-// the inbound's draft users array, and returns the generated credential.
+// the inbound's draft users array, and returns the generated credential. The
+// validation and mutation run inside config.MutateInbound's single write lock,
+// so two concurrent stages on the same inbound serialize (no lost update); the
+// fn mutates a draft-private clone, so the active config is never touched.
 func (h *Handler) stageUserInDraft(tag, protocol, name string) (string, error) {
-	inbound, ok := h.config.GetInbound(tag)
-	if !ok {
-		return "", fmt.Errorf("inbound %q not found", tag)
-	}
-	if got, _ := inbound["type"].(string); got != protocol {
-		return "", fmt.Errorf("inbound %q is type %q, not %q", tag, got, protocol)
-	}
 	cred, err := genCredential(protocol)
 	if err != nil {
 		return "", err
@@ -237,58 +235,52 @@ func (h *Handler) stageUserInDraft(tag, protocol, name string) (string, error) {
 	default:
 		return "", fmt.Errorf("unsupported protocol %q", protocol)
 	}
-	// Build a NEW users slice and a CLONED inbound map; never mutate the map
-	// returned by GetInbound (it aliases the live active/working config).
-	existing, _ := inbound["users"].([]interface{})
-	newUsers := make([]interface{}, len(existing), len(existing)+1)
-	copy(newUsers, existing)
-	newUsers = append(newUsers, user)
 
-	updated := make(map[string]interface{}, len(inbound))
-	for k, v := range inbound {
-		updated[k] = v
-	}
-	updated["users"] = newUsers
-
-	if err := h.config.UpdateInbound(tag, updated); err != nil {
+	err = h.config.MutateInbound(tag, func(inbound map[string]interface{}) error {
+		if got, _ := inbound["type"].(string); got != protocol {
+			return fmt.Errorf("inbound %q is type %q, not %q", tag, got, protocol)
+		}
+		// inbound is a draft-private clone held under the lock; mutate directly.
+		existing, _ := inbound["users"].([]interface{})
+		inbound["users"] = append(existing, user)
+		return nil
+	})
+	if err != nil {
 		return "", err
 	}
 	return cred, nil
 }
 
 // removeUserFromDraft removes the user with the given credential from the
-// inbound's draft users array.
+// inbound's draft users array. The match+filter runs inside MutateInbound's
+// single write lock on a draft-private clone (active config untouched).
 func (h *Handler) removeUserFromDraft(tag, protocol, cred string) error {
-	inbound, ok := h.config.GetInbound(tag)
-	if !ok {
-		return nil // already gone
-	}
 	field := users.CredentialKey(protocol)
 	if field == "" {
 		return nil // unknown protocol: nothing to match/remove
 	}
-	// Build a FILTERED new users slice and a CLONED inbound map; never mutate
-	// the slice/map returned by GetInbound (it aliases the live config).
-	arr, _ := inbound["users"].([]interface{})
-	kept := make([]interface{}, 0, len(arr))
-	for _, u := range arr {
-		um, ok := u.(map[string]interface{})
-		if !ok {
-			continue
+	err := h.config.MutateInbound(tag, func(inbound map[string]interface{}) error {
+		// inbound is a draft-private clone held under the lock; mutate directly.
+		arr, _ := inbound["users"].([]interface{})
+		kept := make([]interface{}, 0, len(arr))
+		for _, u := range arr {
+			um, ok := u.(map[string]interface{})
+			if !ok {
+				continue
+			}
+			if c, _ := um[field].(string); c == cred {
+				continue
+			}
+			kept = append(kept, u)
 		}
-		if c, _ := um[field].(string); c == cred {
-			continue
-		}
-		kept = append(kept, u)
+		inbound["users"] = kept
+		return nil
+	})
+	// The inbound being gone is not an error for removal (already absent).
+	if errors.Is(err, config.ErrInboundNotFound) {
+		return nil
 	}
-
-	updated := make(map[string]interface{}, len(inbound))
-	for k, v := range inbound {
-		updated[k] = v
-	}
-	updated["users"] = kept
-
-	return h.config.UpdateInbound(tag, updated)
+	return err
 }
 
 // genCredential returns a fresh credential for the protocol: a UUIDv4 for vless,

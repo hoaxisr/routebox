@@ -429,6 +429,87 @@ func TestDiscardRemovesStagedUser(t *testing.T) {
 	}
 }
 
+// TestAddBindingDoesNotMutateActive proves AddBinding stages into the draft
+// only: GetActive() for BOTH inbounds is unchanged (the target inbound keeps its
+// original users, the source inbound is untouched), while the draft shows the
+// new binding.
+func TestAddBindingDoesNotMutateActive(t *testing.T) {
+	cfg, dir := newConfigWithTwoVless(t)
+	um := users.NewManager(filepath.Join(dir, "users.toml"))
+	if _, err := um.Reconcile(cfg.GetActive()); err != nil {
+		t.Fatal(err)
+	}
+	h := &Handler{config: cfg}
+	h.SetUsers(um)
+
+	id := um.List()[0].ID // alice, registered on vless-in only
+
+	r := chi.NewRouter()
+	r.Post("/api/users/{id}/bindings", h.AddBinding)
+	body := `{"protocol":"vless","inbound_tag":"vless-in-2"}`
+	req := httptest.NewRequest(http.MethodPost, "/api/users/"+id+"/bindings", strings.NewReader(body))
+	w := httptest.NewRecorder()
+	r.ServeHTTP(w, req)
+	if w.Code != http.StatusOK {
+		t.Fatalf("status %d: %s", w.Code, w.Body.String())
+	}
+
+	// Active: vless-in-2 must STILL have 0 users (binding only staged in draft).
+	active := cfg.GetActive()
+	ib2, ok := findActiveInbound(active, "vless-in-2")
+	if !ok {
+		t.Fatal("vless-in-2 missing from active")
+	}
+	if us, _ := ib2["users"].([]interface{}); len(us) != 0 {
+		t.Fatalf("active vless-in-2 must have 0 users (not mutated), got %d", len(us))
+	}
+	// Active: vless-in (source) unchanged with its 1 original user.
+	ib1, ok := findActiveInbound(active, "vless-in")
+	if !ok {
+		t.Fatal("vless-in missing from active")
+	}
+	if us, _ := ib1["users"].([]interface{}); len(us) != 1 {
+		t.Fatalf("active vless-in must still have 1 user, got %d", len(us))
+	}
+
+	// Draft shows the new binding on vless-in-2.
+	draftIB2, _ := cfg.GetInbound("vless-in-2")
+	if us, _ := draftIB2["users"].([]interface{}); len(us) != 1 {
+		t.Fatalf("draft vless-in-2 must show 1 staged user, got %d", len(us))
+	}
+}
+
+// TestDeleteUserDoesNotMutateActive proves DELETE only stages the removal in the
+// draft: GetActive() still has the user; the draft does not.
+func TestDeleteUserDoesNotMutateActive(t *testing.T) {
+	h, cfg, um := newUsersTestHandler(t)
+	id := um.List()[0].ID
+
+	r := chi.NewRouter()
+	r.Delete("/api/users/{id}", h.DeleteUser)
+	req := httptest.NewRequest(http.MethodDelete, "/api/users/"+id, nil)
+	w := httptest.NewRecorder()
+	r.ServeHTTP(w, req)
+	if w.Code != http.StatusOK {
+		t.Fatalf("status %d: %s", w.Code, w.Body.String())
+	}
+
+	// Active must STILL have the user (removal only staged in draft).
+	activeIB, ok := findActiveInbound(cfg.GetActive(), "vless-in")
+	if !ok {
+		t.Fatal("vless-in missing from active")
+	}
+	if us, _ := activeIB["users"].([]interface{}); len(us) != 1 {
+		t.Fatalf("active vless-in must still have 1 user (not mutated), got %d", len(us))
+	}
+
+	// Draft must show the user removed.
+	draftIB, _ := cfg.GetInbound("vless-in")
+	if us, _ := draftIB["users"].([]interface{}); len(us) != 0 {
+		t.Fatalf("draft vless-in must have 0 users after delete, got %d", len(us))
+	}
+}
+
 func TestGetUsersPendingDedup(t *testing.T) {
 	// alice exists in BOTH active (registry, via Reconcile) AND the draft
 	// (same tag+credential). She must appear ONCE, as registered (with id).

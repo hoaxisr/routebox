@@ -101,6 +101,45 @@ func (m *Manager) UpdateInbound(tag string, inbound map[string]interface{}) erro
 	return m.saveDraftToDisk()
 }
 
+// MutateInbound stages a change to the named inbound atomically under the write
+// lock: it ensures a draft exists, applies fn to a deep copy of the inbound (so
+// the live active config is never mutated), writes the result into the draft,
+// and persists. fn receives a private deep copy it may mutate freely; returning
+// an error aborts and persists no further change (the draft is left as-is,
+// matching UpdateInbound's behavior on its own error paths).
+//
+// This is the single-critical-section equivalent of GetInbound+UpdateInbound:
+// two concurrent MutateInbound calls on the same inbound serialize, so neither
+// can lose the other's update (no get-clone-update race across two locks).
+func (m *Manager) MutateInbound(tag string, fn func(inbound map[string]interface{}) error) error {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+
+	// Ensure draft exists before modifying (snapshots active→draft once).
+	if err := m.ensureDraftUnlocked(); err != nil {
+		return err
+	}
+
+	draftArr := m.getDraftArray("inbounds")
+	idx := findByTag(draftArr, tag)
+	if idx < 0 {
+		return fmt.Errorf("inbound %q: %w", tag, ErrInboundNotFound)
+	}
+	orig, _ := draftArr[idx].(map[string]interface{})
+
+	// Operate on a deep copy so fn cannot mutate the (possibly active-aliased)
+	// original in place; only the staged clone is written back to the draft.
+	clone := m.deepCopy(orig)
+	if err := fn(clone); err != nil {
+		return err // abort: do not persist the change
+	}
+
+	draftArr[idx] = clone
+	m.setDraftValue("inbounds", draftArr)
+
+	return m.saveDraftToDisk()
+}
+
 // DeleteInbound removes inbound by tag from draft
 func (m *Manager) DeleteInbound(tag string) error {
 	m.mu.Lock()

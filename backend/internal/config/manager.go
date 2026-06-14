@@ -37,6 +37,10 @@ type Manager struct {
 // after the caller captured its generation (validate-then-apply TOCTOU).
 var ErrDraftChanged = errors.New("draft changed since validation")
 
+// ErrInboundNotFound is returned by MutateInbound when no inbound matches the
+// given tag, so callers can distinguish "absent" from a real failure.
+var ErrInboundNotFound = errors.New("inbound not found")
+
 // NewManager creates a new config manager and loads the config
 func NewManager(path string) (*Manager, error) {
 	m := &Manager{
