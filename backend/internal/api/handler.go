@@ -30,6 +30,7 @@ type Handler struct {
 	limiter         *auth.Limiter
 	verifier        *auth.CachedVerifier
 	panelUsers      *users.Manager
+	subLimiter      *auth.Limiter
 }
 
 // SetRouteBoxVersion stores the build-time RouteBox version for API responses.
@@ -51,6 +52,13 @@ func (h *Handler) SetSubscriptions(mgr *subscriptions.Manager, refresh func(subs
 // SetUsers wires the panel-user registry into the API.
 func (h *Handler) SetUsers(mgr *users.Manager) {
 	h.panelUsers = mgr
+}
+
+// SetSubLimiter wires the dedicated per-IP rate limiter for the public /sub
+// endpoint. Kept separate from the auth lockout limiter (different keyspace and
+// policy: keyed purely by client IP).
+func (h *Handler) SetSubLimiter(l *auth.Limiter) {
+	h.subLimiter = l
 }
 
 // SetAuth wires the session store, lockout limiter, and password verifier.
