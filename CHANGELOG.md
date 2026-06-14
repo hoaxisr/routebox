@@ -6,6 +6,22 @@ All notable changes to RouteBox are documented here.
 
 ### New Features
 
+- **VPS deploy (embedded ACME)** — deploy RouteBox as a public TLS admin panel on a VPS with one script. RouteBox issues and auto-renews its own Let's Encrypt certificate in-process (HTTP-01 on :80) — no certbot, no nginx — coexisting with vless+Reality on :443, and the subscription URL carries the panel port so clients reach the panel rather than :443. Verified end-to-end on a live VPS (LE staging + production cert issued by RouteBox, panel on :8443 coexisting with vless on :443). See details below.
+
+**Backend:**
+- Embedded ACME TLS via `golang.org/x/crypto/acme/autocert`: RouteBox issues and hot-renews Let's Encrypt certs itself (HTTP-01 challenge on :80), no external certbot.
+- New TLS modes off/manual/acme driven by `network.acme_enabled`/`acme_email`/`acme_staging`/`acme_cache_dir` (default cache `/etc/routebox/acme`); `resolveTLSMode` resolves with priority acme→manual→off, fatal if acme is enabled without `server.public_host`.
+- `HostPolicy` whitelist restricts issuance to the configured domain (anti-abuse); staging directory selected when `acme_staging` so dev/e2e never touches prod issuance.
+- New `Server.PublicPort` so the subscription URL carries the panel's TLS port when the panel isn't on 443.
+
+**Frontend:**
+- Subscription URL includes the panel public port (`public_port`) when set and ≠443 (IPv6-safe), so `/sub` links work when the panel coexists with vless on 443.
+
+**Deployment (release-repo):**
+- New `vps-install.sh` — one-shot VPS install (binaries + sha256, GeoIP, acme-mode config, systemd units, firewall) with hybrid flags/interactive input, DNS precheck, and `--staging`/`--update`/`--uninstall`; clears the ACME cache on staging↔prod switch.
+
+---
+
 - **Server inbounds (VPS mode)** — vless/naive/hysteria2 server-side inbound support with full TLS configuration (ACME, Reality, or manual certificate), per-user credential management, and QR/share-link generation. See details below.
 
 **Backend:**
