@@ -534,6 +534,30 @@ func (m *Manager) Update(updates map[string]interface{}) error {
 			if v, ok := value.(string); ok {
 				m.settings.Network.TLSKeyPath = v
 			}
+		case "network.acme_enabled":
+			v, ok := value.(bool)
+			if !ok {
+				return fmt.Errorf("setting %s: value must be a boolean", key)
+			}
+			m.settings.Network.ACMEEnabled = v
+		case "network.acme_email":
+			v, ok := value.(string)
+			if !ok {
+				return fmt.Errorf("setting %s: value must be a string", key)
+			}
+			m.settings.Network.ACMEEmail = v
+		case "network.acme_staging":
+			v, ok := value.(bool)
+			if !ok {
+				return fmt.Errorf("setting %s: value must be a boolean", key)
+			}
+			m.settings.Network.ACMEStaging = v
+		case "network.acme_cache_dir":
+			v, ok := value.(string)
+			if !ok {
+				return fmt.Errorf("setting %s: value must be a string", key)
+			}
+			m.settings.Network.ACMECacheDir = v
 		case "server.mode":
 			// Fix 4: reject invalid values instead of silently ignoring them.
 			v, ok := value.(string)

@@ -306,3 +306,48 @@ func TestSaveCreatesParentDir(t *testing.T) {
 		t.Fatalf("settings file should exist after Save: %v", err)
 	}
 }
+
+func TestUpdateACMEStringAndBoolFields(t *testing.T) {
+	m := &Manager{settings: Default()}
+	if err := m.Update(map[string]interface{}{
+		"network.acme_enabled":   true,
+		"network.acme_staging":   true,
+		"network.acme_email":     "ops@example.com",
+		"network.acme_cache_dir": "/var/lib/routebox/acme",
+	}); err != nil {
+		t.Fatalf("Update: %v", err)
+	}
+	s := m.Get()
+	if !s.Network.ACMEEnabled {
+		t.Error("acme_enabled not applied")
+	}
+	if !s.Network.ACMEStaging {
+		t.Error("acme_staging not applied")
+	}
+	if s.Network.ACMEEmail != "ops@example.com" {
+		t.Errorf("acme_email got %q", s.Network.ACMEEmail)
+	}
+	if s.Network.ACMECacheDir != "/var/lib/routebox/acme" {
+		t.Errorf("acme_cache_dir got %q", s.Network.ACMECacheDir)
+	}
+}
+
+func TestUpdateACMEWrongTypesRejected(t *testing.T) {
+	cases := []struct {
+		key   string
+		value interface{}
+	}{
+		{"network.acme_enabled", "yes"}, // string for bool
+		{"network.acme_staging", 1},     // int for bool
+		{"network.acme_email", true},    // bool for string
+		{"network.acme_cache_dir", 42},  // int for string
+	}
+	for _, tc := range cases {
+		t.Run(tc.key, func(t *testing.T) {
+			m := &Manager{settings: Default()}
+			if err := m.Update(map[string]interface{}{tc.key: tc.value}); err == nil {
+				t.Fatalf("%s=%v: expected error, got nil", tc.key, tc.value)
+			}
+		})
+	}
+}
