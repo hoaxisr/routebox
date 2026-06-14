@@ -6,6 +6,15 @@ All notable changes to RouteBox are documented here.
 
 ### New Features
 
+- **Mode-aware UI (panel vs router)** — the WebUI now adapts to `server.mode` (router|vps). See details below.
+
+**Frontend:**
+- In **vps/panel** mode the sidebar hides router/LAN-only sections (Clients, upstream Subscriptions, and Monitor → Traffic/Breakdown/Proxies/Route-inspector) and shows Users; the inbound type picker offers only server types (vless/naive/hysteria2); the Overview shows a panel summary (user count, public host/TLS); App Settings exposes panel-only TLS/ACME fields.
+- In **router** mode the full existing UI is shown (minus Users). A mode toggle in App Settings switches live (no reload). A soft redirect sends you to the Overview if you open a route not available in the current mode.
+- Additive: default `router` → existing installs are unchanged. Per-user panel monitoring is deferred (Part B, after per-user traffic accounting).
+
+---
+
 - **VPS deploy (embedded ACME)** — deploy RouteBox as a public TLS admin panel on a VPS with one script. RouteBox issues and auto-renews its own Let's Encrypt certificate in-process (HTTP-01 on :80) — no certbot, no nginx — coexisting with vless+Reality on :443, and the subscription URL carries the panel port so clients reach the panel rather than :443. Verified end-to-end on a live VPS (LE staging + production cert issued by RouteBox, panel on :8443 coexisting with vless on :443). See details below.
 
 **Backend:**
