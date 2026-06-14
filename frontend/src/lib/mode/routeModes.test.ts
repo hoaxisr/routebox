@@ -119,3 +119,31 @@ describe('visibleInboundTypes — edit-safety', () => {
 		expect(visibleInboundTypes('vps', undefined)).toEqual(['vless', 'naive', 'hysteria2']);
 	});
 });
+
+// Drift guard: the sidebar (+layout.svelte) hand-encodes router-only/panel-only
+// link visibility as {#if $routerMode} / {#if $panelMode}. SECTIONS is the
+// single source of truth the redirect guard uses. If a single-mode section is
+// added/changed here without updating the sidebar {#if}, the nav and the guard
+// drift (a link shown but bounced, or hidden but reachable). These assertions
+// fail loudly so the sidebar gets updated deliberately.
+describe('single-mode classification (sidebar drift guard)', () => {
+	const singleMode = (m: 'router' | 'vps') =>
+		SECTIONS.filter((s) => s.modes.length === 1 && s.modes[0] === m)
+			.map((s) => s.path)
+			.sort();
+
+	it('router-only sections are exactly these (update +layout.svelte {#if $routerMode} if this changes)', () => {
+		expect(singleMode('router')).toEqual([
+			'/config/clients',
+			'/config/subscriptions',
+			'/monitor/breakdown',
+			'/monitor/proxies',
+			'/monitor/route-inspector',
+			'/monitor/traffic'
+		]);
+	});
+
+	it('panel-only sections are exactly these (update +layout.svelte {#if $panelMode} if this changes)', () => {
+		expect(singleMode('vps')).toEqual(['/config/users']);
+	});
+});
