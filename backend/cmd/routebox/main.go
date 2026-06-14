@@ -35,6 +35,7 @@ import (
 	"routebox/backend/internal/traffic"
 	"routebox/backend/internal/updates"
 	"routebox/backend/internal/users"
+	"routebox/backend/internal/v2stats"
 )
 
 // Version is stamped at build time via -ldflags "-X main.Version=…".
@@ -226,6 +227,27 @@ func main() {
 	if trafficStore != nil {
 		sampler := traffic.NewSampler(trafficStore)
 		go sampler.Run(resolvedClashAddr, 35, stopSampler)
+	}
+
+	// Per-user StatsService sampler (v2ray_api). No-op without a store; graceful
+	// (no crash / no log spam) if the running binary lacks with_v2ray_api or the
+	// addr is unreachable — counters simply stay flat. The addr is resolved from
+	// settings (loopback gRPC StatsService listen), defaulting to 127.0.0.1:8081.
+	v2rayAPIAddr := cfg.Singbox.V2RayAPI
+	if v2rayAPIAddr == "" {
+		v2rayAPIAddr = "127.0.0.1:8081"
+	}
+	stopUserSampler := make(chan struct{})
+	if trafficStore != nil {
+		if client, err := v2stats.Dial(v2rayAPIAddr); err != nil {
+			log.Printf("Warning: v2ray_api dial %s failed: %v", v2rayAPIAddr, err)
+		} else {
+			userSampler := traffic.NewUserSampler(trafficStore)
+			go func() {
+				userSampler.Run(client, 30, 35, stopUserSampler)
+				client.Close()
+			}()
+		}
 	}
 
 	// Updates: GitHub release checker + daily auto-check (Task 4 adds API)
@@ -706,6 +728,7 @@ func main() {
 	<-clientsDone // final clients.toml flush completes before exit
 	close(stopDiscovery)
 	close(stopSampler)
+	close(stopUserSampler)
 	close(stopUpdates)
 	close(stopSubs)
 	if trafficStore != nil {
