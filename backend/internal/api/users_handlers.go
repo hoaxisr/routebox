@@ -252,9 +252,9 @@ func (h *Handler) removeUserFromDraft(tag, protocol, cred string) error {
 	if !ok {
 		return nil // already gone
 	}
-	field := map[string]string{"vless": "uuid", "naive": "username", "hysteria2": "password"}[protocol]
+	field := users.CredentialKey(protocol)
 	if field == "" {
-		field = "uuid"
+		return nil // unknown protocol: nothing to match/remove
 	}
 	arr, _ := inbound["users"].([]interface{})
 	kept := make([]interface{}, 0, len(arr))
@@ -303,7 +303,7 @@ func findActiveInbound(active map[string]interface{}, tag string) (map[string]in
 // equals cred within the given inbound.
 func findActiveUserByCredential(inbound map[string]interface{}, cred string) (map[string]interface{}, bool) {
 	protocol, _ := inbound["type"].(string)
-	field := map[string]string{"vless": "uuid", "naive": "username", "hysteria2": "password"}[protocol]
+	field := users.CredentialKey(protocol)
 	if field == "" {
 		return nil, false
 	}

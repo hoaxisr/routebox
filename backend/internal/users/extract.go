@@ -10,12 +10,12 @@ type ConfigUser struct {
 	Flow       string // vless only
 }
 
-// credentialKey maps a protocol to the user field that is its stable credential.
+// CredentialKey maps a protocol to the user field that is its stable credential.
 // This is the single source of the protocol→credential mapping; reconcile, the
 // API draft helpers, and the share-link resolver all derive their field name
 // from here (the validator keeps its own tiny inline copy to avoid importing
-// users into config).
-func credentialKey(protocol string) string {
+// users into config). Returns "" for unknown/non-server protocols.
+func CredentialKey(protocol string) string {
 	switch protocol {
 	case "vless":
 		return "uuid"
@@ -33,7 +33,7 @@ func credentialKey(protocol string) string {
 // the API handlers.
 func ServerInboundUsers(inbound map[string]interface{}) []ConfigUser {
 	protocol, _ := inbound["type"].(string)
-	key := credentialKey(protocol)
+	key := CredentialKey(protocol)
 	if key == "" {
 		return nil
 	}

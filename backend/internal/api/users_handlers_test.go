@@ -12,6 +12,7 @@ import (
 	"github.com/go-chi/chi/v5"
 
 	"routebox/backend/internal/config"
+	"routebox/backend/internal/settings"
 	"routebox/backend/internal/users"
 )
 
@@ -113,7 +114,9 @@ func TestGetUsersReturnsUnifiedList(t *testing.T) {
 }
 
 func TestCreateUserStagesDraft(t *testing.T) {
-	h, cfg, _ := newUsersTestHandler(t)
+	h, cfg, um := newUsersTestHandler(t)
+	// Registry starts with exactly the 1 reconciled active user (alice).
+	before := len(um.List())
 	r := chi.NewRouter()
 	r.Post("/api/users", h.CreateUser)
 	body := `{"name":"bob","protocol":"vless","inbound_tag":"vless-in"}`
@@ -128,6 +131,10 @@ func TestCreateUserStagesDraft(t *testing.T) {
 	us, _ := ib["users"].([]interface{})
 	if len(us) != 2 {
 		t.Fatalf("draft inbound should have 2 users, got %d", len(us))
+	}
+	// CreateUser must NOT write the registry (it materializes only on Apply/reconcile).
+	if after := len(um.List()); after != before {
+		t.Fatalf("registry must be unchanged by CreateUser: before=%d after=%d", before, after)
 	}
 }
 
@@ -183,5 +190,170 @@ func TestDeleteUserRemovesFromDraft(t *testing.T) {
 	us, _ := ib["users"].([]interface{})
 	if len(us) != 0 {
 		t.Fatalf("draft inbound should have 0 users after delete, got %d", len(us))
+	}
+}
+
+// newConfigWithTwoVless writes a config.json with two vless server inbounds.
+func newConfigWithTwoVless(t *testing.T) (*config.Manager, string) {
+	t.Helper()
+	dir := t.TempDir()
+	path := filepath.Join(dir, "config.json")
+	cfg := `{
+	  "inbounds": [
+	    {"type":"vless","tag":"vless-in","listen_port":443,
+	     "tls":{"enabled":true,"reality":{"enabled":true,"private_key":"` + testRealityPriv + `","short_id":"aa"}},
+	     "users":[{"name":"alice","uuid":"u-1","flow":"xtls-rprx-vision"}]},
+	    {"type":"vless","tag":"vless-in-2","listen_port":444,
+	     "tls":{"enabled":true,"reality":{"enabled":true,"private_key":"` + testRealityPriv + `","short_id":"bb"}},
+	     "users":[]}
+	  ],
+	  "outbounds": [{"type":"direct","tag":"direct"}]
+	}`
+	if err := os.WriteFile(path, []byte(cfg), 0644); err != nil {
+		t.Fatal(err)
+	}
+	m, err := config.NewManager(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	return m, dir
+}
+
+func TestAddBinding(t *testing.T) {
+	cfg, dir := newConfigWithTwoVless(t)
+	um := users.NewManager(filepath.Join(dir, "users.toml"))
+	if _, err := um.Reconcile(cfg.GetActive()); err != nil {
+		t.Fatal(err)
+	}
+	h := &Handler{config: cfg}
+	h.SetUsers(um)
+
+	id := um.List()[0].ID // alice, registered on vless-in only
+
+	r := chi.NewRouter()
+	r.Post("/api/users/{id}/bindings", h.AddBinding)
+
+	// Happy path: add alice into the second inbound.
+	body := `{"protocol":"vless","inbound_tag":"vless-in-2"}`
+	req := httptest.NewRequest(http.MethodPost, "/api/users/"+id+"/bindings", strings.NewReader(body))
+	w := httptest.NewRecorder()
+	r.ServeHTTP(w, req)
+	if w.Code != http.StatusOK {
+		t.Fatalf("status %d: %s", w.Code, w.Body.String())
+	}
+	ib, _ := cfg.GetInbound("vless-in-2")
+	us, _ := ib["users"].([]interface{})
+	if len(us) != 1 {
+		t.Fatalf("vless-in-2 draft should have 1 user after AddBinding, got %d", len(us))
+	}
+
+	// Unknown id -> 404.
+	req = httptest.NewRequest(http.MethodPost, "/api/users/nope/bindings", strings.NewReader(body))
+	w = httptest.NewRecorder()
+	r.ServeHTTP(w, req)
+	if w.Code != http.StatusNotFound {
+		t.Fatalf("unknown id should be 404, got %d", w.Code)
+	}
+
+	// Malformed JSON -> 400.
+	req = httptest.NewRequest(http.MethodPost, "/api/users/"+id+"/bindings", strings.NewReader(`{not json`))
+	w = httptest.NewRecorder()
+	r.ServeHTTP(w, req)
+	if w.Code != http.StatusBadRequest {
+		t.Fatalf("malformed body should be 400, got %d", w.Code)
+	}
+}
+
+func TestGetUserLinkByIDBadHost(t *testing.T) {
+	h, _, um := newUsersTestHandler(t)
+	id := um.List()[0].ID
+	r := chi.NewRouter()
+	r.Get("/api/users/{id}/link", h.GetUserLinkByID)
+	req := httptest.NewRequest(http.MethodGet,
+		"/api/users/"+id+"/link?tag=vless-in&host=bad_host!!", nil)
+	w := httptest.NewRecorder()
+	r.ServeHTTP(w, req)
+	if w.Code != http.StatusBadRequest {
+		t.Fatalf("invalid host should be 400, got %d: %s", w.Code, w.Body.String())
+	}
+}
+
+func TestGetUserLinkByIDFallsBackToPublicHost(t *testing.T) {
+	cfg, dir := newConfigWithVless(t)
+	um := users.NewManager(filepath.Join(dir, "users.toml"))
+	if _, err := um.Reconcile(cfg.GetActive()); err != nil {
+		t.Fatal(err)
+	}
+	sm, err := settings.NewManager(filepath.Join(dir, "routebox.toml"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := sm.Update(map[string]interface{}{"server.public_host": "vpn.example.com"}); err != nil {
+		t.Fatal(err)
+	}
+	h := &Handler{config: cfg, settings: sm}
+	h.SetUsers(um)
+
+	id := um.List()[0].ID
+	r := chi.NewRouter()
+	r.Get("/api/users/{id}/link", h.GetUserLinkByID)
+	// No ?host= : must fall back to settings server.public_host.
+	req := httptest.NewRequest(http.MethodGet, "/api/users/"+id+"/link?tag=vless-in", nil)
+	w := httptest.NewRecorder()
+	r.ServeHTTP(w, req)
+	if w.Code != http.StatusOK {
+		t.Fatalf("status %d: %s", w.Code, w.Body.String())
+	}
+	data := decodeDataBytes(t, w.Body.Bytes())
+	link, _ := data["link"].(string)
+	if !strings.Contains(link, "vpn.example.com") {
+		t.Fatalf("link should use public_host fallback, got %q", link)
+	}
+}
+
+func TestGetUsersPendingDedup(t *testing.T) {
+	// alice exists in BOTH active (registry, via Reconcile) AND the draft
+	// (same tag+credential). She must appear ONCE, as registered (with id).
+	h, cfg, um := newUsersTestHandler(t)
+	if err := cfg.EnsureDraft(); err != nil {
+		t.Fatal(err)
+	}
+	// Draft still carries alice (u-1) verbatim from active; no change needed,
+	// but force a draft that contains her to exercise the dedup map.
+	ib, _ := cfg.GetInbound("vless-in")
+	if err := cfg.UpdateInbound("vless-in", ib); err != nil {
+		t.Fatal(err)
+	}
+
+	r := chi.NewRouter()
+	r.Get("/api/users", h.ListUsers)
+	req := httptest.NewRequest(http.MethodGet, "/api/users", nil)
+	w := httptest.NewRecorder()
+	r.ServeHTTP(w, req)
+	if w.Code != http.StatusOK {
+		t.Fatalf("status %d: %s", w.Code, w.Body.String())
+	}
+	var resp struct {
+		Data []struct {
+			ID      string `json:"id"`
+			Name    string `json:"name"`
+			Pending bool   `json:"pending"`
+		} `json:"data"`
+	}
+	if err := json.Unmarshal(w.Body.Bytes(), &resp); err != nil {
+		t.Fatal(err)
+	}
+	if len(resp.Data) != 1 {
+		t.Fatalf("alice in both active+draft must appear once, got %d: %s", len(resp.Data), w.Body.String())
+	}
+	got := resp.Data[0]
+	if got.Pending {
+		t.Fatalf("deduped entry must be the registered one (pending=false), got pending=true")
+	}
+	if got.ID == "" {
+		t.Fatalf("registered entry must carry an id")
+	}
+	if got.ID != um.List()[0].ID {
+		t.Fatalf("id mismatch: got %q want %q", got.ID, um.List()[0].ID)
 	}
 }
