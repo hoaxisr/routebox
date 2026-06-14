@@ -102,7 +102,7 @@
 		<div class="bg-[var(--ctp-surface0)] rounded-xl p-8 text-center text-[var(--ctp-overlay1)]">{$t('users.empty')}</div>
 	{:else}
 		<div class="space-y-3">
-			{#each users as u (u.id || u.name + u.bindings[0]?.credential)}
+			{#each users as u, i (u.id || `${u.name} ${u.bindings[0]?.credential ?? ''} ${i}`)}
 				<section class="bg-[var(--ctp-mantle)] rounded-lg p-5 border border-[var(--ctp-surface0)]">
 					<div class="flex items-start justify-between gap-4 flex-wrap">
 						<div class="min-w-0">

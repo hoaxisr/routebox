@@ -1492,7 +1492,6 @@
     "add": "Add user",
     "addTitle": "Add user",
     "name": "Name",
-    "protocol": "Protocol",
     "inbound": "Inbound",
     "pending": "pending",
     "active": "active",
@@ -1500,7 +1499,6 @@
     "delete": "Delete",
     "deleteConfirm": "Remove user \"{name}\"? Applies on next Apply.",
     "created": "Staged user \"{name}\" (apply to finalize)",
-    "removed": "Removed \"{name}\" from draft",
     "loadFailed": "Failed to load users",
     "noServerInbounds": "No server inbounds (vless/naive/hysteria2) configured.",
     "pendingNoLink": "Link available after Apply"
