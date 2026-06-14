@@ -19,9 +19,20 @@ func (h *Handler) GetVersion(w http.ResponseWriter, r *http.Request) {
 	})
 }
 
-// GetStatus returns amnezia-box process status
+// GetStatus returns amnezia-box process status.
+//
+// When the process is running, the reported Version is overlaid with the
+// running process's self-reported version (via the Clash API /version endpoint)
+// so swapping the on-disk binary without a restart does not mislabel the running
+// process. When the process is not running, or the Clash query fails, the
+// on-disk binary version (from process.GetStatus) is used unchanged.
 func (h *Handler) GetStatus(w http.ResponseWriter, r *http.Request) {
-	status := h.process.GetStatus()
+	status := h.getProcessStatus()
+	if status.Running {
+		if v, ok := runningSingboxVersion(h.getClashAddr()); ok {
+			status.Version = v
+		}
+	}
 	writeSuccess(w, status)
 }
 

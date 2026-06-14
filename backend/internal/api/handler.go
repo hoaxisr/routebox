@@ -36,6 +36,20 @@ type Handler struct {
 	// experimental.v2ray_api block (with_v2ray_api build tag). Defaults to
 	// h.process.SupportsV2RayAPI when nil; overridable in tests.
 	v2rayAPISupported func() bool
+
+	// statusSource yields the process status. Defaults to h.process.GetStatus
+	// when nil; overridable in tests so GetStatus can be exercised without a
+	// real running process.
+	statusSource func() process.Status
+}
+
+// getProcessStatus returns the current process status, using the test override
+// if set, else the process manager.
+func (h *Handler) getProcessStatus() process.Status {
+	if h.statusSource != nil {
+		return h.statusSource()
+	}
+	return h.process.GetStatus()
 }
 
 // supportsV2RayAPI reports whether the active binary supports the v2ray_api
