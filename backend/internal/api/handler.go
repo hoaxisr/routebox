@@ -10,6 +10,7 @@ import (
 	"routebox/backend/internal/subscriptions"
 	"routebox/backend/internal/traffic"
 	"routebox/backend/internal/updates"
+	"routebox/backend/internal/users"
 )
 
 // Handler holds API dependencies
@@ -28,6 +29,7 @@ type Handler struct {
 	sessions        *auth.SessionStore
 	limiter         *auth.Limiter
 	verifier        *auth.CachedVerifier
+	panelUsers      *users.Manager
 }
 
 // SetRouteBoxVersion stores the build-time RouteBox version for API responses.
@@ -44,6 +46,11 @@ func (h *Handler) SetUpdatesService(s *updates.Service) {
 func (h *Handler) SetSubscriptions(mgr *subscriptions.Manager, refresh func(subscriptions.Subscription) (int, int, error)) {
 	h.subs = mgr
 	h.subsRefresh = refresh
+}
+
+// SetUsers wires the panel-user registry into the API.
+func (h *Handler) SetUsers(mgr *users.Manager) {
+	h.panelUsers = mgr
 }
 
 // SetAuth wires the session store, lockout limiter, and password verifier.

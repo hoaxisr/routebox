@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"log"
 	"net/http"
 	"path/filepath"
 
@@ -142,6 +143,14 @@ func (h *Handler) ApplyConfig(w http.ResponseWriter, r *http.Request) {
 		}
 		writeError(w, http.StatusInternalServerError, fmt.Sprintf("Failed to save: %v", err))
 		return
+	}
+
+	// Mirror the now-applied active config into the panel-user registry.
+	// A1 auto-deletes entries whose credential vanished; idempotent if unchanged.
+	if h.panelUsers != nil {
+		if _, err := h.panelUsers.Reconcile(h.config.GetActive()); err != nil {
+			log.Printf("users: post-apply reconcile failed: %v", err)
+		}
 	}
 
 	// Check if we should use reload or restart

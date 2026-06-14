@@ -31,6 +31,7 @@ import (
 	"routebox/backend/internal/subscriptions"
 	"routebox/backend/internal/traffic"
 	"routebox/backend/internal/updates"
+	"routebox/backend/internal/users"
 )
 
 // Version is stamped at build time via -ldflags "-X main.Version=…".
@@ -255,6 +256,22 @@ func main() {
 	stopSubs := make(chan struct{})
 	go subscriptions.RunRefreshLoop(subsMgr, cfgMgr, subscriptions.Refresh, time.Hour, stopSubs)
 
+	// Panel users: sidecar registry mirroring the active config.
+	var usersPath string
+	if sp := settingsMgr.GetPath(); sp != "" {
+		usersPath = filepath.Join(filepath.Dir(sp), "users.toml")
+	}
+	usersMgr := users.NewManager(usersPath)
+	if usersPath != "" {
+		if err := usersMgr.Load(); err != nil {
+			log.Printf("Warning: failed to load users.toml: %v", err)
+		}
+	}
+	// Startup reconcile against the active config (additive: empty active -> no-op).
+	if _, err := usersMgr.Reconcile(cfgMgr.GetActive()); err != nil {
+		log.Printf("Warning: startup users reconcile failed: %v", err)
+	}
+
 	// Initialize API handlers
 	apiHandler := api.NewHandler(cfgMgr, procMgr, resolvedClashAddr, geoipDB, settingsMgr, clientsMgr, trafficStore)
 	apiHandler.SetRouteBoxVersion(Version)
@@ -264,6 +281,7 @@ func main() {
 		Targets: updTargets,
 	})
 	apiHandler.SetSubscriptions(subsMgr, subsRefresh)
+	apiHandler.SetUsers(usersMgr)
 
 	// Construct auth deps, wire onto handler, start cleanup ticker
 	sessions := auth.NewSessionStore()
@@ -356,7 +374,6 @@ func main() {
 				r.Get("/{tag}", apiHandler.GetInbound)
 				r.Put("/{tag}", apiHandler.UpdateInbound)
 				r.Delete("/{tag}", apiHandler.DeleteInbound)
-				r.Get("/{tag}/users/{userKey}/link", apiHandler.GetUserLink)
 			})
 
 			// Credential generators (server inbounds)
@@ -403,6 +420,15 @@ func main() {
 				r.Put("/{id}", apiHandler.UpdateSubscription)
 				r.Delete("/{id}", apiHandler.DeleteSubscription)
 				r.Post("/{id}/refresh", apiHandler.RefreshSubscription)
+			})
+
+			// Panel users CRUD + share-by-id
+			r.Route("/users", func(r chi.Router) {
+				r.Get("/", apiHandler.ListUsers)
+				r.Post("/", apiHandler.CreateUser)
+				r.Delete("/{id}", apiHandler.DeleteUser)
+				r.Post("/{id}/bindings", apiHandler.AddBinding)
+				r.Get("/{id}/link", apiHandler.GetUserLinkByID)
 			})
 
 			// Route Rules CRUD

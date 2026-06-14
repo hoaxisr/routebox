@@ -18,15 +18,24 @@ func (h *Handler) GenerateUUID(w http.ResponseWriter, r *http.Request) {
 	writeSuccess(w, map[string]string{"uuid": uuid.NewString()})
 }
 
+// randomPassword returns a 16-byte base64url (no padding) random password.
+func randomPassword() (string, error) {
+	b := make([]byte, 16)
+	if _, err := rand.Read(b); err != nil {
+		return "", err
+	}
+	return base64.RawURLEncoding.EncodeToString(b), nil
+}
+
 // GeneratePassword returns a 16-byte cryptographically random password,
 // base64url-encoded (no padding), for naive/hysteria2 users.
 func (h *Handler) GeneratePassword(w http.ResponseWriter, r *http.Request) {
-	b := make([]byte, 16)
-	if _, err := rand.Read(b); err != nil {
+	pw, err := randomPassword()
+	if err != nil {
 		writeError(w, http.StatusInternalServerError, "failed to generate password")
 		return
 	}
-	writeSuccess(w, map[string]string{"password": base64.RawURLEncoding.EncodeToString(b)})
+	writeSuccess(w, map[string]string{"password": pw})
 }
 
 // parseRealityKeypair extracts the private and public keys from the output of
