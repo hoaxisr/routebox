@@ -217,9 +217,25 @@ func TestSanitizePublicHost(t *testing.T) {
 		{"  vpn.example.com  ", "vpn.example.com", false},
 		{"not a host!!", "", true}, // garbage rejected
 		{"bad_host_underscore", "", true},
+		// Userinfo must be stripped; the no-scheme case previously accepted
+		// "user:pass@host" as "user" because SplitHostPort split on the colon.
+		{"user:pass@vpn.example.com", "vpn.example.com", false}, // bug guard
+		{"admin@vpn.example.com:8443", "vpn.example.com", false},
+		// Hyphen-edge labels (RFC 952/1123) rejected.
+		{"-leadinghyphen.com", "", true},
+		{"trailinghyphen-.com", "", true},
+		// Absolute FQDN trailing dot accepted.
+		{"vpn.example.com.", "vpn.example.com", false},
+		// Scheme-only / whitespace / spaces / bare host with port.
+		{"https://", "", true}, // scheme only, no host
+		{"   ", "", false},     // whitespace only clears the setting
+		{"host with spaces", "", true},
+		{"bare-host:8443", "bare-host", false},
+		// Case is preserved (not lowercased).
+		{"VPN.Example.COM", "VPN.Example.COM", false},
 	}
 	for _, tt := range tests {
-		got, err := sanitizePublicHost(tt.in)
+		got, err := SanitizePublicHost(tt.in)
 		if tt.wantErr {
 			if err == nil {
 				t.Fatalf("%q: expected error", tt.in)
@@ -245,6 +261,10 @@ func TestUpdateServerPublicHost(t *testing.T) {
 	}
 	if err := m.Update(map[string]interface{}{"server.public_host": "bad host!!"}); err == nil {
 		t.Fatalf("expected error for invalid host")
+	}
+	// A rejected update must leave the previously stored value unchanged.
+	if got := m.Get().Server.PublicHost; got != "vpn.example.com" {
+		t.Fatalf("rejected update must not modify PublicHost; got %q", got)
 	}
 }
 

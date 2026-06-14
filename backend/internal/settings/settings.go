@@ -355,16 +355,19 @@ func toInt(v interface{}) (int, bool) {
 	return 0, false
 }
 
-// sanitizePublicHost normalizes a user-entered public host for share links:
-// strips an optional scheme, path, query, and port, leaving a bare hostname or
-// IP literal. Empty input is allowed (clears the setting). A value that is
-// neither a valid hostname nor IP is rejected.
-func sanitizePublicHost(in string) (string, error) {
+// SanitizePublicHost normalizes a user-entered public host for share links:
+// strips an optional scheme, userinfo, path, query, port, and a single trailing
+// FQDN dot, leaving a bare hostname or IP literal. Empty input is allowed
+// (clears the setting). A value that is neither a valid hostname nor IP is
+// rejected. Exported so the api package's share-link handler can apply the same
+// validation to a query-provided host.
+func SanitizePublicHost(in string) (string, error) {
 	s := strings.TrimSpace(in)
 	if s == "" {
 		return "", nil
 	}
-	// Strip scheme by parsing as URL when a scheme is present.
+	// Strip scheme by parsing as URL when a scheme is present. url.Parse already
+	// drops userinfo into u.Host's User component, so u.Host is authority only.
 	if strings.Contains(s, "://") {
 		u, err := url.Parse(s)
 		if err != nil {
@@ -376,6 +379,13 @@ func sanitizePublicHost(in string) (string, error) {
 	if i := strings.IndexByte(s, '/'); i >= 0 {
 		s = s[:i]
 	}
+	// Drop userinfo: a host must never contain "@". In the no-scheme case
+	// net.SplitHostPort would otherwise split on the first colon and silently
+	// accept "user:pass@host" as "user". Mirror URL semantics by keeping only
+	// the substring after the LAST "@".
+	if i := strings.LastIndexByte(s, '@'); i >= 0 {
+		s = s[i+1:]
+	}
 	// Strip a port if present (handles bracketed IPv6 too).
 	if h, _, err := net.SplitHostPort(s); err == nil {
 		s = h
@@ -384,6 +394,8 @@ func sanitizePublicHost(in string) (string, error) {
 		s = strings.TrimPrefix(strings.TrimSuffix(s, "]"), "[")
 	}
 	s = strings.TrimSpace(s)
+	// Strip a single trailing dot so a legal absolute FQDN is accepted.
+	s = strings.TrimSuffix(s, ".")
 	if s == "" {
 		return "", fmt.Errorf("invalid host %q", in)
 	}
@@ -403,6 +415,10 @@ func isPlausibleHostname(s string) bool {
 	}
 	for _, label := range strings.Split(s, ".") {
 		if label == "" {
+			return false
+		}
+		// RFC 952/1123: a label must not begin or end with a hyphen.
+		if label[0] == '-' || label[len(label)-1] == '-' {
 			return false
 		}
 		for _, r := range label {
@@ -519,7 +535,7 @@ func (m *Manager) Update(updates map[string]interface{}) error {
 			if !ok {
 				return fmt.Errorf("setting %s: value must be a string", key)
 			}
-			host, err := sanitizePublicHost(v)
+			host, err := SanitizePublicHost(v)
 			if err != nil {
 				return fmt.Errorf("setting %s: %w", key, err)
 			}
