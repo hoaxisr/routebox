@@ -4,6 +4,7 @@ import (
 	"crypto/rand"
 	"encoding/base32"
 	"fmt"
+	"log"
 	"os"
 	"path/filepath"
 	"sort"
@@ -71,6 +72,14 @@ func (m *Manager) Load() error {
 	m.byID = make(map[string]*PanelUser, len(doc.Users))
 	for i := range doc.Users {
 		u := doc.Users[i]
+		if u.ID == "" {
+			log.Printf("users: skipping registry entry with empty id (name=%q)", u.Name)
+			continue
+		}
+		if _, dup := m.byID[u.ID]; dup {
+			log.Printf("users: skipping duplicate registry id %q", u.ID)
+			continue
+		}
 		m.byID[u.ID] = &u
 	}
 	return nil
@@ -109,20 +118,40 @@ func (m *Manager) saveLocked() error {
 	return os.Rename(tmp, m.path)
 }
 
-// Put inserts or replaces a user (storing a deep copy) and persists.
+// Put inserts or replaces a user (storing a deep copy) and persists. If
+// persistence fails the in-memory state is rolled back to its prior value so
+// memory never diverges from disk.
 func (m *Manager) Put(u *PanelUser) error {
 	m.mu.Lock()
 	defer m.mu.Unlock()
+	prev, existed := m.byID[u.ID]
 	m.byID[u.ID] = cloneUser(u)
-	return m.saveLocked()
+	if err := m.saveLocked(); err != nil {
+		if existed {
+			m.byID[u.ID] = prev
+		} else {
+			delete(m.byID, u.ID)
+		}
+		return err
+	}
+	return nil
 }
 
-// Delete removes a user and persists. No-op if absent.
+// Delete removes a user and persists. No-op if absent. If persistence fails the
+// removed entry is restored so memory never diverges from disk.
 func (m *Manager) Delete(id string) error {
 	m.mu.Lock()
 	defer m.mu.Unlock()
+	prev, existed := m.byID[id]
+	if !existed {
+		return nil
+	}
 	delete(m.byID, id)
-	return m.saveLocked()
+	if err := m.saveLocked(); err != nil {
+		m.byID[id] = prev
+		return err
+	}
+	return nil
 }
 
 // Get returns a deep copy of the user with the given ID.

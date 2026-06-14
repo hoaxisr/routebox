@@ -69,3 +69,54 @@ func TestServerInboundUsers(t *testing.T) {
 		})
 	}
 }
+
+func TestServerUsersOfConfig(t *testing.T) {
+	config := map[string]interface{}{
+		"inbounds": []interface{}{
+			map[string]interface{}{
+				"type": "vless", "tag": "vless-in",
+				"users": []interface{}{
+					map[string]interface{}{"name": "alice", "uuid": "u-1", "flow": "xtls-rprx-vision"},
+				},
+			},
+			// A non-map entry in the inbounds array must be skipped without panic.
+			"not-an-inbound",
+			map[string]interface{}{
+				"type": "naive", "tag": "naive-in",
+				"users": []interface{}{
+					map[string]interface{}{"username": "bob", "password": "pw"},
+				},
+			},
+			// tun contributes no server users.
+			map[string]interface{}{"type": "tun", "tag": "tun-in"},
+		},
+	}
+
+	want := []ConfigUser{
+		{InboundTag: "vless-in", Protocol: "vless", Credential: "u-1", Name: "alice", Flow: "xtls-rprx-vision"},
+		{InboundTag: "naive-in", Protocol: "naive", Credential: "bob", Name: "bob"},
+	}
+	got := ServerUsersOfConfig(config)
+	if !reflect.DeepEqual(got, want) {
+		t.Fatalf("got %#v, want %#v", got, want)
+	}
+}
+
+func TestServerInboundUsersMalformed(t *testing.T) {
+	inbound := map[string]interface{}{
+		"type": "vless", "tag": "vless-in",
+		"users": []interface{}{
+			"i-am-a-string", // non-map element: skipped, no panic
+			map[string]interface{}{"name": "no-cred"},            // missing uuid credential: skipped
+			map[string]interface{}{"name": "ok", "uuid": "u-ok"}, // valid: kept
+		},
+	}
+
+	want := []ConfigUser{
+		{InboundTag: "vless-in", Protocol: "vless", Credential: "u-ok", Name: "ok"},
+	}
+	got := ServerInboundUsers(inbound)
+	if !reflect.DeepEqual(got, want) {
+		t.Fatalf("got %#v, want %#v", got, want)
+	}
+}
