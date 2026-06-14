@@ -26,6 +26,8 @@
 		try {
 			const response: SettingsResponse = await api.getSettings();
 			settings = response.settings;
+			// Ensure server object exists so the public_host input can bind.
+			if (!settings.server) settings.server = {};
 			settingsPath = response.settings_path;
 			geoipLoaded = response.geoip_loaded;
 			originalSettings = JSON.stringify(response.settings);
@@ -67,6 +69,9 @@
 			if (settings.updates) {
 				updates['updates.auto_check'] = settings.updates.auto_check;
 			}
+
+			// Server settings (panel public host used for client share links)
+			updates['server.public_host'] = settings.server?.public_host ?? '';
 
 			await api.updateSettings(updates);
 			originalSettings = JSON.stringify(settings);
@@ -358,6 +363,29 @@
 						/>
 						<span class="text-sm text-[var(--ctp-text)]">{$t('settings.autoCheckUpdates')}</span>
 					</label>
+				</section>
+			{/if}
+
+			<!-- Server Section -->
+			{#if settings.server}
+				<section class="bg-[var(--ctp-mantle)] rounded-lg p-5 border border-[var(--ctp-surface0)]">
+					<div class="flex items-center gap-3 mb-4">
+						<svg class="w-5 h-5 text-[var(--ctp-primary)]" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+							<path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 12h14M5 12a2 2 0 01-2-2V6a2 2 0 012-2h14a2 2 0 012 2v4a2 2 0 01-2 2M5 12a2 2 0 00-2 2v4a2 2 0 002 2h14a2 2 0 002-2v-4a2 2 0 00-2-2m-2-4h.01M17 16h.01" />
+						</svg>
+						<h2 class="text-lg font-medium text-[var(--ctp-text)]">Server</h2>
+					</div>
+
+					<div>
+						<label class="block text-sm font-medium text-[var(--ctp-subtext1)] mb-1">Public host</label>
+						<input
+							type="text"
+							bind:value={settings.server.public_host}
+							placeholder="vpn.example.com or 203.0.113.4"
+							class="w-full px-3 py-2 bg-[var(--ctp-surface0)] border border-[var(--ctp-surface2)] rounded-lg text-[var(--ctp-text)] focus:outline-none focus:ring-2 focus:ring-[var(--ctp-primary)]"
+						/>
+						<p class="text-xs text-[var(--ctp-overlay0)] mt-1">Used to build client share links (hostname or IP clients connect to).</p>
+					</div>
 				</section>
 			{/if}
 

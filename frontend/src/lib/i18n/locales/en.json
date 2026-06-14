@@ -30,7 +30,8 @@
     "network": "Network",
     "routing": "Routing",
     "updates": "Updates",
-    "subscriptions": "Subscriptions"
+    "subscriptions": "Subscriptions",
+    "users": "Users"
   },
   "common": {
     "save": "Save",
@@ -1483,6 +1484,26 @@
     "categoryUaDesc": "All Ukrainian domain zones",
     "ads": "Block Ads",
     "adsDesc": "Block advertising domains"
+  },
+  "users": {
+    "title": "Users",
+    "description": "Panel users with stable identity across config edits.",
+    "empty": "No users yet. Add one to a server inbound.",
+    "add": "Add user",
+    "addTitle": "Add user",
+    "name": "Name",
+    "protocol": "Protocol",
+    "inbound": "Inbound",
+    "pending": "pending",
+    "active": "active",
+    "clientLink": "Client link",
+    "delete": "Delete",
+    "deleteConfirm": "Remove user \"{name}\"? Applies on next Apply.",
+    "created": "Staged user \"{name}\" (apply to finalize)",
+    "removed": "Removed \"{name}\" from draft",
+    "loadFailed": "Failed to load users",
+    "noServerInbounds": "No server inbounds (vless/naive/hysteria2) configured.",
+    "pendingNoLink": "Link available after Apply"
   },
   "subscriptions": {
     "title": "Subscriptions",
