@@ -15,8 +15,10 @@ import (
 )
 
 // PanelUser is a first-class panel user with a stable ID. Bindings link the user
-// to one or more server inbounds. Enabled/ExpiresAt/Token are stored but NOT
-// enforced in Phase 2 (Phases 3-4).
+// to one or more server inbounds. Enabled/ExpiresAt are stored but NOT enforced
+// in Phase 2 (Phases 3-4). Token and TokenDisabled ARE enforced: a non-empty
+// Token resolves via ByToken, and TokenDisabled (sticky revoke) gates both the
+// reconciler's auto-mint and ByToken (a disabled user is never resolvable).
 type PanelUser struct {
 	ID        string `toml:"id" json:"id"`
 	Name      string `toml:"name" json:"name"`

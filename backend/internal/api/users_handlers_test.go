@@ -598,6 +598,7 @@ func TestRevokeUserToken(t *testing.T) {
 
 	r := chi.NewRouter()
 	r.Delete("/users/{id}/token", h.RevokeUserToken)
+	r.Get("/users", h.ListUsers)
 	req := httptest.NewRequest(http.MethodDelete, "/users/"+id+"/token", nil)
 	rec := httptest.NewRecorder()
 	r.ServeHTTP(rec, req)
@@ -607,6 +608,36 @@ func TestRevokeUserToken(t *testing.T) {
 	}
 	if _, ok := um.ByToken(old); ok {
 		t.Fatal("token still valid after revoke")
+	}
+
+	// The revoke must be observable on the wire: GET /users serializes
+	// token_disabled=true for the revoked user (UI gates the re-enable on it).
+	req = httptest.NewRequest(http.MethodGet, "/users", nil)
+	rec = httptest.NewRecorder()
+	r.ServeHTTP(rec, req)
+	if rec.Code != http.StatusOK {
+		t.Fatalf("list status = %d, body=%q", rec.Code, rec.Body.String())
+	}
+	var resp struct {
+		Data []struct {
+			ID            string `json:"id"`
+			TokenDisabled bool   `json:"token_disabled"`
+		} `json:"data"`
+	}
+	if err := json.Unmarshal(rec.Body.Bytes(), &resp); err != nil {
+		t.Fatal(err)
+	}
+	found := false
+	for _, u := range resp.Data {
+		if u.ID == id {
+			found = true
+			if !u.TokenDisabled {
+				t.Fatal("GET /users must serialize token_disabled=true for the revoked user")
+			}
+		}
+	}
+	if !found {
+		t.Fatalf("revoked user %q not found in GET /users response", id)
 	}
 }
 

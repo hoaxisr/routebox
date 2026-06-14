@@ -256,3 +256,85 @@ func TestRotateTokenRollsBackOnSaveError(t *testing.T) {
 		t.Fatalf("old token resolved to wrong user after rollback: %+v", got)
 	}
 }
+
+// TestRotateTokenRollsBackDisabledOnSaveError exercises the u.TokenDisabled =
+// prevDisabled rollback branch against a NON-zero prior value: revoke the user
+// first (so TokenDisabled=true, Token=""), THEN force a rotate save-failure and
+// assert BOTH the empty-token state AND TokenDisabled==true are restored — the
+// failed rotate must not partially re-enable a revoked user.
+func TestRotateTokenRollsBackDisabledOnSaveError(t *testing.T) {
+	dir := t.TempDir()
+	goodPath := filepath.Join(dir, "users.toml")
+	m := NewManager(goodPath)
+
+	// Seed a live user, then revoke so the prior state is TokenDisabled=true.
+	if err := m.Put(&PanelUser{ID: "u1", Name: "alice", Token: "live"}); err != nil {
+		t.Fatalf("Put: %v", err)
+	}
+	if err := m.RevokeToken("u1"); err != nil {
+		t.Fatalf("RevokeToken: %v", err)
+	}
+	if got, _ := m.Get("u1"); !got.TokenDisabled || got.Token != "" {
+		t.Fatalf("precondition: revoke must leave TokenDisabled=true, Token=\"\": %+v", got)
+	}
+
+	// Point at an unwritable path so saveLocked (MkdirAll) fails.
+	blocker := filepath.Join(dir, "not-a-dir")
+	if err := os.WriteFile(blocker, []byte("x"), 0600); err != nil {
+		t.Fatalf("write blocker: %v", err)
+	}
+	m.path = filepath.Join(blocker, "users.toml")
+
+	if _, err := m.RotateToken("u1"); err == nil {
+		t.Fatal("expected RotateToken save error, got nil")
+	}
+	// Rollback must restore BOTH fields to their pre-rotate (revoked) values.
+	got, ok := m.Get("u1")
+	if !ok {
+		t.Fatal("user vanished after failed rotate")
+	}
+	if got.Token != "" {
+		t.Fatalf("failed rotate must roll back Token to \"\", got %q", got.Token)
+	}
+	if !got.TokenDisabled {
+		t.Fatal("failed rotate must restore TokenDisabled=true (prior revoked state)")
+	}
+}
+
+// TestRevokeTokenRollsBackOnSaveError mirrors the rotate-rollback test: force a
+// saveLocked failure during RevokeToken and assert the revoke is fully atomic —
+// the live token STILL resolves via ByToken AND TokenDisabled stays false
+// (neither field changed when the persist failed).
+func TestRevokeTokenRollsBackOnSaveError(t *testing.T) {
+	dir := t.TempDir()
+	goodPath := filepath.Join(dir, "users.toml")
+	m := NewManager(goodPath)
+
+	// Seed a user with a live token (TokenDisabled=false) on disk + memory.
+	if err := m.Put(&PanelUser{ID: "u1", Name: "alice", Token: "live"}); err != nil {
+		t.Fatalf("Put: %v", err)
+	}
+
+	// Point at an unwritable path so saveLocked (MkdirAll) fails.
+	blocker := filepath.Join(dir, "not-a-dir")
+	if err := os.WriteFile(blocker, []byte("x"), 0600); err != nil {
+		t.Fatalf("write blocker: %v", err)
+	}
+	m.path = filepath.Join(blocker, "users.toml")
+
+	if err := m.RevokeToken("u1"); err == nil {
+		t.Fatal("expected RevokeToken save error, got nil")
+	}
+	// Atomic rollback: the live token must still resolve (Token unchanged) AND
+	// TokenDisabled must remain false (the disable was rolled back too).
+	got, ok := m.ByToken("live")
+	if !ok {
+		t.Fatal("RevokeToken must roll back on save failure: live token no longer resolves")
+	}
+	if got.ID != "u1" {
+		t.Fatalf("live token resolved to wrong user after rollback: %+v", got)
+	}
+	if u, _ := m.Get("u1"); u.TokenDisabled {
+		t.Fatal("failed revoke must leave TokenDisabled=false (atomic rollback)")
+	}
+}

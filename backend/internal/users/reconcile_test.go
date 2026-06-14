@@ -507,9 +507,14 @@ func TestRevokeTokenIsStickyAcrossReconcile(t *testing.T) {
 	if err := m.RevokeToken(id); err != nil {
 		t.Fatalf("RevokeToken: %v", err)
 	}
-	// Reconcile against the SAME active that still contains the binding.
-	if _, err := m.Reconcile(active); err != nil {
+	// Reconcile against the SAME active that still contains the binding. A
+	// revoked, still-bound user must cause NO spurious write/mint: changed=false.
+	changed, err := m.Reconcile(active)
+	if err != nil {
 		t.Fatalf("Reconcile after revoke: %v", err)
+	}
+	if changed {
+		t.Fatal("reconcile of a revoked user must report changed=false (no spurious mint/write)")
 	}
 	got, ok := m.Get(id)
 	if !ok {

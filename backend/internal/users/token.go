@@ -19,7 +19,11 @@ func GenerateToken() (string, error) {
 
 // ByToken returns a deep copy of the user whose Token equals the argument. An
 // empty token NEVER matches (a revoked user has Token=="" and must not be
-// reachable). Returns a value (PanelUser) to mirror Get/List deep-copy semantics
+// reachable). The match ALSO requires !TokenDisabled: this fails closed even if
+// an inconsistent on-disk users.toml carries token_disabled=true alongside a
+// non-empty token (the derived invariant "TokenDisabled ⟹ Token==”" is enforced
+// here at the read boundary, so a hand-edited file can never resurrect a revoked
+// credential). Returns a value (PanelUser) to mirror Get/List deep-copy semantics
 // so callers — including the PUBLIC /sub handler — can never mutate the registry
 // through the result; take &user when a pointer is needed.
 func (m *Manager) ByToken(token string) (PanelUser, bool) {
@@ -29,7 +33,7 @@ func (m *Manager) ByToken(token string) (PanelUser, bool) {
 	m.mu.RLock()
 	defer m.mu.RUnlock()
 	for _, u := range m.byID {
-		if u.Token == token {
+		if u.Token == token && !u.TokenDisabled {
 			return *cloneUser(u), true
 		}
 	}
