@@ -196,6 +196,20 @@ export interface PanelUser {
 	token?: string;
 	token_disabled?: boolean;
 	bindings: PanelBinding[];
+	upload?: number;
+	download?: number;
+}
+
+export interface UserTrafficPoint {
+	ts: number;
+	upload: number;
+	download: number;
+}
+
+export interface UserTrafficResponse {
+	upload: number;
+	download: number;
+	history: UserTrafficPoint[];
 }
 
 export interface ServerRealityConfig {

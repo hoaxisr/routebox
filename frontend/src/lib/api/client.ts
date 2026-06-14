@@ -1,4 +1,4 @@
-import type { ApiResponse, ProcessStatus, DetectedConfig, SingboxConfig, Endpoint, Outbound, Inbound, RuleSet, RuleSetUsage, RouteRule, RouteSettings, DnsServer, DnsRule, DnsSettings, LogSettings, ExperimentalSettings, ConnectionsResponse, ProxiesResponse, ClashProxy, TestRouteResponse, ConnectTestResponse, SettingsResponse, RouteBoxSettings, SingBoxVersion, DomainSetInfo, RuleSetSource, ClientEntry, TrafficHistoryResponse, TrafficRange, UpdatesStatus, UpdateProgress, UpdateTargetName, Subscription, SubscriptionInput, PanelUser } from '$lib/types';
+import type { ApiResponse, ProcessStatus, DetectedConfig, SingboxConfig, Endpoint, Outbound, Inbound, RuleSet, RuleSetUsage, RouteRule, RouteSettings, DnsServer, DnsRule, DnsSettings, LogSettings, ExperimentalSettings, ConnectionsResponse, ProxiesResponse, ClashProxy, TestRouteResponse, ConnectTestResponse, SettingsResponse, RouteBoxSettings, SingBoxVersion, DomainSetInfo, RuleSetSource, ClientEntry, TrafficHistoryResponse, TrafficRange, UpdatesStatus, UpdateProgress, UpdateTargetName, Subscription, SubscriptionInput, PanelUser, UserTrafficResponse } from '$lib/types';
 
 const API_BASE = '/api';
 
@@ -195,6 +195,10 @@ export const api = {
 
 	// Panel users
 	getUsers: () => request<PanelUser[]>('/users'),
+	getUserTraffic: (id: string, range: TrafficRange = '24h') =>
+		request<UserTrafficResponse>(
+			`/users/${encodeURIComponent(id)}/traffic?range=${encodeURIComponent(range)}`
+		),
 	createUser: (body: { name: string; protocol: string; inbound_tag: string }) =>
 		request<PanelUser>('/users', { method: 'POST', body: JSON.stringify(body) }),
 	addUserBinding: (id: string, body: { protocol: string; inbound_tag: string }) =>
