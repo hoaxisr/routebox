@@ -151,6 +151,19 @@ func (h *Handler) ApplyConfig(w http.ResponseWriter, r *http.Request) {
 		if _, err := h.panelUsers.Reconcile(h.config.GetActive()); err != nil {
 			log.Printf("users: post-apply reconcile failed: %v", err)
 		}
+		// Keep experimental.v2ray_api stats.users synced with the registry so
+		// sing-box counts per-user traffic (it counts a user ONLY if its name is
+		// in stats.users). Change-gated; the apply's own reload (below) re-reads
+		// the synced block from disk — do NOT add a second reload here.
+		// Best-effort: a failure does not fail the apply. Panel context only —
+		// empty names (router / no users) remove the block.
+		listen := h.settings.Get().Singbox.V2RayAPI
+		if listen == "" {
+			listen = "127.0.0.1:8081"
+		}
+		if _, err := h.config.SyncV2RayAPI(listen, panelUserNames(h.panelUsers)); err != nil {
+			log.Printf("users: v2ray_api sync failed: %v", err)
+		}
 	}
 
 	// Check if we should use reload or restart
