@@ -201,7 +201,15 @@
     "stopped": "amnezia-box stopped",
     "restarted": "amnezia-box restarted",
     "configReloaded": "Configuration reloaded (SIGHUP)",
-    "confirmRestart": "Restart amnezia-box? Active connections will be dropped."
+    "confirmRestart": "Restart amnezia-box? Active connections will be dropped.",
+    "panelUsers": "Panel Users",
+    "manageUsers": "Manage users",
+    "publicHost": "Public Host",
+    "publicHostUnset": "Not set",
+    "editSettings": "Edit settings",
+    "serverInbounds": "Server Inbounds",
+    "serverInboundsHint": "VLESS / NaiveProxy / Hysteria2 listeners",
+    "manageInbounds": "Manage inbounds"
   },
   "overview": {
     "title": "Config Overview",

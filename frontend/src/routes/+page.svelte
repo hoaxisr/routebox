@@ -2,7 +2,7 @@
 	import { onMount } from 'svelte';
 	import { t } from 'svelte-i18n';
 	import { api, createTrafficStream, createConnectionsStream } from '$lib/api/client';
-	import { notifications, formatBytes, formatSpeed, clientNames } from '$lib/stores';
+	import { notifications, formatBytes, formatSpeed, clientNames, panelMode, routerMode } from '$lib/stores';
 	import { singboxVersion, loadVersion } from '$lib/stores/version';
 	import PendingChanges from '$lib/components/shared/PendingChanges.svelte';
 	import type { ProcessStatus, DetectedConfig, ClashConnection } from '$lib/types';
@@ -20,6 +20,10 @@
 	let topConnections = $state<ClashConnection[]>([]);
 	let trafficStream: { close: () => void } | null = null;
 	let connectionsStream: { close: () => void } | null = null;
+
+	// Panel-mode Overview summary (MVP: counts/host/links only; per-user telemetry is Part B).
+	let userCount = $state<number | null>(null);
+	let publicHost = $state('');
 
 	async function fetchStatus() {
 		try {
@@ -40,6 +44,16 @@
 			console.error('Failed to fetch status:', e);
 		} finally {
 			loading = false;
+		}
+	}
+
+	async function loadPanelOverview() {
+		try {
+			const [users, settings] = await Promise.all([api.getUsers(), api.getSettings()]);
+			userCount = users.length;
+			publicHost = settings.settings.server?.public_host ?? '';
+		} catch {
+			userCount = null;
 		}
 	}
 
@@ -187,6 +201,12 @@
 			stopTrafficStream();
 			stopConnectionsStream();
 		}
+	});
+
+	// Load the panel summary once mode resolves to panel (not in onMount, which
+	// runs before refreshMode/loadMode settles the mode).
+	$effect(() => {
+		if ($panelMode && userCount === null) loadPanelOverview();
 	});
 </script>
 
@@ -469,6 +489,28 @@
 		{/if}
 	</div>
 
+	<!-- Panel-mode summary (MVP: users count + public host + quick links) -->
+	{#if $panelMode}
+		<div class="grid grid-cols-1 sm:grid-cols-3 gap-2 sm:gap-4">
+			<div class="bg-[var(--ctp-surface0)] rounded-xl p-4">
+				<div class="text-xs text-[var(--ctp-overlay1)]">{$t('dashboard.panelUsers')}</div>
+				<div class="text-2xl font-semibold text-[var(--ctp-text)] mt-1">{userCount ?? '-'}</div>
+				<a href="/config/users" class="text-sm text-[var(--ctp-primary)] hover:underline">{$t('dashboard.manageUsers')}</a>
+			</div>
+			<div class="bg-[var(--ctp-surface0)] rounded-xl p-4">
+				<div class="text-xs text-[var(--ctp-overlay1)]">{$t('dashboard.publicHost')}</div>
+				<div class="text-sm font-mono text-[var(--ctp-text)] mt-1 truncate" title={publicHost || '-'}>{publicHost || $t('dashboard.publicHostUnset')}</div>
+				<a href="/config/app" class="text-sm text-[var(--ctp-primary)] hover:underline">{$t('dashboard.editSettings')}</a>
+			</div>
+			<div class="bg-[var(--ctp-surface0)] rounded-xl p-4">
+				<div class="text-xs text-[var(--ctp-overlay1)]">{$t('dashboard.serverInbounds')}</div>
+				<div class="text-sm text-[var(--ctp-text)] mt-1">{$t('dashboard.serverInboundsHint')}</div>
+				<a href="/config/inbounds" class="text-sm text-[var(--ctp-primary)] hover:underline">{$t('dashboard.manageInbounds')}</a>
+			</div>
+		</div>
+	{/if}
+
+	{#if $routerMode}
 	<!-- Quick Links -->
 	<div class="grid grid-cols-1 sm:grid-cols-3 gap-2 sm:gap-4">
 		<a
@@ -528,4 +570,5 @@
 			</div>
 		</a>
 	</div>
+	{/if}
 </div>
