@@ -1,11 +1,10 @@
 <script lang="ts">
-	import { onMount } from 'svelte';
 	import { t } from 'svelte-i18n';
 	import QRCode from 'qrcode';
 	import { api } from '$lib/api/client';
 	import { notifications } from '$lib/stores';
 	import type { PanelUser } from '$lib/types';
-	import { buildSubUrl } from './subscription-url';
+	import { effectiveSubUrl } from './subscription-url';
 
 	interface Props {
 		user: PanelUser;
@@ -20,7 +19,7 @@
 	let qrDataUrl = $state('');
 	let busy = $state(false);
 
-	const subUrl = $derived(disabled ? '' : buildSubUrl(publicHost, token));
+	const subUrl = $derived(effectiveSubUrl({ token, token_disabled: disabled }, publicHost));
 
 	async function renderQr() {
 		if (!subUrl) {
@@ -35,11 +34,9 @@
 	}
 
 	$effect(() => {
-		void subUrl; // re-render QR whenever the URL changes (token rotation)
+		void subUrl; // re-render QR whenever the URL changes (token rotation); covers initial mount
 		renderQr();
 	});
-
-	onMount(renderQr);
 
 	async function copy() {
 		try {
@@ -133,6 +130,7 @@
 					<img src={qrDataUrl} alt="Subscription QR" class="rounded-lg bg-white p-2" width="256" height="256" />
 				</div>
 			{/if}
+			<label class="block text-xs font-medium text-[var(--ctp-overlay1)]">{$t('users.subscriptionUrl')}</label>
 			<div class="bg-[var(--ctp-surface0)] rounded-lg p-2 text-xs font-mono break-all text-[var(--ctp-text)]">{subUrl}</div>
 			<div class="flex gap-2">
 				<button type="button" onclick={copy}
