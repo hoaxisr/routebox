@@ -576,6 +576,16 @@ func (m *Manager) Update(updates map[string]interface{}) error {
 			}
 			m.settings.Server.PublicHost = host
 
+		case "server.public_port":
+			v, ok := toInt(value)
+			if !ok {
+				return fmt.Errorf("setting %s: value must be a whole number", key)
+			}
+			if v < 0 || v > 65535 {
+				return fmt.Errorf("setting %s: port %d out of range (0-65535)", key, v)
+			}
+			m.settings.Server.PublicPort = v
+
 		// Advanced runtime settings
 		case "advanced.ws_ping_interval_sec":
 			v, ok := toInt(value)

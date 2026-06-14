@@ -351,3 +351,50 @@ func TestUpdateACMEWrongTypesRejected(t *testing.T) {
 		})
 	}
 }
+
+func TestUpdateServerPublicPort(t *testing.T) {
+	cases := []struct {
+		name    string
+		value   interface{}
+		wantErr bool
+		want    int
+	}{
+		{"valid port", 8443, false, 8443},
+		{"zero (unset)", 0, false, 0},
+		{"min", 1, false, 1},
+		{"max port", 65535, false, 65535},
+		{"json float", float64(8443), false, 8443},
+		{"negative rejected", -1, true, 0},
+		{"too large rejected", 65536, true, 0},
+		{"string rejected", "8443", true, 0},
+		{"fractional rejected", float64(8443.5), true, 0},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			m := &Manager{settings: Default()}
+			err := m.Update(map[string]interface{}{"server.public_port": tc.value})
+			if tc.wantErr {
+				if err == nil {
+					t.Fatalf("expected error for %v, got nil", tc.value)
+				}
+				return
+			}
+			if err != nil {
+				t.Fatalf("unexpected error: %v", err)
+			}
+			if got := m.Get().Server.PublicPort; got != tc.want {
+				t.Fatalf("got %d, want %d", got, tc.want)
+			}
+		})
+	}
+
+	// A rejected update must not mutate the stored value.
+	m := &Manager{settings: Default()}
+	_ = m.Update(map[string]interface{}{"server.public_port": 8443})
+	if err := m.Update(map[string]interface{}{"server.public_port": 70000}); err == nil {
+		t.Fatal("expected error for out-of-range port")
+	}
+	if m.Get().Server.PublicPort != 8443 {
+		t.Fatalf("rejected update must not modify PublicPort; got %d", m.Get().Server.PublicPort)
+	}
+}
