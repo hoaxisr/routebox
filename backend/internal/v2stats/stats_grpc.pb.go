@@ -16,10 +16,17 @@ import (
 // Requires gRPC-Go v1.64.0 or later.
 const _ = grpc.SupportPackageIsVersion9
 
+// NOTE: The amnezia-box fork's experimental/v2rayapi/stats.go has an init() that
+// overrides the registered service name to the v2ray-compatible name:
+//
+//	StatsService_ServiceDesc.ServiceName = "v2ray.core.app.stats.command.StatsService"
+//
+// The gRPC CLIENT invokes using these *_FullMethodName constants, so they MUST
+// match the runtime-registered name or the server returns Unimplemented.
 const (
-	StatsService_GetStats_FullMethodName    = "/experimental.v2rayapi.StatsService/GetStats"
-	StatsService_QueryStats_FullMethodName  = "/experimental.v2rayapi.StatsService/QueryStats"
-	StatsService_GetSysStats_FullMethodName = "/experimental.v2rayapi.StatsService/GetSysStats"
+	StatsService_GetStats_FullMethodName    = "/v2ray.core.app.stats.command.StatsService/GetStats"
+	StatsService_QueryStats_FullMethodName  = "/v2ray.core.app.stats.command.StatsService/QueryStats"
+	StatsService_GetSysStats_FullMethodName = "/v2ray.core.app.stats.command.StatsService/GetSysStats"
 )
 
 // StatsServiceClient is the client API for StatsService service.
@@ -176,7 +183,7 @@ func _StatsService_GetSysStats_Handler(srv interface{}, ctx context.Context, dec
 // It's only intended for direct use with grpc.RegisterService,
 // and not to be introspected or modified (even as a copy)
 var StatsService_ServiceDesc = grpc.ServiceDesc{
-	ServiceName: "experimental.v2rayapi.StatsService",
+	ServiceName: "v2ray.core.app.stats.command.StatsService",
 	HandlerType: (*StatsServiceServer)(nil),
 	Methods: []grpc.MethodDesc{
 		{

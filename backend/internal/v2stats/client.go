@@ -31,7 +31,14 @@ type grpcQuerier struct {
 }
 
 func (g grpcQuerier) QueryStats(ctx context.Context, pattern string, reset bool) ([]*Stat, error) {
-	resp, err := g.client.QueryStats(ctx, &QueryStatsRequest{Pattern: pattern, Reset_: reset})
+	// The fork server reads Patterns ([]string) + Regexp, NOT the deprecated
+	// singular Pattern field. Send substring (Regexp=false) match on the plural
+	// field so "user>>>" actually filters server-side.
+	resp, err := g.client.QueryStats(ctx, &QueryStatsRequest{
+		Patterns: []string{pattern},
+		Reset_:   reset,
+		Regexp:   false,
+	})
 	if err != nil {
 		return nil, err
 	}

@@ -19,9 +19,28 @@ func (f *fakeServer) QueryStats(_ context.Context, _ *QueryStatsRequest) (*Query
 	return f.resp, nil
 }
 
+// realServiceName is the name the amnezia-box fork's experimental/v2rayapi
+// stats.go init() registers at runtime. The client's *_FullMethodName constants
+// MUST resolve to this path or the live server returns Unimplemented.
+const realServiceName = "v2ray.core.app.stats.command.StatsService"
+
+// TestServiceNameMatchesFork guards against the vendored generated name drifting
+// back to "experimental.v2rayapi.StatsService" (which the fork overrides), which
+// would make every live RPC fail with Unimplemented.
+func TestServiceNameMatchesFork(t *testing.T) {
+	if got := StatsService_ServiceDesc.ServiceName; got != realServiceName {
+		t.Errorf("ServiceDesc.ServiceName = %q, want %q", got, realServiceName)
+	}
+	want := "/" + realServiceName + "/QueryStats"
+	if StatsService_QueryStats_FullMethodName != want {
+		t.Errorf("QueryStats_FullMethodName = %q, want %q", StatsService_QueryStats_FullMethodName, want)
+	}
+}
+
 // TestQueryStatsRoundTrip proves the vendored generated proto marshals over a
 // real grpc-go connection (catches any ProtoReflect/MessageInfo wiring breakage
-// from the package rename before any other task depends on it).
+// from the package rename before any other task depends on it). Client and
+// server both use the fork's REALNAME, so a green run also matches reality.
 func TestQueryStatsRoundTrip(t *testing.T) {
 	lis, err := net.Listen("tcp", "127.0.0.1:0")
 	if err != nil {
@@ -41,7 +60,7 @@ func TestQueryStatsRoundTrip(t *testing.T) {
 	defer conn.Close()
 
 	cli := NewStatsServiceClient(conn)
-	out, err := cli.QueryStats(context.Background(), &QueryStatsRequest{Pattern: "user>>>"})
+	out, err := cli.QueryStats(context.Background(), &QueryStatsRequest{Patterns: []string{"user>>>"}})
 	if err != nil {
 		t.Fatalf("QueryStats: %v", err)
 	}
