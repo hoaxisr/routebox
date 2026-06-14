@@ -268,6 +268,25 @@ func TestUpdateServerPublicHost(t *testing.T) {
 	}
 }
 
+func TestACMEAndPublicPortDefaults(t *testing.T) {
+	d := Default()
+	if d.Network.ACMEEnabled {
+		t.Error("network.acme_enabled must default to false")
+	}
+	if d.Network.ACMEStaging {
+		t.Error("network.acme_staging must default to false")
+	}
+	if d.Network.ACMEEmail != "" {
+		t.Errorf("network.acme_email must default to empty, got %q", d.Network.ACMEEmail)
+	}
+	if d.Network.ACMECacheDir != "/etc/routebox/acme" {
+		t.Errorf("network.acme_cache_dir default should be /etc/routebox/acme, got %q", d.Network.ACMECacheDir)
+	}
+	if d.Server.PublicPort != 0 {
+		t.Errorf("server.public_port must default to 0 (no explicit port), got %d", d.Server.PublicPort)
+	}
+}
+
 // TestSaveCreatesParentDir verifies that Save creates all intermediate
 // directories so a fresh-VPS first run (no pre-existing config file) can
 // persist the bootstrapped auth settings without crashing.

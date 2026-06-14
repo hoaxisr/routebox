@@ -83,12 +83,19 @@ type NetworkSettings struct {
 	CompressionEnabled bool   `toml:"compression_enabled" json:"compression_enabled"`
 	TLSCertPath        string `toml:"tls_cert_path" json:"tls_cert_path"`
 	TLSKeyPath         string `toml:"tls_key_path" json:"tls_key_path"`
+	// Embedded ACME (Let's Encrypt) — issues/renews the panel cert in-process.
+	// Domain = Server.PublicHost (no separate field). HTTP-01 challenge on :80.
+	ACMEEnabled  bool   `toml:"acme_enabled" json:"acme_enabled"`     // false = manual cert/key or plain HTTP
+	ACMEEmail    string `toml:"acme_email" json:"acme_email"`         // LE account contact
+	ACMEStaging  bool   `toml:"acme_staging" json:"acme_staging"`     // true = LE staging directory (testing)
+	ACMECacheDir string `toml:"acme_cache_dir" json:"acme_cache_dir"` // cert/account cache (perm 0700)
 }
 
 // ServerSettings holds panel operating-mode configuration.
 type ServerSettings struct {
 	Mode       string `toml:"mode" json:"mode"`               // "router" (default) | "vps"
 	PublicHost string `toml:"public_host" json:"public_host"` // domain or IP for client share-links; "" = unset
+	PublicPort int    `toml:"public_port" json:"public_port"` // external panel port for sub-URLs; 0 = none/443
 }
 
 // SingboxSettings configures sing-box integration
@@ -153,6 +160,10 @@ func Default() Settings {
 			ReadTimeoutSec:     30,
 			WriteTimeoutSec:    30,
 			CompressionEnabled: true,
+			ACMEEnabled:        false,
+			ACMEEmail:          "",
+			ACMEStaging:        false,
+			ACMECacheDir:       "/etc/routebox/acme",
 		},
 		Singbox: SingboxSettings{
 			ConfigPath:  "",
@@ -167,7 +178,7 @@ func Default() Settings {
 			WsPingIntervalSec: 30,
 			WsPongTimeoutSec:  10,
 		},
-		Server:  ServerSettings{Mode: "router", PublicHost: ""},
+		Server:  ServerSettings{Mode: "router", PublicHost: "", PublicPort: 0},
 		Updates: UpdatesSettings{AutoCheck: true},
 	}
 }
