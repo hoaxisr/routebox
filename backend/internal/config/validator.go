@@ -365,6 +365,44 @@ func validateInbound(ib map[string]interface{}, index int) []string {
 		if _, ok := ib["listen_port"].(float64); !ok {
 			errors = append(errors, fmt.Sprintf("%s: %s requires 'listen_port'", prefix, ibType))
 		}
+	case "vless", "naive", "hysteria2":
+		// All server inbounds need a listen_port.
+		if _, ok := ib["listen_port"].(float64); !ok {
+			errors = append(errors, fmt.Sprintf("%s: %s requires 'listen_port'", prefix, ibType))
+		}
+		// naive and hysteria2 require TLS *enabled* (vless may use Reality, which
+		// is configured inside the tls object; we hard-require enabled TLS only
+		// for naive/hysteria2). MUST-FIX 4: assert tls.enabled == true.
+		if ibType == "naive" || ibType == "hysteria2" {
+			tls, _ := ib["tls"].(map[string]interface{})
+			enabled := false
+			if tls != nil {
+				enabled, _ = tls["enabled"].(bool)
+			}
+			if !enabled {
+				errors = append(errors, fmt.Sprintf("%s: %s requires TLS (tls.enabled = true)", prefix, ibType))
+			}
+		}
+		// Reject duplicate credentials within this inbound (uuid/username/password
+		// by protocol). This keeps the (tag, credential) registry join key unique.
+		credField := map[string]string{"vless": "uuid", "naive": "username", "hysteria2": "password"}[ibType]
+		if users, ok := ib["users"].([]interface{}); ok {
+			seen := map[string]bool{}
+			for _, u := range users {
+				um, ok := u.(map[string]interface{})
+				if !ok {
+					continue
+				}
+				cred, _ := um[credField].(string)
+				if cred == "" {
+					continue
+				}
+				if seen[cred] {
+					errors = append(errors, fmt.Sprintf("%s: duplicate %s %q among users", prefix, credField, cred))
+				}
+				seen[cred] = true
+			}
+		}
 	}
 
 	return errors
