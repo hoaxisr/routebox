@@ -200,6 +200,54 @@ func TestInvalidServerModeErrors(t *testing.T) {
 	}
 }
 
+func TestSanitizePublicHost(t *testing.T) {
+	tests := []struct {
+		in, want string
+		wantErr  bool
+	}{
+		{"vpn.example.com", "vpn.example.com", false},
+		{"https://vpn.example.com", "vpn.example.com", false},
+		{"http://vpn.example.com/", "vpn.example.com", false},
+		{"https://vpn.example.com:8443/path?x=1", "vpn.example.com", false},
+		{"203.0.113.5", "203.0.113.5", false},
+		{"https://203.0.113.5:443", "203.0.113.5", false},
+		{"2001:db8::1", "2001:db8::1", false},
+		{"[2001:db8::1]:443", "2001:db8::1", false},
+		{"", "", false}, // empty clears the setting
+		{"  vpn.example.com  ", "vpn.example.com", false},
+		{"not a host!!", "", true}, // garbage rejected
+		{"bad_host_underscore", "", true},
+	}
+	for _, tt := range tests {
+		got, err := sanitizePublicHost(tt.in)
+		if tt.wantErr {
+			if err == nil {
+				t.Fatalf("%q: expected error", tt.in)
+			}
+			continue
+		}
+		if err != nil {
+			t.Fatalf("%q: unexpected error %v", tt.in, err)
+		}
+		if got != tt.want {
+			t.Fatalf("%q: got %q want %q", tt.in, got, tt.want)
+		}
+	}
+}
+
+func TestUpdateServerPublicHost(t *testing.T) {
+	m := &Manager{settings: Default(), path: ""}
+	if err := m.Update(map[string]interface{}{"server.public_host": "https://vpn.example.com:8443/x"}); err != nil {
+		t.Fatalf("Update: %v", err)
+	}
+	if got := m.Get().Server.PublicHost; got != "vpn.example.com" {
+		t.Fatalf("got %q", got)
+	}
+	if err := m.Update(map[string]interface{}{"server.public_host": "bad host!!"}); err == nil {
+		t.Fatalf("expected error for invalid host")
+	}
+}
+
 // TestSaveCreatesParentDir verifies that Save creates all intermediate
 // directories so a fresh-VPS first run (no pre-existing config file) can
 // persist the bootstrapped auth settings without crashing.

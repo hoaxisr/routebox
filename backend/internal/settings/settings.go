@@ -4,8 +4,11 @@ import (
 	"encoding/json"
 	"fmt"
 	"log"
+	"net"
+	"net/url"
 	"os"
 	"path/filepath"
+	"strings"
 	"sync"
 
 	"github.com/BurntSushi/toml"
@@ -84,7 +87,8 @@ type NetworkSettings struct {
 
 // ServerSettings holds panel operating-mode configuration.
 type ServerSettings struct {
-	Mode string `toml:"mode" json:"mode"` // "router" (default) | "vps"
+	Mode       string `toml:"mode" json:"mode"`               // "router" (default) | "vps"
+	PublicHost string `toml:"public_host" json:"public_host"` // domain or IP for client share-links; "" = unset
 }
 
 // SingboxSettings configures sing-box integration
@@ -163,7 +167,7 @@ func Default() Settings {
 			WsPingIntervalSec: 30,
 			WsPongTimeoutSec:  10,
 		},
-		Server:  ServerSettings{Mode: "router"},
+		Server:  ServerSettings{Mode: "router", PublicHost: ""},
 		Updates: UpdatesSettings{AutoCheck: true},
 	}
 }
@@ -351,6 +355,66 @@ func toInt(v interface{}) (int, bool) {
 	return 0, false
 }
 
+// sanitizePublicHost normalizes a user-entered public host for share links:
+// strips an optional scheme, path, query, and port, leaving a bare hostname or
+// IP literal. Empty input is allowed (clears the setting). A value that is
+// neither a valid hostname nor IP is rejected.
+func sanitizePublicHost(in string) (string, error) {
+	s := strings.TrimSpace(in)
+	if s == "" {
+		return "", nil
+	}
+	// Strip scheme by parsing as URL when a scheme is present.
+	if strings.Contains(s, "://") {
+		u, err := url.Parse(s)
+		if err != nil {
+			return "", fmt.Errorf("invalid host %q", in)
+		}
+		s = u.Host // host[:port]
+	}
+	// Strip a trailing path if any survived (no-scheme case e.g. "host/path").
+	if i := strings.IndexByte(s, '/'); i >= 0 {
+		s = s[:i]
+	}
+	// Strip a port if present (handles bracketed IPv6 too).
+	if h, _, err := net.SplitHostPort(s); err == nil {
+		s = h
+	} else {
+		// Not host:port — strip surrounding brackets for a bare IPv6 literal.
+		s = strings.TrimPrefix(strings.TrimSuffix(s, "]"), "[")
+	}
+	s = strings.TrimSpace(s)
+	if s == "" {
+		return "", fmt.Errorf("invalid host %q", in)
+	}
+	// Validate: either a parseable IP or a plausible hostname.
+	if net.ParseIP(s) != nil {
+		return s, nil
+	}
+	if !isPlausibleHostname(s) {
+		return "", fmt.Errorf("invalid host %q", in)
+	}
+	return s, nil
+}
+
+func isPlausibleHostname(s string) bool {
+	if len(s) > 253 {
+		return false
+	}
+	for _, label := range strings.Split(s, ".") {
+		if label == "" {
+			return false
+		}
+		for _, r := range label {
+			if !(r >= 'a' && r <= 'z') && !(r >= 'A' && r <= 'Z') &&
+				!(r >= '0' && r <= '9') && r != '-' {
+				return false
+			}
+		}
+	}
+	return true
+}
+
 // Update applies partial updates to settings (runtime-safe fields only)
 func (m *Manager) Update(updates map[string]interface{}) error {
 	m.mu.Lock()
@@ -450,6 +514,16 @@ func (m *Manager) Update(updates map[string]interface{}) error {
 				return fmt.Errorf("invalid server.mode %q (want router|vps)", value)
 			}
 			m.settings.Server.Mode = v
+		case "server.public_host":
+			v, ok := value.(string)
+			if !ok {
+				return fmt.Errorf("setting %s: value must be a string", key)
+			}
+			host, err := sanitizePublicHost(v)
+			if err != nil {
+				return fmt.Errorf("setting %s: %w", key, err)
+			}
+			m.settings.Server.PublicHost = host
 
 		// Advanced runtime settings
 		case "advanced.ws_ping_interval_sec":
