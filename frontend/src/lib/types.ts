@@ -849,6 +849,13 @@ export interface NetworkSettings {
 	read_timeout_sec: number;
 	write_timeout_sec: number;
 	compression_enabled: boolean;
+	// Panel TLS / embedded ACME (backend serializes these; whitelisted as network.*)
+	acme_enabled?: boolean;
+	acme_email?: string;
+	acme_staging?: boolean;
+	acme_cache_dir?: string;
+	tls_cert_path?: string;
+	tls_key_path?: string;
 }
 
 export interface SingboxSettings {

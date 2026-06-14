@@ -1,7 +1,7 @@
 <script lang="ts">
 	import { onMount } from 'svelte';
 	import { api } from '$lib/api/client';
-	import { notifications, speedUnit } from '$lib/stores';
+	import { notifications, speedUnit, refreshMode, panelMode } from '$lib/stores';
 	import type { RouteBoxSettings, SettingsResponse } from '$lib/types';
 	import { t } from 'svelte-i18n';
 	import { setLocale } from '$lib/i18n';
@@ -28,6 +28,7 @@
 			settings = response.settings;
 			// Ensure server object exists so the public_host input can bind.
 			if (!settings.server) settings.server = {};
+			if (!settings.server.mode) settings.server.mode = 'router';
 			settingsPath = response.settings_path;
 			geoipLoaded = response.geoip_loaded;
 			originalSettings = JSON.stringify(response.settings);
@@ -73,7 +74,18 @@
 			// Server settings (panel public host used for client share links)
 			updates['server.public_host'] = settings.server?.public_host ?? '';
 
+			// Server mode + panel-only network fields (backend whitelists these dotted keys)
+			updates['server.mode'] = settings.server?.mode ?? 'router';
+			updates['server.public_port'] = settings.server?.public_port ?? 0;
+			if (settings.network.acme_enabled !== undefined) updates['network.acme_enabled'] = settings.network.acme_enabled;
+			if (settings.network.acme_email !== undefined) updates['network.acme_email'] = settings.network.acme_email;
+			if (settings.network.acme_staging !== undefined) updates['network.acme_staging'] = settings.network.acme_staging;
+			if (settings.network.acme_cache_dir !== undefined) updates['network.acme_cache_dir'] = settings.network.acme_cache_dir;
+			if (settings.network.tls_cert_path !== undefined) updates['network.tls_cert_path'] = settings.network.tls_cert_path;
+			if (settings.network.tls_key_path !== undefined) updates['network.tls_key_path'] = settings.network.tls_key_path;
+
 			await api.updateSettings(updates);
+			await refreshMode();
 			originalSettings = JSON.stringify(settings);
 			// Update i18n locale if language changed
 			setLocale(settings.ui.language);
@@ -376,6 +388,18 @@
 						<h2 class="text-lg font-medium text-[var(--ctp-text)]">Server</h2>
 					</div>
 
+					<div class="mb-4">
+						<label class="block text-sm font-medium text-[var(--ctp-subtext1)] mb-1">{$t('settings.serverMode')}</label>
+						<select
+							bind:value={settings.server.mode}
+							class="w-full px-3 py-2 bg-[var(--ctp-surface0)] border border-[var(--ctp-surface2)] rounded-lg text-[var(--ctp-text)] focus:outline-none focus:ring-2 focus:ring-[var(--ctp-primary)]"
+						>
+							<option value="router">{$t('settings.serverModeRouter')}</option>
+							<option value="vps">{$t('settings.serverModeVps')}</option>
+						</select>
+						<p class="text-xs text-[var(--ctp-overlay0)] mt-1">{$t('settings.serverModeHint')}</p>
+					</div>
+
 					<div>
 						<label class="block text-sm font-medium text-[var(--ctp-subtext1)] mb-1">Public host</label>
 						<input
@@ -385,6 +409,96 @@
 							class="w-full px-3 py-2 bg-[var(--ctp-surface0)] border border-[var(--ctp-surface2)] rounded-lg text-[var(--ctp-text)] focus:outline-none focus:ring-2 focus:ring-[var(--ctp-primary)]"
 						/>
 						<p class="text-xs text-[var(--ctp-overlay0)] mt-1">Used to build client share links (hostname or IP clients connect to).</p>
+					</div>
+
+					{#if $panelMode}
+						<div class="mt-4">
+							<label class="block text-sm font-medium text-[var(--ctp-subtext1)] mb-1">{$t('settings.publicPort')}</label>
+							<input
+								type="number"
+								min="0"
+								max="65535"
+								bind:value={settings.server.public_port}
+								class="w-full px-3 py-2 bg-[var(--ctp-surface0)] border border-[var(--ctp-surface2)] rounded-lg text-[var(--ctp-text)] focus:outline-none focus:ring-2 focus:ring-[var(--ctp-primary)]"
+							/>
+							<p class="text-xs text-[var(--ctp-overlay0)] mt-1">{$t('settings.publicPortHint')}</p>
+						</div>
+					{/if}
+				</section>
+			{/if}
+
+			<!-- Panel TLS / ACME (panel mode only) -->
+			{#if $panelMode && settings}
+				<section class="bg-[var(--ctp-mantle)] rounded-lg p-5 border border-[var(--ctp-surface0)]">
+					<div class="flex items-center gap-3 mb-4">
+						<svg class="w-5 h-5 text-[var(--ctp-primary)]" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+							<path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 15v2m-6 4h12a2 2 0 002-2v-6a2 2 0 00-2-2H6a2 2 0 00-2 2v6a2 2 0 002 2zm10-10V7a4 4 0 00-8 0v4h8z" />
+						</svg>
+						<h2 class="text-lg font-medium text-[var(--ctp-text)]">{$t('settings.panelTls')}</h2>
+					</div>
+
+					<div class="space-y-4">
+						<label class="flex items-center gap-3 cursor-pointer">
+							<input
+								type="checkbox"
+								bind:checked={settings.network.acme_enabled}
+								class="w-4 h-4 rounded border-[var(--ctp-surface2)] text-[var(--ctp-primary)] focus:ring-[var(--ctp-primary)]"
+							/>
+							<span class="text-sm text-[var(--ctp-text)]">{$t('settings.acmeEnabled')}</span>
+						</label>
+
+						{#if settings.network.acme_enabled}
+							<div class="grid grid-cols-1 md:grid-cols-2 gap-4">
+								<div>
+									<label class="block text-sm font-medium text-[var(--ctp-subtext1)] mb-1">{$t('settings.acmeEmail')}</label>
+									<input
+										type="email"
+										bind:value={settings.network.acme_email}
+										placeholder="admin@example.com"
+										class="w-full px-3 py-2 bg-[var(--ctp-surface0)] border border-[var(--ctp-surface2)] rounded-lg text-[var(--ctp-text)] focus:outline-none focus:ring-2 focus:ring-[var(--ctp-primary)]"
+									/>
+								</div>
+								<div>
+									<label class="block text-sm font-medium text-[var(--ctp-subtext1)] mb-1">{$t('settings.acmeCacheDir')}</label>
+									<input
+										type="text"
+										bind:value={settings.network.acme_cache_dir}
+										placeholder="/etc/routebox/acme"
+										class="w-full px-3 py-2 bg-[var(--ctp-surface0)] border border-[var(--ctp-surface2)] rounded-lg text-[var(--ctp-text)] focus:outline-none focus:ring-2 focus:ring-[var(--ctp-primary)]"
+									/>
+								</div>
+								<label class="flex items-center gap-3 cursor-pointer md:col-span-2">
+									<input
+										type="checkbox"
+										bind:checked={settings.network.acme_staging}
+										class="w-4 h-4 rounded border-[var(--ctp-surface2)] text-[var(--ctp-primary)] focus:ring-[var(--ctp-primary)]"
+									/>
+									<span class="text-sm text-[var(--ctp-text)]">{$t('settings.acmeStaging')}</span>
+								</label>
+							</div>
+						{:else}
+							<div class="grid grid-cols-1 md:grid-cols-2 gap-4">
+								<div>
+									<label class="block text-sm font-medium text-[var(--ctp-subtext1)] mb-1">{$t('settings.tlsCertPath')}</label>
+									<input
+										type="text"
+										bind:value={settings.network.tls_cert_path}
+										placeholder="/etc/routebox/cert.pem"
+										class="w-full px-3 py-2 bg-[var(--ctp-surface0)] border border-[var(--ctp-surface2)] rounded-lg text-[var(--ctp-text)] focus:outline-none focus:ring-2 focus:ring-[var(--ctp-primary)]"
+									/>
+								</div>
+								<div>
+									<label class="block text-sm font-medium text-[var(--ctp-subtext1)] mb-1">{$t('settings.tlsKeyPath')}</label>
+									<input
+										type="text"
+										bind:value={settings.network.tls_key_path}
+										placeholder="/etc/routebox/key.pem"
+										class="w-full px-3 py-2 bg-[var(--ctp-surface0)] border border-[var(--ctp-surface2)] rounded-lg text-[var(--ctp-text)] focus:outline-none focus:ring-2 focus:ring-[var(--ctp-primary)]"
+									/>
+								</div>
+							</div>
+						{/if}
+						<p class="text-xs text-[var(--ctp-overlay0)]">{$t('settings.panelTlsHint')}</p>
 					</div>
 				</section>
 			{/if}
