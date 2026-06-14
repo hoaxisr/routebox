@@ -74,6 +74,22 @@ func (m *Manager) Reconcile(active map[string]interface{}) (bool, error) {
 		changed = true
 	}
 
+	// Auto-mint: any panel user still lacking a token gets one. Idempotent —
+	// users that already have a token are untouched (the guard is exactly
+	// Token==""), so a steady-state reconcile after Apply does NOT re-mint
+	// (which would invalidate live subscriptions). changed=true ONLY when a
+	// token is actually minted here.
+	for _, u := range m.byID {
+		if u.Token == "" {
+			tok, err := GenerateToken()
+			if err != nil {
+				return changed, err
+			}
+			u.Token = tok
+			changed = true
+		}
+	}
+
 	// Pass 2 (A1): drop vanished bindings; delete now-empty users.
 	for id, u := range m.byID {
 		kept := u.Bindings[:0]

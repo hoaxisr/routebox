@@ -162,8 +162,10 @@ func TestReconcileEmptyActiveClearsRegistry(t *testing.T) {
 
 func TestReconcilePreservesMultiBinding(t *testing.T) {
 	m := newStore(t)
+	// Token set so auto-mint stays a no-op; this test pins multi-binding
+	// preservation (changed=false), not token minting.
 	_ = m.Put(&PanelUser{
-		ID: "fixed", Name: "alice", Enabled: true,
+		ID: "fixed", Name: "alice", Enabled: true, Token: "tok-keep",
 		Bindings: []Binding{
 			{InboundTag: "vless-in", Credential: "u-1", Protocol: "vless", Name: "alice"},
 			{InboundTag: "hy2-in", Credential: "p-1", Protocol: "hysteria2", Name: "alice"},
@@ -415,5 +417,91 @@ func TestReconcileNaiveAndHysteria2(t *testing.T) {
 	}
 	if b := byCred["secret"]; b.Protocol != "hysteria2" || b.InboundTag != "h" {
 		t.Fatalf("hysteria2 binding wrong: %#v", b)
+	}
+}
+
+func cfgWithVless(uuid string) map[string]interface{} {
+	return map[string]interface{}{
+		"inbounds": []interface{}{
+			map[string]interface{}{
+				"type": "vless", "tag": "in", "listen_port": float64(443),
+				"users": []interface{}{
+					map[string]interface{}{"name": "alice", "uuid": uuid,
+						"flow": "xtls-rprx-vision"},
+				},
+			},
+		},
+	}
+}
+
+func TestReconcile_MintsTokenForNewUser(t *testing.T) {
+	m := NewManager("")
+	if _, err := m.Reconcile(cfgWithVless("u-1")); err != nil {
+		t.Fatal(err)
+	}
+	list := m.List()
+	if len(list) != 1 {
+		t.Fatalf("want 1 user, got %d", len(list))
+	}
+	if list[0].Token == "" {
+		t.Fatal("reconcile did not mint a token for the new user")
+	}
+}
+
+func TestReconcile_TokenMintIsIdempotent(t *testing.T) {
+	m := NewManager("")
+	if _, err := m.Reconcile(cfgWithVless("u-1")); err != nil {
+		t.Fatal(err)
+	}
+	tok := m.List()[0].Token
+	// Second reconcile against the SAME active must not change anything.
+	changed, err := m.Reconcile(cfgWithVless("u-1"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if changed {
+		t.Fatal("second identical reconcile reported changed=true (re-mint?)")
+	}
+	if got := m.List()[0].Token; got != tok {
+		t.Fatalf("token changed on re-reconcile: %q -> %q", tok, got)
+	}
+}
+
+func TestReconcile_A1RemovesUserAndToken(t *testing.T) {
+	m := NewManager("")
+	if _, err := m.Reconcile(cfgWithVless("u-1")); err != nil {
+		t.Fatal(err)
+	}
+	tok := m.List()[0].Token
+	// Credential vanishes from active → A1 deletes the user.
+	if _, err := m.Reconcile(map[string]interface{}{"inbounds": []interface{}{}}); err != nil {
+		t.Fatal(err)
+	}
+	if len(m.List()) != 0 {
+		t.Fatal("A1 did not delete the user whose credential vanished")
+	}
+	if _, ok := m.ByToken(tok); ok {
+		t.Fatal("A1 left the dead user's token reachable via ByToken")
+	}
+}
+
+func TestReconcile_MintsTokenForPreexistingEmptyToken(t *testing.T) {
+	m := NewManager("")
+	// Simulate a Phase-2 user (no token) already bound to active's credential.
+	if err := m.Put(&PanelUser{ID: "old", Name: "alice", Enabled: true,
+		Bindings: []Binding{{InboundTag: "in", Credential: "u-1", Protocol: "vless",
+			Name: "alice", Flow: "xtls-rprx-vision"}}}); err != nil {
+		t.Fatal(err)
+	}
+	changed, err := m.Reconcile(cfgWithVless("u-1"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !changed {
+		t.Fatal("reconcile should report changed=true when minting a missing token")
+	}
+	got, _ := m.Get("old")
+	if got.Token == "" {
+		t.Fatal("reconcile did not mint a token for the pre-existing tokenless user")
 	}
 }
