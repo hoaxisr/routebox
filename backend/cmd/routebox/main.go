@@ -20,6 +20,8 @@ import (
 	"github.com/go-chi/chi/v5"
 	"github.com/go-chi/chi/v5/middleware"
 	"github.com/go-chi/cors"
+	"golang.org/x/crypto/acme"
+	"golang.org/x/crypto/acme/autocert"
 
 	"routebox/backend/internal/api"
 	"routebox/backend/internal/auth"
@@ -582,18 +584,36 @@ func main() {
 		log.Printf("WARNING: RouteBox is listening on a non-loopback address (%s) with auth DISABLED — the panel is open to the network. Enable security.auth_enabled or run with --mode=vps.", resolvedListenAddr)
 	}
 
-	// Compute TLS usage
-	certPath := settingsMgr.Get().Network.TLSCertPath
-	keyPath := settingsMgr.Get().Network.TLSKeyPath
-	useTLS := certPath != "" && keyPath != ""
+	// Resolve TLS strategy (acme → manual → off). A misconfigured acme
+	// (enabled without a public_host) is fatal: we cannot issue a cert and
+	// would otherwise loop on issuance under systemd Restart=on-failure.
+	// cfg (captured before the VPS bootstrap, which mutates only [security])
+	// still holds the current Network/Server values.
+	tlsM, tlsErr := resolveTLSMode(cfg)
+	if tlsErr != nil {
+		log.Fatalf("TLS configuration: %v", tlsErr)
+	}
+	certPath := cfg.Network.TLSCertPath
+	keyPath := cfg.Network.TLSKeyPath
 	scheme := "http"
-	if useTLS {
-		scheme = "https"
+	tlsLabel := "off"
+	switch tlsM {
+	case tlsModeACME:
+		scheme, tlsLabel = "https", "acme"
+	case tlsModeManual:
+		scheme, tlsLabel = "https", "manual"
 	}
 
 	// Start server
 	fmt.Println()
-	fmt.Printf("RouteBox %s starting on %s://%s\n", Version, scheme, resolvedListenAddr)
+	fmt.Printf("RouteBox %s starting on %s://%s (TLS: %s)\n", Version, scheme, resolvedListenAddr, tlsLabel)
+	if cfg.Server.PublicHost != "" {
+		publicURL := scheme + "://" + cfg.Server.PublicHost
+		if cfg.Server.PublicPort != 0 && cfg.Server.PublicPort != 443 {
+			publicURL = fmt.Sprintf("%s:%d", publicURL, cfg.Server.PublicPort)
+		}
+		fmt.Printf("Public URL: %s\n", publicURL)
+	}
 	fmt.Printf("Config: %s\n", resolvedConfigPath)
 	if resolvedClashAddr != "" {
 		fmt.Printf("Clash API: %s\n", resolvedClashAddr)
@@ -619,14 +639,33 @@ func main() {
 
 	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
 
-	errCh := make(chan error, 1)
-	go func() {
-		if useTLS {
-			errCh <- srv.ListenAndServeTLS(certPath, keyPath)
-		} else {
-			errCh <- srv.ListenAndServe()
+	// errCh has TWO senders in acme mode (the :80 ACME-challenge listener
+	// goroutine and the TLS serve), so size the buffer to 2 to avoid leaking a
+	// blocked sender after the main select consumes the first error on shutdown.
+	errCh := make(chan error, 2)
+	switch tlsM {
+	case tlsModeACME:
+		domain := cfg.Server.PublicHost // guaranteed non-empty by resolveTLSMode
+		am := &autocert.Manager{
+			Prompt:     autocert.AcceptTOS,
+			HostPolicy: autocert.HostWhitelist(domain), // only our own domain (anti-abuse) — mandatory
+			Cache:      autocert.DirCache(cfg.Network.ACMECacheDir),
+			Email:      cfg.Network.ACMEEmail,
 		}
-	}()
+		if cfg.Network.ACMEStaging {
+			// LE staging directory: lax rate limits, untrusted (fake) chain. Dev/e2e only.
+			am.Client = &acme.Client{DirectoryURL: "https://acme-staging-v02.api.letsencrypt.org/directory"}
+		}
+		// HTTP-01 challenge listener on :80. TLS-ALPN-01 is impossible (LE would
+		// connect on :443 = vless+Reality). :80 must stay open for renewals too.
+		go func() { errCh <- http.ListenAndServe(":80", am.HTTPHandler(nil)) }()
+		srv.TLSConfig = am.TLSConfig()
+		go func() { errCh <- srv.ListenAndServeTLS("", "") }() // certs from autocert cache
+	case tlsModeManual:
+		go func() { errCh <- srv.ListenAndServeTLS(certPath, keyPath) }() // manual (Phase 1)
+	default:
+		go func() { errCh <- srv.ListenAndServe() }()
+	}
 
 	select {
 	case err := <-errCh:
