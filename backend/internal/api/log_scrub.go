@@ -1,7 +1,9 @@
 package api
 
 import (
+	"bufio"
 	"log"
+	"net"
 	"net/http"
 	"strings"
 	"time"
@@ -33,7 +35,10 @@ func scrubSubPath(path string) string {
 	if path == "/sub" || path == "/sub/" {
 		return path
 	}
-	if strings.HasPrefix(path, "/sub/") {
+	// Case-insensitive prefix match so a future StripSlashes/case-routing change
+	// can't leak the token. "/subscriptions/..." still does NOT match because its
+	// prefix is "/subscriptions/", not "/sub/".
+	if strings.HasPrefix(strings.ToLower(path), "/sub/") {
 		return "/sub/<redacted>"
 	}
 	return path
@@ -47,4 +52,21 @@ type statusRecorder struct {
 func (s *statusRecorder) WriteHeader(code int) {
 	s.status = code
 	s.ResponseWriter.WriteHeader(code)
+}
+
+// Hijack lets the wrapped writer support WebSocket upgrades when the underlying
+// ResponseWriter does (so this middleware can replace middleware.Logger at the
+// router root without breaking the Clash WS endpoints).
+func (s *statusRecorder) Hijack() (net.Conn, *bufio.ReadWriter, error) {
+	if hj, ok := s.ResponseWriter.(http.Hijacker); ok {
+		return hj.Hijack()
+	}
+	return nil, nil, http.ErrNotSupported
+}
+
+// Flush forwards to the underlying writer when it supports flushing (SSE).
+func (s *statusRecorder) Flush() {
+	if fl, ok := s.ResponseWriter.(http.Flusher); ok {
+		fl.Flush()
+	}
 }
