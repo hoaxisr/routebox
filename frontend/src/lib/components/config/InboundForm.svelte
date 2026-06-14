@@ -2,10 +2,12 @@
 	import { t } from 'svelte-i18n';
 	import type { Inbound } from '$lib/types';
 	import { notifications } from '$lib/stores';
+	import { serverMode } from '$lib/stores';
 	import ServerVlessInbound from './inbound/ServerVlessInbound.svelte';
 	import ServerNaiveInbound from './inbound/ServerNaiveInbound.svelte';
 	import ServerHysteria2Inbound from './inbound/ServerHysteria2Inbound.svelte';
 	import { buildServerInbound, parseServerInbound, type ServerFormState, type ServerInboundType } from '$lib/utils/serverInbound';
+	import { visibleInboundTypes } from '$lib/mode/routeModes';
 
 	interface Props {
 		inbound?: Inbound;
@@ -44,7 +46,10 @@
 
 	let errors = $state<Record<string, string>>({});
 
-	const inboundTypes = ['tun', 'mixed', 'socks', 'http', 'vless', 'naive', 'hysteria2'] as const;
+	// Type-picker options: filtered to the active mode, but ALWAYS including the
+	// type of the inbound being edited (edit-safety — a hand-edited cross-mode
+	// inbound must remain editable). Only the add-new choices are filtered.
+	let inboundTypes = $derived(visibleInboundTypes($serverMode, inbound?.type));
 	const serverTypes = ['vless', 'naive', 'hysteria2'] as const;
 	function isServerType(ty: string): ty is ServerInboundType {
 		return (serverTypes as readonly string[]).includes(ty);
@@ -70,7 +75,7 @@
 	// Switching server protocol clears users (credential fields differ per
 	// protocol) and normalizes the TLS mode (Reality is vless-only). serverState.type
 	// tracks which protocol the current users belong to.
-	function selectType(newType: (typeof inboundTypes)[number]) {
+	function selectType(newType: string) {
 		if (isServerType(newType)) {
 			if (serverState.type !== newType && serverState.users.length > 0) {
 				serverState.users = [];
