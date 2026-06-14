@@ -586,6 +586,9 @@ func TestRotateUserToken(t *testing.T) {
 	if _, ok := um.ByToken(old); ok {
 		t.Fatal("old token still valid after rotate")
 	}
+	if _, ok := um.ByToken(resp.Data.Token); !ok {
+		t.Fatal("new token should resolve")
+	}
 }
 
 func TestRevokeUserToken(t *testing.T) {
@@ -612,6 +615,18 @@ func TestRotateUserToken_UnknownID_404(t *testing.T) {
 	r := chi.NewRouter()
 	r.Post("/users/{id}/token/rotate", h.RotateUserToken)
 	req := httptest.NewRequest(http.MethodPost, "/users/nope/token/rotate", nil)
+	rec := httptest.NewRecorder()
+	r.ServeHTTP(rec, req)
+	if rec.Code != http.StatusNotFound {
+		t.Fatalf("status = %d, want 404", rec.Code)
+	}
+}
+
+func TestRevokeUserToken_UnknownID_404(t *testing.T) {
+	h, _, _ := newUsersTestHandler(t)
+	r := chi.NewRouter()
+	r.Delete("/users/{id}/token", h.RevokeUserToken)
+	req := httptest.NewRequest(http.MethodDelete, "/users/nope/token", nil)
 	rec := httptest.NewRecorder()
 	r.ServeHTTP(rec, req)
 	if rec.Code != http.StatusNotFound {

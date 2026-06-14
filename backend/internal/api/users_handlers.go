@@ -302,9 +302,15 @@ func (h *Handler) RotateUserToken(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	id := chi.URLParam(r, "id")
+	if _, ok := h.panelUsers.Get(id); !ok {
+		writeError(w, http.StatusNotFound, "user not found")
+		return
+	}
 	tok, err := h.panelUsers.RotateToken(id)
 	if err != nil {
-		writeError(w, http.StatusNotFound, "user not found")
+		// User exists (checked above): a non-nil error here is a save failure,
+		// a genuine server fault — not a missing user.
+		writeError(w, http.StatusInternalServerError, err.Error())
 		return
 	}
 	writeSuccess(w, map[string]string{"token": tok})
@@ -318,8 +324,14 @@ func (h *Handler) RevokeUserToken(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	id := chi.URLParam(r, "id")
-	if err := h.panelUsers.RevokeToken(id); err != nil {
+	if _, ok := h.panelUsers.Get(id); !ok {
 		writeError(w, http.StatusNotFound, "user not found")
+		return
+	}
+	if err := h.panelUsers.RevokeToken(id); err != nil {
+		// User exists (checked above): a non-nil error here is a save failure,
+		// a genuine server fault — not a missing user.
+		writeError(w, http.StatusInternalServerError, err.Error())
 		return
 	}
 	writeSuccess(w, map[string]string{"message": "token revoked"})
