@@ -19,7 +19,9 @@ import {
 	parseShadowsocks,
 	splitHostPort,
 	parseVless,
-	parseHysteria2
+	parseHysteria2,
+	parseTrojan,
+	parseConfig
 } from './parsers';
 
 describe('parseLines', () => {
@@ -450,5 +452,52 @@ describe('IPv6 bracket notation in link parsers', () => {
 		const r = parseNaive('naive+https://u:p@[2001:db8::1]:443#v6');
 		expect(r.success).toBe(true);
 		expect(r.config).toMatchObject({ server: '2001:db8::1', port: 443 });
+	});
+});
+
+describe('parseTrojan', () => {
+	it('parses a reality trojan link with ws transport + fp', () => {
+		const uri = 'trojan://pw-secret@vpn.ex.com:8443?security=reality&pbk=PBK&sid=0123abcd&sni=www.microsoft.com&fp=chrome&type=ws&path=%2Fp&host=cdn.ex.com#Phone';
+		const r = parseTrojan(uri);
+		expect(r.success).toBe(true);
+		const c = r.config as Extract<NonNullable<typeof r.config>, { type: 'trojan' }>;
+		expect(c.type).toBe('trojan');
+		expect(c.password).toBe('pw-secret');
+		expect(c.server).toBe('vpn.ex.com');
+		expect(c.port).toBe(8443);
+		expect(c.security).toBe('reality');
+		expect(c.pbk).toBe('PBK');
+		expect(c.sid).toBe('0123abcd');
+		expect(c.sni).toBe('www.microsoft.com');
+		expect(c.fingerprint).toBe('chrome');
+		expect(c.transport).toBe('ws');
+		expect(c.path).toBe('/p');
+		expect(c.host).toBe('cdn.ex.com');
+		expect(c.name).toBe('Phone');
+	});
+	it('parses plain tls + grpc', () => {
+		const c = parseTrojan('trojan://pw@s.com:443?security=tls&sni=a.com&fp=firefox&type=grpc&serviceName=gsvc#n').config as Extract<NonNullable<ReturnType<typeof parseTrojan>['config']>, { type: 'trojan' }>;
+		expect(c.security).toBe('tls');
+		expect(c.fingerprint).toBe('firefox');
+		expect(c.transport).toBe('grpc');
+		expect(c.serviceName).toBe('gsvc');
+	});
+	it('parses httpupgrade host', () => {
+		const c = parseTrojan('trojan://pw@s.com:443?type=httpupgrade&path=%2Fu&host=h.com#n').config as Extract<NonNullable<ReturnType<typeof parseTrojan>['config']>, { type: 'trojan' }>;
+		expect(c.transport).toBe('httpupgrade');
+		expect(c.path).toBe('/u');
+		expect(c.host).toBe('h.com');
+	});
+	it('decodes percent-encoded password', () => {
+		const c = parseTrojan('trojan://p%40ss@s.com:443#n').config as Extract<NonNullable<ReturnType<typeof parseTrojan>['config']>, { type: 'trojan' }>;
+		expect(c.password).toBe('p@ss');
+	});
+	it('rejects a non-trojan URI', () => {
+		expect(parseTrojan('vless://x@h:1').success).toBe(false);
+	});
+	it('parseConfig dispatches trojan://', () => {
+		const r = parseConfig('trojan://pw@h:443?security=tls&sni=h#n');
+		expect(r.success).toBe(true);
+		expect(r.config?.type).toBe('trojan');
 	});
 });

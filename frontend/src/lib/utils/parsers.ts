@@ -15,7 +15,28 @@ export interface ParsedVless {
 	fingerprint?: string;
 	alpn?: string[];
 	// Transport
-	transport?: 'tcp' | 'ws' | 'grpc' | 'http';
+	transport?: 'tcp' | 'ws' | 'grpc' | 'http' | 'httpupgrade';
+	path?: string;
+	host?: string;
+	serviceName?: string;
+	// Reality
+	pbk?: string;
+	sid?: string;
+}
+
+export interface ParsedTrojan {
+	type: 'trojan';
+	name: string;
+	server: string;
+	port: number;
+	password: string;
+	security?: string;
+	// TLS options
+	sni?: string;
+	fingerprint?: string;
+	alpn?: string[];
+	// Transport
+	transport?: 'tcp' | 'ws' | 'grpc' | 'http' | 'httpupgrade';
 	path?: string;
 	host?: string;
 	serviceName?: string;
@@ -91,7 +112,7 @@ export interface ParsedAWG {
 	i5?: string;
 }
 
-export type ParsedConfig = ParsedVless | ParsedHysteria2 | ParsedShadowsocks | ParsedNaive | ParsedAWG;
+export type ParsedConfig = ParsedVless | ParsedTrojan | ParsedHysteria2 | ParsedShadowsocks | ParsedNaive | ParsedAWG;
 
 export interface ParseResult {
 	success: boolean;
@@ -189,6 +210,48 @@ export function parseVless(uri: string): ParseResult {
 		return { success: true, config };
 	} catch (err) {
 		return { success: false, error: `Failed to parse VLESS URI: ${err}` };
+	}
+}
+
+/**
+ * Parse a trojan:// URI
+ * Format: trojan://password@server:port?params#name
+ */
+export function parseTrojan(uri: string): ParseResult {
+	try {
+		if (!uri.startsWith('trojan://')) {
+			return { success: false, error: 'Invalid Trojan URI: must start with trojan://' };
+		}
+		const content = uri.slice(9);
+		const [mainPart, ...nameParts] = content.split('#');
+		const name = nameParts.length > 0 ? decodeURIComponent(nameParts.join('#')) : 'Trojan';
+
+		const atIndex = mainPart.indexOf('@');
+		if (atIndex === -1) {
+			return { success: false, error: 'Invalid Trojan URI: missing @' };
+		}
+		const password = decodeURIComponent(mainPart.slice(0, atIndex));
+		const serverPart = mainPart.slice(atIndex + 1);
+		const [hostPort, queryString] = serverPart.split('?');
+		const hp = splitHostPort(hostPort);
+		if (!hp) {
+			return { success: false, error: 'Invalid Trojan URI: invalid host:port' };
+		}
+		const params = new URLSearchParams(queryString || '');
+		const config: ParsedTrojan = { type: 'trojan', name, server: hp.host, port: hp.port, password };
+		if (params.get('security')) config.security = params.get('security')!;
+		if (params.get('sni')) config.sni = params.get('sni')!;
+		if (params.get('fp')) config.fingerprint = params.get('fp')!;
+		if (params.get('alpn')) config.alpn = params.get('alpn')!.split(',');
+		if (params.get('type')) config.transport = params.get('type') as ParsedTrojan['transport'];
+		if (params.get('path')) config.path = decodeURIComponent(params.get('path')!);
+		if (params.get('host')) config.host = params.get('host')!;
+		if (params.get('serviceName')) config.serviceName = params.get('serviceName')!;
+		if (params.get('pbk')) config.pbk = params.get('pbk')!;
+		if (params.get('sid')) config.sid = params.get('sid')!;
+		return { success: true, config };
+	} catch (err) {
+		return { success: false, error: `Failed to parse Trojan URI: ${err}` };
 	}
 }
 
@@ -578,13 +641,17 @@ export function parseAWG(configText: string): ParseResult {
 
 /**
  * Auto-detect and parse a VPN configuration
- * Supports: vless://, hy2://, hysteria2://, and AWG config text
+ * Supports: vless://, trojan://, hy2://, hysteria2://, and AWG config text
  */
 export function parseConfig(input: string): ParseResult {
 	const trimmed = input.trim();
 
 	if (trimmed.startsWith('vless://')) {
 		return parseVless(trimmed);
+	}
+
+	if (trimmed.startsWith('trojan://')) {
+		return parseTrojan(trimmed);
 	}
 
 	if (trimmed.startsWith('hy2://') || trimmed.startsWith('hysteria2://')) {
@@ -606,7 +673,7 @@ export function parseConfig(input: string): ParseResult {
 
 	return {
 		success: false,
-		error: 'Unknown configuration format. Supported: vless://, hy2://, hysteria2://, ss://, naive+https://, naive+quic://, or AmneziaWG config'
+		error: 'Unknown configuration format. Supported: vless://, trojan://, hy2://, hysteria2://, ss://, naive+https://, naive+quic://, or AmneziaWG config'
 	};
 }
 
