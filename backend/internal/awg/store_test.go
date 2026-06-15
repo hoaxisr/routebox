@@ -97,3 +97,46 @@ func TestStoreNeverLogsSecrets(t *testing.T) {
 		t.Fatalf("secrets must never be logged:\n%s", buf.String())
 	}
 }
+
+// TestSecretsNotInConfigBackupDir is a regression guard: peers.toml / awg-rb0.conf
+// live under /etc/routebox/amneziawg, a DIFFERENT directory from config.json, so
+// config/manager.go's pruneBackups — which globs only "config.json.<ts>.bak" in
+// the config dir — can never reach them. We assert that a glob mimicking the prune
+// predicate over the config dir is disjoint from the awg secret files.
+func TestSecretsNotInConfigBackupDir(t *testing.T) {
+	root := t.TempDir()
+	configDir := filepath.Join(root, "etc", "routebox")
+	awgDir := filepath.Join(root, "etc", "routebox", "amneziawg")
+	for _, d := range []string{configDir, awgDir} {
+		if err := os.MkdirAll(d, 0o700); err != nil {
+			t.Fatal(err)
+		}
+	}
+	// A realistic backup cycle in the config dir + the awg secret files as siblings.
+	for _, f := range []string{"config.json", "config.json.bak", "config.json.1700000000.bak"} {
+		if err := os.WriteFile(filepath.Join(configDir, f), []byte("x"), 0o600); err != nil {
+			t.Fatal(err)
+		}
+	}
+	for _, f := range []string{"peers.toml", "awg-rb0.conf"} {
+		if err := os.WriteFile(filepath.Join(awgDir, f), []byte("SECRET"), 0o600); err != nil {
+			t.Fatal(err)
+		}
+	}
+	// pruneBackups globs "<configDir>/config.json.*.bak" — must never enumerate the
+	// awg secrets (they are in a sibling dir AND lack the config.json prefix).
+	matches, err := filepath.Glob(filepath.Join(configDir, "config.json.*.bak"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, m := range matches {
+		base := filepath.Base(m)
+		if base == "peers.toml" || base == "awg-rb0.conf" {
+			t.Fatalf("config backup glob captured an awg secret file: %s", m)
+		}
+	}
+	// And the awg dir itself is outside the config dir's glob scope.
+	if filepath.Dir(filepath.Join(awgDir, "peers.toml")) == configDir {
+		t.Fatal("awg secrets must NOT live in the config backup dir")
+	}
+}

@@ -27,6 +27,18 @@ type Settings struct {
 	Singbox    SingboxSettings    `toml:"singbox" json:"singbox"`
 	Advanced   AdvancedSettings   `toml:"advanced" json:"advanced"`
 	Updates    UpdatesSettings    `toml:"updates" json:"updates"`
+	Awg        AwgSettings        `toml:"awg" json:"awg"`
+}
+
+// AwgSettings configures the RouteBox-owned AmneziaWG server interface.
+type AwgSettings struct {
+	Enabled    bool     `toml:"enabled" json:"enabled"`
+	Interface  string   `toml:"interface" json:"interface"`
+	Subnet     string   `toml:"subnet" json:"subnet"`
+	ListenPort int      `toml:"listen_port" json:"listen_port"`
+	MTU        int      `toml:"mtu" json:"mtu"`
+	DNS        []string `toml:"dns" json:"dns"`
+	WANIface   string   `toml:"wan_iface" json:"wan_iface"`
 }
 
 // UpdatesSettings configures binary update checks
@@ -185,6 +197,7 @@ func Default() Settings {
 		},
 		Server:  ServerSettings{Mode: "router", PublicHost: "", PublicPort: 0},
 		Updates: UpdatesSettings{AutoCheck: true},
+		Awg:     AwgSettings{Enabled: false, Interface: "awg-rb0", Subnet: "10.10.0.0/24", ListenPort: 51820, MTU: 1420, DNS: []string{"1.1.1.1"}},
 	}
 }
 
@@ -651,6 +664,39 @@ func (m *Manager) Update(updates map[string]interface{}) error {
 				return fmt.Errorf("setting %s: %w", key, err)
 			}
 			m.settings.Singbox.V2RayAPI = v
+
+		// AmneziaWG runtime settings. awg.interface/awg.dns are set at enable time
+		// (validated by the awg orchestrator), not via the generic Update.
+		case "awg.enabled":
+			v, ok := value.(bool)
+			if !ok {
+				return fmt.Errorf("setting %s: value must be a boolean", key)
+			}
+			m.settings.Awg.Enabled = v
+		case "awg.subnet":
+			v, ok := value.(string)
+			if !ok {
+				return fmt.Errorf("setting %s: value must be a string", key)
+			}
+			m.settings.Awg.Subnet = v
+		case "awg.listen_port":
+			v, ok := toInt(value)
+			if !ok {
+				return fmt.Errorf("setting %s: value must be a whole number", key)
+			}
+			m.settings.Awg.ListenPort = v
+		case "awg.mtu":
+			v, ok := toInt(value)
+			if !ok {
+				return fmt.Errorf("setting %s: value must be a whole number", key)
+			}
+			m.settings.Awg.MTU = v
+		case "awg.wan_iface":
+			v, ok := value.(string)
+			if !ok {
+				return fmt.Errorf("setting %s: value must be a string", key)
+			}
+			m.settings.Awg.WANIface = v
 
 		default:
 			return fmt.Errorf("unknown or non-runtime setting: %s", key)

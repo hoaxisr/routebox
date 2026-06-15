@@ -2,6 +2,7 @@ package api
 
 import (
 	"routebox/backend/internal/auth"
+	"routebox/backend/internal/awg"
 	"routebox/backend/internal/clients"
 	"routebox/backend/internal/config"
 	"routebox/backend/internal/geoip"
@@ -31,6 +32,7 @@ type Handler struct {
 	verifier        *auth.CachedVerifier
 	panelUsers      *users.Manager
 	subLimiter      *auth.Limiter
+	awg             *awg.Manager
 
 	// v2rayAPISupported reports whether the running binary supports the
 	// experimental.v2ray_api block (with_v2ray_api build tag). Defaults to
@@ -80,6 +82,11 @@ func (h *Handler) SetSubscriptions(mgr *subscriptions.Manager, refresh func(subs
 // SetUsers wires the panel-user registry into the API.
 func (h *Handler) SetUsers(mgr *users.Manager) {
 	h.panelUsers = mgr
+}
+
+// SetAWG wires the AmneziaWG server-interface manager into the API.
+func (h *Handler) SetAWG(m *awg.Manager) {
+	h.awg = m
 }
 
 // SetSubLimiter wires the dedicated per-IP rate limiter for the public /sub

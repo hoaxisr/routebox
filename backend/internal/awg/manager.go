@@ -4,6 +4,7 @@ import (
 	"context"
 	"crypto/rand"
 	"fmt"
+	"net"
 	"net/netip"
 	"os"
 	"path/filepath"
@@ -55,6 +56,51 @@ type Manager struct {
 
 // ErrSubnetExhausted is returned by AddPeer when no /32 host remains free.
 var ErrSubnetExhausted = fmt.Errorf("subnet exhausted")
+
+// Config seeds a Manager's non-runtime fields (canonical values are otherwise
+// re-derived on Enable). publicHost is purely informational in Status; the
+// authoritative host for client .confs comes from the live settings at render
+// time, passed to RenderClientConf.
+type Config struct {
+	Iface      string
+	Subnet     string
+	ServerIP   string
+	ListenPort int
+	MTU        int
+	DNS        []string
+	WANIface   string
+	PublicHost string
+}
+
+// NewManager wires a production Manager: a Runner, the on-demand ModuleManager,
+// the secret Store under baseDir, and the server .conf path. baseDir holds both
+// the .conf and peers.toml (e.g. "/etc/routebox/amneziawg"). PSK temp files use
+// os.TempDir(); sysClassNet is the real /sys/class/net for WAN validation.
+func NewManager(run Runner, baseDir string, cfg Config) *Manager {
+	iface := cfg.Iface
+	if iface == "" {
+		iface = "awg-rb0"
+	}
+	return &Manager{
+		run:         run,
+		confPath:    filepath.Join(baseDir, iface+".conf"),
+		store:       NewStore(filepath.Join(baseDir, "peers.toml")),
+		iface:       iface,
+		pskTmpDir:   os.TempDir(),
+		subnet:      cfg.Subnet,
+		serverIP:    cfg.ServerIP,
+		listenPort:  cfg.ListenPort,
+		mtu:         cfg.MTU,
+		dns:         cfg.DNS,
+		wan:         cfg.WANIface,
+		publicHost:  cfg.PublicHost,
+		module:      NewModuleManager(run, ""),
+		sysClassNet: "/sys/class/net",
+	}
+}
+
+// Store exposes the secret store so the wiring layer can Load() it at startup.
+func (m *Manager) Store() *Store { return m.store }
 
 // AddPeer validates the name, allocates a /32 (from the on-disk .conf under the
 // mutex), applies the peer live, appends the [Peer] block, and persists the
@@ -116,8 +162,69 @@ func (m *Manager) AddPeer(ctx context.Context, rawName string) (PeerSummary, err
 	return PeerSummary{Name: name, PublicKey: pub, Address: allowedIP}, nil
 }
 
+// ListPeers returns secret-free summaries from the store (sorted by PublicKey via
+// the store's List). The PeerSummary type CANNOT serialise private/preshared keys.
+func (m *Manager) ListPeers() []PeerSummary {
+	out := []PeerSummary{}
+	for _, p := range m.store.List() {
+		out = append(out, PeerSummary{Name: p.Name, PublicKey: p.PublicKey, Address: p.Address})
+	}
+	return out
+}
+
+// PeerConfig reports whether a stored secret exists for pub (existence check the
+// handler runs BEFORE the public-host check, so a missing peer is a 404 not a 503).
+func (m *Manager) PeerConfig(pub string) (name string, ok bool) {
+	p, ok := m.store.Get(pub)
+	if !ok {
+		return "", false
+	}
+	return p.Name, true
+}
+
+// RenderClientConf builds the client .conf from the stored secret, the derived
+// server public key, and the configured obfuscation/DNS/MTU. host is the validated
+// public host; the Endpoint is assembled IPv6-safe (bare v6 host bracketed).
+func (m *Manager) RenderClientConf(pub, host string) (string, error) {
+	p, ok := m.store.Get(pub)
+	if !ok {
+		return "", fmt.Errorf("no such peer")
+	}
+	m.mu.Lock()
+	serverPriv, dns, mtu, obf, port := m.serverPriv, m.dns, m.mtu, m.obf, m.listenPort
+	m.mu.Unlock()
+	serverPub, err := PublicFromPrivate(serverPriv)
+	if err != nil {
+		return "", err
+	}
+	if len(dns) == 0 {
+		dns = []string{"1.1.1.1"}
+	}
+	return BuildClient(ClientConf{
+		PrivateKey: p.PrivateKey,
+		Address:    p.Address,
+		DNS:        dns,
+		MTU:        mtu,
+		Obf:        obf,
+		ServerPub:  serverPub,
+		Endpoint:   joinHostPort(host, port),
+		AllowedIPs: []string{"0.0.0.0/0"},
+		Keepalive:  25,
+		PSK:        p.PresharedKey,
+	})
+}
+
+// joinHostPort joins a host (domain or IP) and port, bracketing IPv6 literals so
+// BuildClient (which passes Endpoint verbatim) never emits a bare-v6 "host:port".
+func joinHostPort(host string, port int) string {
+	return net.JoinHostPort(host, strconv.Itoa(port))
+}
+
 // RemovePeer removes a peer live and from the on-disk .conf + secret store.
 func (m *Manager) RemovePeer(ctx context.Context, pub string) error {
+	if _, err := ValidatePublicKey(pub); err != nil {
+		return err
+	}
 	m.addMu.Lock()
 	defer m.addMu.Unlock()
 

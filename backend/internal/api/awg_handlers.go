@@ -1,0 +1,143 @@
+package api
+
+import (
+	"encoding/json"
+	"net/http"
+
+	"github.com/go-chi/chi/v5"
+
+	"routebox/backend/internal/awg"
+)
+
+// GetAWGStatus reports module + interface + peer status.
+func (h *Handler) GetAWGStatus(w http.ResponseWriter, r *http.Request) {
+	if h.awg == nil {
+		writeError(w, http.StatusServiceUnavailable, "awg not available")
+		return
+	}
+	writeSuccess(w, h.awg.Status(r.Context()))
+}
+
+// EnableAWG validates + starts the enable orchestrator; canonical values come
+// from the operator submission (Enable re-validates every field).
+func (h *Handler) EnableAWG(w http.ResponseWriter, r *http.Request) {
+	if h.awg == nil {
+		writeError(w, http.StatusServiceUnavailable, "awg not available")
+		return
+	}
+	var body awg.EnableInput
+	// Decode directly — package api has no decodeJSON helper; every sibling
+	// handler uses json.NewDecoder (see clients_handlers.go / auth_handlers.go).
+	if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
+		writeError(w, http.StatusBadRequest, "invalid body")
+		return
+	}
+	if err := h.awg.Enable(r.Context(), body); err != nil {
+		// Enable already validated every field; a validation error is a 400.
+		writeError(w, http.StatusBadRequest, err.Error())
+		return
+	}
+	writeSuccess(w, h.awg.Status(r.Context()))
+}
+
+// DisableAWG stops the interface (PostDown reverts NAT).
+func (h *Handler) DisableAWG(w http.ResponseWriter, r *http.Request) {
+	if h.awg == nil {
+		writeError(w, http.StatusServiceUnavailable, "awg not available")
+		return
+	}
+	if err := h.awg.Disable(r.Context()); err != nil {
+		writeError(w, http.StatusInternalServerError, "failed to disable")
+		return
+	}
+	writeSuccess(w, h.awg.Status(r.Context()))
+}
+
+// ListAWGPeers returns secret-free summaries (PeerSummary cannot serialise keys).
+func (h *Handler) ListAWGPeers(w http.ResponseWriter, r *http.Request) {
+	if h.awg == nil {
+		writeError(w, http.StatusServiceUnavailable, "awg not available")
+		return
+	}
+	writeSuccess(w, h.awg.ListPeers())
+}
+
+// CreateAWGPeer live-adds a peer and returns a secret-free summary.
+func (h *Handler) CreateAWGPeer(w http.ResponseWriter, r *http.Request) {
+	if h.awg == nil {
+		writeError(w, http.StatusServiceUnavailable, "awg not available")
+		return
+	}
+	var body struct {
+		Name string `json:"name"`
+	}
+	if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
+		writeError(w, http.StatusBadRequest, "invalid body")
+		return
+	}
+	sum, err := h.awg.AddPeer(r.Context(), body.Name)
+	if err == awg.ErrSubnetExhausted {
+		writeError(w, http.StatusConflict, "subnet exhausted")
+		return
+	}
+	if err != nil {
+		writeError(w, http.StatusInternalServerError, "failed to add peer")
+		return
+	}
+	writeSuccess(w, sum)
+}
+
+// DeleteAWGPeer validates the {publicKey} path param FIRST (exact std-base64 → 32
+// bytes, no FS use on a bad key), then live-removes the peer.
+func (h *Handler) DeleteAWGPeer(w http.ResponseWriter, r *http.Request) {
+	if h.awg == nil {
+		writeError(w, http.StatusServiceUnavailable, "awg not available")
+		return
+	}
+	pub, err := awg.ValidatePublicKey(chi.URLParam(r, "publicKey"))
+	if err != nil {
+		writeError(w, http.StatusBadRequest, "invalid public key")
+		return
+	}
+	if err := h.awg.RemovePeer(r.Context(), pub); err != nil {
+		writeError(w, http.StatusInternalServerError, "failed to remove peer")
+		return
+	}
+	w.WriteHeader(http.StatusNoContent)
+}
+
+// GetAWGPeerConfig serves the client .conf (text/plain). The {publicKey} path
+// param is validated FIRST (non-base64 → 400, no FS/traversal). Mirrors /sub
+// hardening: existence checked FIRST (404 before 503 when public_host is unset),
+// no err.Error() echo, Cache-Control: no-store, sanitised attachment filename.
+func (h *Handler) GetAWGPeerConfig(w http.ResponseWriter, r *http.Request) {
+	if h.awg == nil {
+		http.Error(w, "awg not available", http.StatusServiceUnavailable)
+		return
+	}
+	pub, err := awg.ValidatePublicKey(chi.URLParam(r, "publicKey"))
+	if err != nil {
+		writeError(w, http.StatusBadRequest, "invalid public key")
+		return
+	}
+	name, ok := h.awg.PeerConfig(pub) // existence first (404 before 503)
+	if !ok {
+		http.NotFound(w, r)
+		return
+	}
+	host := h.settings.Get().Server.PublicHost
+	if host == "" {
+		http.Error(w, "public host not configured", http.StatusServiceUnavailable)
+		return
+	}
+	body, err := h.awg.RenderClientConf(pub, host)
+	if err != nil {
+		http.Error(w, "config unavailable", http.StatusInternalServerError)
+		return
+	}
+	w.Header().Set("Content-Type", "text/plain; charset=utf-8")
+	w.Header().Set("Content-Disposition", "attachment; filename=\""+sanitizeFilename(name)+".conf\"")
+	w.Header().Set("Cache-Control", "no-store")
+	w.WriteHeader(http.StatusOK)
+	_, _ = w.Write([]byte(body))
+}

@@ -25,6 +25,7 @@ import (
 
 	"routebox/backend/internal/api"
 	"routebox/backend/internal/auth"
+	"routebox/backend/internal/awg"
 	"routebox/backend/internal/clients"
 	"routebox/backend/internal/config"
 	"routebox/backend/internal/embedded"
@@ -308,6 +309,24 @@ func main() {
 	apiHandler.SetSubscriptions(subsMgr, subsRefresh)
 	apiHandler.SetUsers(usersMgr)
 
+	// AmneziaWG server-interface manager: secrets + .conf live under
+	// /etc/routebox/amneziawg (a sibling of config.json, so config backup pruning
+	// can never glob them). Canonical interface values come from settings.awg.
+	awgSettings := settingsMgr.Get().Awg
+	awgMgr := awg.NewManager(awg.NewExecRunner(), "/etc/routebox/amneziawg", awg.Config{
+		Iface:      awgSettings.Interface,
+		Subnet:     awgSettings.Subnet,
+		ListenPort: awgSettings.ListenPort,
+		MTU:        awgSettings.MTU,
+		DNS:        awgSettings.DNS,
+		WANIface:   awgSettings.WANIface,
+		PublicHost: settingsMgr.Get().Server.PublicHost,
+	})
+	if err := awgMgr.Store().Load(); err != nil {
+		log.Printf("Warning: failed to load amneziawg peers.toml: %v", err)
+	}
+	apiHandler.SetAWG(awgMgr)
+
 	// Phase 4: warn (don't block) when pre-existing panel users share a name.
 	// auth_user matches by name, so duplicates over-block during lifecycle reject.
 	if dups := users.DuplicateNames(usersMgr.List()); len(dups) > 0 {
@@ -487,6 +506,19 @@ func main() {
 				r.Get("/{id}/traffic", apiHandler.GetUserTraffic)
 				r.Post("/{id}/token/rotate", apiHandler.RotateUserToken)
 				r.Delete("/{id}/token", apiHandler.RevokeUserToken)
+			})
+
+			// AmneziaWG server interface (vps mode). Inside the auth group: the
+			// SameSite=Strict cookie + AuthMiddleware is the CSRF defense for the
+			// mutating POST/DELETE routes.
+			r.Route("/awg", func(r chi.Router) {
+				r.Get("/status", apiHandler.GetAWGStatus)
+				r.Post("/enable", apiHandler.EnableAWG)
+				r.Post("/disable", apiHandler.DisableAWG)
+				r.Get("/peers", apiHandler.ListAWGPeers)
+				r.Post("/peers", apiHandler.CreateAWGPeer)
+				r.Delete("/peers/{publicKey}", apiHandler.DeleteAWGPeer)
+				r.Get("/peers/{publicKey}/config", apiHandler.GetAWGPeerConfig)
 			})
 
 			// Route Rules CRUD

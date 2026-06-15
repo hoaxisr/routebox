@@ -129,6 +129,13 @@ func (s *Store) Get(pk string) (Peer, bool) {
 	return *p, true
 }
 
+// List returns value copies of all stored peers sorted by PublicKey (lock-safe).
+func (s *Store) List() []Peer {
+	s.mu.RLock()
+	defer s.mu.RUnlock()
+	return s.listLocked()
+}
+
 // listLocked returns value copies of all stored peers sorted by PublicKey. Caller
 // holds s.mu.
 func (s *Store) listLocked() []Peer {
