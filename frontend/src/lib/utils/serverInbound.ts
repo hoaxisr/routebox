@@ -65,6 +65,16 @@ export function buildServerInbound(s: ServerFormState): Inbound {
 
 	ib.users = s.users.map((u) => ({ ...u }));
 
+	// Flow strip: xtls-rprx-vision requires raw TCP. ServerUsers sets flow
+	// unconditionally on new vless users, so this build-time delete is the real
+	// enforcement point (the binary will NOT catch the mismatch at check time).
+	if (s.type === 'vless' && s.transport && s.transport.type !== 'raw') {
+		ib.users = ib.users.map((u) => {
+			const { flow, ...rest } = u;
+			return rest;
+		});
+	}
+
 	// Transport (vless/trojan only). Host matrix: ws→headers.Host (NEVER a
 	// top-level host key — the binary rejects `unknown field "host"`),
 	// httpupgrade→top-level host string, grpc→service_name, raw→omit the block.

@@ -202,3 +202,27 @@ describe('parse∘build round-trip on transport', () => {
 		});
 	}
 });
+
+describe('buildServerInbound flow-strip (vless)', () => {
+	it('strips vision flow from every vless user when transport is non-raw', () => {
+		const ib = buildServerInbound({
+			...base,
+			users: [{ name: 'a', uuid: 'U1', flow: 'xtls-rprx-vision' }, { name: 'b', uuid: 'U2', flow: 'xtls-rprx-vision' }],
+			transport: { type: 'ws', path: '/', host: '' }
+		});
+		for (const u of ib.users!) expect((u as Record<string, unknown>).flow).toBeUndefined();
+	});
+	it('keeps vision flow when transport is raw', () => {
+		const ib = buildServerInbound({ ...base, transport: { type: 'raw' } });
+		expect((ib.users![0] as Record<string, unknown>).flow).toBe('xtls-rprx-vision');
+	});
+	it('trojan users never carry flow regardless of transport', () => {
+		const ib = buildServerInbound({
+			...base, type: 'trojan',
+			users: [{ name: 'a', password: 'pw' }],
+			transport: { type: 'ws', path: '/', host: 'c' }
+		});
+		expect((ib.users![0] as Record<string, unknown>).flow).toBeUndefined();
+		expect((ib.users![0] as Record<string, unknown>).password).toBe('pw');
+	});
+});
