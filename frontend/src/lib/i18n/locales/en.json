@@ -339,9 +339,12 @@
     "urltestDesc": "Auto-select fastest proxy",
     "vless": "VLESS",
     "vlessDesc": "VLESS proxy protocol",
+    "trojan": "Trojan",
+    "trojanDesc": "Trojan proxy protocol",
     "hysteria2": "Hysteria2",
     "hysteria2Desc": "Hysteria2 proxy protocol",
     "importFromVless": "Import from vless:// link",
+    "importFromTrojan": "Import from trojan:// link",
     "importFromHy2": "Import from hy2:// link",
     "uuid": "UUID",
     "flow": "Flow",
@@ -753,6 +756,7 @@
       "redirect": "Redirect",
       "tproxy": "TProxy",
       "vless": "VLESS",
+      "trojan": "Trojan",
       "naive": "NaiveProxy",
       "hysteria2": "Hysteria2"
     },
@@ -762,6 +766,7 @@
       "socks": "SOCKS5 proxy server",
       "http": "HTTP proxy server",
       "vless": "VLESS server (Reality/TLS)",
+      "trojan": "Trojan server (TLS/Reality)",
       "naive": "NaiveProxy server (HTTP/2 + TLS)",
       "hysteria2": "Hysteria2 server (QUIC)"
     },
@@ -829,7 +834,13 @@
       "upMbps": "Up (Mbps)",
       "downMbps": "Down (Mbps)",
       "obfsType": "Obfuscation",
-      "obfsPassword": "Obfs Password"
+      "obfsPassword": "Obfs Password",
+      "transport": "Transport",
+      "transports": { "raw": "Raw (TCP)", "ws": "WebSocket", "grpc": "gRPC", "httpupgrade": "HTTPUpgrade" },
+      "transportPath": "Path",
+      "transportHost": "Host",
+      "transportServiceName": "Service Name",
+      "visionRawOnly": "xtls-rprx-vision flow requires raw TCP; it is stripped on save for non-raw transports."
     },
     "inboundCreated": "Inbound created",
     "inboundUpdated": "Inbound updated",
