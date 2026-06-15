@@ -31,3 +31,60 @@ func TestIsEffectivelyActive(t *testing.T) {
 		})
 	}
 }
+
+func TestUserNames(t *testing.T) {
+	cases := []struct {
+		name string
+		u    PanelUser
+		want []string
+	}{
+		{"name only, no bindings", PanelUser{Name: "alice"}, []string{"alice"}},
+		{"blank name only", PanelUser{Name: ""}, nil},
+		{
+			"name + distinct binding names",
+			PanelUser{Name: "alice", Bindings: []Binding{{Name: "alice-vless"}, {Name: "alice-naive"}}},
+			[]string{"alice", "alice-vless", "alice-naive"},
+		},
+		{
+			"dedup own name vs binding name",
+			PanelUser{Name: "bob", Bindings: []Binding{{Name: "bob"}, {Name: "bob2"}}},
+			[]string{"bob", "bob2"},
+		},
+		{
+			"blank binding names skipped",
+			PanelUser{Name: "carol", Bindings: []Binding{{Name: ""}, {Name: "c2"}, {Name: ""}}},
+			[]string{"carol", "c2"},
+		},
+		{
+			"blank own name, binding names used",
+			PanelUser{Name: "", Bindings: []Binding{{Name: "x"}, {Name: "y"}}},
+			[]string{"x", "y"},
+		},
+		{
+			"all blank",
+			PanelUser{Name: "", Bindings: []Binding{{Name: ""}}},
+			nil,
+		},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			got := userNames(tc.u)
+			if !equalStrings(got, tc.want) {
+				t.Fatalf("userNames(%+v) = %#v, want %#v", tc.u, got, tc.want)
+			}
+		})
+	}
+}
+
+// equalStrings compares two string slices treating nil and empty as equal.
+func equalStrings(a, b []string) bool {
+	if len(a) != len(b) {
+		return false
+	}
+	for i := range a {
+		if a[i] != b[i] {
+			return false
+		}
+	}
+	return true
+}
