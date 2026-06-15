@@ -76,6 +76,105 @@ func TestUserNames(t *testing.T) {
 	}
 }
 
+func TestEffectiveRejectNames(t *testing.T) {
+	const now = int64(1000)
+	cases := []struct {
+		name string
+		list []PanelUser
+		want []string
+	}{
+		{"nil list", nil, nil},
+		{"empty list", []PanelUser{}, nil},
+		{
+			"all active -> empty",
+			[]PanelUser{
+				{Name: "a", Enabled: true},
+				{Name: "b", Enabled: true, ExpiresAt: now + 1},
+			},
+			nil,
+		},
+		{
+			"one disabled -> its names",
+			[]PanelUser{
+				{Name: "a", Enabled: true},
+				{Name: "b", Enabled: false},
+			},
+			[]string{"b"},
+		},
+		{
+			"one expired (past) -> its names",
+			[]PanelUser{
+				{Name: "a", Enabled: true},
+				{Name: "b", Enabled: true, ExpiresAt: now - 1},
+			},
+			[]string{"b"},
+		},
+		{
+			"boundary now==ExpiresAt -> expired, rejected",
+			[]PanelUser{{Name: "edge", Enabled: true, ExpiresAt: now}},
+			[]string{"edge"},
+		},
+		{
+			"multi-binding name union from one inactive user",
+			[]PanelUser{
+				{Name: "u", Enabled: false, Bindings: []Binding{{Name: "u-vless"}, {Name: "u-naive"}}},
+			},
+			[]string{"u", "u-naive", "u-vless"}, // SORTED
+		},
+		{
+			"dedup names across two inactive users sharing a name",
+			[]PanelUser{
+				{Name: "dup", Enabled: false},
+				{Name: "dup", Enabled: false, Bindings: []Binding{{Name: "extra"}}},
+			},
+			[]string{"dup", "extra"},
+		},
+		{
+			"blank names skipped",
+			[]PanelUser{
+				{Name: "", Enabled: false, Bindings: []Binding{{Name: ""}}},
+				{Name: "real", Enabled: false},
+			},
+			[]string{"real"},
+		},
+		{
+			"sorted output across multiple inactive users",
+			[]PanelUser{
+				{Name: "zoe", Enabled: false},
+				{Name: "amy", Enabled: false},
+				{Name: "mid", Enabled: false},
+			},
+			[]string{"amy", "mid", "zoe"},
+		},
+		{
+			"mixed active/inactive -> only inactive names",
+			[]PanelUser{
+				{Name: "keep1", Enabled: true},
+				{Name: "drop1", Enabled: false},
+				{Name: "keep2", Enabled: true, ExpiresAt: now + 100},
+				{Name: "drop2", Enabled: true, ExpiresAt: now - 100},
+			},
+			[]string{"drop1", "drop2"},
+		},
+		{
+			"active user with same name as inactive user -> name still rejected (over-block, by-name)",
+			[]PanelUser{
+				{Name: "shared", Enabled: true},
+				{Name: "shared", Enabled: false},
+			},
+			[]string{"shared"},
+		},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			got := EffectiveRejectNames(tc.list, now)
+			if !equalStrings(got, tc.want) {
+				t.Fatalf("EffectiveRejectNames = %#v, want %#v", got, tc.want)
+			}
+		})
+	}
+}
+
 // equalStrings compares two string slices treating nil and empty as equal.
 func equalStrings(a, b []string) bool {
 	if len(a) != len(b) {

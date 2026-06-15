@@ -1,5 +1,7 @@
 package users
 
+import "sort"
+
 // IsEffectivelyActive reports whether a user may currently connect: it is
 // enabled AND not past its expiry. ExpiresAt==0 means "never expires". Time is
 // unix seconds; at the exact boundary now==ExpiresAt the user is EXPIRED
@@ -26,5 +28,28 @@ func userNames(u PanelUser) []string {
 	for _, b := range u.Bindings {
 		add(b.Name)
 	}
+	return out
+}
+
+// EffectiveRejectNames returns the sorted, de-duplicated set of inbound user
+// names that must be rejected right now: the union of userNames(u) over every
+// user that is NOT effectively active. Empty (nil) slice => no reject rule
+// needed (every user active / no users). PURE.
+func EffectiveRejectNames(list []PanelUser, now int64) []string {
+	seen := map[string]bool{}
+	var out []string
+	for _, u := range list {
+		if IsEffectivelyActive(u, now) {
+			continue
+		}
+		for _, n := range userNames(u) {
+			if seen[n] {
+				continue
+			}
+			seen[n] = true
+			out = append(out, n)
+		}
+	}
+	sort.Strings(out)
 	return out
 }
