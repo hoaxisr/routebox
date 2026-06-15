@@ -4,6 +4,7 @@
 	import { notifications } from '$lib/stores';
 	import { serverMode } from '$lib/stores';
 	import ServerVlessInbound from './inbound/ServerVlessInbound.svelte';
+	import ServerTrojanInbound from './inbound/ServerTrojanInbound.svelte';
 	import ServerNaiveInbound from './inbound/ServerNaiveInbound.svelte';
 	import ServerHysteria2Inbound from './inbound/ServerHysteria2Inbound.svelte';
 	import { buildServerInbound, parseServerInbound, type ServerFormState, type ServerInboundType } from '$lib/utils/serverInbound';
@@ -50,7 +51,7 @@
 	// type of the inbound being edited (edit-safety — a hand-edited cross-mode
 	// inbound must remain editable). Only the add-new choices are filtered.
 	let inboundTypes = $derived(visibleInboundTypes($serverMode, inbound?.type));
-	const serverTypes = ['vless', 'naive', 'hysteria2'] as const;
+	const serverTypes = ['vless', 'trojan', 'naive', 'hysteria2'] as const;
 	function isServerType(ty: string): ty is ServerInboundType {
 		return (serverTypes as readonly string[]).includes(ty);
 	}
@@ -81,7 +82,7 @@
 			if (serverState.type !== newType && serverState.users.length > 0) {
 				serverState.users = [];
 			}
-			if (newType !== 'vless' && serverState.tlsMode === 'reality') {
+			if (newType !== 'vless' && newType !== 'trojan' && serverState.tlsMode === 'reality') {
 				serverState.tlsMode = 'acme';
 			}
 			serverState.type = newType;
@@ -114,6 +115,7 @@
 				if (type === 'vless' && !u.uuid?.trim()) { errors['userCred'] = $t('inbounds.server.needUserCred'); break; }
 				if (type === 'naive' && (!u.username?.trim() || !u.password?.trim())) { errors['userCred'] = $t('inbounds.server.needUserCred'); break; }
 				if (type === 'hysteria2' && !u.password?.trim()) { errors['userCred'] = $t('inbounds.server.needUserCred'); break; }
+				if (type === 'trojan' && !u.password?.trim()) { errors['userCred'] = $t('inbounds.server.needUserCred'); break; }
 			}
 			const keys = Object.keys(errors);
 			if (keys.length > 0) {
@@ -351,6 +353,8 @@
 
 	{#if type === 'vless'}
 		<ServerVlessInbound bind:state={serverState} />
+	{:else if type === 'trojan'}
+		<ServerTrojanInbound bind:state={serverState} />
 	{:else if type === 'naive'}
 		<ServerNaiveInbound bind:state={serverState} />
 	{:else if type === 'hysteria2'}
