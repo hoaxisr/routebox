@@ -396,7 +396,14 @@
 			ob.server = server.trim();
 			ob.server_port = serverPort;
 			ob.uuid = vlessUuid.trim();
-			if (vlessFlow) ob.flow = vlessFlow;
+			// Vision-flow strip: xtls-rprx-vision requires raw TCP. A non-raw
+			// transport (ws/grpc/http/httpupgrade) + vision passes amnezia-box
+			// `check` but breaks per-connection at runtime, so drop the flow here
+			// (mirrors the inbound build-time strip in serverInbound.ts).
+			const isRawTransport = vlessTransport.type === 'tcp';
+			if (vlessFlow && (vlessFlow !== 'xtls-rprx-vision' || isRawTransport)) {
+				ob.flow = vlessFlow;
+			}
 			if (vlessTls.enabled) {
 				ob.tls = {
 					enabled: true,
