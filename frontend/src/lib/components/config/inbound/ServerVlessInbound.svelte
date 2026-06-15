@@ -2,6 +2,7 @@
 	import { t } from 'svelte-i18n';
 	import ServerTlsConfig from './ServerTlsConfig.svelte';
 	import ServerUsers from './ServerUsers.svelte';
+	import TransportSection from './TransportSection.svelte';
 	import type { ServerFormState } from '$lib/utils/serverInbound';
 
 	interface Props {
@@ -39,4 +40,9 @@
 	/>
 
 	<ServerUsers bind:users={state.users} protocol="vless" />
+
+	<TransportSection bind:transport={state.transport} />
+	{#if state.transport.type !== 'raw'}
+		<p class="text-xs text-[var(--ctp-overlay0)]">{$t('inbounds.server.visionRawOnly')}</p>
+	{/if}
 </div>
