@@ -2,7 +2,7 @@
 	import type { Outbound, Endpoint, DnsServer, TLSConfig, TransportConfig, MultiplexConfig, ObfsConfig } from '$lib/types';
 	import { notifications } from '$lib/stores';
 	import { parsePortRanges, parseKeyValuePairs, formatKeyValuePairs } from '$lib/utils/parsers';
-	import type { ParsedVless, ParsedHysteria2, ParsedShadowsocks, ParsedNaive } from '$lib/utils/parsers';
+	import type { ParsedVless, ParsedTrojan, ParsedHysteria2, ParsedShadowsocks, ParsedNaive } from '$lib/utils/parsers';
 	import {
 		validateRequired,
 		validatePort,
@@ -15,6 +15,7 @@
 	// Sub-components
 	import SelectorForm from './outbound/SelectorForm.svelte';
 	import VlessForm from './outbound/VlessForm.svelte';
+	import TrojanForm from './outbound/TrojanForm.svelte';
 	import Hysteria2Form from './outbound/Hysteria2Form.svelte';
 	import ShadowsocksForm from './outbound/ShadowsocksForm.svelte';
 	import ShadowtlsForm from './outbound/ShadowtlsForm.svelte';
@@ -75,6 +76,31 @@
 	// We convert when building the outbound object
 	let vlessTransport = $state({
 		type: (outbound?.transport?.type ?? 'tcp') as 'tcp' | 'ws' | 'http' | 'grpc' | 'quic' | 'httpupgrade',
+		path: outbound?.transport?.path ?? '/',
+		host: outbound?.transport?.headers?.Host ?? (outbound?.transport?.host?.[0] ?? ''),
+		service_name: outbound?.transport?.service_name ?? ''
+	});
+
+	// Trojan state
+	let trojanPassword = $state(outbound?.type === 'trojan' ? (outbound?.password ?? '') : '');
+	let trojanTls = $state<TLSConfig>({
+		enabled: outbound?.type === 'trojan' ? (outbound?.tls?.enabled ?? true) : true,
+		server_name: outbound?.tls?.server_name ?? '',
+		insecure: outbound?.tls?.insecure ?? false,
+		alpn: outbound?.tls?.alpn ?? [],
+		utls: { enabled: true, fingerprint: outbound?.tls?.utls?.fingerprint ?? 'chrome' },
+		reality: {
+			enabled: outbound?.tls?.reality?.enabled ?? false,
+			public_key: outbound?.tls?.reality?.public_key ?? '',
+			short_id: outbound?.tls?.reality?.short_id ?? ''
+		}
+	});
+	let trojanTransport = $state({
+		type: (outbound?.type === 'trojan'
+			? (outbound?.transport?.type === 'ws' || outbound?.transport?.type === 'grpc' || outbound?.transport?.type === 'httpupgrade'
+				? outbound.transport.type
+				: 'tcp')
+			: 'tcp') as 'tcp' | 'ws' | 'grpc' | 'httpupgrade',
 		path: outbound?.transport?.path ?? '/',
 		host: outbound?.transport?.headers?.Host ?? (outbound?.transport?.host?.[0] ?? ''),
 		service_name: outbound?.transport?.service_name ?? ''
@@ -155,9 +181,11 @@
 	});
 
 	// Import handlers
-	function handleImport(config: ParsedVless | ParsedHysteria2 | ParsedShadowsocks | ParsedNaive) {
+	function handleImport(config: ParsedVless | ParsedTrojan | ParsedHysteria2 | ParsedShadowsocks | ParsedNaive) {
 		if (config.type === 'vless') {
 			applyVlessConfig(config);
+		} else if (config.type === 'trojan') {
+			applyTrojanConfig(config);
 		} else if (config.type === 'hy2') {
 			applyHysteria2Config(config);
 		} else if (config.type === 'ss') {
@@ -188,6 +216,31 @@
 		};
 		vlessTransport = {
 			type: (config.transport || 'tcp') as 'tcp' | 'ws' | 'http' | 'grpc' | 'quic' | 'httpupgrade',
+			path: config.path || '/',
+			host: config.host || '',
+			service_name: config.serviceName || ''
+		};
+	}
+
+	function applyTrojanConfig(config: ParsedTrojan) {
+		type = 'trojan';
+		tag = config.name.replace(/[^a-zA-Z0-9-_]/g, '-');
+		server = config.server;
+		serverPort = config.port;
+		trojanPassword = config.password;
+		trojanTls = {
+			enabled: config.security === 'tls' || config.security === 'reality',
+			server_name: config.sni || config.server,
+			alpn: config.alpn || [],
+			utls: { enabled: true, fingerprint: config.fingerprint || 'chrome' },
+			reality: {
+				enabled: config.security === 'reality',
+				public_key: config.pbk || '',
+				short_id: config.sid || ''
+			}
+		};
+		trojanTransport = {
+			type: (config.transport || 'tcp') as 'tcp' | 'ws' | 'grpc' | 'httpupgrade',
 			path: config.path || '/',
 			host: config.host || '',
 			service_name: config.serviceName || ''
@@ -249,7 +302,7 @@
 			if (!outboundsResult.valid) errors['outbounds'] = outboundsResult.error!;
 		}
 
-		const serverBasedTypes = ['vless', 'hysteria2', 'shadowsocks', 'shadowtls', 'anytls', 'naive'];
+		const serverBasedTypes = ['vless', 'trojan', 'hysteria2', 'shadowsocks', 'shadowtls', 'anytls', 'naive'];
 		if (serverBasedTypes.includes(type)) {
 			const serverResult = validateRequired(server, 'Server');
 			if (!serverResult.valid) errors['server'] = serverResult.error!;
@@ -262,6 +315,15 @@
 			if (!uuidResult.valid) errors['uuid'] = uuidResult.error!;
 			if (vlessTls.reality?.enabled) {
 				const pbkResult = validateRequired(vlessTls.reality.public_key || '', 'Reality public key');
+				if (!pbkResult.valid) errors['realityPublicKey'] = pbkResult.error!;
+			}
+		}
+
+		if (type === 'trojan') {
+			const pwResult = validateRequired(trojanPassword, 'Password');
+			if (!pwResult.valid) errors['password'] = pwResult.error!;
+			if (trojanTls.reality?.enabled) {
+				const pbkResult = validateRequired(trojanTls.reality.public_key || '', 'Reality public key');
 				if (!pbkResult.valid) errors['realityPublicKey'] = pbkResult.error!;
 			}
 		}
@@ -359,7 +421,40 @@
 					if (vlessTransport.host) {
 						ob.transport.host = [vlessTransport.host];
 					}
+				} else if (vlessTransport.type === 'httpupgrade') {
+					ob.transport = { type: 'httpupgrade', path: vlessTransport.path || '/' };
+					if (vlessTransport.host) {
+						(ob.transport as unknown as Record<string, unknown>).host = vlessTransport.host;
+					}
 				}
+			}
+		}
+
+		if (type === 'trojan') {
+			ob.server = server.trim();
+			ob.server_port = serverPort;
+			ob.password = trojanPassword.trim();
+			if (trojanTls.enabled) {
+				ob.tls = { enabled: true, server_name: trojanTls.server_name || server.trim() };
+				if (trojanTls.utls?.fingerprint) {
+					ob.tls.utls = { enabled: true, fingerprint: trojanTls.utls.fingerprint };
+				}
+				if (trojanTls.alpn && trojanTls.alpn.length > 0) {
+					ob.tls.alpn = trojanTls.alpn;
+				}
+				if (trojanTls.reality?.enabled) {
+					ob.tls.reality = { enabled: true, public_key: trojanTls.reality.public_key, short_id: trojanTls.reality.short_id || '' };
+				}
+			}
+			// Host matrix: ws→headers.Host, httpupgrade→top-level host string, grpc→service_name, raw(tcp)→omit.
+			if (trojanTransport.type === 'ws') {
+				ob.transport = { type: 'ws', path: trojanTransport.path || '/' };
+				if (trojanTransport.host) ob.transport.headers = { Host: trojanTransport.host };
+			} else if (trojanTransport.type === 'grpc') {
+				ob.transport = { type: 'grpc', service_name: trojanTransport.service_name || '' };
+			} else if (trojanTransport.type === 'httpupgrade') {
+				ob.transport = { type: 'httpupgrade', path: trojanTransport.path || '/' };
+				if (trojanTransport.host) (ob.transport as unknown as Record<string, unknown>).host = trojanTransport.host;
 			}
 		}
 
@@ -459,7 +554,7 @@
 		}
 
 		// Add domain_resolver for server-based outbounds
-		const serverBasedTypes = ['vless', 'hysteria2', 'shadowsocks', 'shadowtls', 'anytls', 'naive'];
+		const serverBasedTypes = ['vless', 'trojan', 'hysteria2', 'shadowsocks', 'shadowtls', 'anytls', 'naive'];
 		if (serverBasedTypes.includes(type) && domainResolver.trim()) {
 			ob.domain_resolver = domainResolver.trim();
 		}
@@ -473,6 +568,7 @@
 		{ value: 'selector', labelKey: 'outbounds.types.selector', descKey: 'outbounds.selectorDesc' },
 		{ value: 'urltest', labelKey: 'outbounds.types.urltest', descKey: 'outbounds.urltestDesc' },
 		{ value: 'vless', labelKey: 'outbounds.vless', descKey: 'outbounds.vlessDesc' },
+		{ value: 'trojan', labelKey: 'outbounds.trojan', descKey: 'outbounds.trojanDesc' },
 		{ value: 'hysteria2', labelKey: 'outbounds.hysteria2', descKey: 'outbounds.hysteria2Desc' },
 		{ value: 'shadowsocks', labelKey: 'outbounds.shadowsocks', descKey: 'outbounds.shadowsocksDesc' },
 		{ value: 'shadowtls', labelKey: 'outbounds.shadowtls', descKey: 'outbounds.shadowtlsDesc' },
@@ -538,6 +634,21 @@
 			bind:flow={vlessFlow}
 			bind:tls={vlessTls}
 			bind:transport={vlessTransport}
+			bind:domainResolver
+			{dnsServers}
+			{hasDefaultResolver}
+			{errors}
+			onImport={() => showImport = true}
+		/>
+	{/if}
+
+	{#if type === 'trojan'}
+		<TrojanForm
+			bind:server
+			bind:serverPort
+			bind:password={trojanPassword}
+			bind:tls={trojanTls}
+			bind:transport={trojanTransport}
 			bind:domainResolver
 			{dnsServers}
 			{hasDefaultResolver}
@@ -669,7 +780,7 @@
 <!-- Import Modal -->
 {#if showImport}
 	<ImportModal
-		protocol={type as 'vless' | 'hysteria2' | 'shadowsocks' | 'naive'}
+		protocol={type as 'vless' | 'trojan' | 'hysteria2' | 'shadowsocks' | 'naive'}
 		onImport={handleImport}
 		onClose={() => showImport = false}
 	/>
