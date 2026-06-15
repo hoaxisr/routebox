@@ -4,8 +4,8 @@ import "reflect"
 
 // buildRejectRule returns the RouteBox-managed route rule that rejects the given
 // inbound user names: {"auth_user": names, "action": "reject"}. Returns nil when
-// names is empty (caller removes the rule). users is []interface{} to match the
-// JSON-decoded config shape. names are copied into a fresh slice so the caller
+// names is empty (caller removes the rule). auth_user is []interface{} to match
+// the JSON-decoded config shape. names are copied into a fresh slice so the caller
 // cannot alias the rule's backing array. Caller passes already-sorted/deduped
 // names. PURE.
 func buildRejectRule(names []string) map[string]interface{} {
