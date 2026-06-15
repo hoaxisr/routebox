@@ -43,7 +43,7 @@ func TestValidateWANIface(t *testing.T) {
 	if _, err := ValidateWANIface("ens3", dir); err != nil {
 		t.Fatalf("real iface ens3: %v", err)
 	}
-	for _, bad := range []string{"ens3; rm -rf /", "eth0", "a/../b", "thisnameiswaytoolong"} {
+	for _, bad := range []string{"ens3; rm -rf /", "eth0", "a/../b", "thisnameiswaytoolong", "-eth0"} {
 		if _, err := ValidateWANIface(bad, dir); err == nil {
 			t.Errorf("ValidateWANIface(%q): want error", bad)
 		}
@@ -82,7 +82,10 @@ func TestValidateObfuscation(t *testing.T) {
 	if _, err := ValidateHField("124410148-526234659"); err != nil {
 		t.Fatalf("valid H range: %v", err)
 	}
-	for _, bad := range []string{"1; rm", "$(x)", "abc", ""} {
+	if _, err := ValidateHField("12"); err != nil {
+		t.Fatalf("valid H single: %v", err)
+	}
+	for _, bad := range []string{"1; rm", "$(x)", "abc", "", "-", "--", "1-", "-1", "1-2-3"} {
 		if _, err := ValidateHField(bad); err == nil {
 			t.Errorf("ValidateHField(%q): want error", bad)
 		}

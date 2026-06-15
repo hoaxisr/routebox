@@ -13,8 +13,8 @@ import (
 )
 
 var (
-	ifaceRe  = regexp.MustCompile(`^[a-z0-9._-]{1,15}$`) // Linux IFNAMSIZ-1
-	hFieldRe = regexp.MustCompile(`^[0-9-]+$`)           // digits + range hyphen
+	ifaceRe  = regexp.MustCompile(`^[a-z0-9][a-z0-9._-]{0,14}$`) // Linux IFNAMSIZ-1, no leading dash/dot/_
+	hFieldRe = regexp.MustCompile(`^[0-9]+(-[0-9]+)?$`)          // single int or lo-hi range
 )
 
 // ValidateSubnet parses an IPv4 CIDR and returns its CANONICAL network form
