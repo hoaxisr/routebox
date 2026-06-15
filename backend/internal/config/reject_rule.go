@@ -19,3 +19,19 @@ func buildRejectRule(names []string) map[string]interface{} {
 		"action":    "reject",
 	}
 }
+
+// managedRejectRule reports whether a route rule is RouteBox's managed reject
+// rule: action=="reject", a NON-EMPTY auth_user list, and EXACTLY those two keys
+// (no other match keys). sing-box rejects unknown fields, so a structural marker
+// is the only reliable identity — any extra key means it is a user-authored rule
+// RouteBox must not touch.
+func managedRejectRule(rule map[string]interface{}) bool {
+	if len(rule) != 2 {
+		return false
+	}
+	if action, _ := rule["action"].(string); action != "reject" {
+		return false
+	}
+	au, ok := rule["auth_user"].([]interface{})
+	return ok && len(au) > 0
+}
