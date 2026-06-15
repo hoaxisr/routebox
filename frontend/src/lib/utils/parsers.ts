@@ -739,8 +739,42 @@ export function toSingboxConfig(parsed: ParsedConfig): { endpoint?: Endpoint; ou
 					path: parsed.path || '/',
 					host: parsed.host ? [parsed.host] : undefined,
 				};
+			} else if (parsed.transport === 'httpupgrade') {
+				outbound.transport = {
+					type: 'httpupgrade',
+					path: parsed.path || '/',
+					host: parsed.host || undefined,
+				};
 			}
 
+			return { outbound: outbound as unknown as OutboundTyped, outboundTag: outbound.tag as string };
+		}
+
+		case 'trojan': {
+			const outbound: Record<string, unknown> = {
+				type: 'trojan',
+				tag: parsed.name.replace(/[^a-zA-Z0-9-_]/g, '-'),
+				server: parsed.server,
+				server_port: parsed.port,
+				password: parsed.password,
+			};
+			if (parsed.security === 'tls' || parsed.security === 'reality') {
+				const tls: Record<string, unknown> = { enabled: true, server_name: parsed.sni || parsed.server };
+				if (parsed.fingerprint) tls.utls = { enabled: true, fingerprint: parsed.fingerprint };
+				if (parsed.alpn) tls.alpn = parsed.alpn;
+				if (parsed.security === 'reality' && parsed.pbk) {
+					tls.reality = { enabled: true, public_key: parsed.pbk, short_id: parsed.sid || '' };
+				}
+				outbound.tls = tls;
+			}
+			// Host matrix: ws→headers.Host, httpupgrade→top-level host, grpc→service_name.
+			if (parsed.transport === 'ws') {
+				outbound.transport = { type: 'ws', path: parsed.path || '/', headers: parsed.host ? { Host: parsed.host } : undefined };
+			} else if (parsed.transport === 'httpupgrade') {
+				outbound.transport = { type: 'httpupgrade', path: parsed.path || '/', host: parsed.host || undefined };
+			} else if (parsed.transport === 'grpc') {
+				outbound.transport = { type: 'grpc', service_name: parsed.serviceName || '' };
+			}
 			return { outbound: outbound as unknown as OutboundTyped, outboundTag: outbound.tag as string };
 		}
 

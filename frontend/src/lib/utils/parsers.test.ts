@@ -21,7 +21,8 @@ import {
 	parseVless,
 	parseHysteria2,
 	parseTrojan,
-	parseConfig
+	parseConfig,
+	toSingboxConfig
 } from './parsers';
 
 describe('parseLines', () => {
@@ -499,5 +500,35 @@ describe('parseTrojan', () => {
 		const r = parseConfig('trojan://pw@h:443?security=tls&sni=h#n');
 		expect(r.success).toBe(true);
 		expect(r.config?.type).toBe('trojan');
+	});
+});
+
+describe('toSingboxConfig host-matrix', () => {
+	it('vless httpupgrade emits top-level host string', () => {
+		const { outbound } = toSingboxConfig({ type: 'vless', name: 'n', server: 's', port: 443, uuid: 'u',
+			security: 'tls', sni: 's', transport: 'httpupgrade', path: '/hu', host: 'cdn.example.com' } as never);
+		expect((outbound as unknown as Record<string, unknown>).transport).toEqual({ type: 'httpupgrade', path: '/hu', host: 'cdn.example.com' });
+	});
+	it('vless ws still emits headers.Host (regression guard)', () => {
+		const { outbound } = toSingboxConfig({ type: 'vless', name: 'n', server: 's', port: 443, uuid: 'u',
+			security: 'tls', sni: 's', transport: 'ws', path: '/p', host: 'c.com' } as never);
+		expect((outbound as unknown as Record<string, unknown>).transport).toEqual({ type: 'ws', path: '/p', headers: { Host: 'c.com' } });
+	});
+	it('trojan reality + ws → headers.Host + utls.fingerprint + reality block', () => {
+		const { outbound } = toSingboxConfig({ type: 'trojan', name: 'n', server: 's', port: 8443, password: 'pw',
+			security: 'reality', pbk: 'K', sid: 's1', sni: 'sni.example', fingerprint: 'chrome',
+			transport: 'ws', path: '/ws', host: 'cdn.example.com' } as never);
+		const ob = outbound as Record<string, any>;
+		expect(ob.type).toBe('trojan');
+		expect(ob.password).toBe('pw');
+		expect(ob.tls.server_name).toBe('sni.example');
+		expect(ob.tls.utls).toEqual({ enabled: true, fingerprint: 'chrome' });
+		expect(ob.tls.reality).toEqual({ enabled: true, public_key: 'K', short_id: 's1' });
+		expect(ob.transport).toEqual({ type: 'ws', path: '/ws', headers: { Host: 'cdn.example.com' } });
+	});
+	it('trojan httpupgrade → top-level host string', () => {
+		const { outbound } = toSingboxConfig({ type: 'trojan', name: 'n', server: 's', port: 8443, password: 'pw',
+			security: 'tls', sni: 's', transport: 'httpupgrade', path: '/hu', host: 'cdn.example.com' } as never);
+		expect((outbound as unknown as Record<string, unknown>).transport).toEqual({ type: 'httpupgrade', path: '/hu', host: 'cdn.example.com' });
 	});
 });
