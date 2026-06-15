@@ -1,5 +1,7 @@
 package config
 
+import "reflect"
+
 // buildRejectRule returns the RouteBox-managed route rule that rejects the given
 // inbound user names: {"auth_user": names, "action": "reject"}. Returns nil when
 // names is empty (caller removes the rule). users is []interface{} to match the
@@ -34,4 +36,83 @@ func managedRejectRule(rule map[string]interface{}) bool {
 	}
 	au, ok := rule["auth_user"].([]interface{})
 	return ok && len(au) > 0
+}
+
+// SyncRejectRuleActive idempotently reconciles RouteBox's managed reject rule in
+// the ACTIVE config to `names` (already sorted/deduped by the caller), persisting
+// to disk only on change. It is the twin of SyncV2RayAPI: deep-COPY active,
+// mutate the copy, saveLocked (which assigns m.activeConfig ONLY on success).
+//
+// It returns (false, nil) — a deferral / no-op — when:
+//   - the manager is read-only or has no path (additivity), OR
+//   - a draft is pending (m.hasDraft): never write active mid-edit; the pending
+//     Apply will recompute and write the rule itself.
+//
+// The managed rule is PREPENDED at route.rules[0] so reject wins over any later
+// allow rule. Empty names removes the managed rule (and drops route.rules /
+// route if they become empty, mirroring SyncV2RayAPI's experimental cleanup).
+func (m *Manager) SyncRejectRuleActive(names []string) (changed bool, err error) {
+	want := buildRejectRule(names)
+
+	m.mu.Lock()
+	defer m.mu.Unlock()
+
+	if m.readOnly || m.path == "" {
+		return false, nil // additivity: read-only / unconfigured => never write
+	}
+	if m.hasDraft {
+		return false, nil // defer: pending Apply recomputes
+	}
+
+	cfg := m.deepCopy(m.activeConfig)
+	route, _ := cfg["route"].(map[string]interface{})
+	var oldRules []interface{}
+	if route != nil {
+		oldRules, _ = route["rules"].([]interface{})
+	}
+
+	// Rebuild rules without any managed reject rule.
+	newRules := make([]interface{}, 0, len(oldRules)+1)
+	for _, r := range oldRules {
+		if rm, ok := r.(map[string]interface{}); ok && managedRejectRule(rm) {
+			continue
+		}
+		newRules = append(newRules, r)
+	}
+	// Prepend the new managed rule (if any).
+	if want != nil {
+		newRules = append([]interface{}{want}, newRules...)
+	}
+	// Normalize empty -> nil so a no-op against an absent/nil rules slice compares
+	// equal (reflect.DeepEqual distinguishes nil from a non-nil empty slice).
+	if len(newRules) == 0 {
+		newRules = nil
+	}
+
+	// No structural change vs. the original rules slice -> no-op.
+	if reflect.DeepEqual(oldRules, newRules) {
+		return false, nil
+	}
+
+	if len(newRules) == 0 {
+		// Rules became empty: drop route.rules, and route if it is now empty
+		// (twin of SyncV2RayAPI dropping an empty experimental).
+		if route != nil {
+			delete(route, "rules")
+			if len(route) == 0 {
+				delete(cfg, "route")
+			}
+		}
+	} else {
+		if route == nil {
+			route = map[string]interface{}{}
+			cfg["route"] = route
+		}
+		route["rules"] = newRules
+	}
+
+	if err := m.saveLocked(cfg); err != nil {
+		return true, err // disk write failed; activeConfig left untouched by saveLocked
+	}
+	return true, nil
 }
