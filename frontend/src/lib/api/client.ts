@@ -1,4 +1,4 @@
-import type { ApiResponse, ProcessStatus, DetectedConfig, SingboxConfig, Endpoint, Outbound, Inbound, RuleSet, RuleSetUsage, RouteRule, RouteSettings, DnsServer, DnsRule, DnsSettings, LogSettings, ExperimentalSettings, ConnectionsResponse, ProxiesResponse, ClashProxy, TestRouteResponse, ConnectTestResponse, SettingsResponse, RouteBoxSettings, SingBoxVersion, DomainSetInfo, RuleSetSource, ClientEntry, TrafficHistoryResponse, TrafficRange, UpdatesStatus, UpdateProgress, UpdateTargetName, Subscription, SubscriptionInput, PanelUser, UserTrafficResponse } from '$lib/types';
+import type { ApiResponse, ProcessStatus, DetectedConfig, SingboxConfig, Endpoint, Outbound, Inbound, RuleSet, RuleSetUsage, RouteRule, RouteSettings, DnsServer, DnsRule, DnsSettings, LogSettings, ExperimentalSettings, ConnectionsResponse, ProxiesResponse, ClashProxy, TestRouteResponse, ConnectTestResponse, SettingsResponse, RouteBoxSettings, SingBoxVersion, DomainSetInfo, RuleSetSource, ClientEntry, TrafficHistoryResponse, TrafficRange, UpdatesStatus, UpdateProgress, UpdateTargetName, Subscription, SubscriptionInput, PanelUser, UserTrafficResponse, AwgStatus, AwgPeer, AwgEnableInput } from '$lib/types';
 
 const API_BASE = '/api';
 
@@ -74,6 +74,19 @@ async function requestRaw<T>(path: string, options: RequestInit = {}): Promise<T
 	}
 
 	return JSON.parse(text);
+}
+
+// Raw text/plain GET (e.g. an AmneziaWG client .conf). Neither request<T> nor
+// requestRaw<T> works — both assume a JSON body.
+async function requestText(path: string): Promise<string> {
+	const response = await fetch(`${API_BASE}${path}`);
+	if (!response.ok) {
+		if (response.status === 401 && typeof window !== 'undefined' && !window.location.pathname.startsWith('/login')) {
+			window.location.href = '/login';
+		}
+		throw new Error(`HTTP ${response.status}`);
+	}
+	return response.text();
 }
 
 export const api = {
@@ -225,6 +238,18 @@ export const api = {
 			method: 'PATCH',
 			body: JSON.stringify(body)
 		}),
+
+	// AmneziaWG server inbound (panel/vps mode)
+	awgStatus: () => request<AwgStatus>('/awg/status'),
+	awgEnable: (body: AwgEnableInput) =>
+		request<AwgStatus>('/awg/enable', { method: 'POST', body: JSON.stringify(body) }),
+	awgDisable: () => request<AwgStatus>('/awg/disable', { method: 'POST' }),
+	getAwgPeers: () => request<AwgPeer[]>('/awg/peers'),
+	createAwgPeer: (name: string) =>
+		request<AwgPeer>('/awg/peers', { method: 'POST', body: JSON.stringify({ name }) }),
+	deleteAwgPeer: (pk: string) =>
+		requestRaw<void>(`/awg/peers/${encodeURIComponent(pk)}`, { method: 'DELETE' }),
+	getAwgPeerConfig: (pk: string) => requestText(`/awg/peers/${encodeURIComponent(pk)}/config`),
 
 	// Rule Sets CRUD
 	listRuleSets: () => request<RuleSet[]>('/route/rule-sets'),

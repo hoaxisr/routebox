@@ -40,6 +40,7 @@ export const SECTIONS: Section[] = [
 
 	// Panel-only
 	{ path: '/config/users', modes: PANEL_ONLY },
+	{ path: '/config/awg', modes: PANEL_ONLY },
 	{ path: '/monitor/users', modes: PANEL_ONLY },
 
 	// Router-only

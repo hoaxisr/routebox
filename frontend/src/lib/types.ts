@@ -966,3 +966,29 @@ export interface ConnectTestResponse {
 		reason?: string;
 	};
 }
+
+// AmneziaWG server inbound (panel/vps mode)
+export interface AwgStatus {
+	module: string;
+	enabled: boolean;
+	iface_up: boolean;
+	listen_port: number;
+	public_host: string;
+	peer_count: number;
+	wan_iface: string;
+	nat_orphan: boolean;
+	last_error?: string;
+}
+
+export interface AwgPeer {
+	name: string;
+	public_key: string;
+	address: string;
+}
+
+export interface AwgEnableInput {
+	subnet: string;
+	listen_port: number;
+	mtu: number;
+	dns: string[];
+}
