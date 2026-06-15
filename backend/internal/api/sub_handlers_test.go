@@ -211,6 +211,71 @@ func TestSanitizeFilename_RejectsHeaderInjection(t *testing.T) {
 	}
 }
 
+// setUserLifecycle mutates the single reconciled user's Enabled/ExpiresAt and
+// persists them, preserving the auto-minted token.
+func setUserLifecycle(t *testing.T, um *users.Manager, enabled bool, expiresAt int64) {
+	t.Helper()
+	u := um.List()[0]
+	u.Enabled = enabled
+	u.ExpiresAt = expiresAt
+	if err := um.Put(&u); err != nil {
+		t.Fatal(err)
+	}
+}
+
+func TestSub_InactiveDisabled_EmptyBodyWithExpire(t *testing.T) {
+	h, um := newSubHandler(t, "vpn.example.com")
+	tok := tokenOf(t, um)
+	setUserLifecycle(t, um, false, 1735689600) // disabled, definite expire to assert
+
+	rec := serveSub(h, tok, "203.0.113.10")
+	if rec.Code != http.StatusOK {
+		t.Fatalf("status = %d, want 200; body=%q", rec.Code, rec.Body.String())
+	}
+	if rec.Body.Len() != 0 {
+		t.Fatalf("inactive user body must be empty, got %q", rec.Body.String())
+	}
+	ui := rec.Header().Get("Subscription-Userinfo")
+	if !strings.Contains(ui, "expire=1735689600") {
+		t.Fatalf("Subscription-Userinfo = %q, want expire=1735689600", ui)
+	}
+	// Standard headers still present (clients must parse it as a valid sub).
+	if ct := rec.Header().Get("Content-Type"); ct != "text/plain; charset=utf-8" {
+		t.Fatalf("Content-Type = %q, want text/plain; charset=utf-8", ct)
+	}
+	if cc := rec.Header().Get("Cache-Control"); cc != "no-store" {
+		t.Fatalf("Cache-Control = %q, want no-store", cc)
+	}
+}
+
+func TestSub_InactiveExpired_EmptyBody(t *testing.T) {
+	h, um := newSubHandler(t, "vpn.example.com")
+	tok := tokenOf(t, um)
+	setUserLifecycle(t, um, true, 1) // enabled but expired (1970)
+
+	rec := serveSub(h, tok, "203.0.113.11")
+	if rec.Code != http.StatusOK {
+		t.Fatalf("status = %d, want 200; body=%q", rec.Code, rec.Body.String())
+	}
+	if rec.Body.Len() != 0 {
+		t.Fatalf("expired user body must be empty, got %q", rec.Body.String())
+	}
+}
+
+func TestSub_Active_FullBody(t *testing.T) {
+	h, um := newSubHandler(t, "vpn.example.com")
+	tok := tokenOf(t, um)
+	setUserLifecycle(t, um, true, 0) // active, never expires
+
+	rec := serveSub(h, tok, "203.0.113.12")
+	if rec.Code != http.StatusOK {
+		t.Fatalf("status = %d, want 200; body=%q", rec.Code, rec.Body.String())
+	}
+	if rec.Body.Len() == 0 {
+		t.Fatal("active user must get a non-empty subscription body")
+	}
+}
+
 // TestSub_EmptySubscription_Returns200NotError proves a valid-token user whose
 // bindings resolve to NO active nodes is served 200 with an empty (base64 of "")
 // body — the PUBLIC endpoint must never 500 on a buildable-empty user.

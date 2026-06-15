@@ -3,6 +3,7 @@ package api
 import (
 	"net/http"
 	"strings"
+	"time"
 
 	"github.com/go-chi/chi/v5"
 
@@ -54,6 +55,21 @@ func (h *Handler) GetSubscription(w http.ResponseWriter, r *http.Request) {
 	if host == "" {
 		http.Error(w, "public host not configured", http.StatusServiceUnavailable)
 		return
+	}
+
+	// Lifecycle gate: a disabled or expired user keeps a valid token (TokenDisabled
+	// is a separate concern) but receives NO nodes. The standard headers and the
+	// Userinfo expire are still emitted so clients render "expired"/empty.
+	if !users.IsEffectivelyActive(user, time.Now().Unix()) {
+		w.Header().Set("Content-Type", "text/plain; charset=utf-8")
+		w.Header().Set("Profile-Update-Interval", "12")
+		w.Header().Set("Content-Disposition",
+			"attachment; filename=\""+sanitizeFilename(user.Name)+"\"")
+		w.Header().Set("Cache-Control", "no-store")
+		up, down := h.userAllTimeTraffic(user)
+		w.Header().Set("Subscription-Userinfo", formatUserinfo(up, down, 0, user.ExpiresAt))
+		w.WriteHeader(http.StatusOK)
+		return // empty body
 	}
 
 	body, err := users.BuildSubscription(&user, h.config.GetActive(), host)
