@@ -114,6 +114,67 @@
 			settings = JSON.parse(originalSettings);
 		}
 	}
+
+	// --- Security section state ---
+	let usernameInput = $state('');
+	let savingUsername = $state(false);
+	let currentPw = $state('');
+	let newPw = $state('');
+	let confirmPw = $state('');
+	let changingPw = $state(false);
+
+	// Seed the username input whenever settings (re)load.
+	$effect(() => {
+		if (settings?.security?.auth_username !== undefined) {
+			usernameInput = settings.security.auth_username ?? '';
+		}
+	});
+
+	async function saveUsername() {
+		const name = usernameInput.trim();
+		if (!name) {
+			notifications.error($t('common.required'));
+			return;
+		}
+		savingUsername = true;
+		try {
+			await api.updateSettings({ 'security.auth_username': name });
+			await loadSettings();
+			notifications.success($t('settings.usernameSaved'));
+		} catch (err) {
+			notifications.error(`${err}`);
+		} finally {
+			savingUsername = false;
+		}
+	}
+
+	async function submitChangePassword() {
+		if (newPw.length < 8) {
+			notifications.error($t('settings.passwordTooShort'));
+			return;
+		}
+		if (newPw !== confirmPw) {
+			notifications.error($t('settings.passwordMismatch'));
+			return;
+		}
+		changingPw = true;
+		try {
+			await api.changePassword(currentPw, newPw);
+			currentPw = '';
+			newPw = '';
+			confirmPw = '';
+			notifications.success($t('settings.passwordChanged'));
+		} catch (err) {
+			// Backend returns "current password is incorrect" on 401; surface a
+			// localized message, falling back to the raw error for other failures.
+			const msg = `${err}`;
+			notifications.error(
+				msg.includes('current password') ? $t('settings.currentPasswordWrong') : msg
+			);
+		} finally {
+			changingPw = false;
+		}
+	}
 </script>
 
 <svelte:head>
@@ -354,6 +415,77 @@
 						/>
 						<p class="text-xs text-[var(--ctp-overlay0)] mt-1">0 to disable auto-refresh</p>
 					</div>
+				</div>
+			</section>
+
+			<!-- Security Section -->
+			<section class="bg-[var(--ctp-mantle)] rounded-lg p-5 border border-[var(--ctp-surface0)]">
+				<div class="flex items-center gap-3 mb-4">
+					<svg class="w-5 h-5 text-[var(--ctp-primary)]" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+						<path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 15v2m-6 4h12a2 2 0 002-2v-6a2 2 0 00-2-2H6a2 2 0 00-2 2v6a2 2 0 002 2zm10-10V7a4 4 0 00-8 0v4h8z" />
+					</svg>
+					<h2 class="text-lg font-medium text-[var(--ctp-text)]">{$t('settings.securitySection')}</h2>
+				</div>
+				<p class="text-xs text-[var(--ctp-overlay0)] mb-4">{$t('settings.securityHint')}</p>
+
+				<!-- Username -->
+				<div class="mb-6">
+					<label class="block text-sm font-medium text-[var(--ctp-subtext1)] mb-1">{$t('settings.username')}</label>
+					<div class="flex gap-2">
+						<input
+							type="text"
+							bind:value={usernameInput}
+							autocomplete="username"
+							class="flex-1 px-3 py-2 bg-[var(--ctp-surface0)] border border-[var(--ctp-surface2)] rounded-lg text-[var(--ctp-text)] focus:outline-none focus:ring-2 focus:ring-[var(--ctp-primary)]"
+						/>
+						<button
+							onclick={saveUsername}
+							disabled={savingUsername}
+							class="px-4 py-2 bg-[var(--ctp-primary)] text-white rounded-lg hover:opacity-90 transition-opacity disabled:opacity-50"
+						>
+							{$t('settings.saveUsername')}
+						</button>
+					</div>
+				</div>
+
+				<!-- Change password -->
+				<div class="grid grid-cols-1 md:grid-cols-3 gap-4">
+					<div>
+						<label class="block text-sm font-medium text-[var(--ctp-subtext1)] mb-1">{$t('settings.currentPassword')}</label>
+						<input
+							type="password"
+							bind:value={currentPw}
+							autocomplete="current-password"
+							class="w-full px-3 py-2 bg-[var(--ctp-surface0)] border border-[var(--ctp-surface2)] rounded-lg text-[var(--ctp-text)] focus:outline-none focus:ring-2 focus:ring-[var(--ctp-primary)]"
+						/>
+					</div>
+					<div>
+						<label class="block text-sm font-medium text-[var(--ctp-subtext1)] mb-1">{$t('settings.newPassword')}</label>
+						<input
+							type="password"
+							bind:value={newPw}
+							autocomplete="new-password"
+							class="w-full px-3 py-2 bg-[var(--ctp-surface0)] border border-[var(--ctp-surface2)] rounded-lg text-[var(--ctp-text)] focus:outline-none focus:ring-2 focus:ring-[var(--ctp-primary)]"
+						/>
+					</div>
+					<div>
+						<label class="block text-sm font-medium text-[var(--ctp-subtext1)] mb-1">{$t('settings.confirmPassword')}</label>
+						<input
+							type="password"
+							bind:value={confirmPw}
+							autocomplete="new-password"
+							class="w-full px-3 py-2 bg-[var(--ctp-surface0)] border border-[var(--ctp-surface2)] rounded-lg text-[var(--ctp-text)] focus:outline-none focus:ring-2 focus:ring-[var(--ctp-primary)]"
+						/>
+					</div>
+				</div>
+				<div class="mt-4">
+					<button
+						onclick={submitChangePassword}
+						disabled={changingPw || !currentPw || !newPw || !confirmPw}
+						class="px-4 py-2 bg-[var(--ctp-primary)] text-white rounded-lg hover:opacity-90 transition-opacity disabled:opacity-50"
+					>
+						{$t('settings.changePassword')}
+					</button>
 				</div>
 			</section>
 
