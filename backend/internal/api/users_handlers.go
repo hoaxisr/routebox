@@ -248,6 +248,9 @@ func (h *Handler) stageUserInDraft(tag, protocol, name string) (string, error) {
 	case "naive":
 		user["username"] = name
 		user["password"] = cred
+	case "trojan":
+		user["name"] = name
+		user["password"] = cred
 	case "hysteria2":
 		user["name"] = name
 		user["password"] = cred

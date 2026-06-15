@@ -10,6 +10,7 @@ import (
 	"testing"
 
 	"github.com/go-chi/chi/v5"
+	"github.com/google/uuid"
 
 	"routebox/backend/internal/config"
 	"routebox/backend/internal/process"
@@ -58,6 +59,89 @@ func newUsersTestHandler(t *testing.T) (*Handler, *config.Manager, *users.Manage
 	h := &Handler{config: cfg}
 	h.SetUsers(um)
 	return h, cfg, um
+}
+
+// newConfigWithTrojan writes a config.json with one trojan server inbound and
+// returns a config.Manager loaded from it. Mirrors newConfigWithVless; seeds via
+// raw JSON (bypassing the validator) so the test does not depend on the trojan
+// validator branch (owned by a separate task).
+func newConfigWithTrojan(t *testing.T) (*config.Manager, string) {
+	t.Helper()
+	dir := t.TempDir()
+	path := filepath.Join(dir, "config.json")
+	cfg := `{
+	  "inbounds": [
+	    {"type":"trojan","tag":"trojan-in","listen_port":8443,
+	     "tls":{"enabled":true},
+	     "users":[]}
+	  ],
+	  "outbounds": [{"type":"direct","tag":"direct"}]
+	}`
+	if err := os.WriteFile(path, []byte(cfg), 0644); err != nil {
+		t.Fatal(err)
+	}
+	m, err := config.NewManager(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	return m, dir
+}
+
+func TestGenCredentialTrojan(t *testing.T) {
+	// Characterization: trojan falls through genCredential to randomPassword (NOT uuid).
+	cred, err := genCredential("trojan")
+	if err != nil {
+		t.Fatalf("genCredential(trojan): %v", err)
+	}
+	if cred == "" {
+		t.Fatalf("genCredential(trojan) returned empty")
+	}
+	if _, perr := uuid.Parse(cred); perr == nil {
+		t.Fatalf("trojan credential should be a random password, got a uuid: %q", cred)
+	}
+	// vless stays a uuid (regression guard)
+	v, _ := genCredential("vless")
+	if _, perr := uuid.Parse(v); perr != nil {
+		t.Fatalf("vless cred must be uuid, got %q", v)
+	}
+}
+
+func TestCreateUserStagesTrojanDraft(t *testing.T) {
+	cfg, dir := newConfigWithTrojan(t)
+	um := users.NewManager(filepath.Join(dir, "users.toml"))
+	if _, err := um.Reconcile(cfg.GetActive()); err != nil {
+		t.Fatal(err)
+	}
+	h := &Handler{config: cfg}
+	h.SetUsers(um)
+
+	r := chi.NewRouter()
+	r.Post("/api/users", h.CreateUser)
+	body := `{"name":"erin","protocol":"trojan","inbound_tag":"trojan-in"}`
+	req := httptest.NewRequest(http.MethodPost, "/api/users", strings.NewReader(body))
+	w := httptest.NewRecorder()
+	r.ServeHTTP(w, req)
+	if w.Code != http.StatusOK {
+		t.Fatalf("status %d: %s", w.Code, w.Body.String())
+	}
+	ib, _ := cfg.GetInbound("trojan-in")
+	us, _ := ib["users"].([]interface{})
+	if len(us) != 1 {
+		t.Fatalf("draft trojan inbound should have 1 user, got %d", len(us))
+	}
+	u := us[0].(map[string]interface{})
+	if u["name"] != "erin" {
+		t.Fatalf("name=%v, want erin", u["name"])
+	}
+	if p, _ := u["password"].(string); p == "" {
+		t.Fatalf("staged trojan user must have a generated password")
+	}
+	if _, hasFlow := u["flow"]; hasFlow {
+		t.Fatalf("trojan user must not carry flow")
+	}
+	if _, hasUUID := u["uuid"]; hasUUID {
+		t.Fatalf("trojan user must not carry uuid")
+	}
 }
 
 func TestGetUsersReturnsUnifiedList(t *testing.T) {
