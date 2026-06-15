@@ -1,0 +1,335 @@
+package awg
+
+import (
+	"context"
+	"crypto/rand"
+	"fmt"
+	"net/netip"
+	"os"
+	"strings"
+)
+
+// EnablePhase is the orchestrator's current step, surfaced via Status so the UI
+// can show progress while the [ensure→keygen→render→up→health-gate] tail runs.
+type EnablePhase string
+
+const (
+	PhaseIdle       EnablePhase = "idle"
+	PhaseValidating EnablePhase = "validating"
+	PhaseInstalling EnablePhase = "installing"
+	PhaseRendering  EnablePhase = "rendering"
+	PhaseStarting   EnablePhase = "starting"
+	PhaseHealth     EnablePhase = "health-check"
+	PhaseReady      EnablePhase = "ready"
+	PhaseFailed     EnablePhase = "failed"
+)
+
+// AWGStatus is the aggregate status surfaced at GET /api/awg/status.
+type AWGStatus struct {
+	Module     State       `json:"module"`
+	Enabled    bool        `json:"enabled"`
+	Phase      EnablePhase `json:"phase"`
+	IfaceUp    bool        `json:"iface_up"`
+	ListenPort int         `json:"listen_port"`
+	PublicHost string      `json:"public_host"`
+	PeerCount  int         `json:"peer_count"`
+	WANIface   string      `json:"wan_iface"`
+	NATOrphan  bool        `json:"nat_orphan"`
+	LastError  string      `json:"last_error,omitempty"`
+}
+
+// EnableInput is the RAW operator submission; Enable canonicalises every field.
+type EnableInput struct {
+	Subnet     string
+	ListenPort int
+	MTU        int
+	DNS        []string
+	WANIface   string // optional override; "" -> DetectWAN
+}
+
+// beginEnable claims the single-flight slot. Returns false if an orchestrator is
+// already running (the trigger must refuse rather than double-run). The HTTP
+// handler (Task 10) launches Enable in a goroutine and returns promptly; this
+// guard makes a second trigger a no-op-with-busy-error instead of a double-run.
+func (m *Manager) beginEnable() bool {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	if m.inFlight {
+		return false
+	}
+	m.inFlight = true
+	return true
+}
+
+// endEnable releases the single-flight slot.
+func (m *Manager) endEnable() {
+	m.mu.Lock()
+	m.inFlight = false
+	m.mu.Unlock()
+}
+
+// setPhase records the current orchestrator phase for a phased Status.
+func (m *Manager) setPhase(p EnablePhase) {
+	m.mu.Lock()
+	m.phase = p
+	m.mu.Unlock()
+}
+
+// Enable: validate -> install -> keygen -> render(canonical) -> up -> health gate
+// -> re-assert 0600. Any failure -> full teardown (no orphan NAT). The .conf is
+// rendered ONLY from canonical (validated) values.
+//
+// Enable is single-flight (concurrent triggers are refused) and tracks a phase so
+// Status() can report progress. The trigger returns the orchestrator's terminal
+// result; the Task-10 HTTP handler runs Enable in a goroutine so its own request
+// returns promptly while Status() reflects each phase.
+func (m *Manager) Enable(ctx context.Context, in EnableInput) error {
+	if !m.beginEnable() {
+		return fmt.Errorf("enable already in progress")
+	}
+	defer m.endEnable()
+	m.setPhase(PhaseValidating)
+
+	// ---- Validation (canonicalise EVERY operator field before any render/run) ----
+	subnet, err := ValidateSubnet(in.Subnet)
+	if err != nil {
+		return m.enableFail("subnet: " + err.Error())
+	}
+	port, err := ValidateListenPort(in.ListenPort)
+	if err != nil {
+		return m.enableFail("listen_port: " + err.Error())
+	}
+	mtu, err := ValidateMTU(in.MTU)
+	if err != nil {
+		return m.enableFail("mtu: " + err.Error())
+	}
+	dns, err := ValidateDNS(in.DNS)
+	if err != nil {
+		return m.enableFail("dns: " + err.Error())
+	}
+	// Obfuscation is also operator-controlled and lands in the root-shell .conf —
+	// canonicalise it BEFORE anything is rendered, building obf from the returns.
+	obf, err := validateObf(m.obf)
+	if err != nil {
+		return m.enableFail("obfuscation: " + err.Error())
+	}
+	wan := in.WANIface
+	if wan == "" {
+		if wan, err = m.detectWAN(ctx); err != nil {
+			return m.enableFail("wan detect: " + err.Error())
+		}
+	}
+	if wan, err = ValidateWANIface(wan, m.sysClassNet); err != nil {
+		return m.enableFail("wan_iface: " + err.Error())
+	}
+
+	// ---- Orchestrator tail: install -> keygen -> render -> up -> health gate ----
+	m.setPhase(PhaseInstalling)
+	if m.module != nil {
+		if err := m.module.Ensure(ctx); err != nil {
+			return m.enableFail(err.Error())
+		}
+	}
+
+	priv, _, err := m.serverKeypair(ctx)
+	if err != nil {
+		return m.enableFail(err.Error())
+	}
+	serverIP, err := firstHost(subnet)
+	if err != nil {
+		return m.enableFail(err.Error())
+	}
+
+	// Build ServerConf from CANONICAL values ONLY (Task 5 RenderServer). Every
+	// PostUp-bound field comes from a Validate* return: subnet<-ValidateSubnet,
+	// wan<-ValidateWANIface, port<-ValidateListenPort, mtu<-ValidateMTU,
+	// obf<-validateObf. Raw in.* is never threaded into the conf.
+	m.setPhase(PhaseRendering)
+	sc := ServerConf{
+		PrivateKey: priv, Address: serverIP + maskSuffix(subnet), ListenPort: port, MTU: mtu,
+		Subnet: subnet, WAN: wan, Iface: m.iface, Obf: obf,
+	}
+	if err := m.writeConfAtomic(RenderServer(sc, nil)); err != nil {
+		return m.enableFail(err.Error())
+	}
+	// Persist canonical values for later peer ops.
+	m.mu.Lock()
+	m.subnet, m.serverIP, m.listenPort, m.mtu, m.wan, m.dns, m.serverPriv, m.obf =
+		subnet, serverIP, port, mtu, wan, dns, priv, obf
+	m.mu.Unlock()
+
+	m.setPhase(PhaseStarting)
+	if err := m.iface_Up(ctx); err != nil {
+		return m.teardownFail(ctx, "iface up: "+err.Error())
+	}
+	m.setPhase(PhaseHealth)
+	if err := m.healthGate(ctx); err != nil {
+		return m.teardownFail(ctx, err.Error())
+	}
+	_ = os.Chmod(m.confPath, 0600) // awg-quick may have touched it
+
+	m.mu.Lock()
+	m.enabled, m.lastErr, m.phase = true, "", PhaseReady
+	m.mu.Unlock()
+	return nil
+}
+
+// healthGate asserts the iface is up+listening and the RBOX-AWG-* chains exist.
+func (m *Manager) healthGate(ctx context.Context) error {
+	out, _, err := m.run.Run(ctx, "awg", "show", m.iface)
+	if err != nil || !strings.Contains(out, "listening port") {
+		return fmt.Errorf("interface %s did not come up", m.iface)
+	}
+	rules, _, err := m.run.Run(ctx, "iptables", "-S")
+	if err != nil || !strings.Contains(rules, "RBOX-AWG-NAT") {
+		return fmt.Errorf("NAT chains not installed")
+	}
+	return nil
+}
+
+// teardownFail tears the interface down (PostDown reverts NAT) and records failure.
+func (m *Manager) teardownFail(ctx context.Context, msg string) error {
+	_ = m.iface_Down(ctx) // runs PostDown: flushes RBOX-AWG-* chains
+	m.mu.Lock()
+	m.enabled, m.lastErr, m.phase = false, msg, PhaseFailed
+	m.mu.Unlock()
+	return fmt.Errorf("%s", msg)
+}
+
+func (m *Manager) enableFail(msg string) error {
+	m.mu.Lock()
+	m.enabled, m.lastErr, m.phase = false, msg, PhaseFailed
+	m.mu.Unlock()
+	return fmt.Errorf("%s", msg)
+}
+
+// Disable stops the interface (PostDown reverts NAT).
+func (m *Manager) Disable(ctx context.Context) error {
+	if err := m.iface_Down(ctx); err != nil {
+		return err
+	}
+	m.mu.Lock()
+	m.enabled, m.phase = false, PhaseIdle
+	m.mu.Unlock()
+	return nil
+}
+
+// Status aggregates module + interface + NAT-orphan state. nat_orphan = RBOX-AWG-*
+// rules present while the interface is down.
+func (m *Manager) Status(ctx context.Context) AWGStatus {
+	m.mu.Lock()
+	enabled, lastErr, port, phase, wan := m.enabled, m.lastErr, m.listenPort, m.phase, m.wan
+	m.mu.Unlock()
+	if phase == "" {
+		phase = PhaseIdle
+	}
+	ifaceUp := false
+	if out, _, err := m.run.Run(ctx, "awg", "show", m.iface); err == nil && strings.Contains(out, "listening port") {
+		ifaceUp = true
+	}
+	rulesPresent := false
+	if rules, _, err := m.run.Run(ctx, "iptables", "-S"); err == nil && strings.Contains(rules, "RBOX-AWG-NAT") {
+		rulesPresent = true
+	}
+	peers, _ := m.iface_ShowPeers(ctx)
+	mod := StateNotInstalled
+	if m.module != nil {
+		mod = m.module.Status().State
+	}
+	return AWGStatus{
+		Module: mod, Enabled: enabled, Phase: phase, IfaceUp: ifaceUp, ListenPort: port,
+		PublicHost: m.publicHost, PeerCount: len(peers), WANIface: wan,
+		NATOrphan: rulesPresent && !ifaceUp, LastError: lastErr,
+	}
+}
+
+// detectWAN parses `ip route show default` (pure parseDefaultRoute from Task 5).
+func (m *Manager) detectWAN(ctx context.Context) (string, error) {
+	out, _, err := m.run.Run(ctx, "ip", "route", "show", "default")
+	if err != nil {
+		return "", err
+	}
+	return parseDefaultRoute(out)
+}
+
+// serverKeypair prefers a persisted key; else `awg genkey`/`awg pubkey`; else the
+// in-Go Generate (the deterministic, tested fallback). The returned private key is
+// canonical std-base64 (never raw operator input).
+func (m *Manager) serverKeypair(ctx context.Context) (priv, pub string, err error) {
+	m.mu.Lock()
+	persisted := m.serverPriv
+	m.mu.Unlock()
+	if persisted != "" {
+		if pub, err = PublicFromPrivate(persisted); err == nil {
+			return persisted, pub, nil
+		}
+	}
+	if out, _, e := m.run.Run(ctx, "awg", "genkey"); e == nil && strings.TrimSpace(out) != "" {
+		priv = strings.TrimSpace(out)
+		// Derive the public key in-Go (no shell pipe); validates priv decodes.
+		if pub, e2 := PublicFromPrivate(priv); e2 == nil {
+			return priv, pub, nil
+		}
+	}
+	return Generate(rand.Reader)
+}
+
+// validateObf canonicalises operator-controlled obfuscation fields. Numeric J/S
+// fields are bounded ints (already typed, so structurally safe); the H1-H4 string
+// fields are the injection surface and MUST pass ValidateHField (digits or a
+// "lo-hi" range). Returns a fresh Obfuscation built ONLY from validated values.
+func validateObf(o Obfuscation) (Obfuscation, error) {
+	for _, n := range []int{o.Jc, o.Jmin, o.Jmax, o.S1, o.S2, o.S3, o.S4} {
+		if n < 0 || n > 65535 {
+			return Obfuscation{}, fmt.Errorf("numeric obfuscation field %d out of range (0-65535)", n)
+		}
+	}
+	out := Obfuscation{
+		Jc: o.Jc, Jmin: o.Jmin, Jmax: o.Jmax,
+		S1: o.S1, S2: o.S2, S3: o.S3, S4: o.S4,
+	}
+	for i, h := range []*string{&o.H1, &o.H2, &o.H3, &o.H4} {
+		if *h == "" {
+			continue
+		}
+		v, err := ValidateHField(*h)
+		if err != nil {
+			return Obfuscation{}, fmt.Errorf("H%d: %w", i+1, err)
+		}
+		switch i {
+		case 0:
+			out.H1 = v
+		case 1:
+			out.H2 = v
+		case 2:
+			out.H3 = v
+		case 3:
+			out.H4 = v
+		}
+	}
+	return out, nil
+}
+
+// firstHost returns the ".1" host address of a canonical IPv4 subnet (e.g.
+// "10.10.0.0/24" -> "10.10.0.1").
+func firstHost(subnet string) (string, error) {
+	p, err := netip.ParsePrefix(subnet)
+	if err != nil {
+		return "", err
+	}
+	return p.Masked().Addr().Next().String(), nil
+}
+
+// maskSuffix returns the "/bits" suffix of a canonical prefix so the [Interface]
+// Address carries the subnet mask (e.g. "/24"). subnet is already canonical.
+func maskSuffix(subnet string) string {
+	if i := strings.LastIndex(subnet, "/"); i >= 0 {
+		return subnet[i:]
+	}
+	return ""
+}
+
+// Task 10 (handler) assembles the client Endpoint as "<public_host>:<listen_port>"
+// and passes it verbatim to conf_client.BuildClient. A bare-IPv6 public_host MUST
+// be bracketed there (e.g. "[::1]:51820") since BuildClient does not bracket. This
+// orchestrator does not assemble the Endpoint, so the bracketing lives in Task 10.

@@ -36,7 +36,21 @@ type Manager struct {
 	obf        Obfuscation
 	wan        string
 
+	// Enable-orchestrator state (Task 9). module ensures the kernel module;
+	// sysClassNet is the /sys/class/net root for ValidateWANIface; dns/serverPriv
+	// are canonical values persisted for later peer ops.
+	module      *ModuleManager
+	sysClassNet string
+	dns         []string
+	serverPriv  string
+
 	addMu sync.Mutex // serialises the whole add-peer critical section
+
+	mu       sync.Mutex  // guards enabled/lastErr/phase/inFlight (distinct from addMu)
+	enabled  bool        // last successful Enable left the tunnel up
+	lastErr  string      // last orchestrator error (surfaced in Status)
+	phase    EnablePhase // current orchestrator phase (phased Status)
+	inFlight bool        // single-flight: an Enable orchestrator is running
 }
 
 // ErrSubnetExhausted is returned by AddPeer when no /32 host remains free.
