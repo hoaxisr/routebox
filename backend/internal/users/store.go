@@ -6,12 +6,13 @@ import (
 	"fmt"
 	"log"
 	"os"
-	"path/filepath"
 	"sort"
 	"strings"
 	"sync"
 
 	"github.com/BurntSushi/toml"
+
+	"routebox/backend/internal/util"
 )
 
 // PanelUser is a first-class panel user with a stable ID. Bindings link the user
@@ -91,37 +92,16 @@ func (m *Manager) Load() error {
 	return nil
 }
 
-// saveLocked writes the registry atomically with 0600 perms. Caller holds m.mu.
+// saveLocked writes the registry atomically with 0600 perms (dir 0755) via the
+// shared util.WriteTOMLAtomic primitive. Caller holds m.mu.
 func (m *Manager) saveLocked() error {
 	if m.path == "" {
 		return nil
 	}
-	if err := os.MkdirAll(filepath.Dir(m.path), 0755); err != nil {
-		return err
-	}
-	tmp := m.path + ".tmp"
-	f, err := os.OpenFile(tmp, os.O_WRONLY|os.O_CREATE|os.O_TRUNC, 0600)
-	if err != nil {
-		return err
-	}
 	doc := struct {
 		Users []PanelUser `toml:"users"`
 	}{Users: m.listLocked()}
-	if err := toml.NewEncoder(f).Encode(doc); err != nil {
-		f.Close()
-		os.Remove(tmp)
-		return err
-	}
-	if err := f.Sync(); err != nil {
-		f.Close()
-		os.Remove(tmp)
-		return err
-	}
-	if err := f.Close(); err != nil {
-		os.Remove(tmp)
-		return err
-	}
-	return os.Rename(tmp, m.path)
+	return util.WriteTOMLAtomic(m.path, 0755, doc)
 }
 
 // Put inserts or replaces a user (storing a deep copy) and persists. If
