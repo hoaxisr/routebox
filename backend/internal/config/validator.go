@@ -365,14 +365,14 @@ func validateInbound(ib map[string]interface{}, index int) []string {
 		if _, ok := ib["listen_port"].(float64); !ok {
 			errors = append(errors, fmt.Sprintf("%s: %s requires 'listen_port'", prefix, ibType))
 		}
-	case "vless", "naive", "hysteria2":
+	case "vless", "trojan", "naive", "hysteria2":
 		// All server inbounds need a listen_port.
 		if _, ok := ib["listen_port"].(float64); !ok {
 			errors = append(errors, fmt.Sprintf("%s: %s requires 'listen_port'", prefix, ibType))
 		}
-		// naive and hysteria2 require TLS *enabled* (vless may use Reality, which
-		// is configured inside the tls object; we hard-require enabled TLS only
-		// for naive/hysteria2). MUST-FIX 4: assert tls.enabled == true.
+		// naive/hysteria2 require enabled TLS. trojan is RouteBox-policy: require
+		// tls.enabled OR tls.reality.enabled (the fork allows trojan-over-plaintext;
+		// we don't). vless may run plain/Reality without an enabled tls block.
 		if ibType == "naive" || ibType == "hysteria2" {
 			tls, _ := ib["tls"].(map[string]interface{})
 			enabled := false
@@ -383,9 +383,31 @@ func validateInbound(ib map[string]interface{}, index int) []string {
 				errors = append(errors, fmt.Sprintf("%s: %s requires TLS (tls.enabled = true)", prefix, ibType))
 			}
 		}
+		if ibType == "trojan" {
+			tls, _ := ib["tls"].(map[string]interface{})
+			tlsOn, realityOn := false, false
+			if tls != nil {
+				tlsOn, _ = tls["enabled"].(bool)
+				if reality, ok := tls["reality"].(map[string]interface{}); ok {
+					realityOn, _ = reality["enabled"].(bool)
+				}
+			}
+			if !tlsOn && !realityOn {
+				errors = append(errors, fmt.Sprintf("%s: trojan requires TLS (tls.enabled = true) or Reality (tls.reality.enabled = true)", prefix))
+			}
+		}
+		// Inbound tls must NOT carry utls (outbound/client-only; the binary
+		// rejects tls.utls on an inbound).
+		if ibType == "vless" || ibType == "trojan" {
+			if tls, ok := ib["tls"].(map[string]interface{}); ok {
+				if _, hasUtls := tls["utls"]; hasUtls {
+					errors = append(errors, fmt.Sprintf("%s: inbound tls.utls is not allowed (utls is outbound/client-only)", prefix))
+				}
+			}
+		}
 		// Reject duplicate credentials within this inbound (uuid/username/password
 		// by protocol). This keeps the (tag, credential) registry join key unique.
-		credField := map[string]string{"vless": "uuid", "naive": "username", "hysteria2": "password"}[ibType]
+		credField := map[string]string{"vless": "uuid", "trojan": "password", "naive": "username", "hysteria2": "password"}[ibType]
 		if users, ok := ib["users"].([]interface{}); ok {
 			seen := map[string]bool{}
 			for _, u := range users {

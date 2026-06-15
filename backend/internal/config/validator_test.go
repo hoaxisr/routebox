@@ -231,6 +231,113 @@ func TestValidateInboundTransportBadType(t *testing.T) {
 	}
 }
 
+func TestValidateTrojanInboundReality(t *testing.T) {
+	m := &Manager{}
+	cfg := map[string]interface{}{
+		"inbounds": []interface{}{
+			map[string]interface{}{
+				"type": "trojan", "tag": "tr", "listen_port": float64(443),
+				"tls":   map[string]interface{}{"reality": map[string]interface{}{"enabled": true}},
+				"users": []interface{}{map[string]interface{}{"name": "p", "password": "pw"}},
+			},
+		},
+		"outbounds": []interface{}{},
+	}
+	if errs := m.Validate(cfg); len(errs) != 0 {
+		t.Fatalf("trojan+reality should be valid, got: %v", errs)
+	}
+}
+
+func TestValidateTrojanInboundAcme(t *testing.T) {
+	m := &Manager{}
+	cfg := map[string]interface{}{
+		"inbounds": []interface{}{
+			map[string]interface{}{
+				"type": "trojan", "tag": "tr", "listen_port": float64(443),
+				"tls":   map[string]interface{}{"enabled": true, "acme": map[string]interface{}{"domain": "ex.com"}},
+				"users": []interface{}{map[string]interface{}{"name": "p", "password": "pw"}},
+			},
+		},
+		"outbounds": []interface{}{},
+	}
+	if errs := m.Validate(cfg); len(errs) != 0 {
+		t.Fatalf("trojan+acme should be valid, got: %v", errs)
+	}
+}
+
+func TestValidateTrojanInboundMissingPort(t *testing.T) {
+	m := &Manager{}
+	cfg := map[string]interface{}{
+		"inbounds": []interface{}{
+			map[string]interface{}{
+				"type": "trojan", "tag": "tr",
+				"tls":   map[string]interface{}{"enabled": true},
+				"users": []interface{}{map[string]interface{}{"name": "p", "password": "pw"}},
+			},
+		},
+		"outbounds": []interface{}{},
+	}
+	if errs := m.Validate(cfg); !hasErrContaining(errs, "listen_port") {
+		t.Fatalf("expected listen_port rejection, got: %v", errs)
+	}
+}
+
+func TestValidateTrojanInboundNeedsTls(t *testing.T) {
+	m := &Manager{}
+	cfg := map[string]interface{}{
+		"inbounds": []interface{}{
+			map[string]interface{}{
+				"type": "trojan", "tag": "tr", "listen_port": float64(443),
+				"users": []interface{}{map[string]interface{}{"name": "p", "password": "pw"}},
+			},
+		},
+		"outbounds": []interface{}{},
+	}
+	if errs := m.Validate(cfg); !hasErrContaining(errs, "requires TLS") {
+		t.Fatalf("trojan without tls/reality must be rejected, got: %v", errs)
+	}
+}
+
+func TestValidateTrojanInboundDupPassword(t *testing.T) {
+	m := &Manager{}
+	cfg := map[string]interface{}{
+		"inbounds": []interface{}{
+			map[string]interface{}{
+				"type": "trojan", "tag": "tr", "listen_port": float64(443),
+				"tls": map[string]interface{}{"reality": map[string]interface{}{"enabled": true}},
+				"users": []interface{}{
+					map[string]interface{}{"name": "a", "password": "dup"},
+					map[string]interface{}{"name": "b", "password": "dup"},
+				},
+			},
+		},
+		"outbounds": []interface{}{},
+	}
+	if errs := m.Validate(cfg); !hasErrContaining(errs, "duplicate") {
+		t.Fatalf("expected duplicate password rejection, got: %v", errs)
+	}
+}
+
+func TestValidateInboundRejectsUtls(t *testing.T) {
+	m := &Manager{}
+	cfg := map[string]interface{}{
+		"inbounds": []interface{}{
+			map[string]interface{}{
+				"type": "trojan", "tag": "tr", "listen_port": float64(443),
+				"tls": map[string]interface{}{
+					"enabled": true, "acme": map[string]interface{}{"domain": "ex.com"},
+					"utls": map[string]interface{}{"enabled": true, "fingerprint": "chrome"},
+				},
+				"users": []interface{}{map[string]interface{}{"name": "p", "password": "pw"}},
+			},
+		},
+		"outbounds": []interface{}{},
+	}
+	if errs := m.Validate(cfg); !hasErrContaining(errs, "utls") {
+		t.Fatalf("inbound tls.utls must be rejected (outbound-only), got: %v", errs)
+	}
+}
+
 // TestValidateInboundMalformedUsers ensures a malformed users slice — a non-map
 // element alongside a blank-credential user — does not panic. Errors may or may
 // not be present; the point is panic-safety (non-map entries are skipped).
