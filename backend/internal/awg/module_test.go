@@ -10,18 +10,26 @@ import (
 )
 
 // fakeRunner records calls and returns scripted outputs keyed by the joined argv.
+// match, if set, takes precedence over the keyed maps — used for calls whose argv
+// is non-deterministic (e.g. the scratch-keyring gpg --fingerprint).
 type fakeRunner struct {
 	calls   [][]string
 	outputs map[string]string
 	errs    map[string]error
+	match   func(name string, args []string) (string, bool)
 }
 
 func newFakeRunner() *fakeRunner {
 	return &fakeRunner{outputs: map[string]string{}, errs: map[string]error{}}
 }
 func (f *fakeRunner) Run(_ context.Context, name string, args ...string) (string, string, error) {
-	key := name + " " + strings.Join(args, " ")
 	f.calls = append(f.calls, append([]string{name}, args...))
+	if f.match != nil {
+		if out, ok := f.match(name, args); ok {
+			return out, "", nil
+		}
+	}
+	key := name + " " + strings.Join(args, " ")
 	return f.outputs[key], "", f.errs[key]
 }
 func (f *fakeRunner) sawContains(sub string) bool {
@@ -39,8 +47,33 @@ var errFake = errors.New("fake error")
 func writeOSRelease(t *testing.T, id string) string {
 	t.Helper()
 	p := filepath.Join(t.TempDir(), "os-release")
-	os.WriteFile(p, []byte("ID="+id+"\nID_LIKE=debian\n"), 0644)
+	os.WriteFile(p, []byte("ID="+id+"\nID_LIKE=debian\nVERSION_CODENAME=noble\n"), 0644)
 	return p
+}
+
+// newTestModuleManager wires a manager whose keyring/sources/scratch paths all
+// live in a TempDir, so the install path writes nothing to /usr or /etc and
+// needs no root.
+func newTestModuleManager(t *testing.T, f Runner, id string) *ModuleManager {
+	t.Helper()
+	dir := t.TempDir()
+	m := NewModuleManager(f, writeOSRelease(t, id))
+	m.tmpDir = dir
+	m.keyringPath = filepath.Join(dir, "amnezia-awg.gpg")
+	m.sourcesPath = filepath.Join(dir, "amnezia-awg.sources")
+	return m
+}
+
+// fakeServeFingerprint scripts the scratch-keyring `gpg --fingerprint` call. That
+// keyring path is non-deterministic (MkdirTemp), so the fake matches on the call
+// shape (gpg ... --fingerprint) and serves the given fingerprint for any scratch.
+func fakeServeFingerprint(f *fakeRunner, fp string) {
+	f.match = func(name string, args []string) (string, bool) {
+		if name == "gpg" && len(args) >= 4 && args[len(args)-1] == "--fingerprint" {
+			return "pub   rsa4096 ...\n      " + fp + "\nuid   AmneziaWG PPA\n", true
+		}
+		return "", false
+	}
 }
 
 func TestModuleFastPathReady(t *testing.T) {
@@ -63,10 +96,9 @@ func TestModuleInstallsOnDebian(t *testing.T) {
 	f := newFakeRunner()
 	f.errs["lsmod "] = errFake // module absent -> install path
 	f.outputs["uname -r"] = "6.8.0-110-generic"
-	// gpg fingerprint check (verifyRepoKey) must see the pinned fingerprint.
-	f.outputs["gpg --no-default-keyring --keyring /etc/apt/trusted.gpg.d/amnezia-ubuntu-ppa.gpg --fingerprint"] =
-		"pub   rsa4096 ...\n      " + amneziaKeyFingerprint + "\nuid   AmneziaWG PPA\n"
-	m := NewModuleManager(f, writeOSRelease(t, "ubuntu"))
+	// The scratch-keyring gpg --fingerprint must see the pinned fingerprint.
+	fakeServeFingerprint(f, amneziaKeyFingerprint)
+	m := newTestModuleManager(t, f, "ubuntu")
 	if err := m.Ensure(context.Background()); err != nil {
 		t.Fatalf("Ensure: %v", err)
 	}
@@ -75,6 +107,23 @@ func TestModuleInstallsOnDebian(t *testing.T) {
 	}
 	if !f.sawContains("linux-headers-6.8.0-110-generic") {
 		t.Fatalf("must install kernel headers for the running kernel; calls=%v", f.calls)
+	}
+	// Receive-by-fingerprint must precede any apt install of amneziawg
+	// (verify-before-trust) and we must not use add-apt-repository.
+	if !f.sawContains("--recv-keys " + amneziaKeyFingerprint) {
+		t.Fatalf("must receive the PPA key by full fingerprint; calls=%v", f.calls)
+	}
+	if f.sawContains("add-apt-repository") {
+		t.Fatal("must NOT use add-apt-repository (deb822/inline-key path is broken)")
+	}
+	// The deb822 .sources file must carry the os-release codename, not a hardcode.
+	body, err := os.ReadFile(m.sourcesPath)
+	if err != nil {
+		t.Fatalf("read sources: %v", err)
+	}
+	if !strings.Contains(string(body), "Suites: noble") ||
+		!strings.Contains(string(body), "Signed-By: "+m.keyringPath) {
+		t.Fatalf("sources file malformed:\n%s", body)
 	}
 	for _, c := range f.calls { // no shell anywhere
 		if c[0] == "sh" || c[0] == "bash" {
@@ -90,31 +139,42 @@ func TestModuleRejectsKeyFingerprintMismatch(t *testing.T) {
 	f := newFakeRunner()
 	f.errs["lsmod "] = errFake
 	f.outputs["uname -r"] = "6.8.0-110-generic"
-	f.outputs["gpg --no-default-keyring --keyring /etc/apt/trusted.gpg.d/amnezia-ubuntu-ppa.gpg --fingerprint"] =
-		"pub rsa4096\n   DEADBEEFDEADBEEFDEADBEEFDEADBEEFDEADBEEF\n" // wrong fp
-	m := NewModuleManager(f, writeOSRelease(t, "ubuntu"))
+	fakeServeFingerprint(f, "DEADBEEFDEADBEEFDEADBEEFDEADBEEFDEADBEEF") // wrong fp
+	m := newTestModuleManager(t, f, "ubuntu")
 	if err := m.Ensure(context.Background()); err == nil {
 		t.Fatal("must fail when the PPA key fingerprint does not match the pin")
 	}
 	if m.Status().State != StateFailed {
 		t.Fatalf("state = %v; want failed", m.Status().State)
 	}
+	// Verify-before-trust: a mismatch must STOP before installing amneziawg.
+	if f.sawContains("install -y amneziawg") {
+		t.Fatal("must not install amneziawg after a fingerprint mismatch")
+	}
 }
 
 func TestModuleUnsupportedDistroFails(t *testing.T) {
 	f := newFakeRunner()
 	f.errs["lsmod "] = errFake
-	m := NewModuleManager(f, writeOSRelease(t, "alpine"))
+	// os-release with a non-Debian family: ID/ID_LIKE both lack debian|ubuntu.
+	dir := t.TempDir()
+	p := filepath.Join(dir, "os-release")
+	os.WriteFile(p, []byte("ID=alpine\nID_LIKE=\nVERSION_CODENAME=edge\n"), 0644)
+	m := NewModuleManager(f, p)
+	m.tmpDir, m.keyringPath, m.sourcesPath = dir, filepath.Join(dir, "k.gpg"), filepath.Join(dir, "s.sources")
 	if err := m.Ensure(context.Background()); err == nil {
 		t.Fatal("want failure on unsupported distro")
 	}
 	if m.Status().State != StateFailed {
 		t.Fatalf("state = %v; want failed", m.Status().State)
 	}
+	if f.sawContains("apt-get") {
+		t.Fatal("must not run any apt-get on an unsupported distro")
+	}
 }
 
 func TestModuleSingleFlight(t *testing.T) {
-	m := NewModuleManager(newFakeRunner(), writeOSRelease(t, "ubuntu"))
+	m := newTestModuleManager(t, newFakeRunner(), "ubuntu")
 	m.setState(StateInstalling) // simulate in-progress
 	if err := m.Ensure(context.Background()); err == nil {
 		t.Fatal("Ensure must refuse while installing (single-flight)")
