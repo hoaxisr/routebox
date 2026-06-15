@@ -148,6 +148,6 @@ describe('single-mode classification (sidebar drift guard)', () => {
 	});
 
 	it('panel-only sections are exactly these (update +layout.svelte {#if $panelMode} if this changes)', () => {
-		expect(singleMode('vps')).toEqual(['/config/users', '/monitor/users']);
+		expect(singleMode('vps')).toEqual(['/config/awg', '/config/users', '/monitor/users']);
 	});
 });
