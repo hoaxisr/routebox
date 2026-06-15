@@ -82,7 +82,7 @@ export function isPathAllowed(path: string, mode: Mode): boolean {
 // protocols. This filters ONLY the add-new chooser. Each call returns a fresh
 // array so callers can never mutate shared state.
 const ROUTER_INBOUND_TYPES = ['tun', 'mixed', 'socks', 'http'] as const;
-const VPS_INBOUND_TYPES = ['vless', 'naive', 'hysteria2'] as const;
+const VPS_INBOUND_TYPES = ['vless', 'trojan', 'naive', 'hysteria2'] as const;
 
 export function inboundTypesFor(mode: Mode): string[] {
 	return mode === 'vps' ? [...VPS_INBOUND_TYPES] : [...ROUTER_INBOUND_TYPES];
