@@ -547,6 +547,78 @@ func TestBuildTrojanTlsWithTransport(t *testing.T) {
 	}
 }
 
+// TestShareLinkRemarkIncludesInboundTag proves every builder labels its node with
+// "<name> · <inbound-tag>" (3x-ui style) so a user's nodes across inbounds are
+// distinctly named. When the tag is empty the remark falls back to name only.
+func TestShareLinkRemarkIncludesInboundTag(t *testing.T) {
+	cases := []struct {
+		name    string
+		inbound map[string]interface{}
+		user    map[string]interface{}
+		want    string // decoded remark expected after '#'
+	}{
+		{
+			"vless",
+			map[string]interface{}{"type": "vless", "tag": "vless-in", "listen_port": float64(443)},
+			map[string]interface{}{"name": "alice", "uuid": "11111111-2222-3333-4444-555555555555"},
+			"alice · vless-in",
+		},
+		{
+			"trojan",
+			map[string]interface{}{"type": "trojan", "tag": "trojan-in", "listen_port": float64(443)},
+			map[string]interface{}{"name": "alice", "password": "pw"},
+			"alice · trojan-in",
+		},
+		{
+			"naive",
+			map[string]interface{}{"type": "naive", "tag": "naive-in", "listen_port": float64(443)},
+			map[string]interface{}{"username": "alice", "password": "pw"},
+			"alice · naive-in",
+		},
+		{
+			"hysteria2",
+			map[string]interface{}{"type": "hysteria2", "tag": "hy2-in", "listen_port": float64(443),
+				"tls": map[string]interface{}{"enabled": true, "server_name": "h.com"}},
+			map[string]interface{}{"name": "alice", "password": "pw"},
+			"alice · hy2-in",
+		},
+		{
+			"empty-tag-falls-back-to-name",
+			map[string]interface{}{"type": "vless", "listen_port": float64(443)},
+			map[string]interface{}{"name": "alice", "uuid": "11111111-2222-3333-4444-555555555555"},
+			"alice",
+		},
+	}
+	for _, c := range cases {
+		t.Run(c.name, func(t *testing.T) {
+			link, err := BuildShareLink(c.inbound, c.user, "vpn.example.com")
+			if err != nil {
+				t.Fatalf("BuildShareLink: %v", err)
+			}
+			hash := strings.LastIndex(link, "#")
+			if hash < 0 {
+				t.Fatalf("link has no remark: %s", link)
+			}
+			frag := link[hash+1:]
+			got, err := url.PathUnescape(frag)
+			if err != nil {
+				t.Fatalf("unescape remark %q: %v", frag, err)
+			}
+			if got != c.want {
+				t.Fatalf("remark = %q, want %q (link=%s)", got, c.want, link)
+			}
+		})
+	}
+	// Spot-check the on-the-wire escaping for the middle dot (U+00B7 → %C2%B7).
+	link, _ := BuildShareLink(
+		map[string]interface{}{"type": "vless", "tag": "vless-in", "listen_port": float64(443)},
+		map[string]interface{}{"name": "alice", "uuid": "11111111-2222-3333-4444-555555555555"},
+		"vpn.example.com")
+	if !strings.Contains(link, "#alice%20%C2%B7%20vless-in") {
+		t.Fatalf("expected escaped remark '#alice%%20%%C2%%B7%%20vless-in' in %s", link)
+	}
+}
+
 func TestBuildTrojanNoPassword(t *testing.T) {
 	ib := map[string]interface{}{"type": "trojan", "listen_port": float64(8443), "tls": map[string]interface{}{"enabled": true}}
 	if _, err := BuildShareLink(ib, map[string]interface{}{"name": "x"}, "h"); err == nil {

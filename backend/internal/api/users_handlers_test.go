@@ -349,6 +349,65 @@ func TestAddBinding(t *testing.T) {
 	}
 }
 
+// TestAddBinding_DuplicateInbound409 proves AddBinding rejects re-binding the same
+// user to an inbound it is already on (the infinite-same-inbound-binding bug). The
+// first AddBinding into vless-in-2 succeeds; a second AddBinding into vless-in-2
+// (where alice now has a staged credential) must 409 and stage nothing more.
+func TestAddBinding_DuplicateInbound409(t *testing.T) {
+	cfg, dir := newConfigWithTwoVless(t)
+	um := users.NewManager(filepath.Join(dir, "users.toml"))
+	if _, err := um.Reconcile(cfg.GetActive()); err != nil {
+		t.Fatal(err)
+	}
+	h := &Handler{config: cfg}
+	h.SetUsers(um)
+	id := um.List()[0].ID // alice on vless-in
+
+	r := chi.NewRouter()
+	r.Post("/api/users/{id}/bindings", h.AddBinding)
+
+	body := `{"protocol":"vless","inbound_tag":"vless-in-2"}`
+	// First bind: OK.
+	req := httptest.NewRequest(http.MethodPost, "/api/users/"+id+"/bindings", strings.NewReader(body))
+	w := httptest.NewRecorder()
+	r.ServeHTTP(w, req)
+	if w.Code != http.StatusOK {
+		t.Fatalf("first AddBinding status %d: %s", w.Code, w.Body.String())
+	}
+	ib, _ := cfg.GetInbound("vless-in-2")
+	if us, _ := ib["users"].([]interface{}); len(us) != 1 {
+		t.Fatalf("after first bind vless-in-2 should have 1 user, got %d", len(us))
+	}
+
+	// Second bind to the SAME inbound: 409, nothing more staged.
+	req = httptest.NewRequest(http.MethodPost, "/api/users/"+id+"/bindings", strings.NewReader(body))
+	w = httptest.NewRecorder()
+	r.ServeHTTP(w, req)
+	if w.Code != http.StatusConflict {
+		t.Fatalf("duplicate bind must be 409, got %d: %s", w.Code, w.Body.String())
+	}
+	ib, _ = cfg.GetInbound("vless-in-2")
+	if us, _ := ib["users"].([]interface{}); len(us) != 1 {
+		t.Fatalf("409 must stage nothing: vless-in-2 should still have 1 user, got %d", len(us))
+	}
+}
+
+// TestAddBinding_AlreadyAppliedInbound409 proves the dedup also catches a user
+// already bound (in active, via the registry) to the target inbound.
+func TestAddBinding_AlreadyAppliedInbound409(t *testing.T) {
+	h, _, um := newUsersTestHandler(t)
+	id := um.List()[0].ID // alice already on vless-in (active + registry)
+	r := chi.NewRouter()
+	r.Post("/api/users/{id}/bindings", h.AddBinding)
+	body := `{"protocol":"vless","inbound_tag":"vless-in"}`
+	req := httptest.NewRequest(http.MethodPost, "/api/users/"+id+"/bindings", strings.NewReader(body))
+	w := httptest.NewRecorder()
+	r.ServeHTTP(w, req)
+	if w.Code != http.StatusConflict {
+		t.Fatalf("binding to an inbound the user is already on must be 409, got %d: %s", w.Code, w.Body.String())
+	}
+}
+
 func TestGetUserLinkByIDBadHost(t *testing.T) {
 	h, _, um := newUsersTestHandler(t)
 	id := um.List()[0].ID

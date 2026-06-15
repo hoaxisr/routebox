@@ -348,9 +348,12 @@ func TestReconcileDropsFirstBindingKeepsSecond(t *testing.T) {
 	}
 }
 
-// Guard: renaming ONE of two bindings must refresh only that binding's cache and
-// leave the other binding intact; both bindings survive and changed=true.
-func TestReconcileMultiBindingPartialUpdate(t *testing.T) {
+// NEW SEMANTICS (identity = name): renaming ONE of two bindings in active gives
+// the two bindings DIFFERENT names, so the single grouped user SPLITS into two
+// users by name. The surviving "fixed" user keeps the binding whose name still
+// matches it ("alice" → hy2-in/p-1); the renamed binding (vless-in/u-1) becomes a
+// separate user named "alice-renamed". Each user holds exactly one binding.
+func TestReconcileRenamingOneBindingSplitsUser(t *testing.T) {
 	m := newStore(t)
 	_ = m.Put(&PanelUser{
 		ID: "fixed", Name: "alice", Enabled: true,
@@ -375,19 +378,30 @@ func TestReconcileMultiBindingPartialUpdate(t *testing.T) {
 	if !changed {
 		t.Fatalf("renaming one binding should mark changed")
 	}
-	u, ok := m.Get("fixed")
-	if !ok || len(u.Bindings) != 2 {
-		t.Fatalf("both bindings must survive, got %#v", u)
+	list := m.List()
+	if len(list) != 2 {
+		t.Fatalf("divergent names must split into 2 users, got %d: %#v", len(list), list)
 	}
-	byTag := map[string]Binding{}
-	for _, b := range u.Bindings {
-		byTag[b.InboundTag] = b
+	byName := map[string]PanelUser{}
+	for _, u := range list {
+		byName[u.Name] = u
 	}
-	if got := byTag["vless-in"].Name; got != "alice-renamed" {
-		t.Fatalf("vless binding name must refresh to alice-renamed, got %q", got)
+	alice, ok := byName["alice"]
+	if !ok {
+		t.Fatalf("user 'alice' must survive: %#v", list)
 	}
-	if got := byTag["hy2-in"].Name; got != "alice" {
-		t.Fatalf("hysteria2 binding must be untouched (name=alice), got %q", got)
+	if alice.ID != "fixed" {
+		t.Fatalf("surviving 'alice' must keep ID 'fixed', got %q", alice.ID)
+	}
+	if len(alice.Bindings) != 1 || alice.Bindings[0].InboundTag != "hy2-in" {
+		t.Fatalf("'alice' must keep the hy2-in binding, got %#v", alice.Bindings)
+	}
+	renamed, ok := byName["alice-renamed"]
+	if !ok {
+		t.Fatalf("user 'alice-renamed' must exist: %#v", list)
+	}
+	if len(renamed.Bindings) != 1 || renamed.Bindings[0].InboundTag != "vless-in" {
+		t.Fatalf("'alice-renamed' must own the vless-in binding, got %#v", renamed.Bindings)
 	}
 }
 
@@ -531,6 +545,189 @@ func TestRevokeTokenIsStickyAcrossReconcile(t *testing.T) {
 	}
 	if _, ok := m.ByToken(""); ok {
 		t.Fatal("empty token must never resolve")
+	}
+}
+
+// hy2In builds a hysteria2 server inbound for grouping tests.
+func hy2In(tag string, users ...map[string]interface{}) map[string]interface{} {
+	arr := make([]interface{}, len(users))
+	for i, u := range users {
+		arr[i] = u
+	}
+	return map[string]interface{}{"type": "hysteria2", "tag": tag, "users": arr}
+}
+
+// GROUP-1: two same-name credentials on DIFFERENT inbounds → ONE user, 2 bindings.
+func TestReconcileGroupsSameNameAcrossInbounds(t *testing.T) {
+	m := newStore(t)
+	active := cfg(
+		vlessIn("vless-in", map[string]interface{}{"name": "alice", "uuid": "u-1"}),
+		hy2In("hy2-in", map[string]interface{}{"name": "alice", "password": "p-1"}),
+	)
+	changed, err := m.Reconcile(active)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !changed {
+		t.Fatal("first import should mark changed")
+	}
+	list := m.List()
+	if len(list) != 1 {
+		t.Fatalf("same-name across inbounds must be ONE user, got %d: %#v", len(list), list)
+	}
+	if len(list[0].Bindings) != 2 {
+		t.Fatalf("grouped user must hold 2 bindings, got %#v", list[0].Bindings)
+	}
+	byTag := map[string]Binding{}
+	for _, b := range list[0].Bindings {
+		byTag[b.InboundTag] = b
+	}
+	if byTag["vless-in"].Credential != "u-1" || byTag["hy2-in"].Credential != "p-1" {
+		t.Fatalf("bindings not unioned correctly: %#v", list[0].Bindings)
+	}
+}
+
+// GROUP-2: two PRE-EXISTING same-name registry users (fragments) merge into one
+// survivor (smallest ID), which keeps its token; the other is deleted; bindings union.
+func TestReconcileMergesPreexistingFragments(t *testing.T) {
+	m := newStore(t)
+	// Two fragments of "alice" ( aaaa < bbbb lexicographically → aaaa survives).
+	_ = m.Put(&PanelUser{
+		ID: "aaaa", Name: "alice", Enabled: true, Token: "tok-aaaa",
+		Bindings: []Binding{{InboundTag: "vless-in", Credential: "u-1", Protocol: "vless", Name: "alice"}},
+	})
+	_ = m.Put(&PanelUser{
+		ID: "bbbb", Name: "alice", Enabled: true, Token: "tok-bbbb",
+		Bindings: []Binding{{InboundTag: "hy2-in", Credential: "p-1", Protocol: "hysteria2", Name: "alice"}},
+	})
+	active := cfg(
+		vlessIn("vless-in", map[string]interface{}{"name": "alice", "uuid": "u-1"}),
+		hy2In("hy2-in", map[string]interface{}{"name": "alice", "password": "p-1"}),
+	)
+	changed, err := m.Reconcile(active)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !changed {
+		t.Fatal("merging fragments must mark changed")
+	}
+	list := m.List()
+	if len(list) != 1 {
+		t.Fatalf("fragments must merge to one survivor, got %d: %#v", len(list), list)
+	}
+	if list[0].ID != "aaaa" {
+		t.Fatalf("survivor must be smallest ID (aaaa), got %q", list[0].ID)
+	}
+	if list[0].Token != "tok-aaaa" {
+		t.Fatalf("survivor must keep its own token, got %q", list[0].Token)
+	}
+	if len(list[0].Bindings) != 2 {
+		t.Fatalf("survivor must hold both unioned bindings, got %#v", list[0].Bindings)
+	}
+	if _, ok := m.Get("bbbb"); ok {
+		t.Fatal("dropped fragment bbbb must be deleted")
+	}
+}
+
+// GROUP-3: nameless (name=="") credentials must NOT be merged together even on the
+// same inbound — they key per-credential, so two nameless peers stay two users.
+func TestReconcileNamelessStaySeparate(t *testing.T) {
+	m := newStore(t)
+	active := cfg(vlessIn("vless-in",
+		map[string]interface{}{"uuid": "u-1"}, // no name
+		map[string]interface{}{"uuid": "u-2"}, // no name
+	))
+	if _, err := m.Reconcile(active); err != nil {
+		t.Fatal(err)
+	}
+	list := m.List()
+	if len(list) != 2 {
+		t.Fatalf("nameless credentials must stay separate, got %d: %#v", len(list), list)
+	}
+}
+
+// GROUP-4: token continuity + sticky-revoke hold under grouping. A grouped survivor
+// with a token keeps it; a TokenDisabled survivor is NOT re-minted.
+func TestReconcileGroupingTokenContinuityAndStickyRevoke(t *testing.T) {
+	m := newStore(t)
+	// Survivor with a live token, plus a fragment to be merged in.
+	_ = m.Put(&PanelUser{
+		ID: "aaaa", Name: "alice", Enabled: true, Token: "tok-keep",
+		Bindings: []Binding{{InboundTag: "vless-in", Credential: "u-1", Protocol: "vless", Name: "alice"}},
+	})
+	// A revoked user (separate name) must never be auto-re-minted.
+	_ = m.Put(&PanelUser{
+		ID: "zzzz", Name: "bob", Enabled: true, Token: "", TokenDisabled: true,
+		Bindings: []Binding{{InboundTag: "hy2-in", Credential: "p-2", Protocol: "hysteria2", Name: "bob"}},
+	})
+	active := cfg(
+		vlessIn("vless-in",
+			map[string]interface{}{"name": "alice", "uuid": "u-1"},
+			map[string]interface{}{"name": "alice", "uuid": "u-1b"}, // second alice binding (same inbound, new cred)
+		),
+		hy2In("hy2-in", map[string]interface{}{"name": "bob", "password": "p-2"}),
+	)
+	if _, err := m.Reconcile(active); err != nil {
+		t.Fatal(err)
+	}
+	alice, ok := m.Get("aaaa")
+	if !ok {
+		t.Fatal("alice survivor must remain")
+	}
+	if alice.Token != "tok-keep" {
+		t.Fatalf("token continuity violated, got %q", alice.Token)
+	}
+	bob, ok := m.Get("zzzz")
+	if !ok {
+		t.Fatal("revoked bob must survive (still bound)")
+	}
+	if bob.Token != "" || !bob.TokenDisabled {
+		t.Fatalf("sticky revoke violated: token=%q disabled=%v", bob.Token, bob.TokenDisabled)
+	}
+}
+
+// GROUP-5: idempotency — a second pass on a grouped registry is a no-op.
+func TestReconcileGroupingIdempotent(t *testing.T) {
+	m := newStore(t)
+	active := cfg(
+		vlessIn("vless-in", map[string]interface{}{"name": "alice", "uuid": "u-1"}),
+		hy2In("hy2-in", map[string]interface{}{"name": "alice", "password": "p-1"}),
+	)
+	if _, err := m.Reconcile(active); err != nil {
+		t.Fatal(err)
+	}
+	changed, err := m.Reconcile(active)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if changed {
+		t.Fatal("steady-state grouped reconcile must be no-op (changed=false)")
+	}
+}
+
+// GROUP-6: A1 under grouping — a name absent from active deletes its user.
+func TestReconcileGroupingA1DeletesAbsentName(t *testing.T) {
+	m := newStore(t)
+	active := cfg(
+		vlessIn("vless-in", map[string]interface{}{"name": "alice", "uuid": "u-1"}),
+		hy2In("hy2-in", map[string]interface{}{"name": "alice", "password": "p-1"}),
+	)
+	if _, err := m.Reconcile(active); err != nil {
+		t.Fatal(err)
+	}
+	if len(m.List()) != 1 {
+		t.Fatalf("setup: want 1 grouped user, got %d", len(m.List()))
+	}
+	// alice vanishes entirely from active.
+	changed, err := m.Reconcile(cfg())
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !changed {
+		t.Fatal("name gone from active must mark changed")
+	}
+	if len(m.List()) != 0 {
+		t.Fatalf("A1: absent name must delete its user, got %#v", m.List())
 	}
 }
 

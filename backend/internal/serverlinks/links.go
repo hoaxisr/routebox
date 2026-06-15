@@ -63,7 +63,7 @@ func buildVless(inbound, user map[string]interface{}, host string, port int) (st
 		suffix = "?" + enc
 	}
 	return fmt.Sprintf("vless://%s@%s%s#%s",
-		uuid, hostPort(host, port), suffix, url.PathEscape(nameOf(user, "VLESS"))), nil
+		uuid, hostPort(host, port), suffix, url.PathEscape(remarkOf(inbound, user, "VLESS"))), nil
 }
 
 // --- shared helpers ---
@@ -231,6 +231,18 @@ func nameOf(user map[string]interface{}, fallback string) string {
 	return fallback
 }
 
+// remarkOf builds the share-link '#' label as "<name> · <inbound-tag>" (3x-ui
+// style), so a user's nodes across multiple inbounds are distinctly named in
+// client apps. With an empty inbound tag it falls back to the name alone. The
+// returned value is the RAW remark; callers wrap it in url.PathEscape.
+func remarkOf(inbound, user map[string]interface{}, fallback string) string {
+	name := nameOf(user, fallback)
+	if tag, _ := inbound["tag"].(string); tag != "" {
+		return name + " · " + tag
+	}
+	return name
+}
+
 func buildTrojan(inbound, user map[string]interface{}, host string, port int) (string, error) {
 	password, _ := user["password"].(string)
 	if password == "" {
@@ -246,7 +258,7 @@ func buildTrojan(inbound, user map[string]interface{}, host string, port int) (s
 		suffix = "?" + enc
 	}
 	return fmt.Sprintf("trojan://%s@%s%s#%s",
-		url.User(password).String(), hostPort(host, port), suffix, url.PathEscape(nameOf(user, "Trojan"))), nil
+		url.User(password).String(), hostPort(host, port), suffix, url.PathEscape(remarkOf(inbound, user, "Trojan"))), nil
 }
 
 func buildNaive(inbound, user map[string]interface{}, host string, port int) (string, error) {
@@ -257,7 +269,7 @@ func buildNaive(inbound, user map[string]interface{}, host string, port int) (st
 	}
 	userinfo := url.UserPassword(username, password).String()
 	return fmt.Sprintf("naive+https://%s@%s#%s",
-		userinfo, hostPort(host, port), url.PathEscape(nameOf(user, "NaiveProxy"))), nil
+		userinfo, hostPort(host, port), url.PathEscape(remarkOf(inbound, user, "NaiveProxy"))), nil
 }
 
 func buildHysteria2(inbound, user map[string]interface{}, host string, port int) (string, error) {
@@ -276,5 +288,5 @@ func buildHysteria2(inbound, user map[string]interface{}, host string, port int)
 		}
 	}
 	return fmt.Sprintf("hy2://%s@%s?%s#%s",
-		url.User(password).String(), hostPort(host, port), q.Encode(), url.PathEscape(nameOf(user, "Hysteria2"))), nil
+		url.User(password).String(), hostPort(host, port), q.Encode(), url.PathEscape(remarkOf(inbound, user, "Hysteria2"))), nil
 }

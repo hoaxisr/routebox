@@ -140,6 +140,20 @@ func (h *Handler) AddBinding(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusBadRequest, err.Error())
 		return
 	}
+	// Dedup: reject if the target inbound already contains this user. Check the
+	// WORKING (draft-or-active) config so this catches BOTH an already-applied
+	// binding and a pending one staged earlier this session — preventing the
+	// infinite same-inbound binding bug. Match on extracted Name (server users
+	// carry the panel user's name; vless/trojan/hy2 use "name", naive "username").
+	if ib, ok := h.config.GetInbound(body.InboundTag); ok {
+		for _, cu := range users.ServerInboundUsers(ib) {
+			if cu.Name == u.Name {
+				writeError(w, http.StatusConflict,
+					fmt.Sprintf("user %q is already bound to inbound %q", u.Name, body.InboundTag))
+				return
+			}
+		}
+	}
 	if _, err := h.stageUserInDraft(body.InboundTag, body.Protocol, u.Name); err != nil {
 		writeError(w, http.StatusBadRequest, err.Error())
 		return
