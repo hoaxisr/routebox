@@ -292,3 +292,175 @@ func TestFirstShortID(t *testing.T) {
 		}
 	}
 }
+
+func TestBuildVlessTransportFlowOnlyWhenRaw(t *testing.T) {
+	// ws transport: flow must be omitted even if present on the user.
+	inbound := map[string]interface{}{
+		"type": "vless", "tag": "v", "listen_port": float64(443),
+		"tls":       map[string]interface{}{"enabled": true, "server_name": "ex.com"},
+		"transport": map[string]interface{}{"type": "ws", "path": "/p", "headers": map[string]interface{}{"Host": "cdn.ex.com"}},
+	}
+	user := map[string]interface{}{"name": "p", "uuid": "11111111-2222-3333-4444-555555555555", "flow": "xtls-rprx-vision"}
+	link, err := BuildShareLink(inbound, user, "vpn.ex.com")
+	if err != nil {
+		t.Fatalf("BuildShareLink: %v", err)
+	}
+	if strings.Contains(link, "flow=") {
+		t.Fatalf("ws transport must omit flow: %s", link)
+	}
+	if !strings.Contains(link, "type=ws") || !strings.Contains(link, "host=cdn.ex.com") || !strings.Contains(link, "path=%2Fp") {
+		t.Fatalf("ws transport params missing/wrong: %s", link)
+	}
+	// Round-trip: subscription parser maps URL host= → headers.Host for ws.
+	ob := parseBack(t, link)
+	tr := ob["transport"].(map[string]interface{})
+	if tr["type"] != "ws" {
+		t.Fatalf("transport type: %v", tr)
+	}
+	if tr["headers"].(map[string]interface{})["Host"] != "cdn.ex.com" {
+		t.Fatalf("ws host should round-trip to headers.Host: %v", tr)
+	}
+}
+
+func TestBuildVlessRawKeepsFlow(t *testing.T) {
+	inbound := map[string]interface{}{
+		"type": "vless", "tag": "v", "listen_port": float64(443),
+		"tls": map[string]interface{}{"enabled": true, "server_name": "ex.com"},
+	}
+	user := map[string]interface{}{"uuid": "11111111-2222-3333-4444-555555555555", "flow": "xtls-rprx-vision"}
+	link, err := BuildShareLink(inbound, user, "vpn.ex.com")
+	if err != nil {
+		t.Fatalf("BuildShareLink: %v", err)
+	}
+	if !strings.Contains(link, "flow=xtls-rprx-vision") {
+		t.Fatalf("raw transport must keep flow: %s", link)
+	}
+	if strings.Contains(link, "type=") {
+		t.Fatalf("raw transport must not emit a transport type param: %s", link)
+	}
+}
+
+func TestTlsParams(t *testing.T) {
+	cases := []struct {
+		name   string
+		tls    map[string]interface{}
+		host   string
+		want   map[string]string
+		absent []string
+	}{
+		{
+			name: "reality emits pbk+sid+sni+fp",
+			tls: map[string]interface{}{
+				"enabled": true, "server_name": "www.microsoft.com",
+				"reality": map[string]interface{}{"enabled": true, "private_key": fixturePriv, "short_id": []interface{}{"0123abcd"}},
+			},
+			host: "vpn.example.com",
+			want: map[string]string{"security": "reality", "pbk": fixturePub, "sid": "0123abcd", "sni": "www.microsoft.com", "fp": "chrome"},
+		},
+		{
+			name: "reality with bare-string short_id",
+			tls:  map[string]interface{}{"enabled": true, "server_name": "a.com", "reality": map[string]interface{}{"enabled": true, "private_key": fixturePriv, "short_id": "beef"}},
+			host: "h",
+			want: map[string]string{"security": "reality", "sid": "beef", "sni": "a.com", "fp": "chrome"},
+		},
+		{
+			name:   "plain tls emits security=tls+sni+fp, no pbk/sid",
+			tls:    map[string]interface{}{"enabled": true, "server_name": "vpn.example.com"},
+			host:   "vpn.example.com",
+			want:   map[string]string{"security": "tls", "sni": "vpn.example.com", "fp": "chrome"},
+			absent: []string{"pbk", "sid"},
+		},
+		{
+			name: "acme domain used as sni when no server_name",
+			tls:  map[string]interface{}{"enabled": true, "acme": map[string]interface{}{"domain": "le.example.com"}},
+			host: "1.2.3.4",
+			want: map[string]string{"security": "tls", "sni": "le.example.com", "fp": "chrome"},
+		},
+		{
+			name:   "disabled tls => empty",
+			tls:    map[string]interface{}{"enabled": false},
+			host:   "h",
+			want:   map[string]string{},
+			absent: []string{"security", "sni", "fp", "pbk", "sid"},
+		},
+		{
+			name:   "nil tls => empty",
+			tls:    nil,
+			host:   "h",
+			want:   map[string]string{},
+			absent: []string{"security", "sni"},
+		},
+		{
+			name:   "reality block present but disabled => plain tls path",
+			tls:    map[string]interface{}{"enabled": true, "server_name": "v.com", "reality": map[string]interface{}{"enabled": false, "private_key": fixturePriv, "short_id": "x"}},
+			host:   "v.com",
+			want:   map[string]string{"security": "tls", "sni": "v.com"},
+			absent: []string{"pbk", "sid"},
+		},
+	}
+	for _, c := range cases {
+		t.Run(c.name, func(t *testing.T) {
+			q, err := tlsParams(c.tls, c.host)
+			if err != nil {
+				t.Fatalf("tlsParams: %v", err)
+			}
+			for k, v := range c.want {
+				if q.Get(k) != v {
+					t.Errorf("%s=%q, want %q (full=%v)", k, q.Get(k), v, q)
+				}
+			}
+			for _, k := range c.absent {
+				if q.Has(k) {
+					t.Errorf("%s must be absent, got %q", k, q.Get(k))
+				}
+			}
+		})
+	}
+}
+
+func TestTransportParams(t *testing.T) {
+	cases := []struct {
+		name   string
+		ib     map[string]interface{}
+		want   map[string]string
+		absent []string
+	}{
+		{"raw absent => empty", map[string]interface{}{}, map[string]string{}, []string{"type", "path", "host", "serviceName"}},
+		{"type raw => empty", map[string]interface{}{"transport": map[string]interface{}{"type": "raw"}}, map[string]string{}, []string{"type"}},
+		{
+			"ws emits type+path+host (host UNIFORM on URL, from headers.Host)",
+			map[string]interface{}{"transport": map[string]interface{}{"type": "ws", "path": "/ws", "headers": map[string]interface{}{"Host": "cdn.example.com"}}},
+			map[string]string{"type": "ws", "path": "/ws", "host": "cdn.example.com"}, nil,
+		},
+		{
+			"ws without host => no host param",
+			map[string]interface{}{"transport": map[string]interface{}{"type": "ws", "path": "/ws"}},
+			map[string]string{"type": "ws", "path": "/ws"}, []string{"host"},
+		},
+		{
+			"httpupgrade emits type+path+host (top-level host string source)",
+			map[string]interface{}{"transport": map[string]interface{}{"type": "httpupgrade", "path": "/up", "host": "h.example.com"}},
+			map[string]string{"type": "httpupgrade", "path": "/up", "host": "h.example.com"}, nil,
+		},
+		{
+			"grpc emits type+serviceName, no host/path",
+			map[string]interface{}{"transport": map[string]interface{}{"type": "grpc", "service_name": "gsvc"}},
+			map[string]string{"type": "grpc", "serviceName": "gsvc"}, []string{"host", "path"},
+		},
+	}
+	for _, c := range cases {
+		t.Run(c.name, func(t *testing.T) {
+			q := transportParams(c.ib)
+			for k, v := range c.want {
+				if q.Get(k) != v {
+					t.Errorf("%s=%q want %q (%v)", k, q.Get(k), v, q)
+				}
+			}
+			for _, k := range c.absent {
+				if q.Has(k) {
+					t.Errorf("%s must be absent (%v)", k, q)
+				}
+			}
+		})
+	}
+}

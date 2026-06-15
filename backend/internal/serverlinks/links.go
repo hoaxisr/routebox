@@ -41,35 +41,20 @@ func buildVless(inbound, user map[string]interface{}, host string, port int) (st
 	if uuid == "" {
 		return "", fmt.Errorf("vless user has no uuid")
 	}
-	q := url.Values{}
-	if flow, _ := user["flow"].(string); flow != "" {
-		q.Set("flow", flow)
+	q, err := tlsParams(mapOf(inbound["tls"]), host)
+	if err != nil {
+		return "", err
 	}
-
-	tls := mapOf(inbound["tls"])
-	sni := sniOf(tls, host)
-	if reality := mapOf(tls["reality"]); isEnabled(reality) {
-		priv, _ := reality["private_key"].(string)
-		pub, err := RealityPublicFromPrivate(priv)
-		if err != nil {
-			return "", fmt.Errorf("reality public key: %w", err)
+	tp := transportParams(inbound)
+	// flow (xtls-rprx-vision) is only valid on raw transport: emit it only when
+	// transportParams produced no type (raw/absent/unknown). Tightest gate.
+	isRaw := tp.Get("type") == ""
+	if isRaw {
+		if flow, _ := user["flow"].(string); flow != "" {
+			q.Set("flow", flow)
 		}
-		q.Set("security", "reality")
-		q.Set("pbk", pub)
-		// sing-box stores short_id as a JSON array (["abcd",...]); older/manual
-		// configs may use a bare string. Emit the first non-empty short_id — the
-		// client MUST present it or the server rejects the Reality handshake
-		// ("processed invalid connection") and silently serves the decoy site.
-		if sid := firstShortID(reality["short_id"]); sid != "" {
-			q.Set("sid", sid)
-		}
-		q.Set("sni", sni)
-		q.Set("fp", defaultFingerprint)
-	} else if isEnabled(tls) {
-		q.Set("security", "tls")
-		q.Set("sni", sni)
-		q.Set("fp", defaultFingerprint)
 	}
+	mergeValues(q, tp)
 
 	suffix := ""
 	if enc := q.Encode(); enc != "" {
@@ -145,6 +130,94 @@ func sniOf(tls map[string]interface{}, host string) string {
 		}
 	}
 	return host
+}
+
+// tlsParams builds the shared security/reality/tls query params for vless and
+// trojan share links: reality → security=reality&pbk&sid&sni&fp ; plain TLS →
+// security=tls&sni&fp. pbk is derived from the server reality private_key; sid
+// is the first short_id. Returns an error only if Reality key derivation fails.
+func tlsParams(tls map[string]interface{}, host string) (url.Values, error) {
+	q := url.Values{}
+	if tls == nil {
+		return q, nil
+	}
+	sni := sniOf(tls, host)
+	if reality := mapOf(tls["reality"]); isEnabled(reality) {
+		priv, _ := reality["private_key"].(string)
+		pub, err := RealityPublicFromPrivate(priv)
+		if err != nil {
+			return nil, fmt.Errorf("reality public key: %w", err)
+		}
+		q.Set("security", "reality")
+		q.Set("pbk", pub)
+		if sid := firstShortID(reality["short_id"]); sid != "" {
+			q.Set("sid", sid)
+		}
+		q.Set("sni", sni)
+		q.Set("fp", defaultFingerprint)
+	} else if isEnabled(tls) {
+		q.Set("security", "tls")
+		q.Set("sni", sni)
+		q.Set("fp", defaultFingerprint)
+	}
+	return q, nil
+}
+
+// transportParams builds the shared transport query params (uniform host= on the
+// URL; the importer maps it to headers.Host for ws). raw/absent/unknown → empty.
+//
+//	ws          → type=ws&path=&host=   (host source: transport.headers.Host)
+//	httpupgrade → type=httpupgrade&path=&host=  (host source: top-level transport.host)
+//	grpc        → type=grpc&serviceName=
+func transportParams(inbound map[string]interface{}) url.Values {
+	q := url.Values{}
+	tr := mapOf(inbound["transport"])
+	if tr == nil {
+		return q
+	}
+	switch t, _ := tr["type"].(string); t {
+	case "ws":
+		q.Set("type", "ws")
+		if p, _ := tr["path"].(string); p != "" {
+			q.Set("path", p)
+		}
+		if h := wsHostOf(tr); h != "" {
+			q.Set("host", h)
+		}
+	case "httpupgrade":
+		q.Set("type", "httpupgrade")
+		if p, _ := tr["path"].(string); p != "" {
+			q.Set("path", p)
+		}
+		if h, _ := tr["host"].(string); h != "" {
+			q.Set("host", h)
+		}
+	case "grpc":
+		q.Set("type", "grpc")
+		if sn, _ := tr["service_name"].(string); sn != "" {
+			q.Set("serviceName", sn)
+		}
+	}
+	return q
+}
+
+// wsHostOf reads the ws transport Host from headers.Host (host matrix).
+func wsHostOf(tr map[string]interface{}) string {
+	headers := mapOf(tr["headers"])
+	if headers == nil {
+		return ""
+	}
+	h, _ := headers["Host"].(string)
+	return h
+}
+
+// mergeValues copies all keys from src into dst.
+func mergeValues(dst, src url.Values) {
+	for k, vs := range src {
+		for _, v := range vs {
+			dst.Add(k, v)
+		}
+	}
 }
 
 func nameOf(user map[string]interface{}, fallback string) string {
