@@ -77,7 +77,11 @@
 	let vlessTransport = $state({
 		type: (outbound?.transport?.type ?? 'tcp') as 'tcp' | 'ws' | 'http' | 'grpc' | 'quic' | 'httpupgrade',
 		path: outbound?.transport?.path ?? '/',
-		host: outbound?.transport?.headers?.Host ?? (outbound?.transport?.host?.[0] ?? ''),
+		// Host matrix mirrors build side: ws→headers.Host, httpupgrade→top-level host string, http→host array.
+		host: outbound?.transport?.headers?.Host
+			?? (outbound?.transport?.type === 'httpupgrade'
+				? ((outbound?.transport as unknown as Record<string, unknown>)?.host as string ?? '')
+				: (outbound?.transport?.host?.[0] ?? '')),
 		service_name: outbound?.transport?.service_name ?? ''
 	});
 
@@ -102,7 +106,11 @@
 				: 'tcp')
 			: 'tcp') as 'tcp' | 'ws' | 'grpc' | 'httpupgrade',
 		path: outbound?.transport?.path ?? '/',
-		host: outbound?.transport?.headers?.Host ?? (outbound?.transport?.host?.[0] ?? ''),
+		// Host matrix mirrors build side: ws→headers.Host, httpupgrade→top-level host string, http→host array.
+		host: outbound?.transport?.headers?.Host
+			?? (outbound?.transport?.type === 'httpupgrade'
+				? ((outbound?.transport as unknown as Record<string, unknown>)?.host as string ?? '')
+				: (outbound?.transport?.host?.[0] ?? '')),
 		service_name: outbound?.transport?.service_name ?? ''
 	});
 
