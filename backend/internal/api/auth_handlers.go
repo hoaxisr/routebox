@@ -64,6 +64,59 @@ func (h *Handler) Login(w http.ResponseWriter, r *http.Request) {
 	writeSuccess(w, map[string]string{"username": sec.AuthUsername})
 }
 
+type changePasswordRequest struct {
+	CurrentPassword string `json:"current_password"`
+	NewPassword     string `json:"new_password"`
+}
+
+// ChangePassword verifies the current panel password (lockout-limited) and sets
+// a new one. Registered in the AuthMiddleware-protected group, so the caller
+// already holds a valid session; this re-checks the current password as
+// defense-in-depth. The session cookie stays valid (the session token is
+// independent of the password) — no forced re-login.
+func (h *Handler) ChangePassword(w http.ResponseWriter, r *http.Request) {
+	w.Header().Set("Cache-Control", "no-store")
+	r.Body = http.MaxBytesReader(w, r.Body, 4096)
+	var req changePasswordRequest
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		writeError(w, http.StatusBadRequest, "invalid JSON")
+		return
+	}
+	sec := h.settings.Get().Security
+	if sec.AuthPasswordHash == "" {
+		writeError(w, http.StatusBadRequest, "password auth is not configured")
+		return
+	}
+	key := lockKey(r, sec.AuthUsername)
+	if h.limiter != nil && !h.limiter.Allowed(key) {
+		writeError(w, http.StatusTooManyRequests, "too many attempts, try again later")
+		return
+	}
+	if !verifyPassword(h.verifier, sec.AuthPasswordHash, req.CurrentPassword) {
+		if h.limiter != nil {
+			h.limiter.Fail(key)
+		}
+		writeError(w, http.StatusUnauthorized, "current password is incorrect")
+		return
+	}
+	if h.limiter != nil {
+		h.limiter.Reset(key)
+	}
+	if len(req.NewPassword) < 8 {
+		writeError(w, http.StatusBadRequest, "new password must be at least 8 characters")
+		return
+	}
+	if err := h.settings.Update(map[string]interface{}{"security.auth_password": req.NewPassword}); err != nil {
+		writeError(w, http.StatusInternalServerError, "failed to update password")
+		return
+	}
+	if err := h.settings.Save(); err != nil {
+		writeError(w, http.StatusInternalServerError, "failed to persist password")
+		return
+	}
+	writeSuccess(w, map[string]string{"status": "ok"})
+}
+
 // Logout invalidates the current session and clears the cookie.
 func (h *Handler) Logout(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Cache-Control", "no-store")

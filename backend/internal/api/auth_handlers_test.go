@@ -156,3 +156,97 @@ func TestEmptyUsernameDenied(t *testing.T) {
 		t.Fatalf("empty Basic username should be 401, got %d", secResp.StatusCode)
 	}
 }
+
+func TestChangePasswordSuccess(t *testing.T) {
+	h := newAuthHandler(t) // username "admin", password "pw"
+	body := `{"current_password":"pw","new_password":"newsecret123"}`
+	req := httptest.NewRequest("POST", "/api/auth/change-password", strings.NewReader(body))
+	rec := httptest.NewRecorder()
+	h.ChangePassword(rec, req)
+	if rec.Code != http.StatusOK {
+		t.Fatalf("change-password should be 200, got %d (%s)", rec.Code, rec.Body.String())
+	}
+	// The stored hash must now verify the NEW password and reject the OLD one.
+	sec := h.settings.Get().Security
+	if sec.AuthPasswordHash == "" {
+		t.Fatal("hash should not be empty after change")
+	}
+	if !verifyPassword(h.verifier, sec.AuthPasswordHash, "newsecret123") {
+		t.Fatal("new password should verify against the stored hash")
+	}
+	if verifyPassword(h.verifier, sec.AuthPasswordHash, "pw") {
+		t.Fatal("old password must no longer verify")
+	}
+}
+
+func TestChangePasswordWrongCurrent(t *testing.T) {
+	h := newAuthHandler(t)
+	before := h.settings.Get().Security.AuthPasswordHash
+	body := `{"current_password":"WRONG","new_password":"newsecret123"}`
+	req := httptest.NewRequest("POST", "/api/auth/change-password", strings.NewReader(body))
+	rec := httptest.NewRecorder()
+	h.ChangePassword(rec, req)
+	if rec.Code != http.StatusUnauthorized {
+		t.Fatalf("wrong current should be 401, got %d", rec.Code)
+	}
+	if after := h.settings.Get().Security.AuthPasswordHash; after != before {
+		t.Fatal("hash must be unchanged on wrong current password")
+	}
+}
+
+func TestChangePasswordShortNew(t *testing.T) {
+	h := newAuthHandler(t)
+	before := h.settings.Get().Security.AuthPasswordHash
+	body := `{"current_password":"pw","new_password":"short"}`
+	req := httptest.NewRequest("POST", "/api/auth/change-password", strings.NewReader(body))
+	rec := httptest.NewRecorder()
+	h.ChangePassword(rec, req)
+	if rec.Code != http.StatusBadRequest {
+		t.Fatalf("short new should be 400, got %d", rec.Code)
+	}
+	if after := h.settings.Get().Security.AuthPasswordHash; after != before {
+		t.Fatal("hash must be unchanged when new password is rejected")
+	}
+}
+
+func TestChangePasswordUnconfigured(t *testing.T) {
+	t.Helper()
+	dir := t.TempDir()
+	m, err := settings.NewManager(dir + "/routebox.toml")
+	if err != nil {
+		t.Fatal(err)
+	}
+	// Enable auth but never set a password → AuthPasswordHash == "".
+	if err := m.Update(map[string]interface{}{"security.auth_enabled": true, "security.auth_username": "admin"}); err != nil {
+		t.Fatal(err)
+	}
+	h := NewHandler(nil, nil, "", nil, m, nil, nil)
+	h.SetAuth(auth.NewSessionStore(), auth.NewLimiter(), auth.NewCachedVerifier())
+
+	body := `{"current_password":"anything","new_password":"newsecret123"}`
+	req := httptest.NewRequest("POST", "/api/auth/change-password", strings.NewReader(body))
+	rec := httptest.NewRecorder()
+	h.ChangePassword(rec, req)
+	if rec.Code != http.StatusBadRequest {
+		t.Fatalf("unconfigured change should be 400, got %d", rec.Code)
+	}
+}
+
+func TestChangePasswordLockout(t *testing.T) {
+	h := newAuthHandler(t)
+	// Hammer wrong current until the limiter trips, then expect 429.
+	// auth.NewLimiter() locks after a bounded number of failures; loop generously
+	// and assert that a 429 occurs (and that the last response is 429).
+	var last int
+	for i := 0; i < 50; i++ {
+		body := `{"current_password":"WRONG","new_password":"newsecret123"}`
+		req := httptest.NewRequest("POST", "/api/auth/change-password", strings.NewReader(body))
+		rec := httptest.NewRecorder()
+		h.ChangePassword(rec, req)
+		last = rec.Code
+		if rec.Code == http.StatusTooManyRequests {
+			return // lockout reached — success
+		}
+	}
+	t.Fatalf("expected a 429 after repeated wrong attempts, last status %d", last)
+}
