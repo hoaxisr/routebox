@@ -175,6 +175,54 @@ func TestEffectiveRejectNames(t *testing.T) {
 	}
 }
 
+func TestDuplicateNames(t *testing.T) {
+	cases := []struct {
+		name string
+		list []PanelUser
+		want []string
+	}{
+		{"none", []PanelUser{{ID: "1", Name: "a"}, {ID: "2", Name: "b"}}, nil},
+		{"empty", nil, nil},
+		{
+			"one dup",
+			[]PanelUser{
+				{ID: "1", Name: "alice"},
+				{ID: "2", Name: "bob"},
+				{ID: "3", Name: "alice"}, // dup of #1
+			},
+			[]string{"alice"},
+		},
+		{
+			"blanks ignored",
+			[]PanelUser{
+				{ID: "1", Name: ""},
+				{ID: "2", Name: ""},
+				{ID: "3", Name: "x"},
+			},
+			nil,
+		},
+		{
+			"multiple dups, sorted",
+			[]PanelUser{
+				{ID: "1", Name: "zoe"},
+				{ID: "2", Name: "zoe"},
+				{ID: "3", Name: "amy"},
+				{ID: "4", Name: "amy"},
+				{ID: "5", Name: "solo"},
+			},
+			[]string{"amy", "zoe"},
+		},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			got := DuplicateNames(tc.list)
+			if !equalStrings(got, tc.want) {
+				t.Fatalf("DuplicateNames = %#v, want %#v", got, tc.want)
+			}
+		})
+	}
+}
+
 // equalStrings compares two string slices treating nil and empty as equal.
 func equalStrings(a, b []string) bool {
 	if len(a) != len(b) {

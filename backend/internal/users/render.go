@@ -53,3 +53,25 @@ func EffectiveRejectNames(list []PanelUser, now int64) []string {
 	sort.Strings(out)
 	return out
 }
+
+// DuplicateNames returns the sorted set of non-blank names shared by more than
+// one user. auth_user matches by NAME, so duplicates over-block (all same-named
+// users are rejected when any one is inactive). Surfaced as a startup warning so
+// the operator can rename; pre-existing duplicates are tolerated, not blocked.
+// PURE.
+func DuplicateNames(list []PanelUser) []string {
+	count := map[string]int{}
+	for _, u := range list {
+		if u.Name != "" {
+			count[u.Name]++
+		}
+	}
+	var out []string
+	for n, c := range count {
+		if c > 1 {
+			out = append(out, n)
+		}
+	}
+	sort.Strings(out)
+	return out
+}
