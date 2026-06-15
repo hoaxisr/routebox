@@ -176,6 +176,61 @@ func TestValidateInboundServerTypes(t *testing.T) {
 	}
 }
 
+func TestValidateInboundTransportVisionConflict(t *testing.T) {
+	m := &Manager{}
+	// vless + ws transport + a user with xtls-rprx-vision flow.
+	// amnezia-box `check` PASSES this; RouteBox MUST reject it.
+	cfg := map[string]interface{}{
+		"inbounds": []interface{}{
+			map[string]interface{}{
+				"type": "vless", "tag": "v", "listen_port": float64(443),
+				"tls":       map[string]interface{}{"reality": map[string]interface{}{"enabled": true}},
+				"transport": map[string]interface{}{"type": "ws", "path": "/"},
+				"users":     []interface{}{map[string]interface{}{"uuid": "u1", "flow": "xtls-rprx-vision"}},
+			},
+		},
+		"outbounds": []interface{}{},
+	}
+	if errs := m.Validate(cfg); !hasErrContaining(errs, "xtls-rprx-vision flow requires raw transport") {
+		t.Fatalf("expected vision+transport rejection, got: %v", errs)
+	}
+}
+
+func TestValidateInboundTransportRawVisionOK(t *testing.T) {
+	m := &Manager{}
+	cfg := map[string]interface{}{
+		"inbounds": []interface{}{
+			map[string]interface{}{
+				"type": "vless", "tag": "v", "listen_port": float64(443),
+				"tls":   map[string]interface{}{"reality": map[string]interface{}{"enabled": true}},
+				"users": []interface{}{map[string]interface{}{"uuid": "u1", "flow": "xtls-rprx-vision"}},
+			},
+		},
+		"outbounds": []interface{}{},
+	}
+	if errs := m.Validate(cfg); hasErrContaining(errs, "requires raw transport") {
+		t.Fatalf("raw+vision must be allowed, got: %v", errs)
+	}
+}
+
+func TestValidateInboundTransportBadType(t *testing.T) {
+	m := &Manager{}
+	cfg := map[string]interface{}{
+		"inbounds": []interface{}{
+			map[string]interface{}{
+				"type": "vless", "tag": "v", "listen_port": float64(443),
+				"tls":       map[string]interface{}{"reality": map[string]interface{}{"enabled": true}},
+				"transport": map[string]interface{}{"type": "quic"},
+				"users":     []interface{}{map[string]interface{}{"uuid": "u1"}},
+			},
+		},
+		"outbounds": []interface{}{},
+	}
+	if errs := m.Validate(cfg); !hasErrContaining(errs, "transport type") {
+		t.Fatalf("expected transport-type rejection, got: %v", errs)
+	}
+}
+
 // TestValidateInboundMalformedUsers ensures a malformed users slice — a non-map
 // element alongside a blank-credential user — does not panic. Errors may or may
 // not be present; the point is panic-safety (non-map entries are skipped).

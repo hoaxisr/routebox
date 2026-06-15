@@ -403,8 +403,52 @@ func validateInbound(ib map[string]interface{}, index int) []string {
 				seen[cred] = true
 			}
 		}
+		errors = append(errors, validateInboundTransport(ib, prefix)...)
 	}
 
+	return errors
+}
+
+// validateInboundTransport validates the optional stream-transport block of a
+// vless/trojan inbound and enforces the Vision-flow conflict. This is the ONLY
+// config-time guard for the conflict: amnezia-box `check` PASSES a config with
+// xtls-rprx-vision flow + a non-raw transport and only fails per-connection at
+// runtime ("vision: not a valid supported TLS connection").
+func validateInboundTransport(ib map[string]interface{}, prefix string) []string {
+	var errors []string
+	ibType, _ := ib["type"].(string)
+	if ibType != "vless" && ibType != "trojan" {
+		return errors
+	}
+	tr, ok := ib["transport"].(map[string]interface{})
+	if !ok {
+		return errors // raw / absent: nothing to validate
+	}
+	trType, _ := tr["type"].(string)
+	if trType == "" || trType == "raw" {
+		return errors
+	}
+	valid := map[string]bool{"ws": true, "grpc": true, "httpupgrade": true}
+	if !valid[trType] {
+		errors = append(errors, fmt.Sprintf("%s: invalid transport type %q (must be ws, grpc, or httpupgrade; omit transport for raw TCP)", prefix, trType))
+		return errors
+	}
+	// Vision conflict (vless only — trojan has no flow). A non-raw transport
+	// present together with any user flow == xtls-rprx-vision is invalid.
+	if ibType == "vless" {
+		if users, ok := ib["users"].([]interface{}); ok {
+			for _, u := range users {
+				um, ok := u.(map[string]interface{})
+				if !ok {
+					continue
+				}
+				if f, _ := um["flow"].(string); f == "xtls-rprx-vision" {
+					errors = append(errors, fmt.Sprintf("%s: vless: xtls-rprx-vision flow requires raw transport (remove the transport or clear the flow)", prefix))
+					break
+				}
+			}
+		}
+	}
 	return errors
 }
 
