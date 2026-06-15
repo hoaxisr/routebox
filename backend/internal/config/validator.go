@@ -333,8 +333,35 @@ func validateOutbound(ob map[string]interface{}, index int) []string {
 				errors = append(errors, fmt.Sprintf("%s: trojan 'tls' must be an object", prefix))
 			}
 		}
+		// trojan has no flow field — no Vision conflict possible.
+	case "vless":
+		errors = append(errors, validateOutboundVisionFlow(ob, prefix)...)
 	}
 
+	return errors
+}
+
+// validateOutboundVisionFlow enforces the Vision-flow conflict on a vless client
+// outbound, mirroring the inbound guard validateInboundTransport. xtls-rprx-vision
+// requires raw TCP: a non-raw stream transport (ws/grpc/http/httpupgrade) present
+// together with that flow is invalid. This is the ONLY config-time guard — same
+// as the inbound case, amnezia-box `check` PASSES this config and only fails
+// per-connection at runtime ("vision: not a valid supported TLS connection").
+func validateOutboundVisionFlow(ob map[string]interface{}, prefix string) []string {
+	var errors []string
+	flow, _ := ob["flow"].(string)
+	if flow != "xtls-rprx-vision" {
+		return errors
+	}
+	tr, ok := ob["transport"].(map[string]interface{})
+	if !ok {
+		return errors // raw / absent: nothing to validate
+	}
+	trType, _ := tr["type"].(string)
+	if trType == "" || trType == "raw" || trType == "tcp" {
+		return errors
+	}
+	errors = append(errors, fmt.Sprintf("%s: vless: xtls-rprx-vision flow requires raw transport (remove the transport or clear the flow)", prefix))
 	return errors
 }
 

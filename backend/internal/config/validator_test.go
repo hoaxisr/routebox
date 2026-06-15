@@ -368,6 +368,38 @@ func TestValidateOutboundTrojan(t *testing.T) {
 	}
 }
 
+// TestValidateOutboundVlessVisionConflict mirrors the inbound Vision guard onto
+// the client outbound side. A vless outbound with a non-raw transport plus
+// flow == xtls-rprx-vision PASSES amnezia-box `check` but fails per-connection at
+// runtime ("vision: not a valid supported TLS connection") — RouteBox is the only
+// config-time guard.
+func TestValidateOutboundVlessVisionConflict(t *testing.T) {
+	tests := []struct {
+		name    string
+		ob      map[string]interface{}
+		wantSub string
+	}{
+		{"vless ws + vision rejected", map[string]interface{}{"type": "vless", "tag": "v", "server": "ex.com", "server_port": float64(443), "uuid": "u1", "flow": "xtls-rprx-vision", "transport": map[string]interface{}{"type": "ws", "path": "/"}}, "xtls-rprx-vision flow requires raw transport"},
+		{"vless raw + vision ok", map[string]interface{}{"type": "vless", "tag": "v", "server": "ex.com", "server_port": float64(443), "uuid": "u1", "flow": "xtls-rprx-vision"}, ""},
+		{"vless tcp transport + vision ok", map[string]interface{}{"type": "vless", "tag": "v", "server": "ex.com", "server_port": float64(443), "uuid": "u1", "flow": "xtls-rprx-vision", "transport": map[string]interface{}{"type": "tcp"}}, ""},
+		{"vless ws + no flow ok", map[string]interface{}{"type": "vless", "tag": "v", "server": "ex.com", "server_port": float64(443), "uuid": "u1", "transport": map[string]interface{}{"type": "ws", "path": "/"}}, ""},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			errs := validateOutbound(tt.ob, 0)
+			if tt.wantSub == "" {
+				if hasErrContaining(errs, "requires raw transport") {
+					t.Fatalf("expected no vision conflict, got %v", errs)
+				}
+				return
+			}
+			if !hasErrContaining(errs, tt.wantSub) {
+				t.Fatalf("expected error containing %q, got %v", tt.wantSub, errs)
+			}
+		})
+	}
+}
+
 // TestValidateInboundMalformedUsers ensures a malformed users slice — a non-map
 // element alongside a blank-credential user — does not panic. Errors may or may
 // not be present; the point is panic-safety (non-map entries are skipped).
