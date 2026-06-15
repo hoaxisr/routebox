@@ -605,6 +605,9 @@ func main() {
 			r.Get("/clash/*", apiHandler.ProxyClashAPI)
 			r.Delete("/clash/*", apiHandler.ProxyClashAPI)
 
+			// Panel auth — change password (session-protected; current pw verified)
+			r.Post("/auth/change-password", apiHandler.ChangePassword)
+
 			// RouteBox Settings API
 			r.Get("/settings", apiHandler.GetSettings)
 			r.Put("/settings", apiHandler.UpdateSettings)

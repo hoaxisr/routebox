@@ -250,3 +250,42 @@ func TestChangePasswordLockout(t *testing.T) {
 	}
 	t.Fatalf("expected a 429 after repeated wrong attempts, last status %d", last)
 }
+
+func authRouterWithChangePw(h *Handler) *chi.Mux {
+	r := chi.NewRouter()
+	r.Group(func(r chi.Router) {
+		r.Post("/api/auth/login", h.Login)
+		r.Post("/api/auth/logout", h.Logout)
+		r.Get("/api/auth/session", h.Session)
+	})
+	r.Group(func(r chi.Router) {
+		r.Use(AuthMiddleware(h.settings, h.sessions, h.limiter, h.verifier))
+		r.Post("/api/auth/change-password", h.ChangePassword)
+	})
+	return r
+}
+
+func TestChangePasswordRequiresSession(t *testing.T) {
+	h := newAuthHandler(t)
+	srv := httptest.NewServer(authRouterWithChangePw(h))
+	defer srv.Close()
+
+	// No session/Basic creds → AuthMiddleware rejects with 401.
+	body := `{"current_password":"pw","new_password":"newsecret123"}`
+	noauth, _ := srv.Client().Post(srv.URL+"/api/auth/change-password", "application/json", strings.NewReader(body))
+	if noauth.StatusCode != http.StatusUnauthorized {
+		t.Fatalf("change-password without session should be 401, got %d", noauth.StatusCode)
+	}
+
+	// With a valid session cookie → reaches the handler → 200.
+	jar, _ := cookiejar.New(nil)
+	jc := srv.Client()
+	jc.Jar = jar
+	if ok, _ := jc.Post(srv.URL+"/api/auth/login", "application/json", strings.NewReader(`{"username":"admin","password":"pw"}`)); ok.StatusCode != http.StatusOK {
+		t.Fatalf("login should be 200, got %d", ok.StatusCode)
+	}
+	resp, _ := jc.Post(srv.URL+"/api/auth/change-password", "application/json", strings.NewReader(body))
+	if resp.StatusCode != http.StatusOK {
+		t.Fatalf("change-password with session should be 200, got %d", resp.StatusCode)
+	}
+}
