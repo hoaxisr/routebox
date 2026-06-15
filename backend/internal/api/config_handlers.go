@@ -8,8 +8,10 @@ import (
 	"log"
 	"net/http"
 	"path/filepath"
+	"time"
 
 	"routebox/backend/internal/config"
+	"routebox/backend/internal/users"
 )
 
 // GetConfig returns the current configuration
@@ -173,6 +175,17 @@ func (h *Handler) ApplyConfig(w http.ResponseWriter, r *http.Request) {
 		if _, err := h.config.SyncV2RayAPI(listen, names); err != nil {
 			log.Printf("users: v2ray_api sync failed: %v", err)
 		}
+
+		// Lifecycle enforcement: recompute the managed reject rule from the
+		// now-current registry and write it to active. hasDraft is already false
+		// here (SaveToDiskIfGen applied/cleared it), so the writer does NOT defer.
+		// The apply's own reload (below) picks up the rewritten active — do NOT
+		// add a second reload (don't call h.syncRejectRule). Best-effort: a failure
+		// logs but never fails the apply (mirrors Reconcile / SyncV2RayAPI above).
+		rejectNames := users.EffectiveRejectNames(h.panelUsers.List(), time.Now().Unix())
+		if _, err := h.config.SyncRejectRuleActive(rejectNames); err != nil {
+			log.Printf("users: reject-rule sync (apply) failed: %v", err)
+		}
 	}
 
 	// Check if we should use reload or restart
@@ -182,7 +195,7 @@ func (h *Handler) ApplyConfig(w http.ResponseWriter, r *http.Request) {
 		mode = "reload"
 	}
 
-	status := h.process.GetStatus()
+	status := h.getProcessStatus()
 	if !status.Running {
 		writeSuccess(w, map[string]interface{}{
 			"message":   "Config saved (process not running)",
