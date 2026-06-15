@@ -220,6 +220,11 @@ export const api = {
 		request<{ message: string }>(`/users/${encodeURIComponent(id)}/token`, {
 			method: 'DELETE'
 		}),
+	updateUser: (id: string, body: { enabled?: boolean; expires_at?: number }) =>
+		request<PanelUser>(`/users/${encodeURIComponent(id)}`, {
+			method: 'PATCH',
+			body: JSON.stringify(body)
+		}),
 
 	// Rule Sets CRUD
 	listRuleSets: () => request<RuleSet[]>('/route/rule-sets'),

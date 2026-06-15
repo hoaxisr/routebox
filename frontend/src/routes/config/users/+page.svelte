@@ -110,6 +110,45 @@
 		}
 	}
 
+	type UserStatus = 'active' | 'disabled' | 'expired';
+	function userStatus(u: PanelUser): UserStatus {
+		if (!u.enabled) return 'disabled';
+		if (u.expires_at && u.expires_at > 0 && u.expires_at <= Math.floor(Date.now() / 1000)) {
+			return 'expired';
+		}
+		return 'active';
+	}
+
+	// <input type="date"> value (YYYY-MM-DD, local) <-> unix seconds.
+	function expiryToDateInput(u: PanelUser): string {
+		if (!u.expires_at || u.expires_at <= 0) return '';
+		const d = new Date(u.expires_at * 1000);
+		const off = d.getTimezoneOffset() * 60000;
+		return new Date(d.getTime() - off).toISOString().slice(0, 10);
+	}
+
+	async function toggleEnabled(u: PanelUser) {
+		try {
+			await api.updateUser(u.id, { enabled: !u.enabled });
+			notifications.success($t(u.enabled ? 'users.disabled' : 'users.enabled', { values: { name: u.name } }));
+			await load();
+		} catch (e) {
+			notifications.error(`${e}`);
+		}
+	}
+
+	async function setExpiry(u: PanelUser, value: string) {
+		// Empty => clear (0 = never). A date => seconds at LOCAL midnight.
+		const expires_at = value ? Math.floor(new Date(value + 'T00:00:00').getTime() / 1000) : 0;
+		try {
+			await api.updateUser(u.id, { expires_at });
+			notifications.success($t('users.expirySet', { values: { name: u.name } }));
+			await load();
+		} catch (e) {
+			notifications.error(`${e}`);
+		}
+	}
+
 	function openShare(u: PanelUser) {
 		if (u.pending || u.bindings.length === 0) return;
 		shareId = u.id;
@@ -196,8 +235,12 @@
 								<h2 class="text-lg font-medium text-[var(--ctp-text)]">{u.name || '(unnamed)'}</h2>
 								{#if u.pending}
 									<span class="status-badge info">{$t('users.pending')}</span>
-								{:else}
+								{:else if userStatus(u) === 'active'}
 									<span class="status-badge success">{$t('users.active')}</span>
+								{:else if userStatus(u) === 'expired'}
+									<span class="status-badge error">{$t('users.expired')}</span>
+								{:else}
+									<span class="status-badge info">{$t('users.disabledLabel')}</span>
 								{/if}
 							</div>
 							<div class="mt-2 flex flex-wrap gap-1">
@@ -231,6 +274,18 @@
 									class="px-3 py-1.5 text-[var(--ctp-text)] border border-[var(--ctp-surface2)] rounded-lg hover:bg-[var(--ctp-surface0)] transition-colors text-sm">
 									{$t('users.subscription')}
 								</button>
+							{/if}
+							{#if !u.pending && u.id}
+								<button onclick={() => toggleEnabled(u)}
+									class="px-3 py-1.5 text-[var(--ctp-text)] border border-[var(--ctp-surface2)] rounded-lg hover:bg-[var(--ctp-surface0)] transition-colors text-sm">
+									{u.enabled ? $t('users.disable') : $t('users.enable')}
+								</button>
+								<label class="flex items-center gap-1 text-xs text-[var(--ctp-overlay1)]">
+									<span>{$t('users.expiresAt')}</span>
+									<input type="date" value={expiryToDateInput(u)}
+										onchange={(e) => setExpiry(u, (e.currentTarget as HTMLInputElement).value)}
+										class="px-2 py-1 bg-[var(--ctp-mantle)] border border-[var(--ctp-surface2)] rounded text-[var(--ctp-text)] text-xs focus:outline-none focus:ring-2 focus:ring-[var(--ctp-primary)]" />
+								</label>
 							{/if}
 							{#if u.id}
 								<button onclick={() => openAddBinding(u)} disabled={availableInbounds(u).length === 0}
