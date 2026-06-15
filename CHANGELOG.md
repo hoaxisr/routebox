@@ -6,6 +6,23 @@ All notable changes to RouteBox are documented here.
 
 ### New Features
 
+- **AmneziaWG server inbound (VPS panel)** — RouteBox can now run an AmneziaWG VPN server itself, independent of sing-box. It installs the `amneziawg` kernel module on demand, brings up its own `awg-rb0` interface, and provisions client peers live. See details below.
+
+**Backend:**
+- New `awg` package: a `Runner`-backed manager that owns the `awg-rb0` interface, the peer secret store, and all privileged operations. Enable orchestrator runs validate → install module → keygen → render → `awg-quick up` → health-gate, with full teardown on any failure (no orphan NAT, no orphan interface).
+- On-demand kernel-module installer for Debian-family hosts: adds the AmneziaWG PPA with a **pinned** signing-key fingerprint (resists repo/key-server compromise), single-flight so concurrent enables can't double-install.
+- Interface managed via `awg-quick` with NAT confined to dedicated `RBOX-AWG-*` iptables chains (created in PostUp, fully reverted in PostDown), so RouteBox's masquerade rules never collide with the host's.
+- Live peer provisioning via `awg set` (no tunnel flap / no existing-client disruption): each peer gets a `/32` from an order-independent lowest-free IPAM allocator, a generated WG keypair, and a re-showable client `.conf` (QR-able). Peer secrets persisted `0600` with bidirectional reconcile between the on-disk store and the live interface.
+- **Security-critical input-validation layer:** every operator-controlled field (`subnet`, `wan_iface`, `listen_port`, `name`, `dns`, `mtu`, `allowed_ips`, the AmneziaWG H1–H4 / J / S obfuscation fields, peer `publicKey`) is validated and canonically re-emitted before it can reach the root shell — `.conf`/`awg-quick`/`iptables` see only canonical values, never raw input.
+- `/api/awg/*` endpoints: `GET status`, `POST enable`/`disable`, `GET`/`POST peers`, `DELETE peers/{publicKey}`, and `GET peers/{publicKey}/config` (serves the client `.conf` as `text/plain`, hardened like `/sub`). Interface settings persisted in RouteBox settings; peers in `peers.toml` under `/etc/routebox/amneziawg`.
+
+**Frontend:**
+- New `/config/awg` panel page: module/interface status, an enable form (subnet, listen port, MTU, DNS), a peer roster with live add/remove, and per-peer config download + QR.
+
+**VPS/panel mode only and fully additive** — router-mode installs are unchanged, and a binary/host without the feature simply doesn't expose it.
+
+---
+
 - **Per-user traffic accounting (VPS Phase 5)** — RouteBox now records accurate per-user upload/download via sing-box's v2ray_api StatsService. See details below.
 
 **Backend:**
