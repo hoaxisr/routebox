@@ -12,6 +12,7 @@ import (
 	"github.com/go-chi/chi/v5"
 
 	"routebox/backend/internal/config"
+	"routebox/backend/internal/process"
 	"routebox/backend/internal/settings"
 	"routebox/backend/internal/users"
 )
@@ -765,5 +766,138 @@ func TestAddBinding_NotBlockedByOwnName(t *testing.T) {
 	r.ServeHTTP(w, req)
 	if w.Code != http.StatusOK {
 		t.Fatalf("AddBinding must not trip name-uniqueness, got %d: %s", w.Code, w.Body.String())
+	}
+}
+
+func TestUpdateUser_DisableWritesRejectRule(t *testing.T) {
+	h, cfg, um := newUsersTestHandler(t)
+	h.statusSource = func() process.Status { return process.Status{Running: false} }
+	id := um.List()[0].ID
+
+	r := chi.NewRouter()
+	r.Patch("/api/users/{id}", h.UpdateUser)
+	req := httptest.NewRequest(http.MethodPatch, "/api/users/"+id, strings.NewReader(`{"enabled":false}`))
+	w := httptest.NewRecorder()
+	r.ServeHTTP(w, req)
+	if w.Code != http.StatusOK {
+		t.Fatalf("status %d: %s", w.Code, w.Body.String())
+	}
+	// Registry updated.
+	u, _ := um.Get(id)
+	if u.Enabled {
+		t.Fatal("user must be disabled in registry")
+	}
+	// Response reflects new state.
+	var resp struct {
+		Data struct {
+			Enabled bool `json:"enabled"`
+		} `json:"data"`
+	}
+	if err := json.Unmarshal(w.Body.Bytes(), &resp); err != nil {
+		t.Fatal(err)
+	}
+	if resp.Data.Enabled {
+		t.Fatal("response must show enabled=false")
+	}
+	// Reject rule synced to active.
+	if au := rejectRuleNames(cfg.GetActive()); len(au) != 1 || au[0] != "alice" {
+		t.Fatalf("expected reject auth_user=[alice], got %#v", au)
+	}
+	// Immediate: NO draft created (derived enforcement, not draft->apply).
+	if cfg.HasDraft() {
+		t.Fatal("UpdateUser must not create a config draft")
+	}
+}
+
+func TestUpdateUser_SetAndClearExpiry(t *testing.T) {
+	h, _, um := newUsersTestHandler(t)
+	h.statusSource = func() process.Status { return process.Status{Running: false} }
+	id := um.List()[0].ID
+
+	r := chi.NewRouter()
+	r.Patch("/api/users/{id}", h.UpdateUser)
+
+	// Set expiry.
+	req := httptest.NewRequest(http.MethodPatch, "/api/users/"+id, strings.NewReader(`{"expires_at":1735689600}`))
+	w := httptest.NewRecorder()
+	r.ServeHTTP(w, req)
+	if w.Code != http.StatusOK {
+		t.Fatalf("set status %d: %s", w.Code, w.Body.String())
+	}
+	if u, _ := um.Get(id); u.ExpiresAt != 1735689600 {
+		t.Fatalf("expires_at = %d, want 1735689600", u.ExpiresAt)
+	}
+	// Enabled must be UNCHANGED (omitted field).
+	if u, _ := um.Get(id); !u.Enabled {
+		t.Fatal("omitting enabled must leave it unchanged (true)")
+	}
+
+	// Clear expiry with 0.
+	req = httptest.NewRequest(http.MethodPatch, "/api/users/"+id, strings.NewReader(`{"expires_at":0}`))
+	w = httptest.NewRecorder()
+	r.ServeHTTP(w, req)
+	if w.Code != http.StatusOK {
+		t.Fatalf("clear status %d: %s", w.Code, w.Body.String())
+	}
+	if u, _ := um.Get(id); u.ExpiresAt != 0 {
+		t.Fatalf("expires_at = %d after clear, want 0", u.ExpiresAt)
+	}
+}
+
+func TestUpdateUser_PatchBoth(t *testing.T) {
+	h, _, um := newUsersTestHandler(t)
+	h.statusSource = func() process.Status { return process.Status{Running: false} }
+	id := um.List()[0].ID
+	r := chi.NewRouter()
+	r.Patch("/api/users/{id}", h.UpdateUser)
+	req := httptest.NewRequest(http.MethodPatch, "/api/users/"+id,
+		strings.NewReader(`{"enabled":false,"expires_at":42}`))
+	w := httptest.NewRecorder()
+	r.ServeHTTP(w, req)
+	if w.Code != http.StatusOK {
+		t.Fatalf("status %d: %s", w.Code, w.Body.String())
+	}
+	u, _ := um.Get(id)
+	if u.Enabled || u.ExpiresAt != 42 {
+		t.Fatalf("both fields must apply: enabled=%v expires=%d", u.Enabled, u.ExpiresAt)
+	}
+}
+
+func TestUpdateUser_NotFound404(t *testing.T) {
+	h, _, _ := newUsersTestHandler(t)
+	h.statusSource = func() process.Status { return process.Status{Running: false} }
+	r := chi.NewRouter()
+	r.Patch("/api/users/{id}", h.UpdateUser)
+	req := httptest.NewRequest(http.MethodPatch, "/api/users/nope", strings.NewReader(`{"enabled":false}`))
+	w := httptest.NewRecorder()
+	r.ServeHTTP(w, req)
+	if w.Code != http.StatusNotFound {
+		t.Fatalf("status %d, want 404", w.Code)
+	}
+}
+
+func TestUpdateUser_NoUsersMgr503(t *testing.T) {
+	h := &Handler{}
+	r := chi.NewRouter()
+	r.Patch("/api/users/{id}", h.UpdateUser)
+	req := httptest.NewRequest(http.MethodPatch, "/api/users/x", strings.NewReader(`{"enabled":false}`))
+	w := httptest.NewRecorder()
+	r.ServeHTTP(w, req)
+	if w.Code != http.StatusServiceUnavailable {
+		t.Fatalf("status %d, want 503", w.Code)
+	}
+}
+
+func TestUpdateUser_BadJSON400(t *testing.T) {
+	h, _, um := newUsersTestHandler(t)
+	h.statusSource = func() process.Status { return process.Status{Running: false} }
+	id := um.List()[0].ID
+	r := chi.NewRouter()
+	r.Patch("/api/users/{id}", h.UpdateUser)
+	req := httptest.NewRequest(http.MethodPatch, "/api/users/"+id, strings.NewReader(`{not json`))
+	w := httptest.NewRecorder()
+	r.ServeHTTP(w, req)
+	if w.Code != http.StatusBadRequest {
+		t.Fatalf("status %d, want 400", w.Code)
 	}
 }

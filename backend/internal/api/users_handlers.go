@@ -355,6 +355,51 @@ func (h *Handler) RevokeUserToken(w http.ResponseWriter, r *http.Request) {
 	writeSuccess(w, map[string]string{"message": "token revoked"})
 }
 
+// updateUserBody is the PATCH /api/users/{id} payload. Pointer fields are nil
+// when the JSON key is absent (= leave unchanged); a present field with its zero
+// value (enabled:false, expires_at:0) IS an explicit change.
+type updateUserBody struct {
+	Enabled   *bool  `json:"enabled"`
+	ExpiresAt *int64 `json:"expires_at"`
+}
+
+// UpdateUser applies lifecycle changes (enabled / expires_at) to a registry user
+// and enforces them IMMEDIATELY via the managed reject rule + reload — derived
+// enforcement, no draft->apply (consistent with Rotate/Revoke). PROTECTED.
+func (h *Handler) UpdateUser(w http.ResponseWriter, r *http.Request) {
+	if h.panelUsers == nil {
+		writeError(w, http.StatusServiceUnavailable, "users not initialized")
+		return
+	}
+	id := chi.URLParam(r, "id")
+	u, ok := h.panelUsers.Get(id)
+	if !ok {
+		writeError(w, http.StatusNotFound, "user not found")
+		return
+	}
+	var body updateUserBody
+	if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
+		writeError(w, http.StatusBadRequest, err.Error())
+		return
+	}
+	if body.Enabled != nil {
+		u.Enabled = *body.Enabled
+	}
+	if body.ExpiresAt != nil {
+		u.ExpiresAt = *body.ExpiresAt
+	}
+	if err := h.panelUsers.Put(&u); err != nil {
+		// User existed (checked above): a non-nil error here is a save failure.
+		writeError(w, http.StatusInternalServerError, err.Error())
+		return
+	}
+	h.syncRejectRule() // immediate enforcement + reload-on-change
+	writeSuccess(w, userView{
+		ID: u.ID, Name: u.Name, Enabled: u.Enabled, ExpiresAt: u.ExpiresAt,
+		Pending: false, Token: u.Token, TokenDisabled: u.TokenDisabled, Bindings: u.Bindings,
+	})
+}
+
 // findActiveInbound returns the inbound with tag from an active config map.
 func findActiveInbound(active map[string]interface{}, tag string) (map[string]interface{}, bool) {
 	inbounds, ok := active["inbounds"].([]interface{})
