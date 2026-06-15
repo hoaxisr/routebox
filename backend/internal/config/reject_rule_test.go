@@ -200,6 +200,45 @@ func TestSyncRejectRuleActive_EmptyNoRuleNoOp(t *testing.T) {
 	}
 }
 
+func TestSyncRejectRuleActive_EmptyRulesArrayEmptyNamesNoOp(t *testing.T) {
+	// A non-nil empty route.rules array + empty names must be a true no-op: there
+	// is no managed rule to remove, so no rewrite/reload (which would drop live
+	// VPN connections). Guards the empty-vs-empty DeepEqual normalization.
+	p := writeV2Cfg(t, `{"route":{"rules":[]}}`)
+	m, _ := NewManager(p)
+	if changed, err := m.SyncRejectRuleActive(nil); changed || err != nil {
+		t.Fatalf("empty rules array + empty names must no-op: changed=%v err=%v, want false/nil", changed, err)
+	}
+}
+
+func TestSyncRejectRuleActive_CollapsesDuplicateManagedRules(t *testing.T) {
+	// A corrupted/double-written active config with TWO managed reject rules must
+	// collapse to exactly ONE on sync (self-healing), and be idempotent after.
+	p := writeV2Cfg(t, `{"route":{"rules":[`+
+		`{"auth_user":["alice"],"action":"reject"},`+
+		`{"auth_user":["alice"],"action":"reject"},`+
+		`{"domain":["x.com"],"action":"reject"}]}}`)
+	m, _ := NewManager(p)
+	changed, err := m.SyncRejectRuleActive([]string{"alice"})
+	if err != nil || !changed {
+		t.Fatalf("collapse changed=%v err=%v, want true/nil", changed, err)
+	}
+	rules := rulesOf(t, m.GetActive())
+	if len(rules) != 2 {
+		t.Fatalf("want 2 rules (one managed + one user), got %d: %#v", len(rules), rules)
+	}
+	if !managedRejectRule(rules[0].(map[string]interface{})) {
+		t.Fatalf("collapsed managed rule must be at index 0, got %#v", rules[0])
+	}
+	if managedRejectRule(rules[1].(map[string]interface{})) {
+		t.Fatalf("only ONE managed rule must remain, index 1 is also managed: %#v", rules[1])
+	}
+	// Idempotent after self-heal.
+	if changed, _ := m.SyncRejectRuleActive([]string{"alice"}); changed {
+		t.Fatal("re-sync after collapse reported changed=true, want false")
+	}
+}
+
 func TestSyncRejectRuleActive_PrunesEmptyRouteOnRemove(t *testing.T) {
 	// route.rules contains ONLY the managed rule; removing it must drop route.rules
 	// AND the now-empty route key (twin of SyncV2RayAPI's experimental cleanup).

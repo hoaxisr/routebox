@@ -83,8 +83,14 @@ func (m *Manager) SyncRejectRuleActive(names []string) (changed bool, err error)
 	if want != nil {
 		newRules = append([]interface{}{want}, newRules...)
 	}
-	// Normalize empty -> nil so a no-op against an absent/nil rules slice compares
-	// equal (reflect.DeepEqual distinguishes nil from a non-nil empty slice).
+	// Normalize empty -> nil on BOTH sides so a no-op compares equal regardless of
+	// whether the existing rules were absent (nil) or a non-nil empty array
+	// (reflect.DeepEqual distinguishes nil from a non-nil empty slice). This keeps
+	// "remove when already empty" a true no-op and avoids a spurious reload that
+	// would drop live VPN connections.
+	if len(oldRules) == 0 {
+		oldRules = nil
+	}
 	if len(newRules) == 0 {
 		newRules = nil
 	}
