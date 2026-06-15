@@ -308,6 +308,26 @@ func main() {
 	apiHandler.SetSubscriptions(subsMgr, subsRefresh)
 	apiHandler.SetUsers(usersMgr)
 
+	// Phase 4: warn (don't block) when pre-existing panel users share a name.
+	// auth_user matches by name, so duplicates over-block during lifecycle reject.
+	if dups := users.DuplicateNames(usersMgr.List()); len(dups) > 0 {
+		log.Printf("WARNING: duplicate panel user names detected (%v) — lifecycle reject matches by name, so disabling/expiring one of a duplicate pair over-blocks the other; rename to disambiguate", dups)
+	}
+
+	// Phase 4: establish lifecycle enforcement (disabled/expired users) in the
+	// active config once at startup so a restart re-applies the reject rule. If the
+	// process is not yet running, the reload is skipped (not-running) and it picks
+	// up the synced config on its own start.
+	apiHandler.SyncRejectRuleAndReload()
+
+	// Expiry ticker (vps mode only — router mode has no panel users). 30s
+	// granularity; cheap (one List + a deep-equal). Re-applies enforcement so users
+	// expire with no admin action. Defers internally when a draft is pending.
+	stopExpiry := make(chan struct{})
+	if effectiveMode == "vps" {
+		go users.RunExpiryLoop(apiHandler.SyncRejectRuleAndReload, 30*time.Second, stopExpiry)
+	}
+
 	// Dedicated per-IP rate-limiter for the PUBLIC /sub/{token} endpoint, kept
 	// separate from the auth/lockout limiter. Keyed on clientIP(r) = RemoteAddr.
 	subLimiter := auth.NewLimiter()
@@ -460,6 +480,7 @@ func main() {
 			r.Route("/users", func(r chi.Router) {
 				r.Get("/", apiHandler.ListUsers)
 				r.Post("/", apiHandler.CreateUser)
+				r.Patch("/{id}", apiHandler.UpdateUser)
 				r.Delete("/{id}", apiHandler.DeleteUser)
 				r.Post("/{id}/bindings", apiHandler.AddBinding)
 				r.Get("/{id}/link", apiHandler.GetUserLinkByID)
@@ -731,6 +752,7 @@ func main() {
 	close(stopUserSampler)
 	close(stopUpdates)
 	close(stopSubs)
+	close(stopExpiry)
 	if trafficStore != nil {
 		trafficStore.Close()
 	}
