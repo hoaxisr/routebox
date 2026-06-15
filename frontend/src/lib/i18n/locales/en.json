@@ -1057,7 +1057,20 @@
     "settingsSaved": "Settings saved",
     "settingsReloaded": "Settings reloaded from file",
     "updatesSection": "Updates",
-    "autoCheckUpdates": "Check for updates automatically (once a day)"
+    "autoCheckUpdates": "Check for updates automatically (once a day)",
+    "securitySection": "Security",
+    "securityHint": "Change the panel admin username and password.",
+    "username": "Username",
+    "saveUsername": "Save username",
+    "usernameSaved": "Username saved",
+    "currentPassword": "Current password",
+    "newPassword": "New password",
+    "confirmPassword": "Confirm new password",
+    "changePassword": "Change password",
+    "passwordChanged": "Password changed",
+    "passwordMismatch": "New password and confirmation do not match",
+    "passwordTooShort": "New password must be at least 8 characters",
+    "currentPasswordWrong": "Current password is incorrect"
   },
   "backup": {
     "title": "Backup",
