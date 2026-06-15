@@ -102,6 +102,10 @@ func (h *Handler) CreateUser(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusBadRequest, err.Error())
 		return
 	}
+	if h.nameTaken(body.Name) {
+		writeError(w, http.StatusBadRequest, fmt.Sprintf("a user named %q already exists", body.Name))
+		return
+	}
 	cred, err := h.stageUserInDraft(body.InboundTag, body.Protocol, body.Name)
 	if err != nil {
 		writeError(w, http.StatusBadRequest, err.Error())

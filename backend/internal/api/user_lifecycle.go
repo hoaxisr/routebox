@@ -43,3 +43,39 @@ func (h *Handler) syncRejectRule() {
 // ticker (as a func()) and the startup one-shot both call it. It defers on a
 // pending draft and reloads only when the managed rule actually changed.
 func (h *Handler) SyncRejectRuleAndReload() { h.syncRejectRule() }
+
+// nameTaken reports whether name collides with an existing panel user — either a
+// registry user or a pending (draft-only, server-inbound) user (the same surface
+// ListUsers derives Pending from). Used by CreateUser to prevent NEW
+// inbound-user-name collisions: auth_user matches by name, so two users sharing a
+// name would be lifecycle-blocked together. Pre-existing duplicates are tolerated
+// (a startup warning flags them) — this only blocks creating fresh ones. Empty
+// name is never taken. AddBinding is exempt (it reuses an existing user's own
+// name — same identity, no new name — and never calls this).
+func (h *Handler) nameTaken(name string) bool {
+	if name == "" {
+		return false
+	}
+	for _, u := range h.panelUsers.List() {
+		if u.Name == name {
+			return true
+		}
+	}
+	registered := map[string]bool{}
+	for _, u := range h.panelUsers.List() {
+		for _, b := range u.Bindings {
+			registered[b.InboundTag+"\x00"+b.Credential] = true
+		}
+	}
+	for _, ib := range h.config.ListInbounds() {
+		for _, cu := range users.ServerInboundUsers(ib) {
+			if registered[cu.InboundTag+"\x00"+cu.Credential] {
+				continue
+			}
+			if cu.Name == name {
+				return true // pending draft user with this name
+			}
+		}
+	}
+	return false
+}

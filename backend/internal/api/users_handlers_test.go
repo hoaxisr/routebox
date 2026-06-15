@@ -697,3 +697,73 @@ func TestListUsers_IncludesToken(t *testing.T) {
 		t.Fatalf("GET /api/users did not include the registry user's token")
 	}
 }
+
+func TestCreateUser_DuplicateRegistryName400(t *testing.T) {
+	h, _, _ := newUsersTestHandler(t) // registry has "alice"
+	r := chi.NewRouter()
+	r.Post("/api/users", h.CreateUser)
+	body := `{"name":"alice","protocol":"vless","inbound_tag":"vless-in"}`
+	req := httptest.NewRequest(http.MethodPost, "/api/users", strings.NewReader(body))
+	w := httptest.NewRecorder()
+	r.ServeHTTP(w, req)
+	if w.Code != http.StatusBadRequest {
+		t.Fatalf("duplicate name must be 400, got %d: %s", w.Code, w.Body.String())
+	}
+}
+
+func TestCreateUser_DuplicatePendingName400(t *testing.T) {
+	h, cfg, _ := newUsersTestHandler(t)
+	// Stage a pending "bob" into the draft (not yet registered).
+	if err := cfg.EnsureDraft(); err != nil {
+		t.Fatal(err)
+	}
+	ib, _ := cfg.GetInbound("vless-in")
+	ib["users"] = append(ib["users"].([]interface{}),
+		map[string]interface{}{"name": "bob", "uuid": "u-pending"})
+	if err := cfg.UpdateInbound("vless-in", ib); err != nil {
+		t.Fatal(err)
+	}
+	r := chi.NewRouter()
+	r.Post("/api/users", h.CreateUser)
+	body := `{"name":"bob","protocol":"vless","inbound_tag":"vless-in"}`
+	req := httptest.NewRequest(http.MethodPost, "/api/users", strings.NewReader(body))
+	w := httptest.NewRecorder()
+	r.ServeHTTP(w, req)
+	if w.Code != http.StatusBadRequest {
+		t.Fatalf("duplicate pending name must be 400, got %d: %s", w.Code, w.Body.String())
+	}
+}
+
+func TestCreateUser_UniqueNameOK(t *testing.T) {
+	h, _, _ := newUsersTestHandler(t)
+	r := chi.NewRouter()
+	r.Post("/api/users", h.CreateUser)
+	body := `{"name":"charlie","protocol":"vless","inbound_tag":"vless-in"}`
+	req := httptest.NewRequest(http.MethodPost, "/api/users", strings.NewReader(body))
+	w := httptest.NewRecorder()
+	r.ServeHTTP(w, req)
+	if w.Code != http.StatusOK {
+		t.Fatalf("unique name must succeed, got %d: %s", w.Code, w.Body.String())
+	}
+}
+
+func TestAddBinding_NotBlockedByOwnName(t *testing.T) {
+	cfg, dir := newConfigWithTwoVless(t)
+	um := users.NewManager(filepath.Join(dir, "users.toml"))
+	if _, err := um.Reconcile(cfg.GetActive()); err != nil {
+		t.Fatal(err)
+	}
+	h := &Handler{config: cfg}
+	h.SetUsers(um)
+	id := um.List()[0].ID // alice on vless-in
+	r := chi.NewRouter()
+	r.Post("/api/users/{id}/bindings", h.AddBinding)
+	// AddBinding reuses alice's own name into vless-in-2 -> must NOT be a dup error.
+	body := `{"protocol":"vless","inbound_tag":"vless-in-2"}`
+	req := httptest.NewRequest(http.MethodPost, "/api/users/"+id+"/bindings", strings.NewReader(body))
+	w := httptest.NewRecorder()
+	r.ServeHTTP(w, req)
+	if w.Code != http.StatusOK {
+		t.Fatalf("AddBinding must not trip name-uniqueness, got %d: %s", w.Code, w.Body.String())
+	}
+}
