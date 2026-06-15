@@ -106,6 +106,22 @@ func TestParseVless(t *testing.T) {
 			t.Fatalf("headers = %#v", tr["headers"])
 		}
 	})
+	t.Run("httpupgrade transport", func(t *testing.T) {
+		ob, _, err := parseVless("vless://uuid@srv:443?type=httpupgrade&path=%2Fhu&host=h.example.com#hu")
+		if err != nil {
+			t.Fatalf("err: %v", err)
+		}
+		tr := ob["transport"].(map[string]interface{})
+		if tr["type"] != "httpupgrade" || tr["path"] != "/hu" {
+			t.Fatalf("transport = %#v", tr)
+		}
+		if tr["host"] != "h.example.com" {
+			t.Fatalf("httpupgrade host should be a top-level string: %#v", tr)
+		}
+		if _, ok := tr["headers"]; ok {
+			t.Fatalf("httpupgrade must not carry headers: %#v", tr)
+		}
+	})
 	t.Run("ipv6 host", func(t *testing.T) {
 		ob, _, err := parseVless("vless://uuid@[2001:db8::1]:443?security=tls#v6")
 		if err != nil {
@@ -117,6 +133,96 @@ func TestParseVless(t *testing.T) {
 	})
 	t.Run("missing @", func(t *testing.T) {
 		if _, _, err := parseVless("vless://noatsign:443"); err == nil {
+			t.Fatal("want error")
+		}
+	})
+}
+
+func TestParseTrojan(t *testing.T) {
+	t.Run("basic tls", func(t *testing.T) {
+		ob, name, err := parseTrojan("trojan://pw-secret@example.com:443?security=tls&sni=foo.com&fp=chrome#My%20Trojan")
+		if err != nil {
+			t.Fatalf("err: %v", err)
+		}
+		if name != "My Trojan" {
+			t.Fatalf("name = %q", name)
+		}
+		want := map[string]interface{}{
+			"type": "trojan", "server": "example.com", "server_port": 443, "password": "pw-secret",
+			"tls": map[string]interface{}{
+				"enabled": true, "server_name": "foo.com",
+				"utls": map[string]interface{}{"enabled": true, "fingerprint": "chrome"},
+			},
+		}
+		if !reflect.DeepEqual(ob, want) {
+			t.Fatalf("got %#v\nwant %#v", ob, want)
+		}
+	})
+	t.Run("reality", func(t *testing.T) {
+		ob, _, err := parseTrojan("trojan://pw@srv:443?security=reality&pbk=PUBKEY&sid=ab12&fp=chrome#r")
+		if err != nil {
+			t.Fatalf("err: %v", err)
+		}
+		reality := ob["tls"].(map[string]interface{})["reality"].(map[string]interface{})
+		if reality["enabled"] != true || reality["public_key"] != "PUBKEY" || reality["short_id"] != "ab12" {
+			t.Fatalf("reality = %#v", reality)
+		}
+	})
+	t.Run("ws transport host maps to headers.Host", func(t *testing.T) {
+		ob, _, err := parseTrojan("trojan://pw@srv:443?type=ws&path=%2Fws&host=cdn.example.com#w")
+		if err != nil {
+			t.Fatalf("err: %v", err)
+		}
+		tr := ob["transport"].(map[string]interface{})
+		if tr["type"] != "ws" || tr["path"] != "/ws" {
+			t.Fatalf("transport = %#v", tr)
+		}
+		if tr["headers"].(map[string]interface{})["Host"] != "cdn.example.com" {
+			t.Fatalf("ws host must map to headers.Host: %#v", tr)
+		}
+		if _, ok := tr["host"]; ok {
+			t.Fatalf("ws must not carry a top-level host key: %#v", tr)
+		}
+	})
+	t.Run("grpc transport", func(t *testing.T) {
+		ob, _, err := parseTrojan("trojan://pw@srv:443?type=grpc&serviceName=gsvc#g")
+		if err != nil {
+			t.Fatalf("err: %v", err)
+		}
+		tr := ob["transport"].(map[string]interface{})
+		if tr["type"] != "grpc" || tr["service_name"] != "gsvc" {
+			t.Fatalf("transport = %#v", tr)
+		}
+	})
+	t.Run("httpupgrade transport host is top-level string", func(t *testing.T) {
+		ob, _, err := parseTrojan("trojan://pw@srv:443?type=httpupgrade&path=%2Fhu&host=h.example.com#hu")
+		if err != nil {
+			t.Fatalf("err: %v", err)
+		}
+		tr := ob["transport"].(map[string]interface{})
+		if tr["type"] != "httpupgrade" || tr["path"] != "/hu" || tr["host"] != "h.example.com" {
+			t.Fatalf("transport = %#v", tr)
+		}
+		if _, ok := tr["headers"]; ok {
+			t.Fatalf("httpupgrade must not carry headers: %#v", tr)
+		}
+	})
+	t.Run("ipv6 host", func(t *testing.T) {
+		ob, _, err := parseTrojan("trojan://pw@[2001:db8::1]:443?security=tls#v6")
+		if err != nil {
+			t.Fatalf("err: %v", err)
+		}
+		if ob["server"] != "2001:db8::1" || ob["server_port"] != 443 {
+			t.Fatalf("server/port = %v %v", ob["server"], ob["server_port"])
+		}
+	})
+	t.Run("missing @", func(t *testing.T) {
+		if _, _, err := parseTrojan("trojan://noatsign:443"); err == nil {
+			t.Fatal("want error")
+		}
+	})
+	t.Run("not a trojan uri", func(t *testing.T) {
+		if _, _, err := parseTrojan("vless://x@srv:443"); err == nil {
 			t.Fatal("want error")
 		}
 	})
@@ -386,7 +492,7 @@ func TestParseLinks(t *testing.T) {
 	})
 	t.Run("unknown scheme skipped", func(t *testing.T) {
 		nodes, skipped := ParseLinks([]string{"trojan://x@srv:443#t", "garbage"})
-		if len(nodes) != 0 || skipped != 2 {
+		if len(nodes) != 1 || skipped != 1 {
 			t.Fatalf("nodes=%d skipped=%d", len(nodes), skipped)
 		}
 	})

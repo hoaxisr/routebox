@@ -129,6 +129,67 @@ func parseVless(uri string) (map[string]interface{}, string, error) {
 			tr["host"] = []string{h}
 		}
 		ob["transport"] = tr
+	case "httpupgrade":
+		tr := map[string]interface{}{"type": "httpupgrade", "path": orElse(params.Get("path"), "/")}
+		if h := params.Get("host"); h != "" {
+			tr["host"] = h
+		}
+		ob["transport"] = tr
+	}
+	return ob, name, nil
+}
+
+func parseTrojan(uri string) (map[string]interface{}, string, error) {
+	if !strings.HasPrefix(uri, "trojan://") {
+		return nil, "", fmt.Errorf("invalid trojan uri")
+	}
+	mainPart, name := splitName(uri[len("trojan://"):], "Trojan")
+	atIdx := strings.IndexByte(mainPart, '@')
+	if atIdx == -1 {
+		return nil, "", fmt.Errorf("trojan: missing @")
+	}
+	password, err := url.PathUnescape(mainPart[:atIdx])
+	if err != nil {
+		password = mainPart[:atIdx]
+	}
+	hostPort, queryString, _ := strings.Cut(mainPart[atIdx+1:], "?")
+	host, port, ok := splitHostPort(hostPort)
+	if !ok {
+		return nil, "", fmt.Errorf("trojan: invalid host:port")
+	}
+	params, _ := url.ParseQuery(queryString)
+	ob := map[string]interface{}{"type": "trojan", "server": host, "server_port": port, "password": password}
+	security := params.Get("security")
+	if security == "tls" || security == "reality" {
+		tls := map[string]interface{}{"enabled": true, "server_name": orElse(params.Get("sni"), host)}
+		if fp := params.Get("fp"); fp != "" {
+			tls["utls"] = map[string]interface{}{"enabled": true, "fingerprint": fp}
+		}
+		if alpn := params.Get("alpn"); alpn != "" {
+			tls["alpn"] = strings.Split(alpn, ",")
+		}
+		if security == "reality" {
+			if pbk := params.Get("pbk"); pbk != "" {
+				tls["reality"] = map[string]interface{}{"enabled": true, "public_key": pbk, "short_id": params.Get("sid")}
+			}
+		}
+		ob["tls"] = tls
+	}
+	switch params.Get("type") {
+	case "ws":
+		tr := map[string]interface{}{"type": "ws", "path": orElse(params.Get("path"), "/")}
+		if h := params.Get("host"); h != "" {
+			tr["headers"] = map[string]interface{}{"Host": h}
+		}
+		ob["transport"] = tr
+	case "grpc":
+		ob["transport"] = map[string]interface{}{"type": "grpc", "service_name": params.Get("serviceName")}
+	case "httpupgrade":
+		tr := map[string]interface{}{"type": "httpupgrade", "path": orElse(params.Get("path"), "/")}
+		if h := params.Get("host"); h != "" {
+			tr["host"] = h
+		}
+		ob["transport"] = tr
 	}
 	return ob, name, nil
 }
@@ -348,6 +409,8 @@ func ParseLinks(lines []string) (outbounds []ParsedNode, skipped int) {
 		switch {
 		case strings.HasPrefix(line, "vless://"):
 			ob, name, err = parseVless(line)
+		case strings.HasPrefix(line, "trojan://"):
+			ob, name, err = parseTrojan(line)
 		case strings.HasPrefix(line, "hy2://"), strings.HasPrefix(line, "hysteria2://"):
 			ob, name, err = parseHysteria2(line)
 		case strings.HasPrefix(line, "ss://"):
