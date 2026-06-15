@@ -6,6 +6,34 @@ All notable changes to RouteBox are documented here.
 
 ### New Features
 
+- **Trojan inbound/outbound + transport selector** — Trojan is now a first-class server inbound and client outbound, and vless/trojan gain a pluggable stream transport on both sides. See details below.
+
+**Backend:**
+- `serverlinks`: new `buildTrojan` (Trojan client share-link) and transport params (`type`/`path`/`host`/`serviceName`) emitted into vless and trojan links.
+- `users.CredentialKey`: trojan inbound credential is the peer `password`.
+- Config validator: validates trojan inbounds (TLS-or-Reality required, duplicate-password rejected, inbound `utls` rejected) and trojan outbounds; enforces the **Vision↔transport** constraint — `flow: xtls-rprx-vision` requires raw TCP, so a non-raw transport strips/forbids the flow (`amnezia-box check` does NOT catch this; the RouteBox validator does).
+- `subscriptions.ParseLinks` now parses `trojan://` links and the `httpupgrade` transport (RouteBox-as-client subscription import).
+- Transport is orthogonal to TLS — `vless+reality+grpc`, `trojan+reality+ws`, etc. are all valid. Host handling is per transport: `ws`→`headers.Host`, `httpupgrade`→top-level `host`, `grpc`→`service_name`.
+
+**Frontend:**
+- Trojan server type in InboundForm (Reality/ACME/Manual TLS, password credential) and a new TrojanForm client outbound (Reality/standard TLS) with `trojan://` import in the outbound Import modal.
+- Stream-transport selector (`raw` / `ws` / `grpc` / `httpupgrade`) for vless & trojan on both the server-inbound and client-outbound sides; `httpupgrade` also added to the existing vless outbound transport options.
+
+Inbounds/outbounds flow through the existing config CRUD + `POST /api/config/apply` — no new REST endpoints.
+
+---
+
+- **Panel security: change password + username** — operators can now change the panel password and username from the UI. See details below.
+
+**Backend:**
+- New protected `POST /api/auth/change-password` (`{current_password, new_password}`): re-verifies the current password (bcrypt) under the same brute-force lockout as login, requires `new_password` length ≥ 8, then bcrypt-hashes and persists the new password (Update + Save). The current session stays valid (no forced re-login).
+- Username change reuses `PUT /api/settings` (`security.auth_username`) — no new endpoint.
+
+**Frontend:**
+- New **Security** section on `/config/app` to change the password (current/new/confirm) and username.
+
+---
+
 - **AmneziaWG server inbound (VPS panel)** — RouteBox can now run an AmneziaWG VPN server itself, independent of sing-box. It installs the `amneziawg` kernel module on demand, brings up its own `awg-rb0` interface, and provisions client peers live. See details below.
 
 **Backend:**
