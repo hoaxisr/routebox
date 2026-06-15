@@ -43,14 +43,24 @@ func RenderServer(s ServerConf, peers []PeerLine) string {
 	b.WriteString(postUp(s))
 	b.WriteString(postDown(s))
 	for _, p := range peers {
-		b.WriteString("\n[Peer]\n")
-		fmt.Fprintf(&b, "# %s\n", p.Name)
-		fmt.Fprintf(&b, "PublicKey = %s\n", p.PublicKey)
-		if p.PSK != "" {
-			fmt.Fprintf(&b, "PresharedKey = %s\n", p.PSK)
-		}
-		fmt.Fprintf(&b, "AllowedIPs = %s\n", p.AllowedIP)
+		b.WriteString(renderPeerBlock(p))
 	}
+	return b.String()
+}
+
+// renderPeerBlock renders one [Peer] stanza. It is the single [Peer] renderer,
+// shared by RenderServer (full-file render) and Manager.appendPeerToConf (live
+// append) so the two paths can never drift. The name is pre-sanitised
+// (SanitizeName) so the leading `# comment` cannot inject .conf directives.
+func renderPeerBlock(p PeerLine) string {
+	var b strings.Builder
+	b.WriteString("\n[Peer]\n")
+	fmt.Fprintf(&b, "# %s\n", p.Name)
+	fmt.Fprintf(&b, "PublicKey = %s\n", p.PublicKey)
+	if p.PSK != "" {
+		fmt.Fprintf(&b, "PresharedKey = %s\n", p.PSK)
+	}
+	fmt.Fprintf(&b, "AllowedIPs = %s\n", p.AllowedIP)
 	return b.String()
 }
 
