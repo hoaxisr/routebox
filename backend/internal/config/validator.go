@@ -318,6 +318,21 @@ func validateOutbound(ob map[string]interface{}, index int) []string {
 		if _, ok := ob["tls"].(map[string]interface{}); !ok {
 			errors = append(errors, fmt.Sprintf("%s: anytls requires 'tls' object", prefix))
 		}
+	case "trojan":
+		if s, ok := ob["server"].(string); !ok || s == "" {
+			errors = append(errors, fmt.Sprintf("%s: trojan requires 'server'", prefix))
+		}
+		if _, ok := ob["server_port"].(float64); !ok {
+			errors = append(errors, fmt.Sprintf("%s: trojan requires 'server_port'", prefix))
+		}
+		if pw, ok := ob["password"].(string); !ok || pw == "" {
+			errors = append(errors, fmt.Sprintf("%s: trojan requires 'password'", prefix))
+		}
+		if tlsVal, present := ob["tls"]; present {
+			if _, ok := tlsVal.(map[string]interface{}); !ok {
+				errors = append(errors, fmt.Sprintf("%s: trojan 'tls' must be an object", prefix))
+			}
+		}
 	}
 
 	return errors

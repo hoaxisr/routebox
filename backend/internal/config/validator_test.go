@@ -338,6 +338,36 @@ func TestValidateInboundRejectsUtls(t *testing.T) {
 	}
 }
 
+func TestValidateOutboundTrojan(t *testing.T) {
+	tests := []struct {
+		name    string
+		ob      map[string]interface{}
+		wantSub string
+	}{
+		{"valid trojan tls", map[string]interface{}{"type": "trojan", "tag": "t", "server": "ex.com", "server_port": float64(443), "password": "pw", "tls": map[string]interface{}{"enabled": true}}, ""},
+		{"valid trojan no tls (plaintext allowed on outbound)", map[string]interface{}{"type": "trojan", "tag": "t", "server": "ex.com", "server_port": float64(443), "password": "pw"}, ""},
+		{"trojan missing server", map[string]interface{}{"type": "trojan", "tag": "t", "server_port": float64(443), "password": "pw"}, "server"},
+		{"trojan missing port", map[string]interface{}{"type": "trojan", "tag": "t", "server": "ex.com", "password": "pw"}, "server_port"},
+		{"trojan missing password", map[string]interface{}{"type": "trojan", "tag": "t", "server": "ex.com", "server_port": float64(443)}, "password"},
+		{"trojan httpupgrade transport accepted", map[string]interface{}{"type": "trojan", "tag": "t", "server": "ex.com", "server_port": float64(443), "password": "pw", "transport": map[string]interface{}{"type": "httpupgrade", "path": "/x", "host": "cdn.ex.com"}}, ""},
+		{"vless httpupgrade transport accepted", map[string]interface{}{"type": "vless", "tag": "v", "server": "ex.com", "server_port": float64(443), "uuid": "u1", "transport": map[string]interface{}{"type": "httpupgrade", "path": "/x", "host": "cdn.ex.com"}}, ""},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			errs := validateOutbound(tt.ob, 0)
+			if tt.wantSub == "" {
+				if len(errs) != 0 {
+					t.Fatalf("expected valid, got %v", errs)
+				}
+				return
+			}
+			if !hasErrContaining(errs, tt.wantSub) {
+				t.Fatalf("expected error containing %q, got %v", tt.wantSub, errs)
+			}
+		})
+	}
+}
+
 // TestValidateInboundMalformedUsers ensures a malformed users slice — a non-map
 // element alongside a blank-credential user — does not panic. Errors may or may
 // not be present; the point is panic-safety (non-map entries are skipped).
