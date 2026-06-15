@@ -42,7 +42,7 @@
 	}: Props = $props();
 
 	const flows = ['', 'xtls-rprx-vision'];
-	const transports: VlessTransport['type'][] = ['tcp', 'ws', 'grpc', 'http'];
+	const transports: VlessTransport['type'][] = ['tcp', 'ws', 'grpc', 'http', 'httpupgrade'];
 </script>
 
 <div class="space-y-4">
@@ -126,7 +126,7 @@
 			{/each}
 		</div>
 
-		{#if transport.type === 'ws'}
+		{#if transport.type === 'ws' || transport.type === 'httpupgrade'}
 			<div class="grid grid-cols-1 sm:grid-cols-2 gap-4">
 				<div>
 					<label for="ws-path" class="block text-sm font-medium text-[var(--ctp-subtext1)] mb-1">
