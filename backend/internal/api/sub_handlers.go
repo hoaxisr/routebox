@@ -2,12 +2,12 @@ package api
 
 import (
 	"net/http"
-	"strings"
 	"time"
 
 	"github.com/go-chi/chi/v5"
 
 	"routebox/backend/internal/users"
+	"routebox/backend/internal/util"
 )
 
 // GetSubscription serves the PUBLIC, unauthenticated per-user subscription at
@@ -97,21 +97,8 @@ func (h *Handler) GetSubscription(w http.ResponseWriter, r *http.Request) {
 
 // sanitizeFilename produces a safe Content-Disposition filename from a user name:
 // keeps alphanumerics, dash, underscore, dot; replaces everything else with "_".
-// Falls back to "subscription" when nothing usable remains.
+// Falls back to "subscription" when nothing usable remains. The sanitisation core
+// lives in util so the awg package can reuse it without an import cycle.
 func sanitizeFilename(name string) string {
-	var b strings.Builder
-	for _, r := range name {
-		switch {
-		case r >= 'a' && r <= 'z', r >= 'A' && r <= 'Z', r >= '0' && r <= '9',
-			r == '-', r == '_', r == '.':
-			b.WriteRune(r)
-		default:
-			b.WriteRune('_')
-		}
-	}
-	out := strings.Trim(b.String(), "_")
-	if out == "" {
-		return "subscription"
-	}
-	return out
+	return util.SanitizeName(name, "subscription")
 }
