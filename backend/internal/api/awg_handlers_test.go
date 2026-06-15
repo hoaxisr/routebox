@@ -213,6 +213,54 @@ func TestAWGNoSecretsInResponses(t *testing.T) {
 	}
 }
 
+// POSTing peers into a /30 subnet exhausts it after one add (server holds .1,
+// broadcast is .3, leaving only .2 usable). usedFromConf reads the on-disk .conf,
+// which AddPeer appends to on success, so the second POST hits ErrSubnetExhausted
+// -> the handler must map it to 409 Conflict.
+func TestAWGCreatePeerSubnetExhausted(t *testing.T) {
+	dir := t.TempDir()
+	awgDir := filepath.Join(dir, "amneziawg")
+	if err := os.MkdirAll(awgDir, 0o700); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(awgDir, "awg-rb0.conf"),
+		[]byte("[Interface]\nListenPort = 51820\n"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+
+	m := awg.NewManagerForTest(awgNoopRunner{}, awgDir, serverPriv, awg.Config{
+		Iface:      "awg-rb0",
+		Subnet:     "10.10.0.0/30",
+		ServerIP:   "10.10.0.1",
+		ListenPort: 51820,
+		MTU:        1420,
+		DNS:        []string{"1.1.1.1"},
+	})
+
+	sm := newAWGSettings(t, dir, "vpn.example.com")
+	h := &Handler{settings: sm}
+	h.SetAWG(m)
+
+	r := chi.NewRouter()
+	r.Route("/api/awg", func(r chi.Router) {
+		r.Post("/peers", h.CreateAWGPeer)
+	})
+
+	// First add fills the only usable host (.2).
+	rec := httptest.NewRecorder()
+	r.ServeHTTP(rec, httptest.NewRequest(http.MethodPost, "/api/awg/peers", strings.NewReader(`{"name":"first"}`)))
+	if rec.Code != http.StatusOK {
+		t.Fatalf("first create = %d; want 200; body=%q", rec.Code, rec.Body.String())
+	}
+
+	// Second add has no host left -> ErrSubnetExhausted -> 409 Conflict.
+	rec = httptest.NewRecorder()
+	r.ServeHTTP(rec, httptest.NewRequest(http.MethodPost, "/api/awg/peers", strings.NewReader(`{"name":"second"}`)))
+	if rec.Code != http.StatusConflict {
+		t.Fatalf("exhausting create = %d; want 409; body=%q", rec.Code, rec.Body.String())
+	}
+}
+
 // All mutating awg routes require auth (mirror TestTokenMutationRoutesRequireAuth):
 // they are registered INSIDE the AuthMiddleware group, so WITHOUT panel
 // credentials they must 401 before the handler runs.
