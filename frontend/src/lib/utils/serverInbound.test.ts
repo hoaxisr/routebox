@@ -20,7 +20,8 @@ const base: ServerFormState = {
 	upMbps: 0,
 	downMbps: 0,
 	obfsType: '',
-	obfsPassword: ''
+	obfsPassword: '',
+	transport: { type: 'raw' }
 };
 
 describe('buildServerInbound', () => {
@@ -116,4 +117,88 @@ describe('parseServerInbound', () => {
 		expect(state.handshakeServer).toBe('www.microsoft.com');
 		expect(state.handshakePort).toBe(443);
 	});
+});
+
+describe('buildServerInbound transport host-matrix', () => {
+	it('raw omits the transport block entirely', () => {
+		const ib = buildServerInbound({ ...base, transport: { type: 'raw' } });
+		expect(ib.transport).toBeUndefined();
+	});
+	it('ws emits headers.Host and NO top-level host key', () => {
+		const ib = buildServerInbound({ ...base, transport: { type: 'ws', path: '/p', host: 'cdn.example.com' } });
+		expect(ib.transport).toEqual({ type: 'ws', path: '/p', headers: { Host: 'cdn.example.com' } });
+		expect((ib.transport as unknown as Record<string, unknown>).host).toBeUndefined();
+	});
+	it('ws without host omits headers entirely', () => {
+		const ib = buildServerInbound({ ...base, transport: { type: 'ws', path: '/p', host: '' } });
+		expect(ib.transport).toEqual({ type: 'ws', path: '/p' });
+	});
+	it('httpupgrade emits top-level host string', () => {
+		const ib = buildServerInbound({ ...base, transport: { type: 'httpupgrade', path: '/h', host: 'h.example.com' } });
+		expect(ib.transport).toEqual({ type: 'httpupgrade', path: '/h', host: 'h.example.com' });
+	});
+	it('grpc emits service_name only', () => {
+		const ib = buildServerInbound({ ...base, transport: { type: 'grpc', service_name: 'gsvc' } });
+		expect(ib.transport).toEqual({ type: 'grpc', service_name: 'gsvc' });
+	});
+	it('inbound tls never carries utls (outbound-only)', () => {
+		const ib = buildServerInbound({ ...base, transport: { type: 'ws', path: '/', host: '' } });
+		expect((ib.tls as Record<string, unknown>).utls).toBeUndefined();
+	});
+});
+
+describe('buildServerInbound trojan users', () => {
+	it('trojan inbound carries password users', () => {
+		const ib = buildServerInbound({
+			...base, type: 'trojan', transport: { type: 'raw' },
+			users: [{ name: 'dave', password: 'pw' }]
+		});
+		expect(ib.type).toBe('trojan');
+		expect(ib.tls?.reality?.private_key).toBe('PRIV');
+		expect((ib.users?.[0] as Record<string, unknown>).password).toBe('pw');
+	});
+});
+
+describe('parseServerInbound transport host-matrix', () => {
+	it('reads ws host from headers.Host', () => {
+		const s = parseServerInbound({ type: 'vless', tag: 't', listen_port: 443,
+			transport: { type: 'ws', path: '/p', headers: { Host: 'cdn.example.com' } } } as never);
+		expect(s.transport).toEqual({ type: 'ws', path: '/p', host: 'cdn.example.com' });
+	});
+	it('reads httpupgrade host from top-level host', () => {
+		const s = parseServerInbound({ type: 'vless', tag: 't', listen_port: 443,
+			transport: { type: 'httpupgrade', path: '/h', host: 'h.example.com' } } as never);
+		expect(s.transport).toEqual({ type: 'httpupgrade', path: '/h', host: 'h.example.com' });
+	});
+	it('grpc reads service_name', () => {
+		const s = parseServerInbound({ type: 'trojan', tag: 't', listen_port: 443,
+			transport: { type: 'grpc', service_name: 'gsvc' } } as never);
+		expect(s.transport).toEqual({ type: 'grpc', service_name: 'gsvc' });
+	});
+	it('defaults to raw when no transport block', () => {
+		const s = parseServerInbound({ type: 'vless', tag: 't', listen_port: 443 } as never);
+		expect(s.transport).toEqual({ type: 'raw' });
+	});
+});
+
+describe('parse∘build round-trip on transport', () => {
+	const transports = [
+		{ type: 'raw' as const },
+		{ type: 'ws' as const, path: '/p', host: 'cdn.com' },
+		{ type: 'ws' as const, path: '/p', host: '' },
+		{ type: 'httpupgrade' as const, path: '/u', host: 'h.com' },
+		{ type: 'grpc' as const, service_name: 'g' }
+	];
+	for (const tr of transports) {
+		it(`round-trips ${tr.type}`, () => {
+			const built = buildServerInbound({ ...base, transport: tr });
+			const parsed = parseServerInbound(built);
+			expect(parsed.transport.type).toBe(tr.type);
+			if (tr.type === 'ws' || tr.type === 'httpupgrade') {
+				expect(parsed.transport.path).toBe(tr.path);
+				expect(parsed.transport.host ?? '').toBe(tr.host ?? '');
+			}
+			if (tr.type === 'grpc') expect(parsed.transport.service_name).toBe('g');
+		});
+	}
 });

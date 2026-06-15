@@ -1,7 +1,15 @@
 import type { Inbound, ServerInboundUser, ServerTlsConfig } from '$lib/types';
 
 export type TlsMode = 'acme' | 'reality' | 'manual';
-export type ServerInboundType = 'vless' | 'naive' | 'hysteria2';
+export type ServerInboundType = 'vless' | 'trojan' | 'naive' | 'hysteria2';
+export type TransportType = 'raw' | 'ws' | 'grpc' | 'httpupgrade';
+
+export interface ServerTransportState {
+	type: TransportType;
+	path?: string;
+	host?: string;
+	service_name?: string;
+}
 
 export interface ServerFormState {
 	type: ServerInboundType;
@@ -19,6 +27,7 @@ export interface ServerFormState {
 	handshakeServer: string;
 	handshakePort: number;
 	users: ServerInboundUser[];
+	transport: ServerTransportState;
 	upMbps: number;
 	downMbps: number;
 	obfsType: string;
@@ -56,6 +65,24 @@ export function buildServerInbound(s: ServerFormState): Inbound {
 
 	ib.users = s.users.map((u) => ({ ...u }));
 
+	// Transport (vless/trojan only). Host matrix: ws→headers.Host (NEVER a
+	// top-level host key — the binary rejects `unknown field "host"`),
+	// httpupgrade→top-level host string, grpc→service_name, raw→omit the block.
+	if ((s.type === 'vless' || s.type === 'trojan') && s.transport && s.transport.type !== 'raw') {
+		const tr = s.transport;
+		if (tr.type === 'ws') {
+			const ws: Record<string, unknown> = { type: 'ws', path: tr.path?.trim() || '/' };
+			if (tr.host?.trim()) ws.headers = { Host: tr.host.trim() };
+			ib.transport = ws as unknown as Inbound['transport'];
+		} else if (tr.type === 'httpupgrade') {
+			const hu: Record<string, unknown> = { type: 'httpupgrade', path: tr.path?.trim() || '/' };
+			if (tr.host?.trim()) hu.host = tr.host.trim();
+			ib.transport = hu as unknown as Inbound['transport'];
+		} else if (tr.type === 'grpc') {
+			ib.transport = { type: 'grpc', service_name: tr.service_name?.trim() || '' } as unknown as Inbound['transport'];
+		}
+	}
+
 	if (s.type === 'hysteria2') {
 		if (s.upMbps > 0) ib.up_mbps = s.upMbps;
 		if (s.downMbps > 0) ib.down_mbps = s.downMbps;
@@ -72,10 +99,24 @@ export function parseServerInbound(ib: Inbound): ServerFormState {
 	if (tls.acme) tlsMode = 'acme';
 	else if (tls.reality) tlsMode = 'reality';
 
-	const serverTypes = ['vless', 'naive', 'hysteria2'] as const;
+	const serverTypes = ['vless', 'trojan', 'naive', 'hysteria2'] as const;
 	const type: ServerInboundType = (serverTypes as readonly string[]).includes(ib.type)
 		? (ib.type as ServerInboundType)
 		: 'vless';
+
+	// Transport parse (inverse of the host matrix). ws host comes from
+	// headers.Host, httpupgrade host from the top-level host string; default raw.
+	const rawTr = (ib.transport ?? null) as Record<string, unknown> | null;
+	let transport: ServerTransportState = { type: 'raw' };
+	const trType = rawTr?.type as string | undefined;
+	if (trType === 'ws') {
+		const headers = (rawTr!.headers as Record<string, string> | undefined) ?? undefined;
+		transport = { type: 'ws', path: (rawTr!.path as string) ?? '/', host: headers?.Host ?? '' };
+	} else if (trType === 'httpupgrade') {
+		transport = { type: 'httpupgrade', path: (rawTr!.path as string) ?? '/', host: (rawTr!.host as string) ?? '' };
+	} else if (trType === 'grpc') {
+		transport = { type: 'grpc', service_name: (rawTr!.service_name as string) ?? '' };
+	}
 
 	return {
 		type,
@@ -97,6 +138,7 @@ export function parseServerInbound(ib: Inbound): ServerFormState {
 		handshakeServer: tls.reality?.handshake?.server ?? '',
 		handshakePort: tls.reality?.handshake?.server_port ?? 443,
 		users: (ib.users ?? []).map((u) => ({ ...u })),
+		transport,
 		upMbps: ib.up_mbps ?? 0,
 		downMbps: ib.down_mbps ?? 0,
 		obfsType: ib.obfs?.type ?? '',

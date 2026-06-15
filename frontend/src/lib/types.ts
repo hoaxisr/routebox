@@ -169,6 +169,7 @@ export interface Inbound {
 	up_mbps?: number;     // hysteria2
 	down_mbps?: number;   // hysteria2
 	obfs?: { type: string; password?: string }; // hysteria2
+	transport?: TransportConfig; // vless/trojan stream transport (ws/grpc/httpupgrade)
 }
 
 export interface ServerInboundUser {

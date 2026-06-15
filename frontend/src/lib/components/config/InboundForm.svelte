@@ -68,7 +68,8 @@
 						certificate_path: '', key_path: ''
 					},
 					handshakeServer: '', handshakePort: 443,
-					users: [], upMbps: 0, downMbps: 0, obfsType: '', obfsPassword: ''
+					users: [], transport: { type: 'raw' },
+					upMbps: 0, downMbps: 0, obfsType: '', obfsPassword: ''
 				}
 	);
 
