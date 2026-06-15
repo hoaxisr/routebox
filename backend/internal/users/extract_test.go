@@ -102,6 +102,24 @@ func TestServerUsersOfConfig(t *testing.T) {
 	}
 }
 
+func TestCredentialKeyTrojan(t *testing.T) {
+	if got := CredentialKey("trojan"); got != "password" {
+		t.Fatalf("CredentialKey(trojan) = %q, want password", got)
+	}
+}
+
+func TestServerInboundUsersTrojan(t *testing.T) {
+	ib := map[string]interface{}{
+		"type": "trojan", "tag": "trojan-in",
+		"users": []interface{}{map[string]interface{}{"name": "dave", "password": "pw-1"}},
+	}
+	got := ServerInboundUsers(ib)
+	want := []ConfigUser{{InboundTag: "trojan-in", Protocol: "trojan", Credential: "pw-1", Name: "dave"}}
+	if !reflect.DeepEqual(got, want) {
+		t.Fatalf("got %+v want %+v", got, want)
+	}
+}
+
 func TestServerInboundUsersMalformed(t *testing.T) {
 	inbound := map[string]interface{}{
 		"type": "vless", "tag": "vless-in",

@@ -4,8 +4,8 @@ package users
 // It is the join surface between the active config and the registry.
 type ConfigUser struct {
 	InboundTag string
-	Protocol   string // "vless" | "naive" | "hysteria2"
-	Credential string // uuid (vless) | username (naive) | password (hysteria2)
+	Protocol   string // "vless" | "trojan" | "naive" | "hysteria2"
+	Credential string // uuid (vless) | password (trojan) | username (naive) | password (hysteria2)
 	Name       string // display name (best-effort)
 	Flow       string // vless only
 }
@@ -19,6 +19,8 @@ func CredentialKey(protocol string) string {
 	switch protocol {
 	case "vless":
 		return "uuid"
+	case "trojan":
+		return "password"
 	case "naive":
 		return "username"
 	case "hysteria2":
@@ -27,8 +29,8 @@ func CredentialKey(protocol string) string {
 	return ""
 }
 
-// ServerInboundUsers extracts the users of a server inbound (vless/naive/hysteria2)
-// as ConfigUsers. Non-server inbounds (tun/mixed/...) and users with a blank
+// ServerInboundUsers extracts the users of a server inbound (vless/trojan/naive/
+// hysteria2) as ConfigUsers. Non-server inbounds (tun/mixed/...) and users with a blank
 // credential yield nothing. Pure: no I/O, no mutation. Reused by Reconcile and
 // the API handlers.
 func ServerInboundUsers(inbound map[string]interface{}) []ConfigUser {
