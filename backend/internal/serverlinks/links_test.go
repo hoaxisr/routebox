@@ -1,6 +1,7 @@
 package serverlinks
 
 import (
+	"net/url"
 	"strings"
 	"testing"
 
@@ -462,5 +463,93 @@ func TestTransportParams(t *testing.T) {
 				}
 			}
 		})
+	}
+}
+
+func TestBuildTrojanReality(t *testing.T) {
+	inbound := map[string]interface{}{
+		"type": "trojan", "tag": "tr", "listen_port": float64(443),
+		"tls": map[string]interface{}{
+			"enabled": true, "server_name": "www.microsoft.com",
+			"reality": map[string]interface{}{"enabled": true, "private_key": fixturePriv, "short_id": []interface{}{"0123abcd"}},
+		},
+	}
+	user := map[string]interface{}{"name": "phone", "password": "pw-secret"}
+	link, err := BuildShareLink(inbound, user, "vpn.example.com")
+	if err != nil {
+		t.Fatalf("BuildShareLink: %v", err)
+	}
+	if !strings.HasPrefix(link, "trojan://pw-secret@vpn.example.com:443?") {
+		t.Fatalf("unexpected prefix: %s", link)
+	}
+	if !strings.Contains(link, "security=reality") || !strings.Contains(link, "pbk="+fixturePub) || !strings.Contains(link, "sid=0123abcd") || !strings.Contains(link, "fp=chrome") {
+		t.Fatalf("trojan reality params missing: %s", link)
+	}
+}
+
+func TestBuildTrojanTlsWithTransport(t *testing.T) {
+	transports := map[string]map[string]interface{}{
+		"raw":         nil,
+		"ws":          {"type": "ws", "path": "/wp", "headers": map[string]interface{}{"Host": "cdn.com"}},
+		"grpc":        {"type": "grpc", "service_name": "gsvc"},
+		"httpupgrade": {"type": "httpupgrade", "path": "/hp", "host": "hu.com"},
+	}
+	for trName, tr := range transports {
+		t.Run(trName, func(t *testing.T) {
+			ib := map[string]interface{}{
+				"type": "trojan", "tag": "tr", "listen_port": float64(8443),
+				"tls": map[string]interface{}{"enabled": true, "server_name": "ex.com"},
+			}
+			if tr != nil {
+				ib["transport"] = tr
+			}
+			user := map[string]interface{}{"name": "p", "password": "p@ss:w0rd"}
+			link, err := BuildShareLink(ib, user, "ex.com")
+			if err != nil {
+				t.Fatalf("BuildShareLink: %v", err)
+			}
+			pu, err := url.Parse(link)
+			if err != nil {
+				t.Fatalf("url.Parse: %v", err)
+			}
+			if pu.User.Username() != "p@ss:w0rd" {
+				t.Errorf("password=%q (%s)", pu.User.Username(), link)
+			}
+			if pu.Host != "ex.com:8443" {
+				t.Errorf("host=%q", pu.Host)
+			}
+			vals := pu.Query()
+			if vals.Has("flow") {
+				t.Errorf("trojan must never carry flow: %s", link)
+			}
+			if vals.Get("security") != "tls" {
+				t.Errorf("security=%q want tls", vals.Get("security"))
+			}
+			switch trName {
+			case "raw":
+				if vals.Has("type") {
+					t.Errorf("raw must omit transport type: %s", link)
+				}
+			case "ws":
+				if vals.Get("type") != "ws" || vals.Get("path") != "/wp" || vals.Get("host") != "cdn.com" {
+					t.Errorf("ws: %v", vals)
+				}
+			case "grpc":
+				if vals.Get("type") != "grpc" || vals.Get("serviceName") != "gsvc" {
+					t.Errorf("grpc: %v", vals)
+				}
+			case "httpupgrade":
+				if vals.Get("type") != "httpupgrade" || vals.Get("path") != "/hp" || vals.Get("host") != "hu.com" {
+					t.Errorf("httpupgrade: %v", vals)
+				}
+			}
+		})
+	}
+}
+
+func TestBuildTrojanNoPassword(t *testing.T) {
+	ib := map[string]interface{}{"type": "trojan", "listen_port": float64(8443), "tls": map[string]interface{}{"enabled": true}}
+	if _, err := BuildShareLink(ib, map[string]interface{}{"name": "x"}, "h"); err == nil {
+		t.Fatalf("trojan with no password must error")
 	}
 }

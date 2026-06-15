@@ -31,6 +31,8 @@ func BuildShareLink(inbound, user map[string]interface{}, host string) (string, 
 		return buildNaive(inbound, user, host, port)
 	case "hysteria2":
 		return buildHysteria2(inbound, user, host, port)
+	case "trojan":
+		return buildTrojan(inbound, user, host, port)
 	default:
 		return "", fmt.Errorf("unsupported inbound type for share link: %q", typ)
 	}
@@ -227,6 +229,24 @@ func nameOf(user map[string]interface{}, fallback string) string {
 		}
 	}
 	return fallback
+}
+
+func buildTrojan(inbound, user map[string]interface{}, host string, port int) (string, error) {
+	password, _ := user["password"].(string)
+	if password == "" {
+		return "", fmt.Errorf("trojan user has no password")
+	}
+	q, err := tlsParams(mapOf(inbound["tls"]), host)
+	if err != nil {
+		return "", err
+	}
+	mergeValues(q, transportParams(inbound))
+	suffix := ""
+	if enc := q.Encode(); enc != "" {
+		suffix = "?" + enc
+	}
+	return fmt.Sprintf("trojan://%s@%s%s#%s",
+		url.User(password).String(), hostPort(host, port), suffix, url.PathEscape(nameOf(user, "Trojan"))), nil
 }
 
 func buildNaive(inbound, user map[string]interface{}, host string, port int) (string, error) {
