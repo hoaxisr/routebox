@@ -3,18 +3,20 @@
 	import { notifications } from '$lib/stores';
 	import {
 		parseVless,
+		parseTrojan,
 		parseHysteria2,
 		parseShadowsocks,
 		parseNaive,
 		type ParsedVless,
+		type ParsedTrojan,
 		type ParsedHysteria2,
 		type ParsedShadowsocks,
 		type ParsedNaive
 	} from '$lib/utils/parsers';
 
 	interface Props {
-		protocol: 'vless' | 'hysteria2' | 'shadowsocks' | 'naive';
-		onImport: (config: ParsedVless | ParsedHysteria2 | ParsedShadowsocks | ParsedNaive) => void;
+		protocol: 'vless' | 'trojan' | 'hysteria2' | 'shadowsocks' | 'naive';
+		onImport: (config: ParsedVless | ParsedTrojan | ParsedHysteria2 | ParsedShadowsocks | ParsedNaive) => void;
 		onClose: () => void;
 	}
 
@@ -25,6 +27,7 @@
 
 	const protocolNames = {
 		vless: 'VLESS',
+		trojan: 'Trojan',
 		hysteria2: 'Hysteria2',
 		shadowsocks: 'Shadowsocks',
 		naive: 'NaiveProxy'
@@ -32,6 +35,7 @@
 
 	const placeholders = {
 		vless: 'vless://uuid@server:port?params#name',
+		trojan: 'trojan://password@server:port?params#name',
 		hysteria2: 'hy2://password@server:port?params#name',
 		shadowsocks: 'ss://BASE64(method:password)@server:port#name',
 		naive: 'naive+https://user:password@server:port#name'
@@ -39,6 +43,7 @@
 
 	const linkPrefixes = {
 		vless: 'vless://',
+		trojan: 'trojan://',
 		hysteria2: 'hy2:// or hysteria2://',
 		shadowsocks: 'ss://',
 		naive: 'naive+https:// or naive+quic://'
@@ -62,6 +67,19 @@
 			}
 			onImport(result.config as ParsedVless);
 			notifications.success($t('outbounds.importSuccess', { values: { protocol: protocolNames.vless } }));
+			onClose();
+			return;
+		}
+
+		// Try Trojan
+		if (text.startsWith('trojan://')) {
+			const result = parseTrojan(text);
+			if (!result.success || !result.config) {
+				importError = result.error || $t('outbounds.importParseFailed', { values: { protocol: protocolNames.trojan } });
+				return;
+			}
+			onImport(result.config as ParsedTrojan);
+			notifications.success($t('outbounds.importSuccess', { values: { protocol: protocolNames.trojan } }));
 			onClose();
 			return;
 		}
