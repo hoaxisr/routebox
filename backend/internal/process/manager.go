@@ -709,6 +709,14 @@ func formatDuration(d time.Duration) string {
 	return fmt.Sprintf("%dm", minutes)
 }
 
+// systemdReloadArgs builds the `systemctl` argv that reloads the service by
+// sending SIGHUP to its main process. It deliberately does NOT use `reload`:
+// the amnezia-box unit has no ExecReload= (CanReload=no), so `systemctl reload`
+// is rejected; sing-box reloads its config in place on SIGHUP.
+func systemdReloadArgs(serviceName string) []string {
+	return []string{"kill", "--signal=SIGHUP", serviceName + ".service"}
+}
+
 // Reload sends SIGHUP to reload configuration without restart
 func (m *Manager) Reload() error {
 	m.opMu.Lock()
@@ -719,11 +727,18 @@ func (m *Manager) Reload() error {
 		return fmt.Errorf("amnezia-box is not running")
 	}
 
-	// If managed by systemd, use systemctl reload
+	// If managed by systemd, deliver SIGHUP to the service. We deliberately do
+	// NOT use `systemctl reload`: the amnezia-box unit ships with no ExecReload=
+	// (CanReload=no), so systemd rejects reload with "Job type reload is not
+	// applicable for unit amnezia-box.service". sing-box reloads its config
+	// in place on SIGHUP (no restart, same PID), so send that to the main
+	// process via `systemctl kill --signal=SIGHUP`. (--kill-whom is omitted for
+	// compatibility with systemd <252; amnezia-box is a single-process
+	// Type=simple unit, so the default reaches the main PID.)
 	if m.IsSystemdManaged() {
-		cmd := exec.Command("systemctl", "reload", m.serviceName+".service")
+		cmd := exec.Command("systemctl", systemdReloadArgs(m.serviceName)...)
 		if output, err := cmd.CombinedOutput(); err != nil {
-			return fmt.Errorf("systemctl reload failed: %s", string(output))
+			return fmt.Errorf("systemctl SIGHUP reload failed: %s", string(output))
 		}
 		return nil
 	}

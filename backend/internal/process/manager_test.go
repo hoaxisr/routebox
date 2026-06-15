@@ -8,6 +8,29 @@ import (
 	"time"
 )
 
+// TestSystemdReloadUsesSighupNotReload guards the reload regression: the
+// amnezia-box unit has no ExecReload= (CanReload=no), so `systemctl reload`
+// is rejected ("Job type reload is not applicable"). Reload must instead send
+// SIGHUP, which sing-box reloads on. This test fails if anyone reverts the
+// argv to `reload`.
+func TestSystemdReloadUsesSighupNotReload(t *testing.T) {
+	got := systemdReloadArgs("amnezia-box")
+	want := []string{"kill", "--signal=SIGHUP", "amnezia-box.service"}
+	if len(got) != len(want) {
+		t.Fatalf("got %v, want %v", got, want)
+	}
+	for i := range want {
+		if got[i] != want[i] {
+			t.Fatalf("arg %d: got %q, want %q (full: %v)", i, got[i], want[i], got)
+		}
+	}
+	for _, a := range got {
+		if a == "reload" {
+			t.Fatal("`systemctl reload` regression: the amnezia-box unit has no ExecReload= (CanReload=no); use SIGHUP")
+		}
+	}
+}
+
 func TestExeMatchesSelf(t *testing.T) {
 	exe, err := os.Executable()
 	if err != nil {
