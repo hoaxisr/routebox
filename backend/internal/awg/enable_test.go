@@ -185,3 +185,40 @@ func TestConfigDirty(t *testing.T) {
 		t.Fatal("changed setting while enabled must be dirty")
 	}
 }
+
+// After a process restart the Manager is "cold" (serverPriv/obf set only by Enable),
+// so RenderClientConf 500s until re-enable. Rehydrate restores render state from the
+// persisted .conf + saved settings WITHOUT touching awg-quick.
+func TestRehydrateWarmsManager(t *testing.T) {
+	f := newFakeRunner()
+	m := newEnableManager(t, f)
+	if err := os.MkdirAll(filepath.Dir(m.confPath), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(m.confPath, []byte("[Interface]\nPrivateKey = AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAEs=\nListenPort = 51820\n"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	f.outputs["awg show awg-rb0"] = "interface: awg-rb0\n  listening port: 51820\n"
+	in := goodEnableInput()
+	in.Obf = Obfuscation{Jc: 4, H1: "100", H2: "200", H3: "300", H4: "400"}
+	m.Rehydrate(context.Background(), in)
+	if m.serverPriv == "" {
+		t.Fatal("rehydrate: serverPriv not restored from conf")
+	}
+	if m.obf.Jc != 4 {
+		t.Fatalf("rehydrate: obf not restored, got %+v", m.obf)
+	}
+	if !m.Status(context.Background()).Enabled {
+		t.Fatal("rehydrate: enabled should be true when iface is up")
+	}
+}
+
+// Cold start with no conf must not crash and must leave the server not-enabled.
+func TestRehydrateNoConfNoop(t *testing.T) {
+	f := newFakeRunner()
+	m := newEnableManager(t, f)
+	m.Rehydrate(context.Background(), goodEnableInput())
+	if m.Status(context.Background()).Enabled {
+		t.Fatal("rehydrate with no conf must not mark enabled")
+	}
+}

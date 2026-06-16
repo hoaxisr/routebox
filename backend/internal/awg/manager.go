@@ -113,6 +113,72 @@ func (m *Manager) SetDesired(f func() EnableInput) {
 	m.mu.Unlock()
 }
 
+// parseInterfacePrivateKey extracts PrivateKey from the [Interface] section of a
+// rendered .conf (stops at the first [Peer]).
+func parseInterfacePrivateKey(conf string) string {
+	for _, line := range strings.Split(conf, "\n") {
+		line = strings.TrimSpace(line)
+		if strings.HasPrefix(line, "[Peer]") {
+			break
+		}
+		if strings.HasPrefix(line, "PrivateKey") {
+			if i := strings.Index(line, "="); i >= 0 {
+				return strings.TrimSpace(line[i+1:])
+			}
+		}
+	}
+	return ""
+}
+
+// Rehydrate restores in-memory render state (serverPriv/obf/subnet/…) from the
+// persisted .conf + saved settings after a process restart, WITHOUT touching
+// awg-quick. The Manager is otherwise "cold" on boot (serverPriv/obf are set only by
+// Enable), so RenderClientConf/AddPeer 500 until a re-enable. enabled reflects the
+// live interface (awg show), so the panel shows running/stopped correctly. Best-effort:
+// any parse/validation problem leaves the Manager cold rather than crashing boot.
+func (m *Manager) Rehydrate(ctx context.Context, in EnableInput) {
+	data, err := os.ReadFile(m.confPath)
+	if err != nil {
+		return // no conf -> never configured / nothing to restore
+	}
+	priv := parseInterfacePrivateKey(string(data))
+	if priv == "" {
+		return
+	}
+	subnet, err := ValidateSubnet(in.Subnet)
+	if err != nil {
+		return
+	}
+	port, err := ValidateListenPort(in.ListenPort)
+	if err != nil {
+		return
+	}
+	serverIP, err := firstHost(subnet)
+	if err != nil {
+		return
+	}
+	obf, err := validateObf(in.Obf)
+	if err != nil {
+		return
+	}
+	mtu, _ := ValidateMTU(in.MTU) // non-critical for render; 0 -> omitted
+	dns, _ := ValidateDNS(in.DNS)  // RenderClientConf falls back to 1.1.1.1 if empty
+
+	up := false
+	if out, _, e := m.run.Run(ctx, "awg", "show", m.iface); e == nil && strings.Contains(out, "listening port") {
+		up = true
+	}
+
+	m.mu.Lock()
+	m.serverPriv, m.subnet, m.serverIP, m.listenPort, m.mtu, m.dns, m.obf, m.wan =
+		priv, subnet, serverIP, port, mtu, dns, obf, in.WANIface
+	m.enabled = up
+	if up {
+		m.phase = PhaseReady
+	}
+	m.mu.Unlock()
+}
+
 // AddPeer validates the name, allocates a /32 (from the on-disk .conf under the
 // mutex), applies the peer live, appends the [Peer] block, and persists the
 // secret. Rolls back the live add if persistence fails. Returns a secret-free

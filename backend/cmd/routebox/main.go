@@ -328,8 +328,9 @@ func main() {
 	if err := awgMgr.Store().Load(); err != nil {
 		log.Printf("Warning: failed to load amneziawg peers.toml: %v", err)
 	}
-	// Status.ConfigDirty compares the running config against the live saved settings.
-	awgMgr.SetDesired(func() awg.EnableInput {
+	// awgDesired maps the persisted settings to the orchestrator input (used by both
+	// ConfigDirty's live getter and the boot-time Rehydrate).
+	awgDesired := func() awg.EnableInput {
 		s := settingsMgr.Get().Awg
 		return awg.EnableInput{
 			Subnet: s.Subnet, ListenPort: s.ListenPort, MTU: s.MTU,
@@ -340,7 +341,12 @@ func main() {
 				H1: s.Obf.H1, H2: s.Obf.H2, H3: s.Obf.H3, H4: s.Obf.H4,
 			},
 		}
-	})
+	}
+	// Status.ConfigDirty compares the running config against the live saved settings.
+	awgMgr.SetDesired(awgDesired)
+	// Warm the Manager from the persisted .conf + settings so client-config rendering
+	// works after a restart without a re-enable (the iface keeps running via systemd).
+	awgMgr.Rehydrate(context.Background(), awgDesired())
 	apiHandler.SetAWG(awgMgr)
 
 	// Phase 4: warn (don't block) when pre-existing panel users share a name.
