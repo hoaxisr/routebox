@@ -40,11 +40,11 @@ type AWGStatus struct {
 
 // EnableInput is the RAW operator submission; Enable canonicalises every field.
 type EnableInput struct {
-	Subnet     string
-	ListenPort int
-	MTU        int
-	DNS        []string
-	WANIface   string // optional override; "" -> DetectWAN
+	Subnet     string   `json:"subnet"`
+	ListenPort int      `json:"listen_port"`
+	MTU        int      `json:"mtu"`
+	DNS        []string `json:"dns"`
+	WANIface   string   `json:"wan_iface"` // optional override; "" -> DetectWAN
 }
 
 // beginEnable claims the single-flight slot. Returns false if an orchestrator is
@@ -180,7 +180,7 @@ func (m *Manager) healthGate(ctx context.Context) error {
 	if err != nil || !strings.Contains(out, "listening port") {
 		return fmt.Errorf("interface %s did not come up", m.iface)
 	}
-	rules, _, err := m.run.Run(ctx, "iptables", "-S")
+	rules, _, err := m.run.Run(ctx, "iptables", "-t", "nat", "-S")
 	if err != nil || !strings.Contains(rules, "RBOX-AWG-NAT") {
 		return fmt.Errorf("NAT chains not installed")
 	}
@@ -228,7 +228,7 @@ func (m *Manager) Status(ctx context.Context) AWGStatus {
 		ifaceUp = true
 	}
 	rulesPresent := false
-	if rules, _, err := m.run.Run(ctx, "iptables", "-S"); err == nil && strings.Contains(rules, "RBOX-AWG-NAT") {
+	if rules, _, err := m.run.Run(ctx, "iptables", "-t", "nat", "-S"); err == nil && strings.Contains(rules, "RBOX-AWG-NAT") {
 		rulesPresent = true
 	}
 	peers, _ := m.iface_ShowPeers(ctx)

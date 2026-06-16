@@ -79,7 +79,7 @@ func TestEnableHappyPathRendersCanonical(t *testing.T) {
 	f := newFakeRunner()
 	m := newEnableManager(t, f)
 	f.outputs["awg show awg-rb0"] = "interface: awg-rb0\n  listening port: 51820\n"
-	f.outputs["iptables -S"] = "-N RBOX-AWG-NAT\n-N RBOX-AWG-FWD\n-N RBOX-AWG-IN\n"
+	f.outputs["iptables -t nat -S"] = "-N RBOX-AWG-NAT\n-N RBOX-AWG-FWD\n-N RBOX-AWG-IN\n"
 	if err := m.Enable(context.Background(), goodEnableInput()); err != nil {
 		t.Fatalf("Enable: %v", err)
 	}
@@ -118,7 +118,7 @@ func TestEnableSingleFlight(t *testing.T) {
 	// Block the in-flight Enable inside Ensure-ish work by stalling the health gate.
 	release := make(chan struct{})
 	f.outputs["awg show awg-rb0"] = "listening port: 51820\n"
-	f.outputs["iptables -S"] = "RBOX-AWG-NAT\n"
+	f.outputs["iptables -t nat -S"] = "RBOX-AWG-NAT\n"
 	// Claim the in-flight slot manually to simulate an active orchestrator.
 	if !m.beginEnable() {
 		t.Fatal("beginEnable: first claim must succeed")

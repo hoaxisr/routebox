@@ -310,10 +310,13 @@ func main() {
 	apiHandler.SetUsers(usersMgr)
 
 	// AmneziaWG server-interface manager: secrets + .conf live under
-	// /etc/routebox/amneziawg (a sibling of config.json, so config backup pruning
-	// can never glob them). Canonical interface values come from settings.awg.
+	// /etc/amnezia/amneziawg — this is where awg-tools' `awg-quick@<iface>` systemd
+	// template reads its config from (ExecStart `awg-quick up %i` resolves the
+	// bare iface name to /etc/amnezia/amneziawg/<iface>.conf). Writing elsewhere
+	// makes the interface fail to come up. (It is NOT under /etc/amnezia-box, so
+	// config.json backup pruning can never glob it.) Interface values from settings.awg.
 	awgSettings := settingsMgr.Get().Awg
-	awgMgr := awg.NewManager(awg.NewExecRunner(), "/etc/routebox/amneziawg", awg.Config{
+	awgMgr := awg.NewManager(awg.NewExecRunner(), "/etc/amnezia/amneziawg", awg.Config{
 		Iface:      awgSettings.Interface,
 		Subnet:     awgSettings.Subnet,
 		ListenPort: awgSettings.ListenPort,
