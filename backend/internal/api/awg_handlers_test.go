@@ -332,3 +332,20 @@ func TestAwgEnableInputFromSettings(t *testing.T) {
 		t.Fatalf("obf not mapped: %+v", in.Obf)
 	}
 }
+
+// The panel sends pubkeys URL-encoded (encodeURIComponent → %2B/%2F/%3D). The
+// handler must URL-decode the path param before base64-validating; otherwise every
+// key containing +,/,= 400s. Regression for the QR/.conf "HTTP 400" bug.
+func TestAWGConfigDecodesEncodedPubkey(t *testing.T) {
+	h, r := newAWGTestHandler(t)
+	if err := h.settings.Update(map[string]interface{}{"server.public_host": "vpn.example.com"}); err != nil {
+		t.Fatal(err)
+	}
+	// knownPub = "Yluwfrt+6ChDx8TJcdmDuw63AdoQDqA18LMVPr5b4Ks=" encoded browser-style.
+	encoded := "Yluwfrt%2B6ChDx8TJcdmDuw63AdoQDqA18LMVPr5b4Ks%3D"
+	rec := httptest.NewRecorder()
+	r.ServeHTTP(rec, httptest.NewRequest(http.MethodGet, "/api/awg/peers/"+encoded+"/config", nil))
+	if rec.Code != http.StatusOK {
+		t.Fatalf("encoded pubkey config = %d; want 200 (handler must URL-decode); body=%q", rec.Code, rec.Body.String())
+	}
+}

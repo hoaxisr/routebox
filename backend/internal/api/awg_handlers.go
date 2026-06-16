@@ -3,12 +3,25 @@ package api
 import (
 	"encoding/json"
 	"net/http"
+	"net/url"
 
 	"github.com/go-chi/chi/v5"
 
 	"routebox/backend/internal/awg"
 	"routebox/backend/internal/settings"
 )
+
+// awgPubKeyParam reads the {publicKey} path param, URL-decodes it (the panel sends
+// it via encodeURIComponent → %2B/%2F/%3D, and chi.URLParam returns the raw,
+// still-encoded segment), then validates it as a 32-byte std-base64 key. Without the
+// decode, any key containing +,/,= 400s (a trailing "=" is on nearly every key).
+func awgPubKeyParam(r *http.Request) (string, error) {
+	raw := chi.URLParam(r, "publicKey")
+	if dec, err := url.PathUnescape(raw); err == nil {
+		raw = dec
+	}
+	return awg.ValidatePublicKey(raw)
+}
 
 // GetAWGStatus reports module + interface + peer status.
 func (h *Handler) GetAWGStatus(w http.ResponseWriter, r *http.Request) {
@@ -112,7 +125,7 @@ func (h *Handler) DeleteAWGPeer(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusServiceUnavailable, "awg not available")
 		return
 	}
-	pub, err := awg.ValidatePublicKey(chi.URLParam(r, "publicKey"))
+	pub, err := awgPubKeyParam(r)
 	if err != nil {
 		writeError(w, http.StatusBadRequest, "invalid public key")
 		return
@@ -133,7 +146,7 @@ func (h *Handler) GetAWGPeerConfig(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "awg not available", http.StatusServiceUnavailable)
 		return
 	}
-	pub, err := awg.ValidatePublicKey(chi.URLParam(r, "publicKey"))
+	pub, err := awgPubKeyParam(r)
 	if err != nil {
 		writeError(w, http.StatusBadRequest, "invalid public key")
 		return
