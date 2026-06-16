@@ -40,7 +40,7 @@ type AwgSettings struct {
 	DNS        []string `toml:"dns" json:"dns"`
 	WANIface   string   `toml:"wan_iface" json:"wan_iface"`
 	Obf        AwgObf   `toml:"obf" json:"obf"`
-	ObfPreset  string   `toml:"obf_preset" json:"obf_preset"` // "off"|"standard"|"mobile"|"custom" — UI badge only
+	ObfPreset  string   `toml:"obf_preset" json:"obf_preset"` // "off"|"dns"|"web"|"stealth"|"custom" — selects param ranges + client CPS mimicry
 	Configured bool     `toml:"configured" json:"configured"` // sticky: set true after first successful Enable; drives wizard-vs-steady UI (never reset on Disable)
 }
 

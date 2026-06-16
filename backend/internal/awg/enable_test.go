@@ -205,6 +205,28 @@ func TestConfigDirty(t *testing.T) {
 	}
 }
 
+// Switching only the obfuscation profile (same J/S/H values) must flag ConfigDirty
+// so the operator re-enables and the new client mimicry takes effect.
+func TestConfigDirtyOnPresetChange(t *testing.T) {
+	f := newFakeRunner()
+	m := newEnableManager(t, f)
+	f.outputs["awg show awg-rb0"] = "interface: awg-rb0\n  listening port: 51820\n"
+	f.outputs["iptables -t nat -S"] = "-N RBOX-AWG-NAT\n"
+	desired := goodEnableInput()
+	desired.ObfPreset = "web"
+	m.desired = func() EnableInput { return desired }
+	if err := m.Enable(context.Background(), desired); err != nil {
+		t.Fatalf("Enable: %v", err)
+	}
+	if m.Status(context.Background()).ConfigDirty {
+		t.Fatal("freshly enabled must not be dirty")
+	}
+	desired.ObfPreset = "dns" // only the profile changed; J/S/H identical
+	if !m.Status(context.Background()).ConfigDirty {
+		t.Fatal("changing obf_preset alone must flag ConfigDirty")
+	}
+}
+
 // After a process restart the Manager is "cold" (serverPriv/obf set only by Enable),
 // so RenderClientConf 500s until re-enable. Rehydrate restores render state from the
 // persisted .conf + saved settings WITHOUT touching awg-quick.

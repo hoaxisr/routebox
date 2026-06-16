@@ -227,7 +227,7 @@ func (m *Manager) Disable(ctx context.Context) error {
 func (m *Manager) Status(ctx context.Context) AWGStatus {
 	m.mu.Lock()
 	enabled, lastErr, port, phase, wan := m.enabled, m.lastErr, m.listenPort, m.phase, m.wan
-	subnet, mtu, obf, desired := m.subnet, m.mtu, m.obf, m.desired
+	subnet, mtu, obf, desired, obfPreset := m.subnet, m.mtu, m.obf, m.desired, m.obfPreset
 	m.mu.Unlock()
 	if phase == "" {
 		phase = PhaseIdle
@@ -239,7 +239,7 @@ func (m *Manager) Status(ctx context.Context) AWGStatus {
 	if enabled && desired != nil {
 		d := desired()
 		configDirty = d.Subnet != subnet || d.ListenPort != port || d.MTU != mtu ||
-			(d.WANIface != "" && d.WANIface != wan) || d.Obf != obf
+			(d.WANIface != "" && d.WANIface != wan) || d.Obf != obf || d.ObfPreset != obfPreset
 	}
 	ifaceUp := false
 	if out, _, err := m.run.Run(ctx, "awg", "show", m.iface); err == nil && strings.Contains(out, "listening port") {
