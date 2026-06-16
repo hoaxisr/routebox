@@ -61,7 +61,10 @@
 	async function showQR(p: AwgPeer) {
 		try {
 			const conf = await api.getAwgPeerConfig(p.public_key);
-			qrDataUrl = await QRCode.toDataURL(conf, { width: 256, margin: 1 });
+			// The config is large (~1.3KB with CPS mimicry), so use low error-correction
+			// ('L') to keep the module count down and render big — otherwise the QR is too
+			// dense to scan from a phone.
+			qrDataUrl = await QRCode.toDataURL(conf, { width: 512, margin: 2, errorCorrectionLevel: 'L' });
 			qrPeer = p;
 		} catch (e) {
 			notifications.error(`${$t('awg.configFailed')}: ${e}`);
@@ -141,9 +144,9 @@
 {/if}
 
 {#if qrPeer}
-	<Modal open={!!qrPeer} title={$t('awg.qrTitle', { values: { name: qrPeer.name } })} size="md" onClose={() => (qrPeer = null)}>
+	<Modal open={!!qrPeer} title={$t('awg.qrTitle', { values: { name: qrPeer.name } })} size="lg" onClose={() => (qrPeer = null)}>
 		<div class="qr-modal">
-			<img src={qrDataUrl} alt="AmneziaWG client config QR" class="qr-img" width="256" height="256" />
+			<img src={qrDataUrl} alt="AmneziaWG client config QR" class="qr-img" />
 			<div class="qr-text">
 				<div class="qr-title">{$t('awg.scanTitle')}</div>
 				<div class="qr-hint">{$t('awg.scanHint')}</div>
@@ -329,8 +332,12 @@
 	.qr-img {
 		border-radius: 0.5rem;
 		background: #fff;
-		padding: 0.5rem;
+		padding: 0.75rem;
 		flex-shrink: 0;
+		width: 100%;
+		max-width: 360px;
+		height: auto;
+		image-rendering: pixelated; /* keep modules crisp when scaled */
 	}
 	.qr-text {
 		flex: 1;
