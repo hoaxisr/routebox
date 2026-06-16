@@ -113,6 +113,19 @@ func (m *Manager) SetDesired(f func() EnableInput) {
 	m.mu.Unlock()
 }
 
+// peerLines maps the stored peers to renderable [Peer] blocks, so a full conf render
+// (Enable/Apply) keeps every existing peer in the file. Without it, Enable rendered
+// `nil` and the conf lost all peers — they survived live (awg set) but vanished on the
+// next awg-quick restart/reboot.
+func (m *Manager) peerLines() []PeerLine {
+	peers := m.store.List()
+	out := make([]PeerLine, 0, len(peers))
+	for _, p := range peers {
+		out = append(out, PeerLine{Name: p.Name, PublicKey: p.PublicKey, PSK: p.PresharedKey, AllowedIP: p.Address})
+	}
+	return out
+}
+
 // parseInterfacePrivateKey extracts PrivateKey from the [Interface] section of a
 // rendered .conf (stops at the first [Peer]).
 func parseInterfacePrivateKey(conf string) string {

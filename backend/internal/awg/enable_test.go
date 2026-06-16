@@ -222,3 +222,27 @@ func TestRehydrateNoConfNoop(t *testing.T) {
 		t.Fatal("rehydrate with no conf must not mark enabled")
 	}
 }
+
+// Enable must render the store's existing peers into the .conf (not nil), else the
+// conf file loses every [Peer] and awg-quick brings the iface up peerless on the next
+// restart/reboot. Regression for the "peers vanish from conf after Apply" bug.
+func TestEnableRendersExistingPeers(t *testing.T) {
+	f := newFakeRunner()
+	m := newEnableManager(t, f)
+	f.outputs["awg show awg-rb0"] = "interface: awg-rb0\n  listening port: 51820\n"
+	f.outputs["iptables -t nat -S"] = "-N RBOX-AWG-NAT\n"
+	if err := m.store.Put(Peer{
+		PublicKey: "B2ukLfPDGVyI8l5lgagINx3NfZMIDq9pWGxZO4tkgwQ=",
+		PrivateKey: "AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAEs=",
+		Address: "10.10.0.2/32", Name: "laptop",
+	}); err != nil {
+		t.Fatal(err)
+	}
+	if err := m.Enable(context.Background(), goodEnableInput()); err != nil {
+		t.Fatalf("Enable: %v", err)
+	}
+	data, _ := os.ReadFile(m.confPath)
+	if !strings.Contains(string(data), "B2ukLfPDGVyI8l5lgagINx3NfZMIDq9pWGxZO4tkgwQ=") || !strings.Contains(string(data), "10.10.0.2/32") {
+		t.Fatalf("enable dropped existing peer from conf:\n%s", data)
+	}
+}

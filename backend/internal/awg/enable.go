@@ -151,7 +151,7 @@ func (m *Manager) Enable(ctx context.Context, in EnableInput) error {
 		PrivateKey: priv, Address: serverIP + maskSuffix(subnet), ListenPort: port, MTU: mtu,
 		Subnet: subnet, WAN: wan, Iface: m.iface, Obf: obf,
 	}
-	if err := m.writeConfAtomic(RenderServer(sc, nil)); err != nil {
+	if err := m.writeConfAtomic(RenderServer(sc, m.peerLines())); err != nil {
 		return m.enableFail(err.Error())
 	}
 	// Persist canonical values for later peer ops.
