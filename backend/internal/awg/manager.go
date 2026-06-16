@@ -49,6 +49,7 @@ type Manager struct {
 	mtu        int
 	publicHost string
 	obf        Obfuscation
+	obfPreset  string // active profile name, for client-config CPS mimicry
 	wan        string
 
 	// Enable-orchestrator state (Task 9). module ensures the kernel module;
@@ -199,6 +200,7 @@ func (m *Manager) Rehydrate(ctx context.Context, in EnableInput) {
 	m.mu.Lock()
 	m.serverPriv, m.subnet, m.serverIP, m.listenPort, m.mtu, m.dns, m.obf, m.wan =
 		priv, subnet, serverIP, port, mtu, dns, obf, in.WANIface
+	m.obfPreset = in.ObfPreset
 	m.enabled = up
 	if up {
 		m.phase = PhaseReady

@@ -62,7 +62,7 @@ func (h *Handler) EnableAWG(w http.ResponseWriter, r *http.Request) {
 func awgEnableInput(s settings.AwgSettings) awg.EnableInput {
 	return awg.EnableInput{
 		Subnet: s.Subnet, ListenPort: s.ListenPort, MTU: s.MTU,
-		DNS: s.DNS, WANIface: s.WANIface,
+		DNS: s.DNS, WANIface: s.WANIface, ObfPreset: s.ObfPreset,
 		Obf: awg.Obfuscation{
 			Jc: s.Obf.Jc, Jmin: s.Obf.Jmin, Jmax: s.Obf.Jmax,
 			S1: s.Obf.S1, S2: s.Obf.S2, S3: s.Obf.S3, S4: s.Obf.S4,

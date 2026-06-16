@@ -51,6 +51,7 @@ type EnableInput struct {
 	DNS        []string    `json:"dns"`
 	WANIface   string      `json:"wan_iface"` // optional override; "" -> DetectWAN
 	Obf        Obfuscation `json:"obf"`
+	ObfPreset  string      `json:"obf_preset"`
 }
 
 // beginEnable claims the single-flight slot. Returns false if an orchestrator is
@@ -162,6 +163,7 @@ func (m *Manager) Enable(ctx context.Context, in EnableInput) error {
 	m.mu.Lock()
 	m.subnet, m.serverIP, m.listenPort, m.mtu, m.wan, m.dns, m.serverPriv, m.obf =
 		subnet, serverIP, port, mtu, wan, dns, priv, obf
+	m.obfPreset = in.ObfPreset
 	m.mu.Unlock()
 
 	m.setPhase(PhaseStarting)

@@ -157,6 +157,23 @@ func TestEnableRendersObfuscation(t *testing.T) {
 	}
 }
 
+// The active obfuscation profile name (ObfPreset) must be persisted on the
+// Manager at Enable time, for client-config CPS mimicry.
+func TestEnablePersistsObfPreset(t *testing.T) {
+	f := newFakeRunner()
+	m := newEnableManager(t, f)
+	f.outputs["awg show awg-rb0"] = "interface: awg-rb0\n  listening port: 51820\n"
+	f.outputs["iptables -t nat -S"] = "-N RBOX-AWG-NAT\n"
+	in := goodEnableInput()
+	in.ObfPreset = "web"
+	if err := m.Enable(context.Background(), in); err != nil {
+		t.Fatalf("Enable: %v", err)
+	}
+	if m.obfPreset != "web" {
+		t.Fatalf("obfPreset = %q, want web", m.obfPreset)
+	}
+}
+
 // Duplicate or reserved (<=4) H values must be rejected before render.
 func TestValidateObfRejectsDuplicateAndReservedH(t *testing.T) {
 	if _, err := validateObf(Obfuscation{H1: "100", H2: "100", H3: "101", H4: "102"}); err == nil {
