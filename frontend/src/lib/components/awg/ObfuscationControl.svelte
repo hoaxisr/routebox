@@ -13,7 +13,7 @@
 
 	let advOpen = $state(false);
 
-	function pick(name: 'off' | 'standard' | 'mobile') {
+	function pick(name: string) {
 		obf = PRESETS[name]();
 		preset = name;
 	}
@@ -37,18 +37,10 @@
 </div>
 
 <div class="preset-row">
-	<button type="button" class="preset-btn" class:selected={preset === 'off'} onclick={() => pick('off')}>
-		{$t('awg.obfOff')}
-	</button>
-	<button type="button" class="preset-btn" class:selected={preset === 'standard'} onclick={() => pick('standard')}>
-		{$t('awg.obfStandard')}
-	</button>
-	<button type="button" class="preset-btn" class:selected={preset === 'mobile'} onclick={() => pick('mobile')}>
-		{$t('awg.obfMobile')}
-	</button>
-	{#if preset === 'custom'}
-		<span class="preset-btn selected" style="cursor: default;">{$t('awg.obfCustom')}</span>
-	{/if}
+	{#each [['off', 'awg.obfOff'], ['dns', 'awg.obfDns'], ['web', 'awg.obfWeb'], ['stealth', 'awg.obfStealth']] as [key, label] (key)}
+		<button type="button" class="preset-btn {preset === key ? 'selected' : ''}" onclick={() => pick(key)}>{$t(label)}</button>
+	{/each}
+	{#if preset === 'custom'}<span class="status-badge info">{$t('awg.obfCustom')}</span>{/if}
 </div>
 
 <div class="adv" class:open={advOpen}>
