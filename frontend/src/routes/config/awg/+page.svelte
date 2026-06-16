@@ -3,6 +3,7 @@
 	import { t } from 'svelte-i18n';
 	import { api } from '$lib/api/client';
 	import { notifications } from '$lib/stores';
+	import { formatBytes } from '$lib/stores/settings';
 	import type { AwgStatus, AwgPeer, AwgServerSettings } from '$lib/types';
 	import ServerSettingsForm from '$lib/components/awg/ServerSettingsForm.svelte';
 	import PeerRoster from '$lib/components/awg/PeerRoster.svelte';
@@ -179,7 +180,12 @@
 				<span class="m-key">{$t('awg.connected')}</span>
 			</div>
 
-			{#if status.public_host}
+			<div class="strip-metric">
+					<span class="m-val mono">↓ {formatBytes(status.rx)} &nbsp;↑ {formatBytes(status.tx)}</span>
+					<span class="m-key">{$t('awg.traffic')}</span>
+				</div>
+
+				{#if status.public_host}
 				<div class="strip-metric">
 					<span class="m-val mono">{status.public_host}</span>
 					<span class="m-key">WAN{status.wan_iface ? ` · ${status.wan_iface}` : ''}</span>

@@ -21,6 +21,8 @@ type PeerSummary struct {
 	Address       string `json:"address"`
 	LastHandshake int64  `json:"last_handshake"` // unix seconds; 0 = never handshaked
 	Online        bool   `json:"online"`         // handshake within onlineWindowSec
+	Rx            int64  `json:"rx"`             // cumulative bytes received (since iface up)
+	Tx            int64  `json:"tx"`             // cumulative bytes sent (since iface up)
 }
 
 // onlineWindowSec: a peer counts as "online" if its last handshake is newer than
@@ -268,13 +270,15 @@ func (m *Manager) AddPeer(ctx context.Context, rawName string) (PeerSummary, err
 // the store's List). The PeerSummary type CANNOT serialise private/preshared keys.
 func (m *Manager) ListPeers(ctx context.Context) []PeerSummary {
 	hs := m.iface_Handshakes(ctx)
+	xf := m.iface_Transfer(ctx)
 	now := time.Now().Unix()
 	out := []PeerSummary{}
 	for _, p := range m.store.List() {
 		ts := hs[p.PublicKey]
+		x := xf[p.PublicKey]
 		out = append(out, PeerSummary{
 			Name: p.Name, PublicKey: p.PublicKey, Address: p.Address,
-			LastHandshake: ts, Online: isOnline(ts, now),
+			LastHandshake: ts, Online: isOnline(ts, now), Rx: x.rx, Tx: x.tx,
 		})
 	}
 	return out

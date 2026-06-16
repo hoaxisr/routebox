@@ -979,6 +979,8 @@ export interface AwgStatus {
 	public_host: string;
 	peer_count: number;
 	online: number; // peers with a live handshake (real connections, not just provisioned)
+	rx: number; // server total bytes received (since iface up)
+	tx: number; // server total bytes sent (since iface up)
 	wan_iface: string;
 	nat_orphan: boolean;
 	config_dirty: boolean;
@@ -991,6 +993,8 @@ export interface AwgPeer {
 	address: string;
 	last_handshake: number; // unix seconds; 0 = never
 	online: boolean;        // handshake within the server's online window
+	rx: number;             // cumulative bytes received (since iface up)
+	tx: number;             // cumulative bytes sent (since iface up)
 }
 
 // AmneziaWG obfuscation parameters (junk packets, init-packet sizes, magic headers)

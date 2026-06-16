@@ -266,3 +266,17 @@ func TestHandshakeOnline(t *testing.T) {
 }
 
 func itoa(n int64) string { return strconv.FormatInt(n, 10) }
+
+// Per-peer transfer parsing from `awg show <iface> transfer` (pubkey\trx\ttx).
+func TestIfaceTransferParse(t *testing.T) {
+	f := newFakeRunner()
+	m := newEnableManager(t, f)
+	f.outputs["awg show awg-rb0 transfer"] = "PUBa\t1024\t2048\nPUBb\t0\t0\n"
+	xf := m.iface_Transfer(context.Background())
+	if xf["PUBa"].rx != 1024 || xf["PUBa"].tx != 2048 {
+		t.Fatalf("PUBa = %+v, want {1024 2048}", xf["PUBa"])
+	}
+	if xf["PUBb"].rx != 0 {
+		t.Fatalf("PUBb rx = %d, want 0", xf["PUBb"].rx)
+	}
+}

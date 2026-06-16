@@ -35,6 +35,8 @@ type AWGStatus struct {
 	PublicHost  string      `json:"public_host"`
 	PeerCount   int         `json:"peer_count"`
 	Online      int         `json:"online"` // peers with a handshake within onlineWindowSec
+	Rx          int64       `json:"rx"`     // server total bytes received (sum of peers, since iface up)
+	Tx          int64       `json:"tx"`     // server total bytes sent (sum of peers, since iface up)
 	WANIface    string      `json:"wan_iface"`
 	NATOrphan   bool        `json:"nat_orphan"`
 	ConfigDirty bool        `json:"config_dirty"` // enabled & saved settings differ from running -> needs Apply
@@ -253,13 +255,18 @@ func (m *Manager) Status(ctx context.Context) AWGStatus {
 			online++
 		}
 	}
+	var rx, tx int64
+	for _, x := range m.iface_Transfer(ctx) {
+		rx += x.rx
+		tx += x.tx
+	}
 	mod := StateNotInstalled
 	if m.module != nil {
 		mod = m.module.Status().State
 	}
 	return AWGStatus{
 		Module: mod, Enabled: enabled, Phase: phase, IfaceUp: ifaceUp, ListenPort: port,
-		PublicHost: m.publicHost, PeerCount: len(peers), Online: online, WANIface: wan,
+		PublicHost: m.publicHost, PeerCount: len(peers), Online: online, Rx: rx, Tx: tx, WANIface: wan,
 		NATOrphan: rulesPresent && !ifaceUp, ConfigDirty: configDirty, LastError: lastErr,
 	}
 }

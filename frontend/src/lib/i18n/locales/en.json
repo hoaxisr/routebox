@@ -1672,6 +1672,7 @@
     "online": "online",
     "offline": "offline",
     "never": "never connected",
+    "traffic": "Traffic",
     "secondsAgo": "{n}s ago",
     "minutesAgo": "{n}m ago",
     "hoursAgo": "{n}h ago",

@@ -77,6 +77,33 @@ func (m *Manager) iface_Handshakes(ctx context.Context) map[string]int64 {
 	return out
 }
 
+// peerXfer is one peer's cumulative byte counters (since the iface came up).
+type peerXfer struct{ rx, tx int64 }
+
+// iface_Transfer returns pubkey -> {rx,tx} bytes from `awg show <iface> transfer`
+// (tab-separated "<pubkey>\t<rx>\t<tx>"). Cumulative since iface up; resets on
+// awg-quick restart. Degrades to an empty map on any error.
+func (m *Manager) iface_Transfer(ctx context.Context) map[string]peerXfer {
+	out := map[string]peerXfer{}
+	res, _, err := m.run.Run(ctx, "awg", "show", m.iface, "transfer")
+	if err != nil {
+		return out
+	}
+	for _, line := range strings.Split(res, "\n") {
+		f := strings.Fields(line)
+		if len(f) != 3 {
+			continue
+		}
+		rx, e1 := strconv.ParseInt(f[1], 10, 64)
+		tx, e2 := strconv.ParseInt(f[2], 10, 64)
+		if e1 != nil || e2 != nil {
+			continue
+		}
+		out[f[0]] = peerXfer{rx: rx, tx: tx}
+	}
+	return out
+}
+
 // iface_ShowPeers returns the live peer pubkeys (for reconcile).
 func (m *Manager) iface_ShowPeers(ctx context.Context) ([]string, error) {
 	out, _, err := m.run.Run(ctx, "awg", "show", m.iface)

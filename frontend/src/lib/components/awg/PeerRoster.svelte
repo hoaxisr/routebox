@@ -5,6 +5,7 @@
 	import { notifications } from '$lib/stores';
 	import Modal from '$lib/components/shared/Modal.svelte';
 	import type { AwgPeer } from '$lib/types';
+	import { formatBytes } from '$lib/stores/settings';
 
 	interface Props {
 		peers: AwgPeer[];
@@ -113,6 +114,8 @@
 						<span class="addr">{p.address}</span>
 						<span class="dot-sep">·</span>
 						<span class="seen">{p.online ? $t('awg.online') : lastSeen(p.last_handshake)}</span>
+						<span class="dot-sep">·</span>
+						<span class="xfer">↓ {formatBytes(p.rx)} &nbsp;↑ {formatBytes(p.tx)}</span>
 					</div>
 				</div>
 				<div class="peer-actions">
@@ -249,6 +252,11 @@
 	}
 	.peer-meta .seen {
 		color: var(--ctp-overlay1);
+	}
+	.peer-meta .xfer {
+		font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+		color: var(--ctp-overlay1);
+		font-size: 0.78rem;
 	}
 	.peer-meta {
 		display: flex;
