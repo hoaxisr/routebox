@@ -313,3 +313,22 @@ func TestAWGRoutesRequireAuth(t *testing.T) {
 		}
 	}
 }
+
+// awgEnableInput must map persisted settings (incl. obfuscation) into the
+// orchestrator input — the panel's Save is the single writer; Enable ignores body.
+func TestAwgEnableInputFromSettings(t *testing.T) {
+	in := awgEnableInput(settings.AwgSettings{
+		Subnet: "10.20.0.0/24", ListenPort: 4500, MTU: 1380,
+		DNS: []string{"9.9.9.9"}, WANIface: "ens3", ObfPreset: "standard",
+		Obf: settings.AwgObf{Jc: 4, Jmin: 40, Jmax: 70, H1: "111", H2: "222", H3: "333", H4: "444"},
+	})
+	if in.ListenPort != 4500 || in.Subnet != "10.20.0.0/24" || in.MTU != 1380 || in.WANIface != "ens3" {
+		t.Fatalf("scalar fields not mapped: %+v", in)
+	}
+	if len(in.DNS) != 1 || in.DNS[0] != "9.9.9.9" {
+		t.Fatalf("dns not mapped: %v", in.DNS)
+	}
+	if in.Obf.Jc != 4 || in.Obf.Jmax != 70 || in.Obf.H1 != "111" || in.Obf.H4 != "444" {
+		t.Fatalf("obf not mapped: %+v", in.Obf)
+	}
+}

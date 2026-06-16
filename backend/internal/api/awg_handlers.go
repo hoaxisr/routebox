@@ -7,6 +7,7 @@ import (
 	"github.com/go-chi/chi/v5"
 
 	"routebox/backend/internal/awg"
+	"routebox/backend/internal/settings"
 )
 
 // GetAWGStatus reports module + interface + peer status.
@@ -18,26 +19,35 @@ func (h *Handler) GetAWGStatus(w http.ResponseWriter, r *http.Request) {
 	writeSuccess(w, h.awg.Status(r.Context()))
 }
 
-// EnableAWG validates + starts the enable orchestrator; canonical values come
-// from the operator submission (Enable re-validates every field).
+// EnableAWG starts the enable orchestrator. The request body is ignored — the
+// server config is the persisted settings.awg (the panel's Save is the single
+// writer), which removes the hardcoded-body footgun. Enable re-validates every field.
 func (h *Handler) EnableAWG(w http.ResponseWriter, r *http.Request) {
 	if h.awg == nil {
 		writeError(w, http.StatusServiceUnavailable, "awg not available")
 		return
 	}
-	var body awg.EnableInput
-	// Decode directly — package api has no decodeJSON helper; every sibling
-	// handler uses json.NewDecoder (see clients_handlers.go / auth_handlers.go).
-	if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
-		writeError(w, http.StatusBadRequest, "invalid body")
-		return
-	}
-	if err := h.awg.Enable(r.Context(), body); err != nil {
+	in := awgEnableInput(h.settings.Get().Awg)
+	if err := h.awg.Enable(r.Context(), in); err != nil {
 		// Enable already validated every field; a validation error is a 400.
 		writeError(w, http.StatusBadRequest, err.Error())
 		return
 	}
 	writeSuccess(w, h.awg.Status(r.Context()))
+}
+
+// awgEnableInput maps persisted settings to the awg orchestrator input. This is
+// the settings<->awg package boundary (settings stays awg-agnostic).
+func awgEnableInput(s settings.AwgSettings) awg.EnableInput {
+	return awg.EnableInput{
+		Subnet: s.Subnet, ListenPort: s.ListenPort, MTU: s.MTU,
+		DNS: s.DNS, WANIface: s.WANIface,
+		Obf: awg.Obfuscation{
+			Jc: s.Obf.Jc, Jmin: s.Obf.Jmin, Jmax: s.Obf.Jmax,
+			S1: s.Obf.S1, S2: s.Obf.S2, S3: s.Obf.S3, S4: s.Obf.S4,
+			H1: s.Obf.H1, H2: s.Obf.H2, H3: s.Obf.H3, H4: s.Obf.H4,
+		},
+	}
 }
 
 // DisableAWG stops the interface (PostDown reverts NAT).
