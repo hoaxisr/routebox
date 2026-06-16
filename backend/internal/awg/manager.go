@@ -12,6 +12,8 @@ import (
 	"strings"
 	"sync"
 	"time"
+
+	"routebox/backend/internal/awg/cps"
 )
 
 // PeerSummary is the secret-free API/UI view of a peer.
@@ -305,7 +307,7 @@ func (m *Manager) RenderClientConf(pub, host string) (string, error) {
 		return "", fmt.Errorf("no such peer")
 	}
 	m.mu.Lock()
-	serverPriv, dns, mtu, obf, port := m.serverPriv, m.dns, m.mtu, m.obf, m.listenPort
+	serverPriv, dns, mtu, obf, port, preset := m.serverPriv, m.dns, m.mtu, m.obf, m.listenPort, m.obfPreset
 	m.mu.Unlock()
 	serverPub, err := PublicFromPrivate(serverPriv)
 	if err != nil {
@@ -320,6 +322,7 @@ func (m *Manager) RenderClientConf(pub, host string) (string, error) {
 		DNS:        dns,
 		MTU:        mtu,
 		Obf:        obf,
+		Mimic:      cps.Mimic(preset),
 		ServerPub:  serverPub,
 		Endpoint:   joinHostPort(host, port),
 		AllowedIPs: []string{"0.0.0.0/0"},

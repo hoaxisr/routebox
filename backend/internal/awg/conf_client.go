@@ -3,6 +3,8 @@ package awg
 import (
 	"fmt"
 	"strings"
+
+	"routebox/backend/internal/awg/cps"
 )
 
 // Obfuscation is the AWG 2.0 obfuscation preset. Numeric J/S fields; string H
@@ -22,6 +24,7 @@ type ClientConf struct {
 	DNS        []string
 	MTU        int
 	Obf        Obfuscation
+	Mimic      cps.Set
 	ServerPub  string
 	PSK        string
 	Endpoint   string // host:port, IPv6 already bracketed
@@ -47,6 +50,7 @@ func BuildClient(c ClientConf) (string, error) {
 		fmt.Fprintf(&b, "MTU = %d\n", c.MTU)
 	}
 	writeObf(&b, c.Obf)
+	writeMimic(&b, c.Mimic)
 	b.WriteString("\n[Peer]\n")
 	fmt.Fprintf(&b, "PublicKey = %s\n", c.ServerPub)
 	if c.PSK != "" {
@@ -75,6 +79,18 @@ func writeObf(b *strings.Builder, o Obfuscation) {
 	for _, f := range str {
 		if f.v != "" {
 			fmt.Fprintf(b, "%s = %s\n", f.k, f.v)
+		}
+	}
+}
+
+// writeMimic emits the client-only CPS fields (Itime + I1..I5). Empty Set -> nothing.
+func writeMimic(b *strings.Builder, m cps.Set) {
+	if m.Itime > 0 {
+		fmt.Fprintf(b, "Itime = %d\n", m.Itime)
+	}
+	for i, v := range []string{m.I1, m.I2, m.I3, m.I4, m.I5} {
+		if v != "" {
+			fmt.Fprintf(b, "I%d = %s\n", i+1, v)
 		}
 	}
 }
