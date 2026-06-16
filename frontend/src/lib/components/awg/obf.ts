@@ -1,13 +1,17 @@
 import type { AwgObf } from '$lib/types';
 
-// Distinct random header magics in [5, 2^31-1], min span 1000 (camouflage, not secrets).
+// Four AmneziaWG H1-H4 header magics as ranges "lo-hi" (span >=1000), one per
+// quadrant of [5, 2^31-1] so they never overlap. AWG randomizes the header per
+// packet within the range — a single fixed value would be a static signature.
 export function randH(): string[] {
-	const out: number[] = [];
-	while (out.length < 4) {
-		const v = 5 + Math.floor(Math.random() * 2147483640);
-		if (out.every((o) => Math.abs(o - v) >= 1000)) out.push(v);
-	}
-	return out.map(String);
+	const MAX = 2147483647;
+	const q = Math.floor((MAX - 5) / 4);
+	return [0, 1, 2, 3].map((i) => {
+		const start = 5 + i * q;
+		const span = 1000 + Math.floor(Math.random() * 9000); // 1000..9999
+		const lo = start + Math.floor(Math.random() * (q - span));
+		return `${lo}-${lo + span}`;
+	});
 }
 
 // inclusive random integer in [lo, hi]
