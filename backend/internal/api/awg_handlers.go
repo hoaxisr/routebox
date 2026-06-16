@@ -90,7 +90,7 @@ func (h *Handler) ListAWGPeers(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusServiceUnavailable, "awg not available")
 		return
 	}
-	writeSuccess(w, h.awg.ListPeers())
+	writeSuccess(w, h.awg.ListPeers(r.Context()))
 }
 
 // CreateAWGPeer live-adds a peer and returns a secret-free summary.

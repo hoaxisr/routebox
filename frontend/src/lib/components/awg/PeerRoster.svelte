@@ -17,6 +17,16 @@
 	let newName = $state('');
 	let adding = $state(false);
 
+	// "last seen" relative label from a unix-seconds handshake (0 = never).
+	function lastSeen(ts: number): string {
+		if (!ts) return $t('awg.never');
+		const s = Math.max(0, Math.floor(Date.now() / 1000 - ts));
+		if (s < 60) return $t('awg.secondsAgo', { values: { n: s } });
+		if (s < 3600) return $t('awg.minutesAgo', { values: { n: Math.floor(s / 60) } });
+		if (s < 86400) return $t('awg.hoursAgo', { values: { n: Math.floor(s / 3600) } });
+		return $t('awg.daysAgo', { values: { n: Math.floor(s / 86400) } });
+	}
+
 	let qrPeer = $state<AwgPeer | null>(null);
 	let qrDataUrl = $state('');
 
@@ -98,9 +108,11 @@
 					<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" width="20" height="20"><rect x="5" y="2" width="14" height="20" rx="2" /><line x1="12" y1="18" x2="12.01" y2="18" /></svg>
 				</span>
 				<div class="peer-info">
-					<div class="peer-name">{p.name || '(unnamed)'}</div>
+					<div class="peer-name"><span class="conn-dot" class:on={p.online} title={p.online ? $t('awg.online') : $t('awg.offline')}></span>{p.name || '(unnamed)'}</div>
 					<div class="peer-meta">
 						<span class="addr">{p.address}</span>
+						<span class="dot-sep">·</span>
+						<span class="seen">{p.online ? $t('awg.online') : lastSeen(p.last_handshake)}</span>
 					</div>
 				</div>
 				<div class="peer-actions">
@@ -217,6 +229,26 @@
 	.peer-name {
 		font-weight: 600;
 		font-size: 0.9375rem;
+		display: flex;
+		align-items: center;
+		gap: 0.45rem;
+	}
+	.conn-dot {
+		width: 8px;
+		height: 8px;
+		border-radius: 9999px;
+		background: var(--ctp-overlay0);
+		flex: none;
+	}
+	.conn-dot.on {
+		background: var(--ctp-green);
+		box-shadow: 0 0 0 3px color-mix(in srgb, var(--ctp-green) 25%, transparent);
+	}
+	.peer-meta .dot-sep {
+		color: var(--ctp-overlay0);
+	}
+	.peer-meta .seen {
+		color: var(--ctp-overlay1);
 	}
 	.peer-meta {
 		display: flex;

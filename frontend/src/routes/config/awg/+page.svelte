@@ -175,7 +175,7 @@
 			</div>
 
 			<div class="strip-metric">
-				<span class="m-val">{status.peer_count} {$t('awg.peers')}</span>
+				<span class="m-val">{status.online} / {status.peer_count}</span>
 				<span class="m-key">{$t('awg.connected')}</span>
 			</div>
 

@@ -16,9 +16,21 @@ import (
 
 // PeerSummary is the secret-free API/UI view of a peer.
 type PeerSummary struct {
-	Name      string `json:"name"`
-	PublicKey string `json:"public_key"`
-	Address   string `json:"address"`
+	Name          string `json:"name"`
+	PublicKey     string `json:"public_key"`
+	Address       string `json:"address"`
+	LastHandshake int64  `json:"last_handshake"` // unix seconds; 0 = never handshaked
+	Online        bool   `json:"online"`         // handshake within onlineWindowSec
+}
+
+// onlineWindowSec: a peer counts as "online" if its last handshake is newer than
+// this. WireGuard rekeys roughly every ~120s while a tunnel is active, so 180s is a
+// forgiving liveness window.
+const onlineWindowSec = 180
+
+// isOnline reports whether a last-handshake unix ts is recent enough to be "online".
+func isOnline(ts, now int64) bool {
+	return ts > 0 && now-ts < onlineWindowSec
 }
 
 // Manager orchestrates the awg-rb0 interface: it owns the single add-peer mutex,
@@ -175,7 +187,7 @@ func (m *Manager) Rehydrate(ctx context.Context, in EnableInput) {
 		return
 	}
 	mtu, _ := ValidateMTU(in.MTU) // non-critical for render; 0 -> omitted
-	dns, _ := ValidateDNS(in.DNS)  // RenderClientConf falls back to 1.1.1.1 if empty
+	dns, _ := ValidateDNS(in.DNS) // RenderClientConf falls back to 1.1.1.1 if empty
 
 	up := false
 	if out, _, e := m.run.Run(ctx, "awg", "show", m.iface); e == nil && strings.Contains(out, "listening port") {
@@ -254,10 +266,16 @@ func (m *Manager) AddPeer(ctx context.Context, rawName string) (PeerSummary, err
 
 // ListPeers returns secret-free summaries from the store (sorted by PublicKey via
 // the store's List). The PeerSummary type CANNOT serialise private/preshared keys.
-func (m *Manager) ListPeers() []PeerSummary {
+func (m *Manager) ListPeers(ctx context.Context) []PeerSummary {
+	hs := m.iface_Handshakes(ctx)
+	now := time.Now().Unix()
 	out := []PeerSummary{}
 	for _, p := range m.store.List() {
-		out = append(out, PeerSummary{Name: p.Name, PublicKey: p.PublicKey, Address: p.Address})
+		ts := hs[p.PublicKey]
+		out = append(out, PeerSummary{
+			Name: p.Name, PublicKey: p.PublicKey, Address: p.Address,
+			LastHandshake: ts, Online: isOnline(ts, now),
+		})
 	}
 	return out
 }

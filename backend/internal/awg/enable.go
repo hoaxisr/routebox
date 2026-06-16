@@ -7,6 +7,7 @@ import (
 	"net/netip"
 	"os"
 	"strings"
+	"time"
 )
 
 // EnablePhase is the orchestrator's current step, surfaced via Status so the UI
@@ -33,6 +34,7 @@ type AWGStatus struct {
 	ListenPort  int         `json:"listen_port"`
 	PublicHost  string      `json:"public_host"`
 	PeerCount   int         `json:"peer_count"`
+	Online      int         `json:"online"` // peers with a handshake within onlineWindowSec
 	WANIface    string      `json:"wan_iface"`
 	NATOrphan   bool        `json:"nat_orphan"`
 	ConfigDirty bool        `json:"config_dirty"` // enabled & saved settings differ from running -> needs Apply
@@ -244,13 +246,20 @@ func (m *Manager) Status(ctx context.Context) AWGStatus {
 		rulesPresent = true
 	}
 	peers, _ := m.iface_ShowPeers(ctx)
+	online := 0
+	now := time.Now().Unix()
+	for _, ts := range m.iface_Handshakes(ctx) {
+		if isOnline(ts, now) {
+			online++
+		}
+	}
 	mod := StateNotInstalled
 	if m.module != nil {
 		mod = m.module.Status().State
 	}
 	return AWGStatus{
 		Module: mod, Enabled: enabled, Phase: phase, IfaceUp: ifaceUp, ListenPort: port,
-		PublicHost: m.publicHost, PeerCount: len(peers), WANIface: wan,
+		PublicHost: m.publicHost, PeerCount: len(peers), Online: online, WANIface: wan,
 		NATOrphan: rulesPresent && !ifaceUp, ConfigDirty: configDirty, LastError: lastErr,
 	}
 }

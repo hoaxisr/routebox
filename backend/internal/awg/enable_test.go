@@ -4,9 +4,11 @@ import (
 	"context"
 	"os"
 	"path/filepath"
+	"strconv"
 	"strings"
 	"sync"
 	"testing"
+	"time"
 )
 
 func newEnableManager(t *testing.T, f *fakeRunner) *Manager {
@@ -232,9 +234,9 @@ func TestEnableRendersExistingPeers(t *testing.T) {
 	f.outputs["awg show awg-rb0"] = "interface: awg-rb0\n  listening port: 51820\n"
 	f.outputs["iptables -t nat -S"] = "-N RBOX-AWG-NAT\n"
 	if err := m.store.Put(Peer{
-		PublicKey: "B2ukLfPDGVyI8l5lgagINx3NfZMIDq9pWGxZO4tkgwQ=",
+		PublicKey:  "B2ukLfPDGVyI8l5lgagINx3NfZMIDq9pWGxZO4tkgwQ=",
 		PrivateKey: "AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAEs=",
-		Address: "10.10.0.2/32", Name: "laptop",
+		Address:    "10.10.0.2/32", Name: "laptop",
 	}); err != nil {
 		t.Fatal(err)
 	}
@@ -246,3 +248,21 @@ func TestEnableRendersExistingPeers(t *testing.T) {
 		t.Fatalf("enable dropped existing peer from conf:\n%s", data)
 	}
 }
+
+// Handshake parsing + online window: a recent handshake -> online, old/zero -> offline.
+func TestHandshakeOnline(t *testing.T) {
+	f := newFakeRunner()
+	m := newEnableManager(t, f)
+	now := time.Now().Unix()
+	f.outputs["awg show awg-rb0 latest-handshakes"] =
+		"PUBfresh\t" + itoa(now-10) + "\nPUBstale\t" + itoa(now-9999) + "\nPUBnever\t0\n"
+	hs := m.iface_Handshakes(context.Background())
+	if !isOnline(hs["PUBfresh"], now) {
+		t.Fatal("fresh handshake must be online")
+	}
+	if isOnline(hs["PUBstale"], now) || isOnline(hs["PUBnever"], now) {
+		t.Fatal("stale/never must be offline")
+	}
+}
+
+func itoa(n int64) string { return strconv.FormatInt(n, 10) }

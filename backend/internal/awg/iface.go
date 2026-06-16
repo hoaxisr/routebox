@@ -6,6 +6,7 @@ import (
 	"os"
 	"path/filepath"
 	"strconv"
+	"strings"
 	"time"
 )
 
@@ -51,6 +52,29 @@ func (m *Manager) iface_SetPeer(ctx context.Context, pub, pskFile, allowedIP str
 func (m *Manager) iface_RemovePeer(ctx context.Context, pub string) error {
 	_, _, err := m.run.Run(ctx, "awg", "set", m.iface, "peer", pub, "remove")
 	return err
+}
+
+// iface_Handshakes returns pubkey -> last-handshake unix-seconds from
+// `awg show <iface> latest-handshakes` (tab-separated "<pubkey>\t<unix>"; 0 = never).
+// Degrades to an empty map on any error so callers just report everyone offline.
+func (m *Manager) iface_Handshakes(ctx context.Context) map[string]int64 {
+	out := map[string]int64{}
+	res, _, err := m.run.Run(ctx, "awg", "show", m.iface, "latest-handshakes")
+	if err != nil {
+		return out
+	}
+	for _, line := range strings.Split(res, "\n") {
+		f := strings.Fields(line)
+		if len(f) != 2 {
+			continue
+		}
+		ts, err := strconv.ParseInt(f[1], 10, 64)
+		if err != nil {
+			continue
+		}
+		out[f[0]] = ts
+	}
+	return out
 }
 
 // iface_ShowPeers returns the live peer pubkeys (for reconcile).
