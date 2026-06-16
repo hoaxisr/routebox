@@ -4,6 +4,26 @@ All notable changes to RouteBox are documented here.
 
 ## [Unreleased]
 
+## [0.19.0] - 2026-06-16
+
+### New Features
+
+- **Configurable AmneziaWG server page (`/config/awg`)** — replaced the one-button MVP with a state-aware page: a guided setup wizard (Setup → Configure → Turn on → Share) until the first enable, then a steady "manage clients" view. Editable server settings (listen port, subnet, MTU, DNS, WAN interface) with Save, Enable/Disable, and Apply-on-change (re-renders + restarts the interface when saved settings differ from the running one).
+- **AmneziaWG obfuscation — now actually applied, with profiles.** Obfuscation values were previously never threaded through, so the server ran as plain WireGuard; they now flow into both the server `.conf` and every client `.conf` (always matching). Four profiles — **Off / DNS / Web / Stealth** — materialise `Jc/Jmin/Jmax/S1–S4` from researched ranges (randomised per server), with `H1–H4` emitted as per-quadrant ranges (`lo-hi`) so the header is randomised per packet instead of being a static signature.
+- **CPS protocol mimicry (`I1–I5` + `Itime`)** — generated client configs carry real protocol-mimicry packets matching the profile (DNS query / Chrome-like TLS ClientHello with GREASE + random SNI / SIP REGISTER), built in pure Go (`awg/cps`). These are client-only; the server `.conf` stays I-free (so our `awg-quick`/kernel module never parses them).
+- **Live per-client + server status** — real "Connected" count and per-peer online badges derived from live handshakes (`awg show latest-handshakes`), cumulative per-peer + server traffic totals (`awg show transfer`), and a larger, lower-density QR that stays scannable for the bigger obfuscated configs.
+- **VPS sidebar cleanup** — AmneziaWG moved to the top of Config, Users moved before Experimental, and the client-only Endpoints page is hidden in panel mode.
+
+### Bug Fixes
+
+- **Apply/re-enable now actually applies** — `iface_Up` used `systemctl enable --now`, a no-op on an already-active unit, so port/obfuscation/subnet changes silently never reached the live interface; it now `enable`s (boot) + `restart`s (reload).
+- AWG enable fixes: `listen_port` JSON decoding (was silently 0), conf path `/etc/amnezia/amneziawg` (where `awg-quick@` reads), and the NAT health-gate/status check the `nat` table.
+- QR/`.conf` endpoint URL-decodes the peer public key (was HTTP 400 on any key containing `+`, `/`, or `=`).
+- Manager rehydrates render state on boot (client configs no longer 500 after a restart until a re-enable); existing peers are preserved in the rendered `.conf` across Apply/reboot.
+- Enable reads the persisted settings instead of the request body; `obf_preset` participates in change-detection; `validateObf` enforces `Jmin < Jmax` and `S1 + 56 ≠ S2`.
+
+## [0.18.0] - 2026-06-15
+
 ### New Features
 
 - **Trojan inbound/outbound + transport selector** — Trojan is now a first-class server inbound and client outbound, and vless/trojan gain a pluggable stream transport on both sides. See details below.
