@@ -26,16 +26,17 @@ const (
 
 // AWGStatus is the aggregate status surfaced at GET /api/awg/status.
 type AWGStatus struct {
-	Module     State       `json:"module"`
-	Enabled    bool        `json:"enabled"`
-	Phase      EnablePhase `json:"phase"`
-	IfaceUp    bool        `json:"iface_up"`
-	ListenPort int         `json:"listen_port"`
-	PublicHost string      `json:"public_host"`
-	PeerCount  int         `json:"peer_count"`
-	WANIface   string      `json:"wan_iface"`
-	NATOrphan  bool        `json:"nat_orphan"`
-	LastError  string      `json:"last_error,omitempty"`
+	Module      State       `json:"module"`
+	Enabled     bool        `json:"enabled"`
+	Phase       EnablePhase `json:"phase"`
+	IfaceUp     bool        `json:"iface_up"`
+	ListenPort  int         `json:"listen_port"`
+	PublicHost  string      `json:"public_host"`
+	PeerCount   int         `json:"peer_count"`
+	WANIface    string      `json:"wan_iface"`
+	NATOrphan   bool        `json:"nat_orphan"`
+	ConfigDirty bool        `json:"config_dirty"` // enabled & saved settings differ from running -> needs Apply
+	LastError   string      `json:"last_error,omitempty"`
 }
 
 // EnableInput is the RAW operator submission; Enable canonicalises every field.
@@ -220,9 +221,19 @@ func (m *Manager) Disable(ctx context.Context) error {
 func (m *Manager) Status(ctx context.Context) AWGStatus {
 	m.mu.Lock()
 	enabled, lastErr, port, phase, wan := m.enabled, m.lastErr, m.listenPort, m.phase, m.wan
+	subnet, mtu, obf, desired := m.subnet, m.mtu, m.obf, m.desired
 	m.mu.Unlock()
 	if phase == "" {
 		phase = PhaseIdle
+	}
+	// ConfigDirty = enabled and the saved settings differ from what is running, on
+	// any field that needs an interface restart (subnet/port/mtu/wan/obf). DNS is
+	// client-only (regenerated at config download), so it never marks dirty.
+	configDirty := false
+	if enabled && desired != nil {
+		d := desired()
+		configDirty = d.Subnet != subnet || d.ListenPort != port || d.MTU != mtu ||
+			(d.WANIface != "" && d.WANIface != wan) || d.Obf != obf
 	}
 	ifaceUp := false
 	if out, _, err := m.run.Run(ctx, "awg", "show", m.iface); err == nil && strings.Contains(out, "listening port") {
@@ -240,7 +251,7 @@ func (m *Manager) Status(ctx context.Context) AWGStatus {
 	return AWGStatus{
 		Module: mod, Enabled: enabled, Phase: phase, IfaceUp: ifaceUp, ListenPort: port,
 		PublicHost: m.publicHost, PeerCount: len(peers), WANIface: wan,
-		NATOrphan: rulesPresent && !ifaceUp, LastError: lastErr,
+		NATOrphan: rulesPresent && !ifaceUp, ConfigDirty: configDirty, LastError: lastErr,
 	}
 }
 

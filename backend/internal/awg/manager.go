@@ -45,6 +45,10 @@ type Manager struct {
 	dns         []string
 	serverPriv  string
 
+	// desired returns the operator's saved server config (from settings), used by
+	// Status to compute ConfigDirty. nil -> dirty is never reported.
+	desired func() EnableInput
+
 	addMu sync.Mutex // serialises the whole add-peer critical section
 
 	mu       sync.Mutex  // guards enabled/lastErr/phase/inFlight (distinct from addMu)
@@ -101,6 +105,13 @@ func NewManager(run Runner, baseDir string, cfg Config) *Manager {
 
 // Store exposes the secret store so the wiring layer can Load() it at startup.
 func (m *Manager) Store() *Store { return m.store }
+
+// SetDesired wires the saved-config getter used for ConfigDirty (see Status).
+func (m *Manager) SetDesired(f func() EnableInput) {
+	m.mu.Lock()
+	m.desired = f
+	m.mu.Unlock()
+}
 
 // AddPeer validates the name, allocates a /32 (from the on-disk .conf under the
 // mutex), applies the peer live, appends the [Peer] block, and persists the

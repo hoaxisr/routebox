@@ -164,3 +164,24 @@ func TestValidateObfRejectsDuplicateAndReservedH(t *testing.T) {
 		t.Fatal("want error on reserved H values (<=4)")
 	}
 }
+
+// ConfigDirty: enabled + saved config matches running -> clean; change a
+// restart-affecting field (port) -> dirty.
+func TestConfigDirty(t *testing.T) {
+	f := newFakeRunner()
+	m := newEnableManager(t, f)
+	f.outputs["awg show awg-rb0"] = "interface: awg-rb0\n  listening port: 51820\n"
+	f.outputs["iptables -t nat -S"] = "-N RBOX-AWG-NAT\n"
+	desired := goodEnableInput()
+	m.desired = func() EnableInput { return desired }
+	if err := m.Enable(context.Background(), desired); err != nil {
+		t.Fatalf("Enable: %v", err)
+	}
+	if m.Status(context.Background()).ConfigDirty {
+		t.Fatal("freshly enabled with identical config must NOT be dirty")
+	}
+	desired.ListenPort = 4500 // operator changed the port in settings
+	if !m.Status(context.Background()).ConfigDirty {
+		t.Fatal("changed setting while enabled must be dirty")
+	}
+}
