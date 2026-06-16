@@ -331,3 +331,19 @@ func TestValidateObfGuards(t *testing.T) {
 		t.Fatalf("valid obf rejected: %v", err)
 	}
 }
+
+// Enable must RESTART the interface, not just `enable --now` — the latter is a no-op
+// on an already-active unit, so a changed conf (port/obfuscation/subnet) silently
+// never loaded into the live interface. Regression for the "Apply did nothing" bug.
+func TestEnableRestartsIface(t *testing.T) {
+	f := newFakeRunner()
+	m := newEnableManager(t, f)
+	f.outputs["awg show awg-rb0"] = "interface: awg-rb0\n  listening port: 51820\n"
+	f.outputs["iptables -t nat -S"] = "-N RBOX-AWG-NAT\n"
+	if err := m.Enable(context.Background(), goodEnableInput()); err != nil {
+		t.Fatalf("Enable: %v", err)
+	}
+	if !f.sawContains("systemctl restart awg-quick@awg-rb0") {
+		t.Fatalf("Enable must restart the iface to apply conf changes; calls=%v", f.calls)
+	}
+}

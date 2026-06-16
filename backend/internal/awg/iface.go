@@ -10,9 +10,17 @@ import (
 	"time"
 )
 
-// iface_Up brings the interface up via systemd (the single lifecycle path).
+// iface_Up (re)applies the CURRENT conf to the running interface. `enable` (no
+// --now) sets boot persistence idempotently; `restart` then starts-or-reloads the
+// unit so a changed conf (port / obfuscation / subnet) actually takes effect.
+// `enable --now` is a no-op on an ALREADY-ACTIVE unit, which silently left every
+// Apply/re-enable change unapplied to the live interface (conf on disk updated, but
+// awg-quick never re-read it).
 func (m *Manager) iface_Up(ctx context.Context) error {
-	_, _, err := m.run.Run(ctx, "systemctl", "enable", "--now", "awg-quick@"+m.iface)
+	if _, _, err := m.run.Run(ctx, "systemctl", "enable", "awg-quick@"+m.iface); err != nil {
+		return err
+	}
+	_, _, err := m.run.Run(ctx, "systemctl", "restart", "awg-quick@"+m.iface)
 	return err
 }
 
