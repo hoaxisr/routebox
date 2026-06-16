@@ -33,6 +33,14 @@ func (h *Handler) EnableAWG(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusBadRequest, err.Error())
 		return
 	}
+	// Sticky "configured" flag: after the first successful Enable the panel shows the
+	// steady-state view instead of the setup wizard. Never reset on Disable. Best-effort
+	// — a persist failure must not fail an otherwise-successful enable.
+	if !h.settings.Get().Awg.Configured {
+		if err := h.settings.Update(map[string]interface{}{"awg.configured": true}); err == nil {
+			_ = h.settings.Save()
+		}
+	}
 	writeSuccess(w, h.awg.Status(r.Context()))
 }
 

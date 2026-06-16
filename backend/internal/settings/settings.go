@@ -41,6 +41,7 @@ type AwgSettings struct {
 	WANIface   string   `toml:"wan_iface" json:"wan_iface"`
 	Obf        AwgObf   `toml:"obf" json:"obf"`
 	ObfPreset  string   `toml:"obf_preset" json:"obf_preset"` // "off"|"standard"|"mobile"|"custom" — UI badge only
+	Configured bool     `toml:"configured" json:"configured"` // sticky: set true after first successful Enable; drives wizard-vs-steady UI (never reset on Disable)
 }
 
 // AwgObf holds AmneziaWG obfuscation values. Numeric J/S fields; string H fields
@@ -735,6 +736,12 @@ func (m *Manager) Update(updates map[string]interface{}) error {
 				return fmt.Errorf("setting %s: value must be a string", key)
 			}
 			m.settings.Awg.ObfPreset = v
+		case "awg.configured":
+			v, ok := value.(bool)
+			if !ok {
+				return fmt.Errorf("setting %s: value must be a boolean", key)
+			}
+			m.settings.Awg.Configured = v
 		case "awg.obf":
 			// Re-marshal the nested object into AwgObf (driftless: one decode).
 			raw, err := json.Marshal(value)
