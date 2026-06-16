@@ -27,3 +27,20 @@ func TestMimicDNS(t *testing.T) {
 		t.Fatal("I1 should vary between calls")
 	}
 }
+
+func TestMimicTLS(t *testing.T) {
+	pkt := mimicTLS()
+	// TLS record: content type 22 (handshake), version 0x0301..0x0303.
+	if pkt[0] != 0x16 || pkt[1] != 0x03 {
+		t.Fatalf("not a TLS handshake record: % x", pkt[:3])
+	}
+	// Handshake type 1 = ClientHello at record-payload start (offset 5).
+	if pkt[5] != 0x01 {
+		t.Fatalf("not a ClientHello: %#x", pkt[5])
+	}
+	if mimicTLSHex() == mimicTLSHex() {
+		t.Fatal("ClientHello should vary (random SNI)")
+	}
+}
+
+func mimicTLSHex() string { return string(mimicTLS()) }

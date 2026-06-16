@@ -86,6 +86,82 @@ func mimicDNS() []byte {
 	return buf
 }
 
-// TEMPORARY stubs so the package compiles; replaced by tasks B2 (TLS) and B3 (SIP).
-func mimicTLS() []byte { return randBytes(64) }
+// TEMPORARY stub so the package compiles; replaced by task B3 (SIP).
 func mimicSIP() []byte { return randBytes(64) }
+
+// GREASE values (RFC 8701) — Chrome sprinkles these in cipher/extension/group lists.
+var greasePool = []uint16{0x0a0a, 0x1a1a, 0x2a2a, 0x3a3a, 0x4a4a, 0x5a5a, 0x6a6a, 0x7a7a,
+	0x8a8a, 0x9a9a, 0xaaaa, 0xbaba, 0xcaca, 0xdada, 0xeaea, 0xfafa}
+
+func grease() uint16 { return greasePool[randInt(0, len(greasePool)-1)] }
+
+func u16(v uint16) []byte { return []byte{byte(v >> 8), byte(v)} }
+
+// mimicTLS builds a Chrome-like TLS 1.3 ClientHello inside a TLS record. The SNI host
+// is random (from the pool) so the packet is not a static signature; cipher/extension
+// order follows Chrome. (verify-at-impl: diff against a real captured Chrome
+// ClientHello and align byte-for-byte where practical.)
+func mimicTLS() []byte {
+	host := pick(domainPool)
+
+	// --- ClientHello body ---
+	ch := make([]byte, 0, 256)
+	ch = append(ch, 0x03, 0x03)       // legacy_version TLS 1.2
+	ch = append(ch, randBytes(32)...) // random
+	sid := randBytes(32)
+	ch = append(ch, byte(len(sid))) // session id len
+	ch = append(ch, sid...)
+
+	// cipher suites: GREASE + a Chrome-ish set
+	ciphers := []uint16{grease(), 0x1301, 0x1302, 0x1303, 0xc02b, 0xc02f, 0xc02c, 0xc030,
+		0xcca9, 0xcca8, 0xc013, 0xc014, 0x009c, 0x009d, 0x002f, 0x0035}
+	cb := []byte{}
+	for _, c := range ciphers {
+		cb = append(cb, u16(c)...)
+	}
+	ch = append(ch, u16(uint16(len(cb)))...)
+	ch = append(ch, cb...)
+	ch = append(ch, 0x01, 0x00) // compression: 1 method, null
+
+	// --- extensions ---
+	ext := []byte{}
+	addExt := func(typ uint16, data []byte) {
+		ext = append(ext, u16(typ)...)
+		ext = append(ext, u16(uint16(len(data)))...)
+		ext = append(ext, data...)
+	}
+	addExt(grease(), nil) // GREASE ext, empty
+	// SNI (type 0): server_name_list -> host_name(0) -> host
+	sni := append([]byte{0x00}, u16(uint16(len(host)))...)
+	sni = append(sni, []byte(host)...)
+	sniList := append(u16(uint16(len(sni))), sni...)
+	addExt(0x0000, sniList)
+	// supported_groups (10): GREASE + x25519, secp256r1, secp384r1
+	groups := []uint16{grease(), 0x001d, 0x0017, 0x0018}
+	gb := []byte{}
+	for _, g := range groups {
+		gb = append(gb, u16(g)...)
+	}
+	addExt(0x000a, append(u16(uint16(len(gb))), gb...))
+	// ALPN (16): h2, http/1.1
+	alpn := []byte{0x08, 'h', '2', 0x08, 'h', 't', 't', 'p', '/', '1', '.', '1'}
+	addExt(0x0010, append(u16(uint16(len(alpn))), alpn...))
+	// supported_versions (43): GREASE + TLS 1.3 + 1.2
+	sv := []byte{0x06}
+	sv = append(sv, u16(grease())...)
+	sv = append(sv, u16(0x0304)...)
+	sv = append(sv, u16(0x0303)...)
+	addExt(0x002b, sv)
+
+	ch = append(ch, u16(uint16(len(ext)))...)
+	ch = append(ch, ext...)
+
+	// --- handshake header (type 1, 3-byte length) ---
+	hs := []byte{0x01, byte(len(ch) >> 16), byte(len(ch) >> 8), byte(len(ch))}
+	hs = append(hs, ch...)
+
+	// --- TLS record header (type 22, version 0x0301, 2-byte length) ---
+	rec := []byte{0x16, 0x03, 0x01, byte(len(hs) >> 8), byte(len(hs))}
+	rec = append(rec, hs...)
+	return rec
+}
