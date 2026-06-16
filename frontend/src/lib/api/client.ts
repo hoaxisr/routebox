@@ -1,4 +1,4 @@
-import type { ApiResponse, ProcessStatus, DetectedConfig, SingboxConfig, Endpoint, Outbound, Inbound, RuleSet, RuleSetUsage, RouteRule, RouteSettings, DnsServer, DnsRule, DnsSettings, LogSettings, ExperimentalSettings, ConnectionsResponse, ProxiesResponse, ClashProxy, TestRouteResponse, ConnectTestResponse, SettingsResponse, RouteBoxSettings, SingBoxVersion, DomainSetInfo, RuleSetSource, ClientEntry, TrafficHistoryResponse, TrafficRange, UpdatesStatus, UpdateProgress, UpdateTargetName, Subscription, SubscriptionInput, PanelUser, UserTrafficResponse, AwgStatus, AwgPeer, AwgEnableInput } from '$lib/types';
+import type { ApiResponse, ProcessStatus, DetectedConfig, SingboxConfig, Endpoint, Outbound, Inbound, RuleSet, RuleSetUsage, RouteRule, RouteSettings, DnsServer, DnsRule, DnsSettings, LogSettings, ExperimentalSettings, ConnectionsResponse, ProxiesResponse, ClashProxy, TestRouteResponse, ConnectTestResponse, SettingsResponse, RouteBoxSettings, SingBoxVersion, DomainSetInfo, RuleSetSource, ClientEntry, TrafficHistoryResponse, TrafficRange, UpdatesStatus, UpdateProgress, UpdateTargetName, Subscription, SubscriptionInput, PanelUser, UserTrafficResponse, AwgStatus, AwgPeer } from '$lib/types';
 
 const API_BASE = '/api';
 
@@ -241,8 +241,7 @@ export const api = {
 
 	// AmneziaWG server inbound (panel/vps mode)
 	awgStatus: () => request<AwgStatus>('/awg/status'),
-	awgEnable: (body: AwgEnableInput) =>
-		request<AwgStatus>('/awg/enable', { method: 'POST', body: JSON.stringify(body) }),
+	awgEnable: () => request<AwgStatus>('/awg/enable', { method: 'POST' }),
 	awgDisable: () => request<AwgStatus>('/awg/disable', { method: 'POST' }),
 	getAwgPeers: () => request<AwgPeer[]>('/awg/peers'),
 	createAwgPeer: (name: string) =>

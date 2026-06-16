@@ -1,0 +1,158 @@
+<script lang="ts">
+	import { t } from 'svelte-i18n';
+	import type { AwgServerSettings } from '$lib/types';
+	import ObfuscationControl from './ObfuscationControl.svelte';
+
+	interface Props {
+		form: AwgServerSettings;
+		pubkey?: string;
+		saving?: boolean;
+		onSave: () => void;
+		onReset: () => void;
+	}
+
+	let { form = $bindable(), pubkey = '', saving = false, onSave, onReset }: Props = $props();
+
+	// DNS is stored as string[]; edit it as a comma-separated field and write back.
+	let dnsText = $state((form.dns ?? []).join(', '));
+
+	function syncDns() {
+		form.dns = dnsText
+			.split(',')
+			.map((s) => s.trim())
+			.filter(Boolean);
+	}
+</script>
+
+<div class="field-grid">
+	<div class="field">
+		<label for="awg-port">{$t('awg.listenPort')}</label>
+		<input id="awg-port" type="number" bind:value={form.listen_port} />
+		<span class="hint">{$t('awg.listenPortHint')}</span>
+	</div>
+	<div class="field">
+		<label for="awg-subnet">{$t('awg.subnet')}</label>
+		<input id="awg-subnet" type="text" bind:value={form.subnet} />
+		<span class="hint">{$t('awg.subnetHint')}</span>
+	</div>
+	<div class="field">
+		<label for="awg-mtu">{$t('awg.mtu')}</label>
+		<input id="awg-mtu" type="number" bind:value={form.mtu} />
+		<span class="hint">{$t('awg.mtuHint')}</span>
+	</div>
+	<div class="field">
+		<label for="awg-dns">{$t('awg.dns')}</label>
+		<input id="awg-dns" type="text" bind:value={dnsText} oninput={syncDns} onblur={syncDns} />
+		<span class="hint">{$t('awg.dnsHint')}</span>
+	</div>
+	<div class="field">
+		<label for="awg-wan">{$t('awg.wanIface')}</label>
+		<input id="awg-wan" type="text" bind:value={form.wan_iface} placeholder={$t('awg.wanAuto')} />
+		<span class="hint">{$t('awg.wanIfaceHint')}</span>
+	</div>
+	{#if pubkey}
+		<div class="field">
+			<label for="awg-pub">{$t('awg.module')}</label>
+			<input id="awg-pub" type="text" value={pubkey} readonly class="mono-readonly" />
+		</div>
+	{/if}
+</div>
+
+<div class="settings-divider"></div>
+
+<ObfuscationControl bind:obf={form.obf} bind:preset={form.obf_preset} />
+
+<div class="save-row">
+	<button type="button" class="btn-ghost-sm" onclick={onReset}>{$t('awg.reset')}</button>
+	<button type="button" class="btn-save" onclick={onSave} disabled={saving}>
+		{saving ? $t('common.saving') : $t('awg.save')}
+	</button>
+</div>
+
+<style>
+	.field-grid {
+		display: grid;
+		grid-template-columns: repeat(2, 1fr);
+		gap: 1rem;
+	}
+	.field {
+		display: flex;
+		flex-direction: column;
+		gap: 0.35rem;
+	}
+	.field label {
+		font-size: 0.8125rem;
+		font-weight: 500;
+		color: var(--ctp-subtext1);
+	}
+	.field .hint {
+		font-size: 0.75rem;
+		color: var(--ctp-overlay0);
+	}
+	.field input {
+		background: var(--ctp-base);
+		border: 1px solid var(--ctp-surface2);
+		border-radius: 0.375rem;
+		padding: 0.5rem 0.7rem;
+		color: var(--ctp-text);
+		font-size: 0.875rem;
+		transition: border-color 0.15s ease;
+	}
+	.field input:focus {
+		outline: none;
+		border-color: var(--ctp-primary);
+	}
+	.field input::placeholder {
+		color: var(--ctp-overlay0);
+	}
+	.mono-readonly {
+		color: var(--ctp-overlay1);
+		font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+	}
+	.settings-divider {
+		height: 1px;
+		background: var(--ctp-surface0);
+		margin: 1.5rem 0;
+	}
+	.save-row {
+		display: flex;
+		justify-content: flex-end;
+		gap: 0.5rem;
+		margin-top: 1.5rem;
+		padding-top: 1.25rem;
+		border-top: 1px solid var(--ctp-surface0);
+	}
+	.btn-save {
+		padding: 0.5rem 1.25rem;
+		border-radius: 0.375rem;
+		border: none;
+		background: var(--ctp-primary);
+		color: #1a1a1a;
+		font-weight: 600;
+		cursor: pointer;
+	}
+	.btn-save:hover {
+		background: var(--ctp-primary-hover, #e08a6c);
+	}
+	.btn-save:disabled {
+		opacity: 0.5;
+		cursor: default;
+	}
+	.btn-ghost-sm {
+		padding: 0.5rem 0.75rem;
+		border-radius: 0.375rem;
+		border: 1px solid transparent;
+		background: transparent;
+		color: var(--ctp-subtext0);
+		font-weight: 500;
+		cursor: pointer;
+	}
+	.btn-ghost-sm:hover {
+		color: var(--ctp-text);
+	}
+	@media (max-width: 720px) {
+		.field-grid {
+			grid-template-columns: 1fr;
+		}
+	}
+</style>

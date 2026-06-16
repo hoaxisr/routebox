@@ -823,6 +823,7 @@ export interface RouteBoxSettings {
 	advanced: AdvancedSettings;
 	updates?: UpdatesSettings;
 	server?: ServerSettings; // panel mode + public_host (Phase 1/2)
+	awg?: AwgServerSettings; // AmneziaWG server inbound (panel/vps mode)
 }
 
 export interface GeoIPSettings {
@@ -972,12 +973,14 @@ export interface ConnectTestResponse {
 export interface AwgStatus {
 	module: string;
 	enabled: boolean;
+	phase: string;
 	iface_up: boolean;
 	listen_port: number;
 	public_host: string;
 	peer_count: number;
 	wan_iface: string;
 	nat_orphan: boolean;
+	config_dirty: boolean;
 	last_error?: string;
 }
 
@@ -987,9 +990,30 @@ export interface AwgPeer {
 	address: string;
 }
 
-export interface AwgEnableInput {
+// AmneziaWG obfuscation parameters (junk packets, init-packet sizes, magic headers)
+export interface AwgObf {
+	jc: number;
+	jmin: number;
+	jmax: number;
+	s1: number;
+	s2: number;
+	s3: number;
+	s4: number;
+	h1: string;
+	h2: string;
+	h3: string;
+	h4: string;
+}
+
+export interface AwgServerSettings {
+	enabled: boolean;
+	interface: string;
 	subnet: string;
 	listen_port: number;
 	mtu: number;
 	dns: string[];
+	wan_iface: string;
+	obf: AwgObf;
+	obf_preset: string;
+	configured: boolean;
 }

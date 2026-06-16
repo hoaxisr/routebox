@@ -1,0 +1,187 @@
+<script lang="ts">
+	import { t } from 'svelte-i18n';
+	import type { AwgObf } from '$lib/types';
+	import { PRESETS, OBF_NUM, OBF_STR } from './obf';
+
+	interface Props {
+		obf: AwgObf;
+		preset: string;
+	}
+
+	// Bindable so the parent's form.obf / form.obf_preset stay in sync.
+	let { obf = $bindable(), preset = $bindable() }: Props = $props();
+
+	let advOpen = $state(false);
+
+	function pick(name: 'off' | 'standard' | 'mobile') {
+		obf = PRESETS[name]();
+		preset = name;
+	}
+
+	// Editing any advanced field detaches from a named preset.
+	function markCustom() {
+		preset = 'custom';
+	}
+
+	const active = $derived(preset !== 'off');
+</script>
+
+<div class="obf-head">
+	<div>
+		<div class="obf-title">{$t('awg.obfuscation')}</div>
+		<div class="obf-desc">{$t('awg.obfuscationDesc')}</div>
+	</div>
+	<span class="status-badge {active ? 'success' : 'info'}">
+		{active ? $t('awg.obfActive') : $t('awg.obfInactive')}
+	</span>
+</div>
+
+<div class="preset-row">
+	<button type="button" class="preset-btn" class:selected={preset === 'off'} onclick={() => pick('off')}>
+		{$t('awg.obfOff')}
+	</button>
+	<button type="button" class="preset-btn" class:selected={preset === 'standard'} onclick={() => pick('standard')}>
+		{$t('awg.obfStandard')}
+	</button>
+	<button type="button" class="preset-btn" class:selected={preset === 'mobile'} onclick={() => pick('mobile')}>
+		{$t('awg.obfMobile')}
+	</button>
+	{#if preset === 'custom'}
+		<span class="preset-btn selected" style="cursor: default;">{$t('awg.obfCustom')}</span>
+	{/if}
+</div>
+
+<div class="adv" class:open={advOpen}>
+	<button type="button" class="adv-head" onclick={() => (advOpen = !advOpen)}>
+		<span class="chev">
+			<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><polyline points="9 18 15 12 9 6" /></svg>
+		</span>
+		{$t('awg.advanced')}
+		<span class="a-spacer"></span>
+		<span class="adv-keys">Jc · Jmin · Jmax · S1–S4 · H1–H4</span>
+	</button>
+	{#if advOpen}
+		<div class="adv-body">
+			<p class="adv-note">{$t('awg.advancedNote')}</p>
+			<div class="adv-grid">
+				{#each OBF_NUM as k (k)}
+					<div class="mini-field">
+						<label for="obf-{k}">{k}</label>
+						<input id="obf-{k}" type="number" bind:value={obf[k]} oninput={markCustom} />
+					</div>
+				{/each}
+				{#each OBF_STR as k (k)}
+					<div class="mini-field">
+						<label for="obf-{k}">{k}</label>
+						<input id="obf-{k}" type="text" bind:value={obf[k]} oninput={markCustom} />
+					</div>
+				{/each}
+			</div>
+		</div>
+	{/if}
+</div>
+
+<style>
+	.obf-head {
+		display: flex;
+		align-items: center;
+		justify-content: space-between;
+		gap: 1rem;
+		margin-bottom: 0.75rem;
+	}
+	.obf-title {
+		font-weight: 600;
+	}
+	.obf-desc {
+		color: var(--ctp-overlay1);
+		font-size: 0.8125rem;
+		margin-top: 1px;
+	}
+	.preset-row {
+		display: flex;
+		gap: 0.5rem;
+		margin-bottom: 1rem;
+		flex-wrap: wrap;
+	}
+	.adv {
+		border: 1px dashed var(--ctp-surface2);
+		border-radius: 0.5rem;
+		overflow: hidden;
+	}
+	.adv-head {
+		width: 100%;
+		display: flex;
+		align-items: center;
+		gap: 0.6rem;
+		padding: 0.7rem 1rem;
+		background: var(--ctp-base);
+		border: none;
+		text-align: left;
+		color: var(--ctp-subtext1);
+		font-weight: 500;
+		font-size: 0.875rem;
+	}
+	.adv-head:hover {
+		color: var(--ctp-text);
+	}
+	.adv-head .chev {
+		color: var(--ctp-overlay1);
+		transition: transform 0.15s;
+		display: flex;
+	}
+	.adv.open .chev {
+		transform: rotate(90deg);
+	}
+	.a-spacer {
+		flex: 1;
+	}
+	.adv-keys {
+		color: var(--ctp-overlay0);
+		font-size: 0.75rem;
+		font-weight: 400;
+	}
+	.adv-body {
+		padding: 1rem;
+		border-top: 1px dashed var(--ctp-surface2);
+	}
+	.adv-note {
+		color: var(--ctp-overlay0);
+		font-size: 0.75rem;
+		margin: 0 0 1rem;
+	}
+	.adv-grid {
+		display: grid;
+		grid-template-columns: repeat(4, 1fr);
+		gap: 0.75rem;
+	}
+	.mini-field {
+		display: flex;
+		flex-direction: column;
+		gap: 0.25rem;
+	}
+	.mini-field label {
+		font-size: 0.6875rem;
+		font-weight: 600;
+		color: var(--ctp-overlay1);
+		text-transform: uppercase;
+		letter-spacing: 0.04em;
+	}
+	.mini-field input {
+		background: var(--ctp-mantle);
+		border: 1px solid var(--ctp-surface2);
+		border-radius: 0.375rem;
+		padding: 0.4rem 0.5rem;
+		color: var(--ctp-text);
+		font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+		font-size: 0.8125rem;
+	}
+	.mini-field input:focus {
+		outline: none;
+		border-color: var(--ctp-primary);
+	}
+	@media (max-width: 720px) {
+		.adv-grid {
+			grid-template-columns: repeat(2, 1fr);
+		}
+	}
+</style>
