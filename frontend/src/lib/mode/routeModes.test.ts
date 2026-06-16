@@ -42,6 +42,7 @@ describe('isPathAllowed — additivity / router = full UI', () => {
 
 describe('isPathAllowed — vps subtracts router-only', () => {
 	it('router-only paths are blocked in vps', () => {
+		expect(isPathAllowed('/config/endpoints', 'vps')).toBe(false);
 		expect(isPathAllowed('/config/clients', 'vps')).toBe(false);
 		expect(isPathAllowed('/config/subscriptions', 'vps')).toBe(false);
 		expect(isPathAllowed('/monitor/traffic', 'vps')).toBe(false);
@@ -50,6 +51,7 @@ describe('isPathAllowed — vps subtracts router-only', () => {
 		expect(isPathAllowed('/monitor/route-inspector', 'vps')).toBe(false);
 	});
 	it('router-only paths are allowed in router', () => {
+		expect(isPathAllowed('/config/endpoints', 'router')).toBe(true);
 		expect(isPathAllowed('/config/clients', 'router')).toBe(true);
 		expect(isPathAllowed('/monitor/traffic', 'router')).toBe(true);
 	});
@@ -58,7 +60,7 @@ describe('isPathAllowed — vps subtracts router-only', () => {
 		expect(isPathAllowed('/config/users', 'vps')).toBe(true);
 	});
 	it('shared paths are allowed in both modes', () => {
-		for (const p of ['/config/endpoints', '/config/outbounds', '/config/inbounds', '/config/dns', '/config/routes', '/config/rule-sets', '/config/domains', '/config/app', '/config/settings', '/config/updates', '/monitor/logs', '/monitor/connections']) {
+		for (const p of ['/config/outbounds', '/config/inbounds', '/config/dns', '/config/routes', '/config/rule-sets', '/config/domains', '/config/app', '/config/settings', '/config/updates', '/monitor/logs', '/monitor/connections']) {
 			expect(isPathAllowed(p, 'router')).toBe(true);
 			expect(isPathAllowed(p, 'vps')).toBe(true);
 		}
@@ -139,6 +141,7 @@ describe('single-mode classification (sidebar drift guard)', () => {
 	it('router-only sections are exactly these (update +layout.svelte {#if $routerMode} if this changes)', () => {
 		expect(singleMode('router')).toEqual([
 			'/config/clients',
+			'/config/endpoints',
 			'/config/subscriptions',
 			'/monitor/breakdown',
 			'/monitor/proxies',
