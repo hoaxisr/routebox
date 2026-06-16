@@ -40,11 +40,12 @@ type AWGStatus struct {
 
 // EnableInput is the RAW operator submission; Enable canonicalises every field.
 type EnableInput struct {
-	Subnet     string   `json:"subnet"`
-	ListenPort int      `json:"listen_port"`
-	MTU        int      `json:"mtu"`
-	DNS        []string `json:"dns"`
-	WANIface   string   `json:"wan_iface"` // optional override; "" -> DetectWAN
+	Subnet     string      `json:"subnet"`
+	ListenPort int         `json:"listen_port"`
+	MTU        int         `json:"mtu"`
+	DNS        []string    `json:"dns"`
+	WANIface   string      `json:"wan_iface"` // optional override; "" -> DetectWAN
+	Obf        Obfuscation `json:"obf"`
 }
 
 // beginEnable claims the single-flight slot. Returns false if an orchestrator is
@@ -109,7 +110,7 @@ func (m *Manager) Enable(ctx context.Context, in EnableInput) error {
 	}
 	// Obfuscation is also operator-controlled and lands in the root-shell .conf —
 	// canonicalise it BEFORE anything is rendered, building obf from the returns.
-	obf, err := validateObf(m.obf)
+	obf, err := validateObf(in.Obf)
 	if err != nil {
 		return m.enableFail("obfuscation: " + err.Error())
 	}
@@ -306,6 +307,22 @@ func validateObf(o Obfuscation) (Obfuscation, error) {
 		case 3:
 			out.H4 = v
 		}
+	}
+	// AWG reserves header magics 1-4 for real WG message types; H1-H4 must be
+	// distinct and > 4, else the iface fails to come up (a confusing teardown
+	// instead of a clear 400). Only check non-empty fields (all-empty = obf off).
+	seen := map[string]bool{}
+	for i, h := range []string{out.H1, out.H2, out.H3, out.H4} {
+		if h == "" {
+			continue
+		}
+		if h == "1" || h == "2" || h == "3" || h == "4" {
+			return Obfuscation{}, fmt.Errorf("H%d: values 1-4 are reserved", i+1)
+		}
+		if seen[h] {
+			return Obfuscation{}, fmt.Errorf("H%d: duplicate header value %q", i+1, h)
+		}
+		seen[h] = true
 	}
 	return out, nil
 }

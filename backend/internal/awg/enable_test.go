@@ -101,8 +101,9 @@ func TestEnableHappyPathRendersCanonical(t *testing.T) {
 func TestEnableRejectsBadObfuscation(t *testing.T) {
 	f := newFakeRunner()
 	m := newEnableManager(t, f)
-	m.obf = Obfuscation{H1: "5; reboot"} // not digits / lo-hi range
-	if err := m.Enable(context.Background(), goodEnableInput()); err == nil {
+	in := goodEnableInput()
+	in.Obf = Obfuscation{H1: "5; reboot"} // not digits / lo-hi range
+	if err := m.Enable(context.Background(), in); err == nil {
 		t.Fatal("Enable: want error on hostile obfuscation H field")
 	}
 	if _, err := os.Stat(m.confPath); err == nil {
@@ -135,4 +136,31 @@ func TestEnableSingleFlight(t *testing.T) {
 	}
 	close(release)
 	wg.Wait()
+}
+
+// Obfuscation from EnableInput must land in the rendered server.conf.
+func TestEnableRendersObfuscation(t *testing.T) {
+	f := newFakeRunner()
+	m := newEnableManager(t, f)
+	f.outputs["awg show awg-rb0"] = "interface: awg-rb0\n  listening port: 51820\n"
+	f.outputs["iptables -t nat -S"] = "-N RBOX-AWG-NAT\n"
+	in := goodEnableInput()
+	in.Obf = Obfuscation{Jc: 4, Jmin: 40, Jmax: 70, H1: "12345", H2: "23456", H3: "34567", H4: "45678"}
+	if err := m.Enable(context.Background(), in); err != nil {
+		t.Fatalf("Enable: %v", err)
+	}
+	data, _ := os.ReadFile(m.confPath)
+	if !strings.Contains(string(data), "Jc = 4") || !strings.Contains(string(data), "H1 = 12345") {
+		t.Fatalf("obfuscation not in server.conf:\n%s", data)
+	}
+}
+
+// Duplicate or reserved (<=4) H values must be rejected before render.
+func TestValidateObfRejectsDuplicateAndReservedH(t *testing.T) {
+	if _, err := validateObf(Obfuscation{H1: "100", H2: "100", H3: "101", H4: "102"}); err == nil {
+		t.Fatal("want error on duplicate H values")
+	}
+	if _, err := validateObf(Obfuscation{H1: "1", H2: "2", H3: "3", H4: "4"}); err == nil {
+		t.Fatal("want error on reserved H values (<=4)")
+	}
 }
