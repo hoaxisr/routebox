@@ -44,3 +44,16 @@ func TestMimicTLS(t *testing.T) {
 }
 
 func mimicTLSHex() string { return string(mimicTLS()) }
+
+func TestMimicSIP(t *testing.T) {
+	pkt := string(mimicSIP())
+	if !strings.HasPrefix(pkt, "REGISTER sip:") {
+		t.Fatalf("not a SIP REGISTER: %q", pkt[:20])
+	}
+	if !strings.Contains(pkt, "Call-ID:") || !strings.Contains(pkt, "CSeq:") {
+		t.Fatal("missing SIP headers")
+	}
+	if string(mimicSIP()) == pkt {
+		t.Fatal("SIP packet should vary (random Call-ID/branch)")
+	}
+}

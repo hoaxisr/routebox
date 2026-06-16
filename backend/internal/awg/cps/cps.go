@@ -86,8 +86,33 @@ func mimicDNS() []byte {
 	return buf
 }
 
-// TEMPORARY stub so the package compiles; replaced by task B3 (SIP).
-func mimicSIP() []byte { return randBytes(64) }
+func hexID(n int) string { return hex.EncodeToString(randBytes(n)) }
+
+var sipDomainPool = []string{"sip.example.com", "voip.provider.net", "pbx.telco.io"}
+
+// mimicSIP builds a plausible SIP REGISTER request (CRLF-terminated headers) with
+// random Call-ID, branch, and tag so it is not a static signature.
+func mimicSIP() []byte {
+	domain := pick(sipDomainPool)
+	branch := "z9hG4bK" + hexID(6)
+	user := fmt.Sprintf("user%d", randInt(1000, 9999))
+	localIP := fmt.Sprintf("192.168.%d.%d", randInt(0, 255), randInt(2, 254))
+	msg := strings.Join([]string{
+		fmt.Sprintf("REGISTER sip:%s SIP/2.0", domain),
+		fmt.Sprintf("Via: SIP/2.0/UDP %s:5060;branch=%s;rport", localIP, branch),
+		"Max-Forwards: 70",
+		fmt.Sprintf("From: <sip:%s@%s>;tag=%s", user, domain, hexID(4)),
+		fmt.Sprintf("To: <sip:%s@%s>", user, domain),
+		fmt.Sprintf("Call-ID: %s@%s", hexID(8), localIP),
+		fmt.Sprintf("CSeq: %d REGISTER", randInt(1, 9999)),
+		fmt.Sprintf("Contact: <sip:%s@%s:5060>", user, localIP),
+		"User-Agent: Linphone/5.2.0",
+		"Expires: 3600",
+		"Content-Length: 0",
+		"", "",
+	}, "\r\n")
+	return []byte(msg)
+}
 
 // GREASE values (RFC 8701) — Chrome sprinkles these in cipher/extension/group lists.
 var greasePool = []uint16{0x0a0a, 0x1a1a, 0x2a2a, 0x3a3a, 0x4a4a, 0x5a5a, 0x6a6a, 0x7a7a,
