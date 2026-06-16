@@ -312,6 +312,15 @@ func validateObf(o Obfuscation) (Obfuscation, error) {
 			return Obfuscation{}, fmt.Errorf("numeric obfuscation field %d out of range (0-65535)", n)
 		}
 	}
+	// Jmin must be strictly below Jmax (junk size range). Only when junk is on.
+	if o.Jmax != 0 && o.Jmin >= o.Jmax {
+		return Obfuscation{}, fmt.Errorf("jmin (%d) must be < jmax (%d)", o.Jmin, o.Jmax)
+	}
+	// AWG: a handshake-init padded by S1 must not match a response padded by S2,
+	// or the two packet sizes collide and become fingerprintable.
+	if o.S1 != 0 && o.S2 != 0 && o.S1+56 == o.S2 {
+		return Obfuscation{}, fmt.Errorf("s1+56 must not equal s2 (got s1=%d s2=%d)", o.S1, o.S2)
+	}
 	out := Obfuscation{
 		Jc: o.Jc, Jmin: o.Jmin, Jmax: o.Jmax,
 		S1: o.S1, S2: o.S2, S3: o.S3, S4: o.S4,

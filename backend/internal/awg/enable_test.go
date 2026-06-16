@@ -280,3 +280,15 @@ func TestIfaceTransferParse(t *testing.T) {
 		t.Fatalf("PUBb rx = %d, want 0", xf["PUBb"].rx)
 	}
 }
+
+func TestValidateObfGuards(t *testing.T) {
+	if _, err := validateObf(Obfuscation{Jmin: 80, Jmax: 80}); err == nil {
+		t.Fatal("want error when Jmin >= Jmax")
+	}
+	if _, err := validateObf(Obfuscation{S1: 100, S2: 156}); err == nil {
+		t.Fatal("want error when S1+56 == S2")
+	}
+	if _, err := validateObf(Obfuscation{Jc: 5, Jmin: 30, Jmax: 80, S1: 100, S2: 22}); err != nil {
+		t.Fatalf("valid obf rejected: %v", err)
+	}
+}
