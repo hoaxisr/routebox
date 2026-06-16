@@ -521,3 +521,35 @@ func TestUpdateServerPublicPort(t *testing.T) {
 		t.Fatalf("rejected update must not modify PublicPort; got %d", m.Get().Server.PublicPort)
 	}
 }
+
+func TestAwgSettingsObfDefaults(t *testing.T) {
+	s := Default()
+	if s.Awg.ObfPreset != "off" {
+		t.Fatalf("default ObfPreset = %q, want off", s.Awg.ObfPreset)
+	}
+	if s.Awg.Obf.Jc != 0 || s.Awg.Obf.H1 != "" {
+		t.Fatalf("default obf must be zero-value, got %+v", s.Awg.Obf)
+	}
+}
+
+func TestUpdateAwgObf(t *testing.T) {
+	m := &Manager{settings: Default()}
+	err := m.Update(map[string]interface{}{
+		"awg.obf_preset": "standard",
+		"awg.dns":        []interface{}{"1.1.1.1", "8.8.8.8"},
+		"awg.obf": map[string]interface{}{
+			"jc": float64(4), "jmin": float64(40), "jmax": float64(70),
+			"h1": "12345", "h2": "23456", "h3": "34567", "h4": "45678",
+		},
+	})
+	if err != nil {
+		t.Fatalf("Update: %v", err)
+	}
+	g := m.Get().Awg
+	if g.ObfPreset != "standard" || g.Obf.Jc != 4 || g.Obf.H1 != "12345" {
+		t.Fatalf("obf not applied: %+v", g)
+	}
+	if len(g.DNS) != 2 || g.DNS[1] != "8.8.8.8" {
+		t.Fatalf("dns not applied: %v", g.DNS)
+	}
+}

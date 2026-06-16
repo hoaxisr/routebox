@@ -39,6 +39,24 @@ type AwgSettings struct {
 	MTU        int      `toml:"mtu" json:"mtu"`
 	DNS        []string `toml:"dns" json:"dns"`
 	WANIface   string   `toml:"wan_iface" json:"wan_iface"`
+	Obf        AwgObf   `toml:"obf" json:"obf"`
+	ObfPreset  string   `toml:"obf_preset" json:"obf_preset"` // "off"|"standard"|"mobile"|"custom" — UI badge only
+}
+
+// AwgObf holds AmneziaWG obfuscation values. Numeric J/S fields; string H fields
+// (digits or "lo-hi" range). The awg package validates these before they reach a conf.
+type AwgObf struct {
+	Jc   int    `toml:"jc" json:"jc"`
+	Jmin int    `toml:"jmin" json:"jmin"`
+	Jmax int    `toml:"jmax" json:"jmax"`
+	S1   int    `toml:"s1" json:"s1"`
+	S2   int    `toml:"s2" json:"s2"`
+	S3   int    `toml:"s3" json:"s3"`
+	S4   int    `toml:"s4" json:"s4"`
+	H1   string `toml:"h1" json:"h1"`
+	H2   string `toml:"h2" json:"h2"`
+	H3   string `toml:"h3" json:"h3"`
+	H4   string `toml:"h4" json:"h4"`
 }
 
 // UpdatesSettings configures binary update checks
@@ -197,7 +215,7 @@ func Default() Settings {
 		},
 		Server:  ServerSettings{Mode: "router", PublicHost: "", PublicPort: 0},
 		Updates: UpdatesSettings{AutoCheck: true},
-		Awg:     AwgSettings{Enabled: false, Interface: "awg-rb0", Subnet: "10.10.0.0/24", ListenPort: 51820, MTU: 1420, DNS: []string{"1.1.1.1"}},
+		Awg:     AwgSettings{Enabled: false, Interface: "awg-rb0", Subnet: "10.10.0.0/24", ListenPort: 51820, MTU: 1420, DNS: []string{"1.1.1.1"}, ObfPreset: "off"},
 	}
 }
 
@@ -665,7 +683,7 @@ func (m *Manager) Update(updates map[string]interface{}) error {
 			}
 			m.settings.Singbox.V2RayAPI = v
 
-		// AmneziaWG runtime settings. awg.interface/awg.dns are set at enable time
+		// AmneziaWG runtime settings. awg.interface is set at enable time
 		// (validated by the awg orchestrator), not via the generic Update.
 		case "awg.enabled":
 			v, ok := value.(bool)
@@ -697,6 +715,37 @@ func (m *Manager) Update(updates map[string]interface{}) error {
 				return fmt.Errorf("setting %s: value must be a string", key)
 			}
 			m.settings.Awg.WANIface = v
+		case "awg.dns":
+			arr, ok := value.([]interface{})
+			if !ok {
+				return fmt.Errorf("setting %s: value must be an array", key)
+			}
+			dns := make([]string, 0, len(arr))
+			for _, e := range arr {
+				s, ok := e.(string)
+				if !ok {
+					return fmt.Errorf("setting %s: entries must be strings", key)
+				}
+				dns = append(dns, s)
+			}
+			m.settings.Awg.DNS = dns
+		case "awg.obf_preset":
+			v, ok := value.(string)
+			if !ok {
+				return fmt.Errorf("setting %s: value must be a string", key)
+			}
+			m.settings.Awg.ObfPreset = v
+		case "awg.obf":
+			// Re-marshal the nested object into AwgObf (driftless: one decode).
+			raw, err := json.Marshal(value)
+			if err != nil {
+				return fmt.Errorf("setting %s: %w", key, err)
+			}
+			var obf AwgObf
+			if err := json.Unmarshal(raw, &obf); err != nil {
+				return fmt.Errorf("setting %s: %w", key, err)
+			}
+			m.settings.Awg.Obf = obf
 
 		default:
 			return fmt.Errorf("unknown or non-runtime setting: %s", key)
