@@ -828,6 +828,7 @@
       "handshakePort": "Handshake Port",
       "shortId": "Short ID",
       "generateKeypair": "Generate keypair",
+      "realityKeyRequired": "Generate a Reality keypair first (use the Generate keypair button)",
       "realityGenFailed": "Failed to generate Reality keypair (binary support required)",
       "genFailed": "Failed to generate credential",
       "publicKeyHint": "Public key is derived from the private key for the client link — not stored in config.",
@@ -1359,7 +1360,8 @@
     "connectionFailed": "Connection failed",
     "timeout": "Request timeout",
     "invalidInput": "Invalid input",
-    "requiredField": "This field is required"
+    "requiredField": "This field is required",
+    "fieldNamedRequired": "{field} is required"
   },
   "form": {
     "addItem": "Add item",

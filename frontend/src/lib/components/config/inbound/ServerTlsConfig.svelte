@@ -17,6 +17,7 @@
 		certificatePath: string;
 		keyPath: string;
 		allowReality: boolean; // only vless
+		errors?: Record<string, string>;
 	}
 
 	let {
@@ -30,7 +31,8 @@
 		handshakePort = $bindable(),
 		certificatePath = $bindable(),
 		keyPath = $bindable(),
-		allowReality
+		allowReality,
+		errors = {}
 	}: Props = $props();
 
 	let realityPublicKey = $state('');
@@ -97,12 +99,14 @@
 			<div>
 				<label for="acmeDomain" class="block text-sm font-medium text-[var(--ctp-subtext1)] mb-1">{$t('inbounds.server.domain')} *</label>
 				<input id="acmeDomain" type="text" bind:value={acmeDomain} placeholder="vpn.example.com"
-					class="w-full px-3 py-2 bg-[var(--ctp-surface0)] border border-[var(--ctp-surface2)] rounded-lg text-[var(--ctp-text)] focus:outline-none focus:ring-2 focus:ring-[var(--ctp-primary)]" />
+					class="w-full px-3 py-2 bg-[var(--ctp-surface0)] border rounded-lg text-[var(--ctp-text)] focus:outline-none focus:ring-2 focus:ring-[var(--ctp-primary)] {errors['acmeDomain'] ? 'border-[var(--ctp-red)]' : 'border-[var(--ctp-surface2)]'}" />
+				{#if errors['acmeDomain']}<p class="mt-1 text-sm text-[var(--ctp-red)]">{errors['acmeDomain']}</p>{/if}
 			</div>
 			<div>
 				<label for="acmeEmail" class="block text-sm font-medium text-[var(--ctp-subtext1)] mb-1">{$t('inbounds.server.email')} *</label>
 				<input id="acmeEmail" type="email" bind:value={acmeEmail} placeholder="admin@example.com"
-					class="w-full px-3 py-2 bg-[var(--ctp-surface0)] border border-[var(--ctp-surface2)] rounded-lg text-[var(--ctp-text)] focus:outline-none focus:ring-2 focus:ring-[var(--ctp-primary)]" />
+					class="w-full px-3 py-2 bg-[var(--ctp-surface0)] border rounded-lg text-[var(--ctp-text)] focus:outline-none focus:ring-2 focus:ring-[var(--ctp-primary)] {errors['acmeEmail'] ? 'border-[var(--ctp-red)]' : 'border-[var(--ctp-surface2)]'}" />
+				{#if errors['acmeEmail']}<p class="mt-1 text-sm text-[var(--ctp-red)]">{errors['acmeEmail']}</p>{/if}
 			</div>
 		</div>
 	{:else if tlsMode === 'reality'}
@@ -110,7 +114,8 @@
 			<div>
 				<label for="rServerName" class="block text-sm font-medium text-[var(--ctp-subtext1)] mb-1">{$t('inbounds.server.handshakeServer')} *</label>
 				<input id="rServerName" type="text" bind:value={serverName} placeholder="www.microsoft.com"
-					class="w-full px-3 py-2 bg-[var(--ctp-surface0)] border border-[var(--ctp-surface2)] rounded-lg text-[var(--ctp-text)] focus:outline-none focus:ring-2 focus:ring-[var(--ctp-primary)]" />
+					class="w-full px-3 py-2 bg-[var(--ctp-surface0)] border rounded-lg text-[var(--ctp-text)] focus:outline-none focus:ring-2 focus:ring-[var(--ctp-primary)] {errors['serverName'] ? 'border-[var(--ctp-red)]' : 'border-[var(--ctp-surface2)]'}" />
+				{#if errors['serverName']}<p class="mt-1 text-sm text-[var(--ctp-red)]">{errors['serverName']}</p>{/if}
 				<p class="mt-1 text-xs text-[var(--ctp-overlay0)]">{$t('inbounds.server.handshakeHint')}</p>
 			</div>
 			<div class="grid grid-cols-3 gap-2">
@@ -137,6 +142,7 @@
 					{generating ? $t('common.loading') : $t('inbounds.server.generateKeypair')}
 				</button>
 			</div>
+			{#if errors['realityKey'] && !realityPrivateKey}<p class="text-sm text-[var(--ctp-red)]">{errors['realityKey']}</p>{/if}
 			{#if realityPrivateKey}
 				<div class="bg-[var(--ctp-surface0)] rounded-lg p-3 text-xs space-y-1 break-all">
 					<div><span class="text-[var(--ctp-overlay0)]">private_key:</span> <span class="text-[var(--ctp-text)]">{realityPrivateKey}</span></div>
@@ -156,12 +162,14 @@
 			<div>
 				<label for="certPath" class="block text-sm font-medium text-[var(--ctp-subtext1)] mb-1">{$t('inbounds.server.certificatePath')} *</label>
 				<input id="certPath" type="text" bind:value={certificatePath} placeholder="/etc/ssl/fullchain.pem"
-					class="w-full px-3 py-2 bg-[var(--ctp-surface0)] border border-[var(--ctp-surface2)] rounded-lg text-[var(--ctp-text)] focus:outline-none focus:ring-2 focus:ring-[var(--ctp-primary)]" />
+					class="w-full px-3 py-2 bg-[var(--ctp-surface0)] border rounded-lg text-[var(--ctp-text)] focus:outline-none focus:ring-2 focus:ring-[var(--ctp-primary)] {errors['certPath'] ? 'border-[var(--ctp-red)]' : 'border-[var(--ctp-surface2)]'}" />
+				{#if errors['certPath']}<p class="mt-1 text-sm text-[var(--ctp-red)]">{errors['certPath']}</p>{/if}
 			</div>
 			<div>
 				<label for="keyPath" class="block text-sm font-medium text-[var(--ctp-subtext1)] mb-1">{$t('inbounds.server.keyPath')} *</label>
 				<input id="keyPath" type="text" bind:value={keyPath} placeholder="/etc/ssl/privkey.pem"
-					class="w-full px-3 py-2 bg-[var(--ctp-surface0)] border border-[var(--ctp-surface2)] rounded-lg text-[var(--ctp-text)] focus:outline-none focus:ring-2 focus:ring-[var(--ctp-primary)]" />
+					class="w-full px-3 py-2 bg-[var(--ctp-surface0)] border rounded-lg text-[var(--ctp-text)] focus:outline-none focus:ring-2 focus:ring-[var(--ctp-primary)] {errors['keyPath'] ? 'border-[var(--ctp-red)]' : 'border-[var(--ctp-surface2)]'}" />
+				{#if errors['keyPath']}<p class="mt-1 text-sm text-[var(--ctp-red)]">{errors['keyPath']}</p>{/if}
 			</div>
 		</div>
 	{/if}

@@ -9,9 +9,10 @@
 	interface Props {
 		users: ServerInboundUser[];
 		protocol: ServerInboundType;
+		error?: string;
 	}
 
-	let { users = $bindable(), protocol }: Props = $props();
+	let { users = $bindable(), protocol, error }: Props = $props();
 
 	let panelUsers = $state<PanelUser[]>([]);
 	onMount(async () => {
@@ -92,6 +93,10 @@
 			</button>
 		</div>
 	</div>
+
+	{#if error}
+		<p class="text-sm text-[var(--ctp-red)]">{error}</p>
+	{/if}
 
 	{#if users.length === 0}
 		<p class="text-sm text-[var(--ctp-overlay0)]">{$t('inbounds.server.noUsers')}</p>

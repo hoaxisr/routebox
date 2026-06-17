@@ -93,22 +93,23 @@
 	function validate(): boolean {
 		errors = {};
 
+		const req = (field: string) => $t('errors.fieldNamedRequired', { values: { field } });
 		if (isServerType(type)) {
-			if (!tag.trim()) errors['tag'] = $t('errors.requiredField');
+			if (!tag.trim()) errors['tag'] = req($t('common.tag'));
 			if (serverState.listenPort < 1 || serverState.listenPort > 65535) {
 				errors['port'] = $t('form.minValue', { values: { value: 1 } });
 			}
 			if (serverState.users.length === 0) errors['users'] = $t('inbounds.server.needUser');
 			// TLS mode required fields
 			if (serverState.tlsMode === 'acme') {
-				if (!serverState.tls.acme.domain.trim()) errors['acmeDomain'] = $t('errors.requiredField');
-				if (!serverState.tls.acme.email.trim()) errors['acmeEmail'] = $t('errors.requiredField');
+				if (!serverState.tls.acme.domain.trim()) errors['acmeDomain'] = req($t('inbounds.server.domain'));
+				if (!serverState.tls.acme.email.trim()) errors['acmeEmail'] = req($t('inbounds.server.email'));
 			} else if (serverState.tlsMode === 'reality') {
-				if (!serverState.tls.server_name.trim()) errors['serverName'] = $t('errors.requiredField');
-				if (!serverState.tls.reality.private_key.trim()) errors['realityKey'] = $t('errors.requiredField');
+				if (!serverState.tls.server_name.trim()) errors['serverName'] = req($t('inbounds.server.handshakeServer'));
+				if (!serverState.tls.reality.private_key.trim()) errors['realityKey'] = $t('inbounds.server.realityKeyRequired');
 			} else {
-				if (!serverState.tls.certificate_path.trim()) errors['certPath'] = $t('errors.requiredField');
-				if (!serverState.tls.key_path.trim()) errors['keyPath'] = $t('errors.requiredField');
+				if (!serverState.tls.certificate_path.trim()) errors['certPath'] = req($t('inbounds.server.certificatePath'));
+				if (!serverState.tls.key_path.trim()) errors['keyPath'] = req($t('inbounds.server.keyPath'));
 			}
 			// Per-user credential required fields
 			for (const u of serverState.users) {
@@ -352,13 +353,13 @@
 	{/if}
 
 	{#if type === 'vless'}
-		<ServerVlessInbound bind:state={serverState} />
+		<ServerVlessInbound bind:state={serverState} {errors} />
 	{:else if type === 'trojan'}
-		<ServerTrojanInbound bind:state={serverState} />
+		<ServerTrojanInbound bind:state={serverState} {errors} />
 	{:else if type === 'naive'}
-		<ServerNaiveInbound bind:state={serverState} />
+		<ServerNaiveInbound bind:state={serverState} {errors} />
 	{:else if type === 'hysteria2'}
-		<ServerHysteria2Inbound bind:state={serverState} />
+		<ServerHysteria2Inbound bind:state={serverState} {errors} />
 	{/if}
 
 	<!-- Actions -->
