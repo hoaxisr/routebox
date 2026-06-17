@@ -4,6 +4,20 @@ All notable changes to RouteBox are documented here.
 
 ## [Unreleased]
 
+## [0.20.0] - 2026-06-17
+
+### New Features
+
+- **Reuse the panel's TLS certificate for inbounds ("Panel cert" mode)** — a new TLS mode for vless/trojan/naive/hysteria2 inbounds that reuses the panel's Let's Encrypt certificate instead of running a second ACME or pasting a manual cert. RouteBox mirrors the panel cert to a canonical path (`/etc/routebox/panel-cert/{fullchain.pem,key.pem}`), keeps it current, and SIGHUPs amnezia-box on renewal so inbounds pick up the new cert in place. Available whenever the panel itself has a cert (ACME or manual). All inbound variants (vless reality/ws/grpc/httpupgrade, trojan, naive, hysteria2) were live-verified end-to-end against this cert.
+- **Attach an existing panel user when adding inbound users** — the inbound editor can bind an already-existing user (by name) instead of forcing a brand-new one, so a person's bindings across inbounds aggregate into one subscription token rather than fragmenting into separate subs.
+
+### Bug Fixes
+
+- **amnezia-box no longer crash-loops on a fresh VPS install** — in vps mode RouteBox scaffolds a minimal valid sing-box config on boot when `/etc/amnezia-box/config.json` is absent, so the enabled service starts clean instead of crash-looping until the first apply.
+- **Reject duplicate `(listen, port)` across inbounds** — config validation now blocks two inbounds sharing the same listen address and port (e.g. naive and vless both on 443), which previously left the second one silently broken.
+- **Inbound form validation names and highlights the missing field** — instead of a mute "This field is required" toast, the message now names the field (e.g. "Handshake Server (SNI) is required", or "Generate a Reality keypair first") and the offending input is highlighted, across all TLS modes, the port, and the users block.
+- **Panel-cert export hardened** — the cert is read directly from autocert's on-disk cache (deterministic) rather than via a synthetic `GetCertificate` call that didn't export on the live stand; a 5-minute poll catches first issuance and renewals.
+
 ## [0.19.0] - 2026-06-16
 
 ### New Features
