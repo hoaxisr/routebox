@@ -30,6 +30,7 @@ import (
 	"routebox/backend/internal/config"
 	"routebox/backend/internal/embedded"
 	"routebox/backend/internal/geoip"
+	"routebox/backend/internal/panelcert"
 	"routebox/backend/internal/process"
 	"routebox/backend/internal/settings"
 	"routebox/backend/internal/subscriptions"
@@ -48,6 +49,10 @@ var Version = "dev"
 // amnezia-box service doesn't crash-loop ("read config: no such file") before the
 // panel writes a real config on first apply.
 const minimalSingboxConfig = `{"log":{"level":"info","timestamp":true},"inbounds":[],"outbounds":[{"type":"direct","tag":"direct"}]}`
+
+// panelCertDir is the canonical PEM mirror of the panel's TLS cert, so server
+// inbounds can reuse it via a "use panel cert" option.
+const panelCertDir = "/etc/routebox/panel-cert"
 
 var (
 	settingsPath = flag.String("settings", "", "Path to routebox.toml settings file (auto-detected if not specified)")
@@ -788,6 +793,9 @@ func main() {
 		if url := acmeDirectoryURL(cfg.Network.ACMEStaging); url != "" {
 			am.Client = &acme.Client{DirectoryURL: url}
 		}
+		// Keep the panel cert mirrored to the canonical PEM path so server inbounds can
+		// reuse it; on renewal this SIGHUP-reloads amnezia-box to pick up the new cert.
+		go panelcert.Refresh(context.Background(), am, domain, panelCertDir, procMgr.Reload)
 		// HTTP-01 challenge listener on :80. TLS-ALPN-01 is impossible (LE would
 		// connect on :443 = vless+Reality). :80 must stay open for renewals too.
 		go func() {
@@ -798,6 +806,11 @@ func main() {
 			errCh <- fmt.Errorf("https listener: %w", srv.ListenAndServeTLS("", "")) // certs from autocert cache
 		}()
 	case tlsModeManual:
+		// Mirror the manual cert into the canonical path so the inbound "use panel cert"
+		// option works uniformly. Best-effort.
+		if err := panelcert.CopyManual(certPath, keyPath, panelCertDir); err != nil {
+			log.Printf("panelcert: copy manual cert: %v", err)
+		}
 		go func() {
 			errCh <- fmt.Errorf("https listener: %w", srv.ListenAndServeTLS(certPath, keyPath)) // manual (Phase 1)
 		}()
