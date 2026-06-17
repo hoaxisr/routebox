@@ -254,6 +254,29 @@ func TestRehydrateWarmsManager(t *testing.T) {
 	}
 }
 
+// Regression: after a reboot RouteBox can start before awg-quick@ brings the iface
+// up (systemd ordering), so the boot-time Rehydrate snapshots enabled=false and the
+// module state stays the cold StateNotInstalled. Once the iface is live, Status must
+// trust it and report the server running + module ready — else the UI shows "Stopped"
+// and "module not-installed" over a working tunnel until a manual re-enable.
+func TestStatusTrustsLiveIface(t *testing.T) {
+	f := newFakeRunner()
+	m := newEnableManager(t, f)
+	m.enabled = false // stale boot-race snapshot
+	f.outputs["awg show awg-rb0"] = "interface: awg-rb0\n  listening port: 9443\n"
+	f.outputs["iptables -t nat -S"] = "-N RBOX-AWG-NAT\n"
+	st := m.Status(context.Background())
+	if !st.Enabled {
+		t.Fatal("Status must report enabled when the iface is live, despite the stale snapshot")
+	}
+	if st.Phase != PhaseReady {
+		t.Fatalf("phase=%q; want ready when iface live", st.Phase)
+	}
+	if st.Module != StateReady {
+		t.Fatalf("module=%q; want ready when iface live", st.Module)
+	}
+}
+
 // Cold start with no conf must not crash and must leave the server not-enabled.
 func TestRehydrateNoConfNoop(t *testing.T) {
 	f := newFakeRunner()

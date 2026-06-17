@@ -245,6 +245,13 @@ func (m *Manager) Status(ctx context.Context) AWGStatus {
 	if out, _, err := m.run.Run(ctx, "awg", "show", m.iface); err == nil && strings.Contains(out, "listening port") {
 		ifaceUp = true
 	}
+	// A live interface IS the server running, full stop. After a reboot RouteBox can
+	// start before awg-quick@ brings the iface up (systemd ordering), so the boot-time
+	// Rehydrate snapshot of enabled/phase is stale-false. Trust the live iface over the
+	// snapshot, else the UI shows "Stopped" over a working tunnel until a manual re-enable.
+	if ifaceUp {
+		enabled, phase = true, PhaseReady
+	}
 	rulesPresent := false
 	if rules, _, err := m.run.Run(ctx, "iptables", "-t", "nat", "-S"); err == nil && strings.Contains(rules, "RBOX-AWG-NAT") {
 		rulesPresent = true
@@ -265,6 +272,11 @@ func (m *Manager) Status(ctx context.Context) AWGStatus {
 	mod := StateNotInstalled
 	if m.module != nil {
 		mod = m.module.Status().State
+	}
+	// A live iface proves the module is loaded; the in-memory module state is only set
+	// by Ensure()/loaded() and is stale-NotInstalled after a clean boot (no re-enable).
+	if ifaceUp && mod != StateReady {
+		mod = StateReady
 	}
 	return AWGStatus{
 		Module: mod, Enabled: enabled, Phase: phase, IfaceUp: ifaceUp, ListenPort: port,
