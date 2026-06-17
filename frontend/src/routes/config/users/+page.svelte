@@ -4,7 +4,6 @@
 	import { api } from '$lib/api/client';
 	import { notifications, unsavedChanges, formatBytes } from '$lib/stores';
 	import Modal from '$lib/components/shared/Modal.svelte';
-	import ShareLinkModal from '$lib/components/config/inbound/ShareLinkModal.svelte';
 	import SubscriptionModal from '$lib/components/config/users/SubscriptionModal.svelte';
 	import Sparkline from '$lib/components/shared/Sparkline.svelte';
 	import type { PanelUser, Inbound, UserTrafficResponse } from '$lib/types';
@@ -17,10 +16,6 @@
 	let addName = $state('');
 	let addTag = $state('');
 	let adding = $state(false);
-
-	// Share modal state (registry id + chosen binding tag).
-	let shareId = $state<string | null>(null);
-	let shareTag = $state('');
 
 	// Add-binding modal state.
 	let bindUser = $state<PanelUser | null>(null);
@@ -149,12 +144,6 @@
 		}
 	}
 
-	function openShare(u: PanelUser) {
-		if (u.pending || u.bindings.length === 0) return;
-		shareId = u.id;
-		shareTag = u.bindings[0].inbound_tag;
-	}
-
 	function openSubscription(u: PanelUser) {
 		if (u.pending) return;
 		subUser = u;
@@ -266,12 +255,8 @@
 							{#if u.pending}
 								<span class="text-xs text-[var(--ctp-overlay0)]">{$t('users.pendingNoLink')}</span>
 							{:else}
-								<button onclick={() => openShare(u)}
-									class="px-3 py-1.5 bg-[var(--ctp-primary)] text-white rounded-lg hover:opacity-90 transition-opacity text-sm">
-									{$t('users.clientLink')}
-								</button>
 								<button onclick={() => openSubscription(u)}
-									class="px-3 py-1.5 text-[var(--ctp-text)] border border-[var(--ctp-surface2)] rounded-lg hover:bg-[var(--ctp-surface0)] transition-colors text-sm">
+									class="px-3 py-1.5 bg-[var(--ctp-primary)] text-white rounded-lg hover:opacity-90 transition-opacity text-sm">
 									{$t('users.subscription')}
 								</button>
 							{/if}
@@ -362,10 +347,6 @@
 		</div>
 	{/snippet}
 </Modal>
-
-{#if shareId}
-	<ShareLinkModal id={shareId} tag={shareTag} onClose={() => (shareId = null)} />
-{/if}
 
 {#if subUser}
 	<SubscriptionModal user={subUser} {publicHost} {publicPort}
