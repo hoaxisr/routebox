@@ -4,6 +4,20 @@ All notable changes to RouteBox are documented here.
 
 ## [Unreleased]
 
+## [0.20.2] - 2026-06-17
+
+### Changes
+
+- **Subscription is the single share action for a user** — the per-binding "Client link"
+  button is removed; the panel now exposes one primary **Subscription** action that returns the
+  user's whole node set (all protocols) as a standard base64 subscription, parsed by the client.
+  This drops the confusing per-binding link (which only ever emitted the first binding).
+
+### Bug Fixes
+
+- **AmneziaWG status reflects the live interface**, not the boot-time snapshot — the status now
+  trusts the running `awg-rb0` state instead of stale module state captured at startup.
+
 ## [0.20.1] - 2026-06-17
 
 ### New Features
