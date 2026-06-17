@@ -80,7 +80,7 @@
 <div class="space-y-4">
 	<div>
 		<label class="block text-sm font-medium text-[var(--ctp-subtext1)] mb-2">{$t('inbounds.server.tlsMode')}</label>
-		<div class="grid grid-cols-3 gap-2">
+		<div class="grid grid-cols-2 sm:grid-cols-4 gap-2">
 			{#each modes as m}
 				{#if (!m.reality || allowReality) && (!m.panel || panelHasCert)}
 					<button type="button" onclick={() => (tlsMode = m.id)}
