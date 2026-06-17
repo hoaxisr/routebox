@@ -18,6 +18,7 @@ All notable changes to RouteBox are documented here.
 - **Inbound form validation names and highlights the missing field** — instead of a mute "This field is required" toast, the message now names the field (e.g. "Handshake Server (SNI) is required", or "Generate a Reality keypair first") and the offending input is highlighted, across all TLS modes, the port, and the users block.
 - **Panel-cert export hardened** — the cert is read directly from autocert's on-disk cache (deterministic) rather than via a synthetic `GetCertificate` call that didn't export on the live stand; a 5-minute poll catches first issuance and renewals.
 - **"Panel cert" inbound is saveable** — the form's TLS validation no longer falls through to the manual branch and demands a Certificate Path that panel mode injects automatically, which had blocked saving any panel-cert inbound from the UI.
+- **Duplicate listen port is rejected on add/edit, not just full-config validate** — `CreateInbound`/`UpdateInbound` now enforce a unique `(listen, port)` (the cross-inbound check previously ran only in the whole-config validator, so the per-inbound API path let you stage e.g. a second inbound on 443 and crash amnezia-box on reload). Wildcard listen spellings are normalized, so the panel's `::` correctly collides with a legacy inbound that omits `listen`.
 
 ## [0.19.0] - 2026-06-16
 
