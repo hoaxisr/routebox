@@ -122,6 +122,41 @@ func (m *Manager) Validate(config map[string]interface{}) []string {
 				errors = append(errors, errs...)
 			}
 		}
+
+		// Cross-inbound: reject a duplicate (listen, listen_port). Gate on listen_port
+		// presence so non-listening inbounds (tun, awg, etc.) are ignored. An empty/
+		// absent `listen` is its own bucket — the panel never sets `listen`, so two
+		// inbounds that both omit it on the same port collide (which is what fails to
+		// bind at runtime). Distinct explicit `listen` addresses on the same port are
+		// allowed. (Edge not covered: empty listen vs an explicit 0.0.0.0/:: on the
+		// same port — the panel always omits listen, so the real case is handled.)
+		type addrKey struct {
+			listen string
+			port   float64
+		}
+		seenPorts := map[addrKey]string{} // key -> first inbound tag
+		for _, ib := range inbounds {
+			obj, ok := ib.(map[string]interface{})
+			if !ok {
+				continue
+			}
+			port, ok := obj["listen_port"].(float64)
+			if !ok || port == 0 {
+				continue
+			}
+			listen, _ := obj["listen"].(string)
+			tag, _ := obj["tag"].(string)
+			key := addrKey{listen: listen, port: port}
+			if prev, dup := seenPorts[key]; dup {
+				la := listen
+				if la == "" {
+					la = "*"
+				}
+				errors = append(errors, fmt.Sprintf("inbounds %q and %q share listen %s:%d (ports must be unique across inbounds)", prev, tag, la, int(port)))
+			} else {
+				seenPorts[key] = tag
+			}
+		}
 	}
 
 	// Reference validation: check outbound references

@@ -415,3 +415,40 @@ func TestValidateInboundMalformedUsers(t *testing.T) {
 	// validateInbound must return without crashing.
 	_ = validateInbound(inbound, 0)
 }
+
+func TestValidateRejectsDuplicateListenPort(t *testing.T) {
+	m := &Manager{}
+	cfg := map[string]interface{}{
+		"inbounds": []interface{}{
+			map[string]interface{}{"type": "naive", "tag": "naive-in", "listen_port": float64(443),
+				"users": []interface{}{map[string]interface{}{"username": "a", "password": "p"}},
+				"tls":   map[string]interface{}{"enabled": true, "acme": map[string]interface{}{"domain": "x.example.com", "email": "a@b.c"}}},
+			map[string]interface{}{"type": "vless", "tag": "vless-in", "listen_port": float64(443),
+				"users": []interface{}{map[string]interface{}{"name": "a", "uuid": "11111111-1111-1111-1111-111111111111"}},
+				"tls":   map[string]interface{}{"enabled": true, "reality": map[string]interface{}{"enabled": true, "handshake": map[string]interface{}{"server": "g.com", "server_port": float64(443)}, "private_key": "k", "short_id": []interface{}{"00"}}}},
+		},
+	}
+	errs := m.Validate(cfg)
+	if !hasErrContaining(errs, "443") || !hasErrContaining(errs, "ports must be unique") {
+		t.Fatalf("want duplicate-port error mentioning 443; got %v", errs)
+	}
+}
+
+func TestValidateAllowsDistinctPortsAndListens(t *testing.T) {
+	m := &Manager{}
+	mk := func(tag string, port float64, listen string) map[string]interface{} {
+		o := map[string]interface{}{"type": "vless", "tag": tag, "listen_port": port,
+			"users": []interface{}{map[string]interface{}{"name": "a", "uuid": "11111111-1111-1111-1111-111111111111"}},
+			"tls":   map[string]interface{}{"enabled": true, "reality": map[string]interface{}{"enabled": true, "handshake": map[string]interface{}{"server": "g.com", "server_port": float64(443)}, "private_key": "k", "short_id": []interface{}{"00"}}}}
+		if listen != "" {
+			o["listen"] = listen
+		}
+		return o
+	}
+	if errs := m.Validate(map[string]interface{}{"inbounds": []interface{}{mk("a", 443, ""), mk("b", 8443, "")}}); hasErrContaining(errs, "ports must be unique") {
+		t.Fatalf("distinct ports must not conflict: %v", errs)
+	}
+	if errs := m.Validate(map[string]interface{}{"inbounds": []interface{}{mk("a", 443, "10.0.0.1"), mk("b", 443, "10.0.0.2")}}); hasErrContaining(errs, "ports must be unique") {
+		t.Fatalf("same port on distinct listens must not conflict: %v", errs)
+	}
+}
