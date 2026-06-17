@@ -48,7 +48,7 @@ var Version = "dev"
 // + a direct outbound). Scaffolded in vps mode when config.json is absent so the
 // amnezia-box service doesn't crash-loop ("read config: no such file") before the
 // panel writes a real config on first apply.
-const minimalSingboxConfig = `{"log":{"level":"info","timestamp":true},"inbounds":[],"outbounds":[{"type":"direct","tag":"direct"}]}`
+const minimalSingboxConfig = `{"log":{"level":"info","timestamp":true},"inbounds":[],"outbounds":[{"tag":"direct","type":"direct"}],"route":{"auto_detect_interface":true,"final":"direct"}}`
 
 // panelCertDir is the canonical PEM mirror of the panel's TLS cert, so server
 // inbounds can reuse it via a "use panel cert" option.

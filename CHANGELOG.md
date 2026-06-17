@@ -13,7 +13,7 @@ All notable changes to RouteBox are documented here.
 
 ### Bug Fixes
 
-- **amnezia-box no longer crash-loops on a fresh VPS install** — in vps mode RouteBox scaffolds a minimal valid sing-box config on boot when `/etc/amnezia-box/config.json` is absent, so the enabled service starts clean instead of crash-looping until the first apply.
+- **amnezia-box no longer crash-loops on a fresh VPS install** — in vps mode RouteBox scaffolds a minimal valid sing-box config on boot when `/etc/amnezia-box/config.json` is absent, so the enabled service starts clean instead of crash-looping until the first apply. The scaffold ships a `direct` outbound plus a `route` block (`auto_detect_interface: true`, `final: direct`) so egress works out of the box.
 - **Reject duplicate `(listen, port)` across inbounds** — config validation now blocks two inbounds sharing the same listen address and port (e.g. naive and vless both on 443), which previously left the second one silently broken.
 - **Inbound form validation names and highlights the missing field** — instead of a mute "This field is required" toast, the message now names the field (e.g. "Handshake Server (SNI) is required", or "Generate a Reality keypair first") and the offending input is highlighted, across all TLS modes, the port, and the users block.
 - **Panel-cert export hardened** — the cert is read directly from autocert's on-disk cache (deterministic) rather than via a synthetic `GetCertificate` call that didn't export on the live stand; a 5-minute poll catches first issuance and renewals.
