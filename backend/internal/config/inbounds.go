@@ -1,6 +1,9 @@
 package config
 
-import "fmt"
+import (
+	"fmt"
+	"strings"
+)
 
 // ListInbounds returns all inbounds from the working config (draft or active)
 func (m *Manager) ListInbounds() []map[string]interface{} {
@@ -33,6 +36,55 @@ func (m *Manager) GetInbound(tag string) (map[string]interface{}, bool) {
 	return nil, false
 }
 
+// normalizeListenAddr collapses every wildcard spelling — absent, "", "::", "[::]",
+// "::0", "0.0.0.0", "*" — into a single "*" bucket, because at bind time they all grab
+// the same port (Go listens dual-stack on "::"). Specific IPs keep their own identity.
+// Used for port-conflict detection so "::" (set by the panel) and an absent listen (on
+// older/hand-made inbounds) are correctly recognised as colliding.
+func normalizeListenAddr(s string) string {
+	switch strings.TrimSpace(s) {
+	case "", "::", "[::]", "::0", "0.0.0.0", "*":
+		return "*"
+	default:
+		return strings.TrimSpace(s)
+	}
+}
+
+// listenPortConflict reports an error if inbound's (listen, listen_port) collides with
+// another inbound in arr, skipping the entry whose tag == selfTag (the one being
+// updated). This mirrors the cross-inbound check in the full-config validator so the
+// per-inbound CRUD path — which only runs the single-inbound validator — can't stage
+// two inbounds on the same address:port, which crashes amnezia-box on reload. Inbounds
+// without a listen_port (tun/awg) are ignored; wildcard listen spellings are normalized.
+func listenPortConflict(arr []interface{}, inbound map[string]interface{}, selfTag string) error {
+	port, ok := inbound["listen_port"].(float64)
+	if !ok || port == 0 {
+		return nil
+	}
+	listen, _ := inbound["listen"].(string)
+	listen = normalizeListenAddr(listen)
+	for _, item := range arr {
+		obj, ok := item.(map[string]interface{})
+		if !ok {
+			continue
+		}
+		if t, _ := obj["tag"].(string); t == selfTag {
+			continue
+		}
+		p, ok := obj["listen_port"].(float64)
+		if !ok || p != port {
+			continue
+		}
+		l, _ := obj["listen"].(string)
+		if normalizeListenAddr(l) != listen {
+			continue
+		}
+		other, _ := obj["tag"].(string)
+		return fmt.Errorf("listen %s:%d is already used by inbound %q (ports must be unique across inbounds)", listen, int(port), other)
+	}
+	return nil
+}
+
 // CreateInbound adds new inbound to draft with validation
 func (m *Manager) CreateInbound(inbound map[string]interface{}) error {
 	// Validate inbound before adding
@@ -49,6 +101,9 @@ func (m *Manager) CreateInbound(inbound map[string]interface{}) error {
 	arr := m.getArray("inbounds")
 	if findByTag(arr, tag) >= 0 {
 		return fmt.Errorf("inbound with tag '%s' already exists", tag)
+	}
+	if err := listenPortConflict(arr, inbound, ""); err != nil {
+		return err
 	}
 
 	// Ensure draft exists before modifying
@@ -78,6 +133,9 @@ func (m *Manager) UpdateInbound(tag string, inbound map[string]interface{}) erro
 	idx := findByTag(arr, tag)
 	if idx < 0 {
 		return fmt.Errorf("inbound '%s' not found", tag)
+	}
+	if err := listenPortConflict(arr, inbound, tag); err != nil {
+		return err
 	}
 
 	newTag, _ := inbound["tag"].(string)
