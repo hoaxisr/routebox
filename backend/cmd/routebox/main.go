@@ -795,7 +795,7 @@ func main() {
 		}
 		// Keep the panel cert mirrored to the canonical PEM path so server inbounds can
 		// reuse it; on renewal this SIGHUP-reloads amnezia-box to pick up the new cert.
-		go panelcert.Refresh(context.Background(), am, domain, panelCertDir, procMgr.Reload)
+		go panelcert.Refresh(context.Background(), cacheDir, domain, panelCertDir, procMgr.Reload)
 		// HTTP-01 challenge listener on :80. TLS-ALPN-01 is impossible (LE would
 		// connect on :443 = vless+Reality). :80 must stay open for renewals too.
 		go func() {

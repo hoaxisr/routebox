@@ -1,20 +1,18 @@
-// Package panelcert maintains the panel's TLS certificate as PEM at a canonical path
-// so server inbounds can reuse it (one ACME owner = the panel). Export/CopyManual/Files
-// are pure IO + testable; Refresh wires it to autocert at runtime.
+// Package panelcert mirrors the panel's TLS certificate to a canonical PEM path so
+// server inbounds can reuse it (one ACME owner = the panel). It reads autocert's
+// DirCache entry directly (deterministic, no blocking) rather than calling
+// Manager.GetCertificate, and exposes a manual-mode copy + a refresh loop.
 package panelcert
 
 import (
 	"context"
-	"crypto/tls"
-	"crypto/x509"
 	"encoding/pem"
 	"fmt"
 	"log"
 	"os"
 	"path/filepath"
+	"strings"
 	"time"
-
-	"golang.org/x/crypto/acme/autocert"
 )
 
 // Files returns the canonical fullchain + key PEM paths under dir.
@@ -22,33 +20,43 @@ func Files(dir string) (fullchain, key string) {
 	return filepath.Join(dir, "fullchain.pem"), filepath.Join(dir, "key.pem")
 }
 
-// Export writes cert's chain (fullchain.pem) + private key (key.pem, 0600) under dir
-// (created 0700), atomically. Returns changed=true when the on-disk fullchain differs
-// from the new one (caller reloads consumers only then).
-func Export(cert *tls.Certificate, dir string) (changed bool, err error) {
-	if cert == nil || len(cert.Certificate) == 0 {
-		return false, fmt.Errorf("empty certificate")
-	}
-	var chain []byte
-	for _, der := range cert.Certificate {
-		chain = append(chain, pem.EncodeToMemory(&pem.Block{Type: "CERTIFICATE", Bytes: der})...)
-	}
-	keyDER, err := x509.MarshalPKCS8PrivateKey(cert.PrivateKey)
+// ExportFromCache reads autocert's DirCache entry for domain — a single file holding
+// the PEM private key block followed by the certificate-chain blocks — and writes
+// fullchain.pem + key.pem (0600) under outDir (created 0700), atomically. Returns
+// changed=true when the fullchain differs from what's on disk. The ReadFile error is
+// returned verbatim so callers can treat a not-yet-issued cert (os.IsNotExist) as
+// normal.
+func ExportFromCache(cacheDir, domain, outDir string) (changed bool, err error) {
+	raw, err := os.ReadFile(filepath.Join(cacheDir, domain))
 	if err != nil {
-		return false, fmt.Errorf("marshal key: %w", err)
-	}
-	keyPEM := pem.EncodeToMemory(&pem.Block{Type: "PRIVATE KEY", Bytes: keyDER})
-
-	if err := os.MkdirAll(dir, 0o700); err != nil {
 		return false, err
 	}
-	fullchainPath, keyPath := Files(dir)
-	old, _ := os.ReadFile(fullchainPath)
-	changed = string(old) != string(chain)
-	if err := atomicWrite(fullchainPath, chain, 0o644); err != nil {
+	var certPEM, keyPEM []byte
+	for rest := raw; ; {
+		blk, r := pem.Decode(rest)
+		if blk == nil {
+			break
+		}
+		if strings.HasSuffix(blk.Type, "PRIVATE KEY") {
+			keyPEM = append(keyPEM, pem.EncodeToMemory(blk)...)
+		} else if blk.Type == "CERTIFICATE" {
+			certPEM = append(certPEM, pem.EncodeToMemory(blk)...)
+		}
+		rest = r
+	}
+	if len(certPEM) == 0 || len(keyPEM) == 0 {
+		return false, fmt.Errorf("cache entry %q missing cert or key", domain)
+	}
+	if err := os.MkdirAll(outDir, 0o700); err != nil {
 		return false, err
 	}
-	if err := atomicWrite(keyPath, keyPEM, 0o600); err != nil {
+	fc, k := Files(outDir)
+	old, _ := os.ReadFile(fc)
+	changed = string(old) != string(certPEM)
+	if err := atomicWrite(fc, certPEM, 0o644); err != nil {
+		return false, err
+	}
+	if err := atomicWrite(k, keyPEM, 0o600); err != nil {
 		return false, err
 	}
 	return changed, nil
@@ -75,19 +83,18 @@ func CopyManual(certPath, keyPath, dir string) error {
 	return atomicWrite(k, key, 0o600)
 }
 
-// Refresh keeps the canonical PEM current from autocert: on start (which also triggers
-// issuance) and every 12h, fetch the cert for domain, export it, and on change invoke
-// reload (e.g. SIGHUP amnezia-box). Runs until ctx is cancelled.
-func Refresh(ctx context.Context, am *autocert.Manager, domain, dir string, reload func() error) {
+// Refresh keeps the canonical PEM mirrored from autocert's DirCache: on start and every
+// 5 minutes, export the cache entry for domain; on change, call reload (e.g. SIGHUP
+// amnezia-box) so it picks up the new cert. The frequent poll catches first issuance
+// (autocert writes the cache only after the panel's first TLS handshake) and renewals.
+// A not-yet-issued cache entry is normal and silent. Runs until ctx is cancelled.
+func Refresh(ctx context.Context, cacheDir, domain, outDir string, reload func() error) {
 	tick := func() {
-		cert, err := am.GetCertificate(&tls.ClientHelloInfo{ServerName: domain})
+		changed, err := ExportFromCache(cacheDir, domain, outDir)
 		if err != nil {
-			log.Printf("panelcert: get cert for %s: %v", domain, err)
-			return
-		}
-		changed, err := Export(cert, dir)
-		if err != nil {
-			log.Printf("panelcert: export: %v", err)
+			if !os.IsNotExist(err) {
+				log.Printf("panelcert: export from cache: %v", err)
+			}
 			return
 		}
 		if changed && reload != nil {
@@ -97,7 +104,7 @@ func Refresh(ctx context.Context, am *autocert.Manager, domain, dir string, relo
 		}
 	}
 	tick()
-	tk := time.NewTicker(12 * time.Hour)
+	tk := time.NewTicker(5 * time.Minute)
 	defer tk.Stop()
 	for {
 		select {
