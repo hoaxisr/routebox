@@ -811,6 +811,7 @@
     "server": {
       "users": "Users",
       "addUser": "Add User",
+      "addExisting": "Add existing user",
       "noUsers": "No users — add at least one",
       "needUser": "At least one user is required",
       "needUserCred": "Every user needs its credentials filled in",
