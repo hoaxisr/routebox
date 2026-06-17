@@ -1,7 +1,10 @@
 import type { Inbound, ServerInboundUser, ServerTlsConfig } from '$lib/types';
 
-export type TlsMode = 'acme' | 'reality' | 'manual';
+export type TlsMode = 'acme' | 'reality' | 'manual' | 'panel';
 export type ServerInboundType = 'vless' | 'trojan' | 'naive' | 'hysteria2';
+
+export const PANEL_CERT_PATH = '/etc/routebox/panel-cert/fullchain.pem';
+export const PANEL_KEY_PATH = '/etc/routebox/panel-cert/key.pem';
 export type TransportType = 'raw' | 'ws' | 'grpc' | 'httpupgrade';
 
 export interface ServerTransportState {
@@ -56,6 +59,10 @@ export function buildServerInbound(s: ServerFormState): Inbound {
 			short_id: s.tls.reality.short_id.trim(),
 			handshake: { server: hsServer, server_port: s.handshakePort || 443 }
 		};
+	} else if (s.tlsMode === 'panel') {
+		tls.certificate_path = PANEL_CERT_PATH;
+		tls.key_path = PANEL_KEY_PATH;
+		if (s.tls.server_name.trim()) tls.server_name = s.tls.server_name.trim();
 	} else {
 		tls.certificate_path = s.tls.certificate_path.trim();
 		tls.key_path = s.tls.key_path.trim();
@@ -108,6 +115,7 @@ export function parseServerInbound(ib: Inbound): ServerFormState {
 	let tlsMode: TlsMode = 'manual';
 	if (tls.acme) tlsMode = 'acme';
 	else if (tls.reality) tlsMode = 'reality';
+	else if (tls.certificate_path === PANEL_CERT_PATH) tlsMode = 'panel';
 
 	const serverTypes = ['vless', 'trojan', 'naive', 'hysteria2'] as const;
 	const type: ServerInboundType = (serverTypes as readonly string[]).includes(ib.type)

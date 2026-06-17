@@ -1,4 +1,5 @@
 <script lang="ts">
+	import { onMount } from 'svelte';
 	import { t } from 'svelte-i18n';
 	import { notifications } from '$lib/stores';
 	import { api } from '$lib/api/client';
@@ -35,9 +36,26 @@
 	let realityPublicKey = $state('');
 	let generating = $state(false);
 
-	const modes: { id: TlsMode; reality?: boolean }[] = [
+	let panelDomain = $state('');
+	let panelHasCert = $state(false);
+	onMount(async () => {
+		try {
+			const s = (await api.getSettings()).settings;
+			panelDomain = s.server?.public_host ?? '';
+			panelHasCert = !!(s.network?.acme_enabled || s.network?.tls_cert_path);
+		} catch {
+			/* leave panel mode unavailable */
+		}
+	});
+	// When 'panel' is chosen, the inbound presents the panel cert for the panel domain.
+	$effect(() => {
+		if (tlsMode === 'panel' && panelDomain) serverName = panelDomain;
+	});
+
+	const modes: { id: TlsMode; reality?: boolean; panel?: boolean }[] = [
 		{ id: 'acme' },
 		{ id: 'reality', reality: true },
+		{ id: 'panel', panel: true },
 		{ id: 'manual' }
 	];
 
@@ -64,7 +82,7 @@
 		<label class="block text-sm font-medium text-[var(--ctp-subtext1)] mb-2">{$t('inbounds.server.tlsMode')}</label>
 		<div class="grid grid-cols-3 gap-2">
 			{#each modes as m}
-				{#if !m.reality || allowReality}
+				{#if (!m.reality || allowReality) && (!m.panel || panelHasCert)}
 					<button type="button" onclick={() => (tlsMode = m.id)}
 						class="type-btn text-center {tlsMode === m.id ? 'selected' : ''}">
 						<div class="type-label text-sm">{$t(`inbounds.server.tlsModes.${m.id}`)}</div>
@@ -128,6 +146,10 @@
 					{/if}
 				</div>
 			{/if}
+		</div>
+	{:else if tlsMode === 'panel'}
+		<div class="bg-[var(--ctp-surface0)] rounded-lg p-3 text-sm text-[var(--ctp-subtext1)]">
+			{$t('inbounds.server.panelCertHint', { values: { domain: panelDomain } })}
 		</div>
 	{:else}
 		<div class="space-y-3">
