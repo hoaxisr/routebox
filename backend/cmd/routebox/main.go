@@ -43,6 +43,12 @@ import (
 // "dev" for plain `go build` / `go run`.
 var Version = "dev"
 
+// minimalSingboxConfig is a valid, startable sing-box/amnezia-box config (no inbounds
+// + a direct outbound). Scaffolded in vps mode when config.json is absent so the
+// amnezia-box service doesn't crash-loop ("read config: no such file") before the
+// panel writes a real config on first apply.
+const minimalSingboxConfig = `{"log":{"level":"info","timestamp":true},"inbounds":[],"outbounds":[{"type":"direct","tag":"direct"}]}`
+
 var (
 	settingsPath = flag.String("settings", "", "Path to routebox.toml settings file (auto-detected if not specified)")
 	// Legacy flags - override settings file if specified
@@ -145,8 +151,22 @@ func main() {
 			log.Printf("Warning: Could not load config from %s: %v", resolvedConfigPath, err)
 			cfgMgr = config.NewEmptyManager(resolvedConfigPath)
 		}
+	} else if effectiveMode == "vps" {
+		// VPS/panel mode: the installer enables the amnezia-box service at install time,
+		// which crash-loops ("read config: no such file") until a config exists. Scaffold
+		// a minimal valid sing-box config so amnezia-box starts cleanly on its next
+		// auto-restart; the panel overwrites it on the first apply.
+		if err := os.WriteFile(resolvedConfigPath, []byte(minimalSingboxConfig), 0644); err != nil {
+			log.Printf("Warning: could not scaffold minimal config %s: %v", resolvedConfigPath, err)
+			cfgMgr = config.NewEmptyManager(resolvedConfigPath)
+		} else if m, lerr := config.NewManager(resolvedConfigPath); lerr == nil {
+			fmt.Printf("Scaffolded minimal amnezia-box config at %s\n", resolvedConfigPath)
+			cfgMgr = m
+		} else {
+			cfgMgr = config.NewEmptyManager(resolvedConfigPath)
+		}
 	} else {
-		// Config doesn't exist - create empty manager (setup wizard will create it)
+		// Router mode: the setup wizard creates the config.
 		cfgMgr = config.NewEmptyManager(resolvedConfigPath)
 	}
 
