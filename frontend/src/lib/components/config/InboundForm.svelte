@@ -107,10 +107,11 @@
 			} else if (serverState.tlsMode === 'reality') {
 				if (!serverState.tls.server_name.trim()) errors['serverName'] = req($t('inbounds.server.handshakeServer'));
 				if (!serverState.tls.reality.private_key.trim()) errors['realityKey'] = $t('inbounds.server.realityKeyRequired');
-			} else {
+			} else if (serverState.tlsMode === 'manual') {
 				if (!serverState.tls.certificate_path.trim()) errors['certPath'] = req($t('inbounds.server.certificatePath'));
 				if (!serverState.tls.key_path.trim()) errors['keyPath'] = req($t('inbounds.server.keyPath'));
 			}
+			// 'panel' mode injects the canonical cert/key paths at build time — nothing to validate.
 			// Per-user credential required fields
 			for (const u of serverState.users) {
 				if (type === 'vless' && !u.uuid?.trim()) { errors['userCred'] = $t('inbounds.server.needUserCred'); break; }
