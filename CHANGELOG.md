@@ -4,6 +4,18 @@ All notable changes to RouteBox are documented here.
 
 ## [Unreleased]
 
+## [0.20.3] - 2026-06-18
+
+### Bug Fixes
+
+- **AmneziaWG client configs no longer carry a phantom `Itime` field** — the CPS obfuscation
+  builder emitted `Itime = N`, which is not part of the AmneziaWG 2.0 spec (valid CPS fields are
+  `I1`-`I5`). The bogus line is dropped from generated client configs; only `I1`-`I5` are written.
+- **Self-update now restarts the panel** — the systemd unit shipped `Restart=on-failure`, so the
+  clean `exit(0)` after a binary swap left the panel down instead of respawning. The installers now
+  set `Restart=always` (`RestartSec=2`). Existing installs must re-run the installer (or set
+  `Restart=always` + `systemctl daemon-reload`) to pick this up.
+
 ## [0.20.2] - 2026-06-17
 
 ### Changes
