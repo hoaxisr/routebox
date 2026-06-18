@@ -1,5 +1,5 @@
-// Package cps builds AmneziaWG "Custom Protocol Signature" client fields (I1-I5 +
-// Itime) that mimic real protocols, so client handshakes look like ordinary
+// Package cps builds AmneziaWG "Custom Protocol Signature" client fields (I1-I5)
+// that mimic real protocols, so client handshakes look like ordinary
 // DNS/TLS/SIP traffic to a DPI. All output is machine-generated tag text emitted
 // verbatim into a client .conf (never the server's root-shell conf).
 package cps
@@ -14,7 +14,6 @@ import (
 
 // Set is the client-side CPS for one profile. Zero value = no mimicry emitted.
 type Set struct {
-	Itime              int
 	I1, I2, I3, I4, I5 string
 }
 
@@ -33,17 +32,16 @@ func Mimic(profile string) Set {
 	}
 }
 
-// build wraps a real first packet as I1 and fills I2-I5 with entropy tags + a
-// randomised Itime. I1 is the protocol snapshot; I2-I5 raise entropy so the chain
-// is not a static fingerprint.
+// build wraps a real first packet as I1 and fills I2-I5 with entropy tags. I1 is
+// the protocol snapshot; I2-I5 raise entropy so the chain is not a static
+// fingerprint.
 func build(i1 []byte) Set {
 	return Set{
-		Itime: randInt(4, 15),
-		I1:    bTag(i1),
-		I2:    fmt.Sprintf("<r %d>", randInt(16, 48)),
-		I3:    fmt.Sprintf("<r %d><t>", randInt(8, 24)),
-		I4:    fmt.Sprintf("<r %d>", randInt(24, 64)),
-		I5:    fmt.Sprintf("<t><r %d>", randInt(8, 16)),
+		I1: bTag(i1),
+		I2: fmt.Sprintf("<r %d>", randInt(16, 48)),
+		I3: fmt.Sprintf("<r %d><t>", randInt(8, 24)),
+		I4: fmt.Sprintf("<r %d>", randInt(24, 64)),
+		I5: fmt.Sprintf("<t><r %d>", randInt(8, 16)),
 	}
 }
 

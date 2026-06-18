@@ -83,11 +83,8 @@ func writeObf(b *strings.Builder, o Obfuscation) {
 	}
 }
 
-// writeMimic emits the client-only CPS fields (Itime + I1..I5). Empty Set -> nothing.
+// writeMimic emits the client-only CPS fields (I1..I5). Empty Set -> nothing.
 func writeMimic(b *strings.Builder, m cps.Set) {
-	if m.Itime > 0 {
-		fmt.Fprintf(b, "Itime = %d\n", m.Itime)
-	}
 	for i, v := range []string{m.I1, m.I2, m.I3, m.I4, m.I5} {
 		if v != "" {
 			fmt.Fprintf(b, "I%d = %s\n", i+1, v)

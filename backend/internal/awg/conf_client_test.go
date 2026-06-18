@@ -12,13 +12,13 @@ func TestBuildClientEmitsMimic(t *testing.T) {
 		PrivateKey: "AAAA", Address: "10.10.0.2/32", ServerPub: "BBBB",
 		Endpoint: "1.2.3.4:51820", AllowedIPs: []string{"0.0.0.0/0"},
 		Obf:   Obfuscation{Jc: 5, H1: "100"},
-		Mimic: cps.Set{Itime: 7, I1: "<b 0x1603>", I2: "<r 16>"},
+		Mimic: cps.Set{I1: "<b 0x1603>", I2: "<r 16>"},
 	}
 	out, err := BuildClient(c)
 	if err != nil {
 		t.Fatal(err)
 	}
-	for _, want := range []string{"Itime = 7", "I1 = <b 0x1603>", "I2 = <r 16>", "Jc = 5"} {
+	for _, want := range []string{"I1 = <b 0x1603>", "I2 = <r 16>", "Jc = 5"} {
 		if !strings.Contains(out, want) {
 			t.Fatalf("client conf missing %q:\n%s", want, out)
 		}
