@@ -19,6 +19,7 @@
 	let disabled = $state(user.token_disabled === true);
 	let qrDataUrl = $state('');
 	let busy = $state(false);
+	let mode = $state<'sub' | 'single'>('sub');
 
 	const subUrl = $derived(
 		effectiveSubUrl({ token, token_disabled: disabled }, publicHost, publicPort)
@@ -98,7 +99,7 @@
 <div class="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4">
 	<div class="bg-[var(--ctp-base)] border border-[var(--ctp-surface2)] rounded-xl p-6 w-full max-w-md space-y-4">
 		<div class="flex items-center justify-between">
-			<h2 class="text-lg font-semibold text-[var(--ctp-text)]">{$t('users.subscriptionTitle')}</h2>
+			<h2 class="text-lg font-semibold text-[var(--ctp-text)]">{$t('users.share')}</h2>
 			<button type="button" onclick={onClose} aria-label="Close modal"
 				class="p-1 hover:bg-[var(--ctp-surface1)] rounded transition-colors">
 				<svg class="w-5 h-5 text-[var(--ctp-overlay1)]" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -107,6 +108,18 @@
 			</button>
 		</div>
 
+		<div class="flex gap-1 p-1 bg-[var(--ctp-surface0)] rounded-lg">
+			<button type="button" onclick={() => (mode = 'sub')}
+				class="flex-1 px-3 py-1.5 rounded-md text-sm transition-colors {mode === 'sub' ? 'bg-[var(--ctp-primary)] text-white' : 'text-[var(--ctp-subtext1)] hover:bg-[var(--ctp-surface1)]'}">
+				{$t('users.subscription')}
+			</button>
+			<button type="button" onclick={() => (mode = 'single')}
+				class="flex-1 px-3 py-1.5 rounded-md text-sm transition-colors {mode === 'single' ? 'bg-[var(--ctp-primary)] text-white' : 'text-[var(--ctp-subtext1)] hover:bg-[var(--ctp-surface1)]'}">
+				{$t('users.singleConnection')}
+			</button>
+		</div>
+
+		{#if mode === 'sub'}
 		{#if !publicHost}
 			<!-- no public_host configured -->
 			<div class="text-sm text-[var(--ctp-overlay1)]">
@@ -149,6 +162,10 @@
 					{$t('users.revoke')}
 				</button>
 			</div>
+		{/if}
+		{:else}
+			<!-- Task 3 fills the single-connection panel here -->
+			<div class="text-sm text-[var(--ctp-overlay1)]">{$t('users.singleConnection')}</div>
 		{/if}
 
 		<div class="flex justify-end">

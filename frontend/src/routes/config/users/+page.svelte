@@ -4,7 +4,7 @@
 	import { api } from '$lib/api/client';
 	import { notifications, unsavedChanges, formatBytes } from '$lib/stores';
 	import Modal from '$lib/components/shared/Modal.svelte';
-	import SubscriptionModal from '$lib/components/config/users/SubscriptionModal.svelte';
+	import ShareModal from '$lib/components/config/users/ShareModal.svelte';
 	import Sparkline from '$lib/components/shared/Sparkline.svelte';
 	import type { PanelUser, Inbound, UserTrafficResponse } from '$lib/types';
 
@@ -22,8 +22,8 @@
 	let bindTag = $state('');
 	let binding = $state(false);
 
-	// Subscription modal state.
-	let subUser = $state<PanelUser | null>(null);
+	// Share modal state.
+	let shareUser = $state<PanelUser | null>(null);
 	let publicHost = $state('');
 	let publicPort = $state<number | undefined>(undefined);
 
@@ -144,9 +144,9 @@
 		}
 	}
 
-	function openSubscription(u: PanelUser) {
+	function openShare(u: PanelUser) {
 		if (u.pending) return;
-		subUser = u;
+		shareUser = u;
 	}
 
 	// Server inbounds the user is NOT already bound to.
@@ -255,9 +255,9 @@
 							{#if u.pending}
 								<span class="text-xs text-[var(--ctp-overlay0)]">{$t('users.pendingNoLink')}</span>
 							{:else}
-								<button onclick={() => openSubscription(u)}
+								<button onclick={() => openShare(u)}
 									class="px-3 py-1.5 bg-[var(--ctp-primary)] text-white rounded-lg hover:opacity-90 transition-opacity text-sm">
-									{$t('users.subscription')}
+									{$t('users.share')}
 								</button>
 							{/if}
 							{#if !u.pending && u.id}
@@ -348,9 +348,9 @@
 	{/snippet}
 </Modal>
 
-{#if subUser}
-	<SubscriptionModal user={subUser} {publicHost} {publicPort}
-		onClose={() => (subUser = null)}
+{#if shareUser}
+	<ShareModal user={shareUser} {publicHost} {publicPort}
+		onClose={() => (shareUser = null)}
 		onChanged={load} />
 {/if}
 
