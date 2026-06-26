@@ -135,9 +135,13 @@ func (m *Manager) SetDesired(f func() EnableInput) {
 // `nil` and the conf lost all peers — they survived live (awg set) but vanished on the
 // next awg-quick restart/reboot.
 func (m *Manager) peerLines() []PeerLine {
+	now := m.store.now()
 	peers := m.store.List()
 	out := make([]PeerLine, 0, len(peers))
 	for _, p := range peers {
+		if p.ExpiresAt != 0 && now >= p.ExpiresAt {
+			continue // suspended: keep it out of the conf so Enable/Apply can't resurrect it
+		}
 		out = append(out, PeerLine{Name: p.Name, PublicKey: p.PublicKey, PSK: p.PresharedKey, AllowedIP: p.Address})
 	}
 	return out
@@ -223,6 +227,7 @@ func (m *Manager) AddPeer(ctx context.Context, rawName string) (PeerSummary, err
 	if err != nil {
 		return PeerSummary{}, err
 	}
+	used = append(used, m.usedFromStore()...) // also reserve suspended peers' IPs (NextFree dedupes)
 	server, err := netip.ParseAddr(m.serverIP)
 	if err != nil {
 		return PeerSummary{}, err
@@ -352,6 +357,19 @@ func (m *Manager) RemovePeer(ctx context.Context, pub string) error {
 		return err
 	}
 	return m.store.Delete(pub)
+}
+
+// usedFromStore returns the /32 host addresses of ALL stored peers (including
+// suspended ones, which are absent from the conf). Reserving these prevents a new
+// peer from grabbing a suspended peer's IP and breaking its later renewal.
+func (m *Manager) usedFromStore() []netip.Addr {
+	var used []netip.Addr
+	for _, p := range m.store.List() {
+		if pre, err := netip.ParsePrefix(p.Address); err == nil {
+			used = append(used, pre.Addr())
+		}
+	}
+	return used
 }
 
 // usedFromConf reads the assigned /32s from the on-disk .conf (source of truth).

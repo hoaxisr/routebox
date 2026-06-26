@@ -109,3 +109,39 @@ func TestSyncConfUsesTempFileNotProcessSubstitution(t *testing.T) {
 		t.Fatalf("expected awg syncconf with a temp file; calls=%v", f.calls)
 	}
 }
+
+func TestPeerLinesExcludesExpired(t *testing.T) {
+	f := newFakeRunner()
+	m := newTestManager(t, f)
+	m.store.now = func() int64 { return 1000 }
+	_ = m.store.Put(Peer{PublicKey: "live", Address: "10.10.0.2/32", ExpiresAt: 0})      // never
+	_ = m.store.Put(Peer{PublicKey: "future", Address: "10.10.0.3/32", ExpiresAt: 2000}) // active
+	_ = m.store.Put(Peer{PublicKey: "gone", Address: "10.10.0.4/32", ExpiresAt: 1000})   // expired (now>=exp)
+
+	got := map[string]bool{}
+	for _, pl := range m.peerLines() {
+		got[pl.PublicKey] = true
+	}
+	if !got["live"] || !got["future"] || got["gone"] {
+		t.Fatalf("peerLines filter wrong: %v", got)
+	}
+}
+
+func TestAddPeerReservesSuspendedIP(t *testing.T) {
+	f := newFakeRunner()
+	m := newTestManager(t, f)
+	m.store.now = func() int64 { return 1000 }
+	os.MkdirAll(filepath.Dir(m.confPath), 0700)
+	// conf has ONLY the interface — no peer blocks (the suspended peer is off-conf)
+	os.WriteFile(m.confPath, []byte("[Interface]\nListenPort = 51820\n"), 0600)
+	// a suspended peer holding .2 lives only in the store
+	_ = m.store.Put(Peer{PublicKey: "susp", Address: "10.10.0.2/32", ExpiresAt: 500})
+
+	sum, err := m.AddPeer(context.Background(), "new")
+	if err != nil {
+		t.Fatalf("AddPeer: %v", err)
+	}
+	if sum.Address == "10.10.0.2/32" {
+		t.Fatalf("AddPeer reused a suspended peer's IP: %s", sum.Address)
+	}
+}
