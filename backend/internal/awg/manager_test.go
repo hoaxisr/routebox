@@ -219,3 +219,54 @@ func TestSweepExpiredSuspendsLivePeer(t *testing.T) {
 		t.Fatal("SweepExpired must keep the store secret")
 	}
 }
+
+func TestSweepExpiredSkipsRenewedPeer(t *testing.T) {
+	f := newFakeRunner()
+	m := newTestManager(t, f)
+	seedConf(t, m)
+	// peer is expired at snapshot time and live on the interface
+	_ = m.store.Put(Peer{PublicKey: "old", PresharedKey: "p", Address: "10.10.0.2/32", ExpiresAt: 1000})
+	f.outputs["awg show awg-rb0"] = "peer: old\n"
+	m.appendPeerToConf(PeerLine{Name: "x", PublicKey: "old", PSK: "p", AllowedIP: "10.10.0.2/32"})
+	// side-effecting clock: the 2nd now() call is the under-lock re-read; simulate a
+	// concurrent RenewPeer landing right then by extending the peer's expiry to the future.
+	calls := 0
+	m.store.now = func() int64 {
+		calls++
+		if calls == 2 {
+			p, _ := m.store.Get("old")
+			p.ExpiresAt = 999999
+			_ = m.store.Put(p)
+		}
+		return 2000
+	}
+
+	m.SweepExpired(context.Background())
+
+	// the renewed peer must NOT be suspended: no live remove, conf block intact
+	if f.sawContains("awg set awg-rb0 peer old remove") {
+		t.Fatalf("renewed-during-sweep peer was wrongly suspended; calls=%v", f.calls)
+	}
+	data, _ := os.ReadFile(m.confPath)
+	if !strings.Contains(string(data), "PublicKey = old") {
+		t.Fatalf("renewed peer's conf block was removed:\n%s", data)
+	}
+}
+
+func TestRenewPeerNoDuplicateConfBlock(t *testing.T) {
+	f := newFakeRunner()
+	m := newTestManager(t, f)
+	seedConf(t, m)
+	m.store.now = func() int64 { return 1000 }
+	// active peer already present in the conf
+	_ = m.store.Put(Peer{PublicKey: validPub, PresharedKey: "psk", Address: "10.10.0.2/32", Name: "bob", ExpiresAt: 5000})
+	m.appendPeerToConf(PeerLine{Name: "bob", PublicKey: validPub, PSK: "psk", AllowedIP: "10.10.0.2/32"})
+
+	if err := m.RenewPeer(context.Background(), validPub, 9000); err != nil {
+		t.Fatalf("RenewPeer: %v", err)
+	}
+	data, _ := os.ReadFile(m.confPath)
+	if n := strings.Count(string(data), "PublicKey = "+validPub); n != 1 {
+		t.Fatalf("admit must upsert (one block), got %d:\n%s", n, data)
+	}
+}

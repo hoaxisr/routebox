@@ -137,7 +137,7 @@
 {:else}
 	<div class="peer-list">
 		{#each peers as p (p.public_key)}
-			<div class="peer-row">
+			<div class="peer-row" class:dimmed={expiryStatus(p.expires_at, nowSec()) === 'suspended'}>
 				<span class="icon-badge">
 					<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" width="20" height="20"><rect x="5" y="2" width="14" height="20" rx="2" /><line x1="12" y1="18" x2="12.01" y2="18" /></svg>
 				</span>
@@ -281,6 +281,9 @@
 	}
 	.peer-row:hover {
 		background: var(--ctp-base);
+	}
+	.peer-row.dimmed {
+		opacity: 0.6;
 	}
 	.peer-info {
 		flex: 1;

@@ -424,11 +424,19 @@ func (m *Manager) SweepExpired(ctx context.Context) {
 	}
 	m.addMu.Lock()
 	defer m.addMu.Unlock()
+	now = m.store.now() // re-read under the lock; a RenewPeer may have landed since the snapshot
 	for _, pub := range live {
-		if expired[pub] {
-			if err := m.suspend(ctx, pub); err != nil {
-				log.Printf("awg: suspend expired peer %s: %v", pub, err)
-			}
+		if !expired[pub] {
+			continue
+		}
+		// Re-validate under the lock: a concurrent RenewPeer could have extended this
+		// peer's expiry after the snapshot. Suspending it now would strand it (off the
+		// interface, store says active, no self-heal), so skip it if it's no longer expired.
+		if p, ok := m.store.Get(pub); !ok || p.ExpiresAt == 0 || now < p.ExpiresAt {
+			continue
+		}
+		if err := m.suspend(ctx, pub); err != nil {
+			log.Printf("awg: suspend expired peer %s: %v", pub, err)
 		}
 	}
 }
