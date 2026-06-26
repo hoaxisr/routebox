@@ -374,6 +374,11 @@ func main() {
 	awgMgr.Rehydrate(context.Background(), awgDesired())
 	apiHandler.SetAWG(awgMgr)
 
+	// AWG expiry sweep — tied to AWG's lifecycle, NOT the vps-only mode gate.
+	// SweepExpired is a cheap no-op when the interface is down.
+	stopAwgSweep := make(chan struct{})
+	go awg.RunSweepLoop(func() { awgMgr.SweepExpired(context.Background()) }, 30*time.Second, stopAwgSweep)
+
 	// Phase 4: warn (don't block) when pre-existing panel users share a name.
 	// auth_user matches by name, so duplicates over-block during lifecycle reject.
 	if dups := users.DuplicateNames(usersMgr.List()); len(dups) > 0 {
@@ -843,6 +848,7 @@ func main() {
 	close(stopUpdates)
 	close(stopSubs)
 	close(stopExpiry)
+	close(stopAwgSweep)
 	if trafficStore != nil {
 		trafficStore.Close()
 	}
