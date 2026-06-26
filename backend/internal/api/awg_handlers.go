@@ -2,8 +2,10 @@ package api
 
 import (
 	"encoding/json"
+	"errors"
 	"net/http"
 	"net/url"
+	"time"
 
 	"github.com/go-chi/chi/v5"
 
@@ -171,4 +173,39 @@ func (h *Handler) GetAWGPeerConfig(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Cache-Control", "no-store")
 	w.WriteHeader(http.StatusOK)
 	_, _ = w.Write([]byte(body))
+}
+
+// SetAWGPeerExpiry sets/extends/clears a peer's expiry (one operation backed by
+// RenewPeer, which also re-admits a suspended peer). Body: {"expires_at": <unix|0>}.
+// 0 clears expiry; a non-zero value must be strictly in the future.
+func (h *Handler) SetAWGPeerExpiry(w http.ResponseWriter, r *http.Request) {
+	if h.awg == nil {
+		writeError(w, http.StatusServiceUnavailable, "awg not available")
+		return
+	}
+	pub, err := awgPubKeyParam(r)
+	if err != nil {
+		writeError(w, http.StatusBadRequest, "invalid public key")
+		return
+	}
+	var body struct {
+		ExpiresAt int64 `json:"expires_at"`
+	}
+	if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
+		writeError(w, http.StatusBadRequest, "invalid body")
+		return
+	}
+	if body.ExpiresAt != 0 && body.ExpiresAt <= time.Now().Unix() {
+		writeError(w, http.StatusBadRequest, "expires_at must be 0 or in the future")
+		return
+	}
+	if err := h.awg.RenewPeer(r.Context(), pub, body.ExpiresAt); err != nil {
+		if errors.Is(err, awg.ErrPeerNotFound) {
+			writeError(w, http.StatusNotFound, "peer not found")
+			return
+		}
+		writeError(w, http.StatusInternalServerError, "failed to set expiry")
+		return
+	}
+	writeSuccess(w, h.awg.Status(r.Context()))
 }

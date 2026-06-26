@@ -571,6 +571,7 @@ func main() {
 				r.Post("/peers", apiHandler.CreateAWGPeer)
 				r.Delete("/peers/{publicKey}", apiHandler.DeleteAWGPeer)
 				r.Get("/peers/{publicKey}/config", apiHandler.GetAWGPeerConfig)
+				r.Patch("/peers/{publicKey}/expiry", apiHandler.SetAWGPeerExpiry)
 			})
 
 			// Route Rules CRUD

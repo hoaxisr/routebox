@@ -2,12 +2,14 @@ package api
 
 import (
 	"context"
+	"fmt"
 	"net/http"
 	"net/http/httptest"
 	"os"
 	"path/filepath"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/go-chi/chi/v5"
 
@@ -86,6 +88,7 @@ func newAWGTestHandler(t *testing.T) (*Handler, http.Handler) {
 		r.Post("/peers", h.CreateAWGPeer)
 		r.Delete("/peers/{publicKey}", h.DeleteAWGPeer)
 		r.Get("/peers/{publicKey}/config", h.GetAWGPeerConfig)
+		r.Patch("/peers/{publicKey}/expiry", h.SetAWGPeerExpiry)
 	})
 	return h, r
 }
@@ -158,6 +161,45 @@ func TestAWGConfigEndpointStatusCodes(t *testing.T) {
 	}
 	if !strings.Contains(rec.Body.String(), "[Interface]") {
 		t.Fatalf("body not a .conf:\n%s", rec.Body.String())
+	}
+}
+
+func TestSetAWGPeerExpiryPastIs400(t *testing.T) {
+	_, r := newAWGTestHandler(t)
+	rec := httptest.NewRecorder()
+	req := httptest.NewRequest(http.MethodPatch, "/api/awg/peers/"+knownPub+"/expiry",
+		strings.NewReader(`{"expires_at":1}`)) // far in the past
+	r.ServeHTTP(rec, req)
+	if rec.Code != http.StatusBadRequest {
+		t.Fatalf("past expiry = %d; want 400; body=%q", rec.Code, rec.Body.String())
+	}
+}
+
+func TestSetAWGPeerExpiryUnknownIs404(t *testing.T) {
+	_, r := newAWGTestHandler(t)
+	future := time.Now().Add(48 * time.Hour).Unix()
+	rec := httptest.NewRecorder()
+	req := httptest.NewRequest(http.MethodPatch, "/api/awg/peers/"+validButUnknown+"/expiry",
+		strings.NewReader(fmt.Sprintf(`{"expires_at":%d}`, future)))
+	r.ServeHTTP(rec, req)
+	if rec.Code != http.StatusNotFound {
+		t.Fatalf("unknown peer = %d; want 404; body=%q", rec.Code, rec.Body.String())
+	}
+}
+
+func TestSetAWGPeerExpirySetsIt(t *testing.T) {
+	h, r := newAWGTestHandler(t)
+	future := time.Now().Add(48 * time.Hour).Unix()
+	rec := httptest.NewRecorder()
+	req := httptest.NewRequest(http.MethodPatch, "/api/awg/peers/"+knownPub+"/expiry",
+		strings.NewReader(fmt.Sprintf(`{"expires_at":%d}`, future)))
+	r.ServeHTTP(rec, req)
+	if rec.Code != http.StatusOK {
+		t.Fatalf("set expiry = %d; want 200; body=%q", rec.Code, rec.Body.String())
+	}
+	got, ok := h.awg.Store().Get(knownPub)
+	if !ok || got.ExpiresAt != future {
+		t.Fatalf("ExpiresAt not stored: %#v ok=%v", got, ok)
 	}
 }
 

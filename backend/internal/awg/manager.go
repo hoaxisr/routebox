@@ -26,6 +26,7 @@ type PeerSummary struct {
 	Online        bool   `json:"online"`         // handshake within onlineWindowSec
 	Rx            int64  `json:"rx"`             // cumulative bytes received (since iface up)
 	Tx            int64  `json:"tx"`             // cumulative bytes sent (since iface up)
+	ExpiresAt     int64  `json:"expires_at"`     // unix sec; 0 = never expires
 }
 
 // onlineWindowSec: a peer counts as "online" if its last handshake is newer than
@@ -278,6 +279,7 @@ func (m *Manager) ListPeers(ctx context.Context) []PeerSummary {
 		out = append(out, PeerSummary{
 			Name: p.Name, PublicKey: p.PublicKey, Address: p.Address,
 			LastHandshake: ts, Online: isOnline(ts, now), Rx: x.rx, Tx: x.tx,
+			ExpiresAt: p.ExpiresAt,
 		})
 	}
 	return out
