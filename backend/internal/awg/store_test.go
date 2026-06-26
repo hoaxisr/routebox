@@ -140,3 +140,21 @@ func TestSecretsNotInConfigBackupDir(t *testing.T) {
 		t.Fatal("awg secrets must NOT live in the config backup dir")
 	}
 }
+
+func TestStoreRoundTripsExpiresAt(t *testing.T) {
+	dir := t.TempDir()
+	path := filepath.Join(dir, "peers.toml")
+	s := NewStore(path)
+	if err := s.Put(Peer{PublicKey: "pk1", Address: "10.0.0.2/32", ExpiresAt: 1893456000}); err != nil {
+		t.Fatal(err)
+	}
+	// reload from disk and confirm the field survives the TOML round-trip
+	s2 := NewStore(path)
+	if err := s2.Load(); err != nil {
+		t.Fatal(err)
+	}
+	got, ok := s2.Get("pk1")
+	if !ok || got.ExpiresAt != 1893456000 {
+		t.Fatalf("ExpiresAt not round-tripped: %#v ok=%v", got, ok)
+	}
+}

@@ -20,6 +20,7 @@ type Peer struct {
 	Address      string `toml:"address"` // "<ip>/32"
 	Name         string `toml:"name"`
 	CreatedAt    int64  `toml:"created_at"`
+	ExpiresAt    int64  `toml:"expires_at"` // unix sec; 0 = never expires
 }
 
 // Store persists peer secrets to peers.toml (0600, dir 0700), atomically, mirroring
@@ -147,6 +148,13 @@ func (s *Store) listLocked() []Peer {
 	return out
 }
 
+// SUSPENSION SAFETY: Reconcile deletes any stored peer whose pubkey is absent from
+// confPubs. A suspended (expired) peer is intentionally absent from the conf, so if
+// this is ever wired to run on Apply/Enable it would DESTROY suspended peers. It has
+// zero production callers today (only tests), which is the only reason suspension is
+// safe. Before wiring it, union the store's own pubkeys into confPubs (or feed it
+// store-derived pubkeys) so suspended peers are never dropped.
+//
 // Reconcile drops secrets whose PublicKey is absent from confPubs (the source of
 // truth), and returns the live-device pubkeys absent from confPubs (the caller
 // removes those from the kernel). livePubs is produced by parseShowPeers — the
