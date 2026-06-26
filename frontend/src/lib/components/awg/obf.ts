@@ -25,7 +25,9 @@ function sPair(s1lo: number, s1hi: number, s2lo: number, s2hi: number): [number,
 	return [s1, s2];
 }
 
-export const OBF_NUM = ['jc', 'jmin', 'jmax', 's1', 's2', 's3', 's4'] as const;
+export const OBF_J = ['jc', 'jmin', 'jmax'] as const;
+export const OBF_S = ['s1', 's2', 's3', 's4'] as const;
+export const OBF_NUM = [...OBF_J, ...OBF_S] as const;
 export const OBF_STR = ['h1', 'h2', 'h3', 'h4'] as const;
 
 export const PRESETS: Record<string, () => AwgObf> = {

@@ -1,7 +1,7 @@
 <script lang="ts">
 	import { t } from 'svelte-i18n';
 	import type { AwgObf } from '$lib/types';
-	import { PRESETS, OBF_NUM, OBF_STR } from './obf';
+	import { PRESETS, OBF_J, OBF_S, OBF_STR } from './obf';
 
 	interface Props {
 		obf: AwgObf;
@@ -56,12 +56,22 @@
 		<div class="adv-body">
 			<p class="adv-note">{$t('awg.advancedNote')}</p>
 			<div class="adv-grid">
-				{#each OBF_NUM as k (k)}
+				{#each OBF_J as k (k)}
 					<div class="mini-field">
 						<label for="obf-{k}">{k}</label>
 						<input id="obf-{k}" type="number" bind:value={obf[k]} oninput={markCustom} />
 					</div>
 				{/each}
+			</div>
+			<div class="adv-grid">
+				{#each OBF_S as k (k)}
+					<div class="mini-field">
+						<label for="obf-{k}">{k}</label>
+						<input id="obf-{k}" type="number" bind:value={obf[k]} oninput={markCustom} />
+					</div>
+				{/each}
+			</div>
+			<div class="adv-grid">
 				{#each OBF_STR as k (k)}
 					<div class="mini-field">
 						<label for="obf-{k}">{k}</label>
@@ -145,6 +155,9 @@
 		display: grid;
 		grid-template-columns: repeat(4, 1fr);
 		gap: 0.75rem;
+	}
+	.adv-grid + .adv-grid {
+		margin-top: 0.75rem;
 	}
 	.mini-field {
 		display: flex;
