@@ -5,6 +5,7 @@
 	import { notifications } from '$lib/stores';
 	import type { PanelUser } from '$lib/types';
 	import { effectiveSubUrl } from './subscription-url';
+	import { pillLabel, defaultBinding, loadConnectionLink } from './share-links';
 
 	interface Props {
 		user: PanelUser;
@@ -21,9 +22,46 @@
 	let busy = $state(false);
 	let mode = $state<'sub' | 'single'>('sub');
 
+	let selectedTag = $state('');
+	let link = $state('');
+	let linkError = $state('');
+	let singleQr = $state('');
+	let loadingLink = $state(false);
+
 	const subUrl = $derived(
 		effectiveSubUrl({ token, token_disabled: disabled }, publicHost, publicPort)
 	);
+
+	async function loadLink(tag: string) {
+		selectedTag = tag;
+		linkError = '';
+		link = '';
+		singleQr = '';
+		if (!publicHost) return; // banner handles this; never call the API without a host
+		loadingLink = true;
+		const res = await loadConnectionLink(
+			api.getUserLink,
+			user.id,
+			tag,
+			publicHost,
+			$t('users.linkBuildError')
+		);
+		link = res.link;
+		linkError = res.error;
+		if (res.link) singleQr = await QRCode.toDataURL(res.link, { width: 256, margin: 1 });
+		loadingLink = false;
+	}
+
+	// Auto-select the first protocol the first time Single mode is opened. The
+	// `!selectedTag` guard is load-bearing: loadLink() sets selectedTag synchronously
+	// before its first await, so the effect re-runs as a no-op and never loops. Do NOT
+	// reset selectedTag on mode-switch or this will re-fetch on every toggle.
+	$effect(() => {
+		if (mode === 'single' && !selectedTag) {
+			const b = defaultBinding(user.bindings);
+			if (b) void loadLink(b.inbound_tag);
+		}
+	});
 
 	async function renderQr() {
 		if (!subUrl) {
@@ -42,13 +80,13 @@
 		renderQr();
 	});
 
-	async function copy() {
+	async function copy(text: string) {
 		try {
 			if (navigator.clipboard && window.isSecureContext) {
-				await navigator.clipboard.writeText(subUrl);
+				await navigator.clipboard.writeText(text);
 			} else {
 				const ta = document.createElement('textarea');
-				ta.value = subUrl;
+				ta.value = text;
 				ta.style.position = 'fixed';
 				ta.style.opacity = '0';
 				document.body.appendChild(ta);
@@ -149,7 +187,7 @@
 			<label class="block text-xs font-medium text-[var(--ctp-overlay1)]">{$t('users.subscriptionUrl')}</label>
 			<div class="bg-[var(--ctp-surface0)] rounded-lg p-2 text-xs font-mono break-all text-[var(--ctp-text)]">{subUrl}</div>
 			<div class="flex gap-2">
-				<button type="button" onclick={copy}
+				<button type="button" onclick={() => copy(subUrl)}
 					class="flex-1 px-4 py-2 bg-[var(--ctp-surface1)] text-[var(--ctp-text)] rounded-lg hover:bg-[var(--ctp-surface2)]">
 					{$t('common.copy')}
 				</button>
@@ -164,8 +202,42 @@
 			</div>
 		{/if}
 		{:else}
-			<!-- Task 3 fills the single-connection panel here -->
-			<div class="text-sm text-[var(--ctp-overlay1)]">{$t('users.singleConnection')}</div>
+			{#if !publicHost}
+				<div class="text-sm text-[var(--ctp-overlay1)]">
+					{$t('users.noPublicHost')}
+					<a href="/config/settings" class="text-[var(--ctp-primary)] underline ml-1">{$t('users.openSettings')}</a>
+				</div>
+			{:else if user.bindings.length === 0}
+				<div class="text-sm text-[var(--ctp-overlay1)]">{$t('users.noConnections')}</div>
+			{:else}
+				<label class="block text-xs font-medium text-[var(--ctp-overlay1)]">{$t('users.selectProtocol')}</label>
+				<div class="flex flex-wrap gap-2">
+					{#each user.bindings as b (b.inbound_tag)}
+						<button type="button" onclick={() => loadLink(b.inbound_tag)}
+							class="px-3 py-1.5 rounded-lg text-sm border transition-colors {selectedTag === b.inbound_tag ? 'bg-[var(--ctp-primary)] text-white border-[var(--ctp-primary)]' : 'text-[var(--ctp-text)] border-[var(--ctp-surface2)] hover:bg-[var(--ctp-surface0)]'}">
+							{pillLabel(b)}
+						</button>
+					{/each}
+				</div>
+
+				{#if linkError}
+					<div class="text-sm text-[var(--ctp-red)]">{linkError}</div>
+				{:else if loadingLink}
+					<div class="text-sm text-[var(--ctp-overlay1)]">{$t('common.loading')}</div>
+				{:else if link}
+					{#if singleQr}
+						<div class="flex justify-center">
+							<img src={singleQr} alt="Connection QR" class="rounded-lg bg-white p-2" width="256" height="256" />
+						</div>
+					{/if}
+					<label class="block text-xs font-medium text-[var(--ctp-overlay1)]">{$t('users.connectionLink')}</label>
+					<div class="bg-[var(--ctp-surface0)] rounded-lg p-2 text-xs font-mono break-all text-[var(--ctp-text)]">{link}</div>
+					<button type="button" onclick={() => copy(link)}
+						class="w-full px-4 py-2 bg-[var(--ctp-surface1)] text-[var(--ctp-text)] rounded-lg hover:bg-[var(--ctp-surface2)]">
+						{$t('common.copy')}
+					</button>
+				{/if}
+			{/if}
 		{/if}
 
 		<div class="flex justify-end">
