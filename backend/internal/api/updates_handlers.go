@@ -4,17 +4,33 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"log"
 	"net/http"
 	"os"
 	"runtime"
+	"syscall"
 	"time"
 
 	"routebox/backend/internal/updates"
 )
 
-// scheduleExit is swapped in tests; production exits for systemd respawn.
+// scheduleExit is swapped in tests; production re-execs the running process
+// onto the freshly-swapped binary. syscall.Exec replaces the image in place
+// (same PID), so the restart works under any systemd Restart= policy — and
+// even outside systemd — instead of relying on a respawn after os.Exit.
 var scheduleExit = func() {
-	time.AfterFunc(500*time.Millisecond, func() { os.Exit(0) })
+	time.AfterFunc(500*time.Millisecond, func() {
+		exe, err := os.Executable()
+		if err != nil {
+			exe = os.Args[0]
+		}
+		if err := syscall.Exec(exe, os.Args, os.Environ()); err != nil {
+			// Re-exec failed: fall back to a plain exit so a systemd
+			// Restart=always unit still respawns the new binary.
+			log.Printf("updates: re-exec %s failed: %v; exiting for respawn", exe, err)
+			os.Exit(0)
+		}
+	})
 }
 
 type targetStatus struct {

@@ -281,13 +281,16 @@ func TestApplySelfUpdateSeam(t *testing.T) {
 		Sha256URL: srv.URL + "/checksums.txt",
 	}
 
+	// Self-update re-execs the running binary in-place (syscall.Exec in the
+	// handler), so it restarts regardless of the unit's Restart= policy or
+	// whether systemd is present at all. Apply itself must NOT exit.
 	t.Setenv("INVOCATION_ID", "") // not systemd
 	res, err := u.Apply(target, rel)
 	if err != nil {
 		t.Fatalf("Apply: %v", err)
 	}
-	if res.Restarting {
-		t.Error("Restarting must be false without INVOCATION_ID")
+	if !res.Restarting {
+		t.Error("Restarting must be true for self-update even without INVOCATION_ID")
 	}
 
 	copyFile(t, "/bin/true", path) // reset for second run

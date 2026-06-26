@@ -164,7 +164,10 @@ func (u *Updater) apply(t Target, rel ReleaseInfo) (ApplyResult, error) {
 	// 4. Restart
 	u.setPhase(t.Name, PhaseRestart)
 	if t.SelfUpdate {
-		return ApplyResult{Restarting: RunningUnderSystemd()}, nil
+		// The handler re-execs the running process onto the new binary
+		// (syscall.Exec), so the restart does not depend on systemd's
+		// Restart= policy — or on systemd at all.
+		return ApplyResult{Restarting: true}, nil
 	}
 	if t.Restart != nil {
 		if err := t.Restart(); err != nil {
@@ -301,10 +304,4 @@ func smokeTest(path string) error {
 		return fmt.Errorf("%s version: %w (%s)", path, err, strings.TrimSpace(string(out)))
 	}
 	return nil
-}
-
-// RunningUnderSystemd reports whether the process was started by systemd
-// (which sets INVOCATION_ID) and will therefore be respawned after exit.
-func RunningUnderSystemd() bool {
-	return os.Getenv("INVOCATION_ID") != ""
 }
