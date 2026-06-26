@@ -4,6 +4,7 @@ import (
 	"context"
 	"crypto/rand"
 	"fmt"
+	"log"
 	"net"
 	"net/netip"
 	"os"
@@ -77,6 +78,9 @@ type Manager struct {
 
 // ErrSubnetExhausted is returned by AddPeer when no /32 host remains free.
 var ErrSubnetExhausted = fmt.Errorf("subnet exhausted")
+
+// ErrPeerNotFound is returned by RenewPeer when the pubkey has no stored secret.
+var ErrPeerNotFound = fmt.Errorf("peer not found")
 
 // Config seeds a Manager's non-runtime fields (canonical values are otherwise
 // re-derived on Enable). publicHost is purely informational in Status; the
@@ -250,26 +254,12 @@ func (m *Manager) AddPeer(ctx context.Context, rawName string) (PeerSummary, err
 		return PeerSummary{}, err
 	}
 
-	// PSK temp file (0600), removed after the live set.
-	pskFile := filepath.Join(m.pskTmpDir, strconv.FormatInt(time.Now().UnixNano(), 10)+".psk")
-	if err := os.WriteFile(pskFile, []byte(psk+"\n"), 0600); err != nil {
+	peer := Peer{PublicKey: pub, PrivateKey: priv, PresharedKey: psk, Address: allowedIP, Name: name}
+	if err := m.admit(ctx, peer); err != nil {
 		return PeerSummary{}, err
 	}
-	defer os.Remove(pskFile)
-
-	if err := m.iface_SetPeer(ctx, pub, pskFile, allowedIP); err != nil {
-		return PeerSummary{}, fmt.Errorf("awg set: %w", err)
-	}
-
-	// Append [Peer] to the .conf; rollback the live add on failure.
-	line := PeerLine{Name: name, PublicKey: pub, PSK: psk, AllowedIP: allowedIP}
-	if err := m.appendPeerToConf(line); err != nil {
-		_ = m.iface_RemovePeer(ctx, pub)
-		return PeerSummary{}, err
-	}
-	if err := m.store.Put(Peer{PublicKey: pub, PrivateKey: priv, PresharedKey: psk, Address: allowedIP, Name: name}); err != nil {
-		_ = m.iface_RemovePeer(ctx, pub)
-		_ = m.rewriteConfWithout(pub)
+	if err := m.store.Put(peer); err != nil {
+		_ = m.suspend(ctx, pub) // roll the live+conf add back
 		return PeerSummary{}, err
 	}
 	return PeerSummary{Name: name, PublicKey: pub, Address: allowedIP}, nil
@@ -342,6 +332,41 @@ func joinHostPort(host string, port int) string {
 	return net.JoinHostPort(host, strconv.Itoa(port))
 }
 
+// admit applies a peer to the live interface and writes its [Peer] block to the
+// conf (idempotent: any existing block for the same key is replaced, so calling it
+// on an already-live peer cannot duplicate the stanza). Shared by AddPeer (new
+// peer) and RenewPeer (re-admitting a suspended peer from its stored secret).
+// Caller holds m.addMu.
+func (m *Manager) admit(ctx context.Context, p Peer) error {
+	pskFile := filepath.Join(m.pskTmpDir, strconv.FormatInt(time.Now().UnixNano(), 10)+".psk")
+	if err := os.WriteFile(pskFile, []byte(p.PresharedKey+"\n"), 0600); err != nil {
+		return err
+	}
+	defer os.Remove(pskFile)
+	if err := m.iface_SetPeer(ctx, p.PublicKey, pskFile, p.Address); err != nil {
+		return fmt.Errorf("awg set: %w", err)
+	}
+	if err := m.rewriteConfWithout(p.PublicKey); err != nil { // drop any stale block (idempotent upsert)
+		_ = m.iface_RemovePeer(ctx, p.PublicKey)
+		return err
+	}
+	if err := m.appendPeerToConf(PeerLine{Name: p.Name, PublicKey: p.PublicKey, PSK: p.PresharedKey, AllowedIP: p.Address}); err != nil {
+		_ = m.iface_RemovePeer(ctx, p.PublicKey)
+		return err
+	}
+	return nil
+}
+
+// suspend removes a peer from the live interface and the on-disk conf, LEAVING the
+// store secret intact. Shared by RemovePeer (which then deletes the secret) and
+// SweepExpired (which keeps it). Caller holds m.addMu.
+func (m *Manager) suspend(ctx context.Context, pub string) error {
+	if err := m.iface_RemovePeer(ctx, pub); err != nil {
+		return fmt.Errorf("awg set remove: %w", err)
+	}
+	return m.rewriteConfWithout(pub)
+}
+
 // RemovePeer removes a peer live and from the on-disk .conf + secret store.
 func (m *Manager) RemovePeer(ctx context.Context, pub string) error {
 	if _, err := ValidatePublicKey(pub); err != nil {
@@ -349,14 +374,61 @@ func (m *Manager) RemovePeer(ctx context.Context, pub string) error {
 	}
 	m.addMu.Lock()
 	defer m.addMu.Unlock()
-
-	if err := m.iface_RemovePeer(ctx, pub); err != nil {
-		return fmt.Errorf("awg set remove: %w", err)
-	}
-	if err := m.rewriteConfWithout(pub); err != nil {
+	if err := m.suspend(ctx, pub); err != nil {
 		return err
 	}
 	return m.store.Delete(pub)
+}
+
+// RenewPeer sets a peer's ExpiresAt and ensures it is admitted to the live
+// interface + conf. expiresAt is 0 (never) or a future unix ts (the handler
+// validates), so the peer is always active afterward; admit is idempotent, so this
+// is safe whether the peer was suspended or already live. ErrPeerNotFound if unknown.
+func (m *Manager) RenewPeer(ctx context.Context, pub string, expiresAt int64) error {
+	if _, err := ValidatePublicKey(pub); err != nil {
+		return err
+	}
+	m.addMu.Lock()
+	defer m.addMu.Unlock()
+	p, ok := m.store.Get(pub)
+	if !ok {
+		return ErrPeerNotFound
+	}
+	p.ExpiresAt = expiresAt
+	if err := m.store.Put(p); err != nil {
+		return err
+	}
+	return m.admit(ctx, p)
+}
+
+// SweepExpired suspends every peer whose ExpiresAt has passed and that is still on
+// the live interface, keeping its store secret for later renewal. Idempotent and a
+// cheap no-op when the interface is down (iface_ShowPeers errors → return). Run by
+// the sweep ticker.
+func (m *Manager) SweepExpired(ctx context.Context) {
+	now := m.store.now()
+	expired := map[string]bool{}
+	for _, p := range m.store.List() {
+		if p.ExpiresAt != 0 && now >= p.ExpiresAt {
+			expired[p.PublicKey] = true
+		}
+	}
+	if len(expired) == 0 {
+		return
+	}
+	live, err := m.iface_ShowPeers(ctx)
+	if err != nil {
+		return // interface down / not enabled — nothing to enforce now
+	}
+	m.addMu.Lock()
+	defer m.addMu.Unlock()
+	for _, pub := range live {
+		if expired[pub] {
+			if err := m.suspend(ctx, pub); err != nil {
+				log.Printf("awg: suspend expired peer %s: %v", pub, err)
+			}
+		}
+	}
 }
 
 // usedFromStore returns the /32 host addresses of ALL stored peers (including

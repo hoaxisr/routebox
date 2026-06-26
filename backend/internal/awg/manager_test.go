@@ -145,3 +145,77 @@ func TestAddPeerReservesSuspendedIP(t *testing.T) {
 		t.Fatalf("AddPeer reused a suspended peer's IP: %s", sum.Address)
 	}
 }
+
+func seedConf(t *testing.T, m *Manager) {
+	t.Helper()
+	os.MkdirAll(filepath.Dir(m.confPath), 0700)
+	os.WriteFile(m.confPath, []byte("[Interface]\nListenPort = 51820\n"), 0600)
+}
+
+// validPub / otherValidPub are real 32-byte std-base64 keys (ValidatePublicKey is a
+// 32-byte-decode length check), required because RenewPeer validates its pub arg.
+const validPub = "AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAEs="
+const otherValidPub = "MTIzNDU2Nzg5MDEyMzQ1Njc4OTAxMjM0NTY3ODkwMTI="
+
+func TestRenewPeerReadmitsSuspended(t *testing.T) {
+	f := newFakeRunner()
+	m := newTestManager(t, f)
+	seedConf(t, m)
+	m.store.now = func() int64 { return 1000 }
+	// a suspended peer: expired, off the conf, secret retained
+	_ = m.store.Put(Peer{PublicKey: validPub, PresharedKey: "psk", Address: "10.10.0.2/32", Name: "bob", ExpiresAt: 500})
+
+	if err := m.RenewPeer(context.Background(), validPub, 5000); err != nil {
+		t.Fatalf("RenewPeer: %v", err)
+	}
+	// stored expiry updated
+	got, _ := m.store.Get(validPub)
+	if got.ExpiresAt != 5000 {
+		t.Fatalf("ExpiresAt not updated: %d", got.ExpiresAt)
+	}
+	// re-admitted live with the SAME key + IP
+	if !f.sawContains("awg set awg-rb0 peer " + validPub) {
+		t.Fatalf("expected live re-admit; calls=%v", f.calls)
+	}
+	// [Peer] block back in the conf, exactly once
+	data, _ := os.ReadFile(m.confPath)
+	if n := strings.Count(string(data), "PublicKey = "+validPub); n != 1 {
+		t.Fatalf("expected exactly one conf block, got %d:\n%s", n, data)
+	}
+}
+
+func TestRenewPeerUnknown(t *testing.T) {
+	m := newTestManager(t, newFakeRunner())
+	seedConf(t, m)
+	if err := m.RenewPeer(context.Background(), otherValidPub, 5000); err != ErrPeerNotFound {
+		t.Fatalf("want ErrPeerNotFound, got %v", err)
+	}
+}
+
+func TestSweepExpiredSuspendsLivePeer(t *testing.T) {
+	f := newFakeRunner()
+	m := newTestManager(t, f)
+	seedConf(t, m)
+	m.store.now = func() int64 { return 2000 }
+	// expired peer present in store AND live on the interface
+	_ = m.store.Put(Peer{PublicKey: "old", PresharedKey: "p", Address: "10.10.0.2/32", ExpiresAt: 1000})
+	// make iface_ShowPeers (`awg show <iface>`) report it live. The fakeRunner returns
+	// scripted output keyed by the joined argv; parseShowPeers reads "peer: <key>" lines.
+	f.outputs["awg show awg-rb0"] = "peer: old\n"
+	// also put its block in the conf so we can prove it gets rewritten out
+	m.appendPeerToConf(PeerLine{Name: "x", PublicKey: "old", PSK: "p", AllowedIP: "10.10.0.2/32"})
+
+	m.SweepExpired(context.Background())
+
+	if !f.sawContains("awg set awg-rb0 peer old remove") {
+		t.Fatalf("expected live remove; calls=%v", f.calls)
+	}
+	data, _ := os.ReadFile(m.confPath)
+	if strings.Contains(string(data), "PublicKey = old") {
+		t.Fatalf("expired peer still in conf:\n%s", data)
+	}
+	// secret KEPT for later renewal
+	if _, ok := m.store.Get("old"); !ok {
+		t.Fatal("SweepExpired must keep the store secret")
+	}
+}
