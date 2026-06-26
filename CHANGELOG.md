@@ -4,6 +4,18 @@ All notable changes to RouteBox are documented here.
 
 ## [Unreleased]
 
+## [0.21.1] - 2026-06-26
+
+### Fixes
+
+- **Self-update no longer kills the panel on `Restart=on-failure` units** — the in-app updater
+  used to swap the binary and `os.Exit(0)`, assuming systemd would respawn it. Units installed
+  with `Restart=on-failure` do not respawn on a clean exit, so the panel went down and stayed down
+  after an update ("crash"). It now re-execs the running process onto the new binary in place
+  (`syscall.Exec`, same PID): restart works under any `Restart=` policy and even outside systemd.
+  Existing installs still need this binary before the fix takes effect — update once more, then
+  future self-updates restart cleanly. New install/VPS units now ship `Restart=always`.
+
 ## [0.21.0] - 2026-06-26
 
 ### Features
