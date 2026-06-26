@@ -27,12 +27,14 @@
 	let linkError = $state('');
 	let singleQr = $state('');
 	let loadingLink = $state(false);
+	let loadSeq = 0; // request-sequencing token for loadLink (not reactive)
 
 	const subUrl = $derived(
 		effectiveSubUrl({ token, token_disabled: disabled }, publicHost, publicPort)
 	);
 
 	async function loadLink(tag: string) {
+		const seq = ++loadSeq;
 		selectedTag = tag;
 		linkError = '';
 		link = '';
@@ -46,9 +48,11 @@
 			publicHost,
 			$t('users.linkBuildError')
 		);
+		if (seq !== loadSeq) return; // a newer pill selection superseded this request
 		link = res.link;
 		linkError = res.error;
 		if (res.link) singleQr = await QRCode.toDataURL(res.link, { width: 256, margin: 1 });
+		if (seq !== loadSeq) return; // re-check after the QR await
 		loadingLink = false;
 	}
 
