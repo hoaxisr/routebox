@@ -183,9 +183,9 @@
 					<input type="date" bind:value={renewDate} class="renew-date" />
 					<button type="button" class="renew-preset" onclick={() => applyPreset(30)}>+30d</button>
 					<button type="button" class="renew-preset" onclick={() => applyPreset(90)}>+90d</button>
-					<button type="button" class="renew-preset" onclick={() => (renewDate = '')}>{$t('awg.never')}</button>
+					<button type="button" class="renew-preset" onclick={() => (renewDate = '')}>{$t('awg.neverExpiry')}</button>
 					<span class="renew-spacer"></span>
-					<button type="button" class="peer-btn primary" disabled={savingExpiry} onclick={() => saveExpiry(p)}>{$t('awg.save')}</button>
+					<button type="button" class="peer-btn primary" disabled={savingExpiry} onclick={() => saveExpiry(p)}>{$t('awg.saveExpiry')}</button>
 					<button type="button" class="peer-btn" onclick={() => (renewing = null)}>{$t('awg.cancel')}</button>
 				</div>
 			{/if}

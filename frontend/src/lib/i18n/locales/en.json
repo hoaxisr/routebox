@@ -1660,6 +1660,8 @@
     "initSizes": "Init packet junk sizes (S1–S4)",
     "magicHeaders": "Magic headers (H1–H4)",
     "save": "Save settings",
+    "saveExpiry": "Save",
+    "neverExpiry": "Never",
     "settingsSaved": "Settings saved",
     "saveFailed": "Failed to save settings",
     "apply": "Apply & restart",
