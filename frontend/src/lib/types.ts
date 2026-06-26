@@ -995,6 +995,7 @@ export interface AwgPeer {
 	online: boolean;        // handshake within the server's online window
 	rx: number;             // cumulative bytes received (since iface up)
 	tx: number;             // cumulative bytes sent (since iface up)
+	expires_at: number;     // unix seconds; 0 = never expires
 }
 
 // AmneziaWG obfuscation parameters (junk packets, init-packet sizes, magic headers)

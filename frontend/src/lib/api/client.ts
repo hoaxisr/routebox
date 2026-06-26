@@ -249,6 +249,11 @@ export const api = {
 	deleteAwgPeer: (pk: string) =>
 		requestRaw<void>(`/awg/peers/${encodeURIComponent(pk)}`, { method: 'DELETE' }),
 	getAwgPeerConfig: (pk: string) => requestText(`/awg/peers/${encodeURIComponent(pk)}/config`),
+	setAwgPeerExpiry: (pk: string, expiresAt: number) =>
+		requestRaw<void>(`/awg/peers/${encodeURIComponent(pk)}/expiry`, {
+			method: 'PATCH',
+			body: JSON.stringify({ expires_at: expiresAt })
+		}),
 
 	// Rule Sets CRUD
 	listRuleSets: () => request<RuleSet[]>('/route/rule-sets'),

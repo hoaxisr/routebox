@@ -6,6 +6,7 @@
 	import Modal from '$lib/components/shared/Modal.svelte';
 	import type { AwgPeer } from '$lib/types';
 	import { formatBytes } from '$lib/stores/settings';
+	import { expiryStatus, unixToDateInput, dateInputToUnix, presetExpiry } from './peerExpiry';
 
 	interface Props {
 		peers: AwgPeer[];
@@ -17,6 +18,35 @@
 
 	let newName = $state('');
 	let adding = $state(false);
+
+	let renewing = $state<string | null>(null); // public_key of the peer whose renew row is open
+	let renewDate = $state(''); // YYYY-MM-DD bound to the date input (empty = never)
+	let savingExpiry = $state(false);
+
+	function nowSec(): number {
+		return Math.floor(Date.now() / 1000);
+	}
+
+	function openRenew(p: AwgPeer) {
+		renewing = p.public_key;
+		renewDate = unixToDateInput(p.expires_at);
+	}
+	function applyPreset(days: number) {
+		renewDate = unixToDateInput(presetExpiry(days, nowSec()));
+	}
+	async function saveExpiry(p: AwgPeer) {
+		savingExpiry = true;
+		try {
+			await api.setAwgPeerExpiry(p.public_key, dateInputToUnix(renewDate));
+			notifications.success($t('awg.expirySaved'));
+			renewing = null;
+			await onChange();
+		} catch (e) {
+			notifications.error(`${$t('awg.expiryFailed')}: ${e}`);
+		} finally {
+			savingExpiry = false;
+		}
+	}
 
 	// "last seen" relative label from a unix-seconds handshake (0 = never).
 	function lastSeen(ts: number): string {
@@ -112,16 +142,29 @@
 					<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" width="20" height="20"><rect x="5" y="2" width="14" height="20" rx="2" /><line x1="12" y1="18" x2="12.01" y2="18" /></svg>
 				</span>
 				<div class="peer-info">
-					<div class="peer-name"><span class="conn-dot" class:on={p.online} title={p.online ? $t('awg.online') : $t('awg.offline')}></span>{p.name || '(unnamed)'}</div>
+					<div class="peer-name">
+						<span class="conn-dot" class:on={p.online} title={p.online ? $t('awg.online') : $t('awg.offline')}></span>
+						{p.name || '(unnamed)'}
+						{#if expiryStatus(p.expires_at, nowSec()) === 'suspended'}
+							<span class="susp-badge">{$t('awg.suspended')}</span>
+						{/if}
+					</div>
 					<div class="peer-meta">
 						<span class="addr">{p.address}</span>
 						<span class="dot-sep">·</span>
 						<span class="seen">{p.online ? $t('awg.online') : lastSeen(p.last_handshake)}</span>
 						<span class="dot-sep">·</span>
 						<span class="xfer">↓ {formatBytes(p.rx)} &nbsp;↑ {formatBytes(p.tx)}</span>
+						{#if expiryStatus(p.expires_at, nowSec()) === 'active'}
+							<span class="dot-sep">·</span>
+							<span class="exp">{$t('awg.expires', { values: { date: unixToDateInput(p.expires_at) } })}</span>
+						{/if}
 					</div>
 				</div>
 				<div class="peer-actions">
+					<button type="button" class="peer-btn {expiryStatus(p.expires_at, nowSec()) === 'suspended' ? 'primary' : ''}" onclick={() => openRenew(p)}>
+						{expiryStatus(p.expires_at, nowSec()) === 'none' ? $t('awg.setExpiry') : $t('awg.renew')}
+					</button>
 					<button type="button" class="peer-btn primary" onclick={() => showQR(p)}>
 						<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" width="15" height="15"><rect x="3" y="3" width="7" height="7" rx="1" /><rect x="14" y="3" width="7" height="7" rx="1" /><rect x="3" y="14" width="7" height="7" rx="1" /><line x1="14" y1="14" x2="14" y2="21" /><line x1="21" y1="14" x2="21" y2="21" /><line x1="14" y1="17.5" x2="21" y2="17.5" /></svg>
 						{$t('awg.qr')}
@@ -135,6 +178,17 @@
 					</button>
 				</div>
 			</div>
+			{#if renewing === p.public_key}
+				<div class="renew-row">
+					<input type="date" bind:value={renewDate} class="renew-date" />
+					<button type="button" class="renew-preset" onclick={() => applyPreset(30)}>+30d</button>
+					<button type="button" class="renew-preset" onclick={() => applyPreset(90)}>+90d</button>
+					<button type="button" class="renew-preset" onclick={() => (renewDate = '')}>{$t('awg.never')}</button>
+					<span class="renew-spacer"></span>
+					<button type="button" class="peer-btn primary" disabled={savingExpiry} onclick={() => saveExpiry(p)}>{$t('awg.save')}</button>
+					<button type="button" class="peer-btn" onclick={() => (renewing = null)}>{$t('awg.cancel')}</button>
+				</div>
+			{/if}
 		{/each}
 	</div>
 {/if}
@@ -272,6 +326,50 @@
 	.peer-meta .addr {
 		font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
 		color: var(--ctp-subtext0);
+	}
+	.susp-badge {
+		font-size: 0.7rem;
+		font-weight: 600;
+		color: var(--ctp-red);
+		border: 1px solid color-mix(in srgb, var(--ctp-red) 40%, transparent);
+		border-radius: 0.3rem;
+		padding: 0.05rem 0.35rem;
+	}
+	.peer-meta .exp {
+		color: var(--ctp-overlay1);
+	}
+	.renew-row {
+		display: flex;
+		align-items: center;
+		gap: 0.4rem;
+		padding: 0.6rem 1rem;
+		border-top: 1px dashed var(--ctp-surface2);
+		background: var(--ctp-base);
+		flex-wrap: wrap;
+	}
+	.renew-date {
+		background: var(--ctp-mantle);
+		border: 1px solid var(--ctp-surface2);
+		border-radius: 0.375rem;
+		padding: 0.35rem 0.5rem;
+		color: var(--ctp-text);
+		font-size: 0.85rem;
+	}
+	.renew-preset {
+		padding: 0.35rem 0.6rem;
+		border-radius: 0.375rem;
+		border: 1px solid var(--ctp-surface2);
+		background: var(--ctp-surface0);
+		color: var(--ctp-subtext1);
+		font-size: 0.8rem;
+		cursor: pointer;
+	}
+	.renew-preset:hover {
+		border-color: var(--ctp-primary);
+		color: var(--ctp-primary);
+	}
+	.renew-spacer {
+		flex: 1;
 	}
 	.peer-actions {
 		display: flex;
