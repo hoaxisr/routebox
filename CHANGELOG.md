@@ -4,6 +4,30 @@ All notable changes to RouteBox are documented here.
 
 ## [Unreleased]
 
+## [0.21.0] - 2026-06-26
+
+### Features
+
+- **Single-connection share is back** — the per-user **Share** action now opens a modal with a
+  Subscription / Single connection toggle. "Single connection" lets you pick one protocol binding
+  and get its direct `vless://` / `trojan://` / `naive://` / `hysteria2://` link + QR, for clients
+  that don't take a subscription or when you want to add just one protocol to a device. The
+  subscription mode (token URL, QR, rotate, revoke) is unchanged.
+- **AmneziaWG config expiry + manual renewal** — each AWG peer can be given an expiry date. When it
+  lapses the peer is **suspended** (removed from the live interface, but its keys and IP are kept),
+  so renewing re-admits the same config and the client's existing `.conf` reconnects instantly. A
+  background sweep enforces expiry (~30s); the roster shows the expiry date, a **Suspended** badge,
+  and an inline **Renew** control (date picker + +30d / +90d / Never). New peers are created
+  never-expiring. Endpoint: `PATCH /api/awg/peers/{publicKey}/expiry`.
+
+### Changes
+
+- **Dashboard inbounds hint** now reads `VLESS / NaiveProxy / Hysteria2 / Trojan` (Trojan added, the
+  trailing "listeners" word dropped).
+- **Inbound TLS mode button** renamed from "Panel cert" to **"Panel Certificate"**.
+- **AWG obfuscation fields** are grouped onto their own rows (J / S / H) instead of one flat grid,
+  so all S and all H parameters line up per row.
+
 ## [0.20.3] - 2026-06-18
 
 ### Bug Fixes
