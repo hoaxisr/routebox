@@ -524,11 +524,11 @@ import { PRESETS as VOLUME_PRESETS, bytesFromUnit, splitBytes, type VolumeUnit }
 			</div>
 		</div>
 		<div class="hidden sm:block flex-1"></div>
-		<div class="grid grid-cols-6 gap-0.5 bg-[var(--ctp-mantle)] rounded-md p-0.5 self-start sm:self-auto">
+		<div class="flex gap-0.5 bg-[var(--ctp-mantle)] rounded-md p-0.5 self-start sm:self-auto">
 			{#each [{m:'live',l:$t('breakdown.rangeLive')},{m:'1h',l:'1h'},{m:'3h',l:'3h'},{m:'24h',l:'24h'},{m:'week',l:'Week'},{m:'month',l:'Month'}] as r}
 				<button
 					onclick={() => viewMode = r.m as ViewMode}
-					class="px-1.5 py-1 text-xs text-center rounded truncate transition-colors {viewMode === r.m
+					class="px-1.5 py-1 text-xs text-center rounded whitespace-nowrap transition-colors {viewMode === r.m
 						? 'bg-[var(--ctp-surface2)] text-[var(--ctp-text)]'
 						: 'text-[var(--ctp-overlay1)] hover:text-[var(--ctp-text)]'}"
 				>{r.l}</button>
@@ -595,6 +595,18 @@ import { PRESETS as VOLUME_PRESETS, bytesFromUnit, splitBytes, type VolumeUnit }
 			<h2 class="text-sm font-semibold text-[var(--ctp-subtext1)] uppercase tracking-wide">{title}</h2>
 			<span class="text-xs text-[var(--ctp-overlay0)]">{buckets.length}</span>
 		</div>
+		{#if dim === 'domain' && filters.domain !== null}
+			{@const apex = apexDomain(filters.domain)}
+			<button
+				onclick={domainBack}
+				class="w-full flex items-center gap-1.5 px-4 py-1.5 text-xs text-[var(--ctp-overlay1)] hover:text-[var(--ctp-primary)] hover:bg-[var(--ctp-surface1)] transition-colors border-b border-[var(--ctp-surface2)]"
+			>
+				<svg class="w-3 h-3 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+					<path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 19l-7-7 7-7" />
+				</svg>
+				<span class="truncate">{filters.domain === apex ? $t('breakdown.backToDomains') : $t('breakdown.backToApex', { values: { domain: apex } })}</span>
+			</button>
+		{/if}
 		{#if buckets.length > 0}
 			<div class="px-4 py-3 border-b border-[var(--ctp-surface2)]">
 				<PieChart
