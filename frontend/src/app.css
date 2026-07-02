@@ -377,6 +377,9 @@ code, pre, .font-mono {
 	align-items: center;
 	padding: 0.125rem 0.5rem;
 	font-size: 0.75rem;
+	/* Explicit weight so chips look the same everywhere, even inside
+	   font-medium wrappers (e.g. group-by-chain header cards) */
+	font-weight: 400;
 	border-radius: 0.25rem;
 	background-color: color-mix(in srgb, var(--ctp-primary) 20%, transparent);
 	color: var(--ctp-primary);

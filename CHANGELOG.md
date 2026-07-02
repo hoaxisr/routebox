@@ -4,6 +4,20 @@ All notable changes to RouteBox are documented here.
 
 ## [Unreleased]
 
+### Fixes
+
+- **Breakdown range switcher no longer clips "Month"** (#3) — the Live/1h/3h/24h/Week/Month pills
+  now size to their labels instead of six equal truncating columns.
+- **Breakdown domain drill-down got a back button** (#3) — a slim "Back to all domains" /
+  "Back to {domain}" row at the top of the By Domain panel steps back one level, instead of
+  relying on the filter chip or re-clicking the active row.
+- **Chain badges are no longer bold in "Group by chain"** (#3) — the chip style now pins its own
+  font weight, so badges look the same everywhere.
+- **Dashboard "Managed by systemd (unit)" spacing** (#3) — the unit name no longer glues to the
+  word "systemd".
+- **NaiveProxy "Import from link" is a proper button** (#3) — it now matches the dashed import
+  button used by the VLESS / Trojan / Hysteria2 / Shadowsocks forms instead of a bare text link.
+
 ## [0.21.1] - 2026-06-26
 
 ### Fixes
