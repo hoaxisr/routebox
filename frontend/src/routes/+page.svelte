@@ -405,7 +405,7 @@
 				<div class="min-w-0 flex flex-col sm:flex-row sm:items-baseline sm:gap-1.5">
 					<span class="text-[10px] uppercase tracking-wide text-[var(--ctp-overlay1)] flex-shrink-0">Managed by</span>
 					{#if status.managed_by === 'systemd'}
-						<span class="text-sm text-[var(--ctp-primary)] truncate">systemd{#if status.service_name} <span class="text-[10px] text-[var(--ctp-overlay0)]">({status.service_name})</span>{/if}</span>
+						<span class="text-sm text-[var(--ctp-primary)] truncate">systemd{#if status.service_name}<span class="ml-1 text-[10px] text-[var(--ctp-overlay0)]">({status.service_name})</span>{/if}</span>
 					{:else}
 						<span class="text-sm text-[var(--ctp-text)]">standalone</span>
 					{/if}
