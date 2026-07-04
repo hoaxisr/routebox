@@ -1207,6 +1207,8 @@
     "showAll": "Show all",
     "showLess": "Show less",
     "rangeLive": "Live",
+    "backToDomains": "Back to all domains",
+    "backToApex": "Back to {domain}",
     "clientsLabel": "clients",
     "domainsLabel": "domains",
     "chainsLabel": "chains",
