@@ -4,6 +4,15 @@ All notable changes to RouteBox are documented here.
 
 ## [Unreleased]
 
+### Features
+
+- **DNS detour via AWG/WG endpoint** (#7) — the DNS server "detour" picker now lists AmneziaWG /
+  WireGuard endpoints alongside outbounds (endpoints act as outbounds in sing-box, same as in
+  route rules), and the backend accepts endpoint tags as a valid `detour` reference.
+- **Endpoints section available in VPS mode** (#7) — `/config/endpoints` is no longer router-only,
+  so a VPS panel can chain its traffic through an upstream AWG/WG endpoint without editing
+  `routebox.toml` to temporarily switch modes.
+
 ### Fixes
 
 - **Breakdown range switcher no longer clips "Month"** (#3) — the Live/1h/3h/24h/Week/Month pills
