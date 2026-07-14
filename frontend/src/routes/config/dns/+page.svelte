@@ -3,7 +3,7 @@
 	import { t } from 'svelte-i18n';
 	import { api } from '$lib/api/client';
 	import { notifications, unsavedChanges } from '$lib/stores';
-	import type { DnsServer, DnsRule, DnsSettings, RuleSet, Outbound } from '$lib/types';
+	import type { DnsServer, DnsRule, DnsSettings, RuleSet, Outbound, Endpoint } from '$lib/types';
 	import DnsServerForm from '$lib/components/config/DnsServerForm.svelte';
 	import DnsRuleForm from '$lib/components/config/DnsRuleForm.svelte';
 	import HelpTooltip from '$lib/components/shared/HelpTooltip.svelte';
@@ -13,6 +13,12 @@
 	let settings = $state<DnsSettings>({});
 	let ruleSets = $state<RuleSet[]>([]);
 	let outbounds = $state<Outbound[]>([]);
+	let endpoints = $state<Endpoint[]>([]);
+	// Combined list: outbounds + endpoints (endpoints can be used as detour targets)
+	let allOutbounds = $derived([
+		...outbounds,
+		...endpoints.map((e) => ({ tag: e.tag, type: e.type }) as Outbound)
+	]);
 	let loading = $state(true);
 	let hasChanges = $state(false);
 	let applying = $state(false);
@@ -29,18 +35,21 @@
 
 	async function fetchData() {
 		try {
-			const [serversData, rulesData, settingsData, ruleSetsData, outboundsData] = await Promise.all([
-				api.listDnsServers(),
-				api.listDnsRules(),
-				api.getDnsSettings(),
-				api.listRuleSets(),
-				api.listOutbounds()
-			]);
+			const [serversData, rulesData, settingsData, ruleSetsData, outboundsData, endpointsData] =
+				await Promise.all([
+					api.listDnsServers(),
+					api.listDnsRules(),
+					api.getDnsSettings(),
+					api.listRuleSets(),
+					api.listOutbounds(),
+					api.listEndpoints()
+				]);
 			dnsServers = serversData;
 			dnsRules = rulesData;
 			settings = settingsData;
 			ruleSets = ruleSetsData;
 			outbounds = outboundsData;
+			endpoints = endpointsData;
 		} catch (e) {
 			notifications.error($t('errors.loadFailed'));
 		} finally {
@@ -579,7 +588,7 @@
 					server={editingServer}
 					existingTags={dnsServers.filter(s => s.tag !== editingServer?.tag).map(s => s.tag)}
 					existingServers={dnsServers}
-					{outbounds}
+					outbounds={allOutbounds}
 					onSave={editingServer ? handleUpdateServer : handleCreateServer}
 					onCancel={() => { showServerForm = false; editingServer = undefined; }}
 				/>
@@ -611,7 +620,7 @@
 					rule={editingRuleIndex !== null ? dnsRules[editingRuleIndex] : undefined}
 					{dnsServers}
 					{ruleSets}
-					{outbounds}
+					outbounds={allOutbounds}
 					onSave={editingRuleIndex !== null ? handleUpdateRule : handleCreateRule}
 					onCancel={() => { showRuleForm = false; editingRuleIndex = null; }}
 					onRuleSetCreated={(ruleSet) => {
