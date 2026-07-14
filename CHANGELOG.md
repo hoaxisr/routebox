@@ -4,6 +4,8 @@ All notable changes to RouteBox are documented here.
 
 ## [Unreleased]
 
+## [0.22.0] - 2026-07-14
+
 ### Features
 
 - **DNS detour via AWG/WG endpoint** (#7) — the DNS server "detour" picker now lists AmneziaWG /
