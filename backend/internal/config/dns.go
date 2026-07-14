@@ -22,6 +22,22 @@ func (m *Manager) getDnsArray(key string) []interface{} {
 	return []interface{}{}
 }
 
+// detourTags returns all tags valid as a DNS detour target: outbounds plus
+// AWG/WG endpoints (endpoints act as outbounds in sing-box). Caller holds lock.
+func (m *Manager) detourTags() map[string]bool {
+	tags := make(map[string]bool)
+	for _, key := range []string{"outbounds", "endpoints"} {
+		for _, item := range m.getArray(key) {
+			if obj, ok := item.(map[string]interface{}); ok {
+				if t, ok := obj["tag"].(string); ok {
+					tags[t] = true
+				}
+			}
+		}
+	}
+	return tags
+}
+
 // --- DNS Servers CRUD (tag-based) ---
 
 // ListDnsServers returns all DNS servers
@@ -56,17 +72,9 @@ func (m *Manager) CreateDnsServer(server map[string]interface{}) error {
 		return fmt.Errorf("DNS server with tag '%s' already exists", tag)
 	}
 
-	// Validate detour reference if present
+	// Validate detour reference if present (outbound or endpoint tag)
 	if detour, ok := server["detour"].(string); ok && detour != "" {
-		outboundTags := make(map[string]bool)
-		for _, ob := range m.getArray("outbounds") {
-			if obj, ok := ob.(map[string]interface{}); ok {
-				if t, ok := obj["tag"].(string); ok {
-					outboundTags[t] = true
-				}
-			}
-		}
-		if !outboundTags[detour] {
+		if !m.detourTags()[detour] {
 			return fmt.Errorf("detour outbound '%s' does not exist", detour)
 		}
 	}
@@ -100,17 +108,9 @@ func (m *Manager) UpdateDnsServer(tag string, server map[string]interface{}) err
 		return fmt.Errorf("DNS server '%s' not found", tag)
 	}
 
-	// Validate detour reference if present
+	// Validate detour reference if present (outbound or endpoint tag)
 	if detour, ok := server["detour"].(string); ok && detour != "" {
-		outboundTags := make(map[string]bool)
-		for _, ob := range m.getArray("outbounds") {
-			if obj, ok := ob.(map[string]interface{}); ok {
-				if t, ok := obj["tag"].(string); ok {
-					outboundTags[t] = true
-				}
-			}
-		}
-		if !outboundTags[detour] {
+		if !m.detourTags()[detour] {
 			return fmt.Errorf("detour outbound '%s' does not exist", detour)
 		}
 	}
