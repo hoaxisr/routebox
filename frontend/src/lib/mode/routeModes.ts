@@ -25,6 +25,7 @@ const PANEL_ONLY: Mode[] = ['vps'];
 export const SECTIONS: Section[] = [
 	// Shared (visible in both modes)
 	{ path: '/', modes: BOTH },
+	{ path: '/config/endpoints', modes: BOTH },
 	{ path: '/config/outbounds', modes: BOTH },
 	{ path: '/config/inbounds', modes: BOTH },
 	{ path: '/config/dns', modes: BOTH },
@@ -43,7 +44,6 @@ export const SECTIONS: Section[] = [
 	{ path: '/monitor/users', modes: PANEL_ONLY },
 
 	// Router-only
-	{ path: '/config/endpoints', modes: ROUTER_ONLY },
 	{ path: '/config/clients', modes: ROUTER_ONLY },
 	{ path: '/config/subscriptions', modes: ROUTER_ONLY },
 	{ path: '/monitor/traffic', modes: ROUTER_ONLY },

@@ -274,11 +274,9 @@
 					</button>
 					{#if networkExpanded}
 						<div class="ml-4 mt-1 space-y-1 border-l border-[var(--ctp-surface1)] pl-3">
-							{#if $routerMode}
-								<a href="/config/endpoints" onclick={handleNavClick} class="flex items-center gap-3 px-3 py-1.5 rounded-lg hover:bg-[var(--ctp-surface0)] text-[var(--ctp-subtext1)] hover:text-[var(--ctp-text)] transition-colors text-sm">
-									{$t('nav.endpoints')}
-								</a>
-							{/if}
+							<a href="/config/endpoints" onclick={handleNavClick} class="flex items-center gap-3 px-3 py-1.5 rounded-lg hover:bg-[var(--ctp-surface0)] text-[var(--ctp-subtext1)] hover:text-[var(--ctp-text)] transition-colors text-sm">
+								{$t('nav.endpoints')}
+							</a>
 							<a href="/config/outbounds" onclick={handleNavClick} class="flex items-center gap-3 px-3 py-1.5 rounded-lg hover:bg-[var(--ctp-surface0)] text-[var(--ctp-subtext1)] hover:text-[var(--ctp-text)] transition-colors text-sm">
 								{$t('nav.outbounds')}
 							</a>
