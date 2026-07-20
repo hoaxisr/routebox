@@ -390,7 +390,9 @@ func main() {
 	// re-enable: singbox restores serverPriv/obf from settings + the store server key
 	// (no awg-quick); kernel reads the persisted .conf (iface keeps running via systemd).
 	if awgBackend == "singbox" {
-		awgMgr.RehydrateSingbox(awgDesired())
+		// enabled comes from the PERSISTED flag (Enable/Disable handlers write it),
+		// not from key existence — Disable must survive a RouteBox restart (Bug C1).
+		awgMgr.RehydrateSingbox(awgDesired(), settingsMgr.Get().Awg.Enabled)
 	} else {
 		awgMgr.Rehydrate(context.Background(), awgDesired())
 	}

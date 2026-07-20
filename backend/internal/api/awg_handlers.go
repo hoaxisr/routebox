@@ -60,6 +60,11 @@ func (h *Handler) EnableAWG(w http.ResponseWriter, r *http.Request) {
 			_ = h.settings.Save()
 		}
 	}
+	// Persist enabled=true so a RouteBox restart rehydrates the server as enabled
+	// (RehydrateSingbox reads settings.Awg.Enabled — Bug C1). Best-effort too.
+	if err := h.settings.Update(map[string]interface{}{"awg.enabled": true}); err == nil {
+		_ = h.settings.Save()
+	}
 	writeSuccess(w, h.awg.Status(r.Context()))
 }
 
@@ -99,6 +104,11 @@ func (h *Handler) DisableAWG(w http.ResponseWriter, r *http.Request) {
 	if err := h.awg.Disable(r.Context()); err != nil {
 		writeError(w, http.StatusInternalServerError, "failed to disable")
 		return
+	}
+	// Persist enabled=false so Disable survives a RouteBox restart (Bug C1).
+	// Best-effort — a persist failure must not fail an otherwise-successful disable.
+	if err := h.settings.Update(map[string]interface{}{"awg.enabled": false}); err == nil {
+		_ = h.settings.Save()
 	}
 	writeSuccess(w, h.awg.Status(r.Context()))
 }

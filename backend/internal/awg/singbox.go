@@ -35,12 +35,16 @@ func (m *Manager) SetConfigSync(s ConfigSyncer, apply func() error, supports fun
 }
 
 // renderServerSpec snapshots the live server config + non-expired store peers into
-// a config.AwgServerSpec. Returns nil when the server key is unset (not enabled).
+// a config.AwgServerSpec. Returns nil when the server is disabled OR the server
+// key is unset. The enabled gate is what makes Disable STICK: disableSingbox
+// keeps m.serverPriv (key reuse is intended), so gating on the key alone let the
+// 30s sweep re-render a full spec and resurrect a disabled server (Bug C1).
 func (m *Manager) renderServerSpec() *config.AwgServerSpec {
 	m.mu.Lock()
+	enabled := m.enabled
 	priv, ip, subnet, port, mtu, obf := m.serverPriv, m.serverIP, m.subnet, m.listenPort, m.mtu, m.obf
 	m.mu.Unlock()
-	if priv == "" {
+	if !enabled || priv == "" {
 		return nil
 	}
 	now := m.store.now()
@@ -160,13 +164,17 @@ func (m *Manager) enableSingbox(ctx context.Context, in EnableInput) error {
 	m.mu.Lock()
 	m.subnet, m.serverIP, m.listenPort, m.mtu, m.obf, m.serverPriv = subnet, serverIP, port, mtu, obf, priv
 	m.obfPreset = in.ObfPreset
+	// renderServerSpec gates on m.enabled, so it MUST be true BEFORE the sync
+	// below or the spec renders nil and Enable writes nothing. On sync failure
+	// enableFail rolls it back to false (so a later sweep stays a no-op).
+	m.enabled = true
 	m.mu.Unlock()
 
 	if err := m.singboxSync(); err != nil {
-		return m.enableFail("apply: " + err.Error())
+		return m.enableFail("apply: " + err.Error()) // enableFail sets enabled=false
 	}
 	m.mu.Lock()
-	m.enabled, m.lastErr, m.phase = true, "", PhaseReady
+	m.lastErr, m.phase = "", PhaseReady
 	m.mu.Unlock()
 	return nil
 }
@@ -242,8 +250,12 @@ func (m *Manager) ClientEndpoint(pub, name, host string) (map[string]interface{}
 
 // RehydrateSingbox restores in-memory render state from saved settings + the
 // persisted store server key after a process restart, WITHOUT touching the
-// sing-box config. enabled = a server key exists (Enable ran at some point).
-func (m *Manager) RehydrateSingbox(in EnableInput) {
+// sing-box config. enabled comes from the PERSISTED settings.Awg.Enabled (the
+// Enable/Disable handlers write it) — NOT from "a server key exists": the key is
+// deliberately kept across Disable for reuse, so deriving enabled from it made
+// Disable not survive a RouteBox restart (Bug C1). A missing key still forces
+// disabled (nothing could be served anyway).
+func (m *Manager) RehydrateSingbox(in EnableInput, enabled bool) {
 	subnet, err := ValidateSubnet(in.Subnet)
 	if err != nil {
 		return
@@ -262,7 +274,7 @@ func (m *Manager) RehydrateSingbox(in EnableInput) {
 	m.mu.Lock()
 	m.subnet, m.serverIP, m.listenPort, m.mtu, m.obf, m.serverPriv = subnet, serverIP, port, mtu, obf, priv
 	m.obfPreset = in.ObfPreset
-	m.enabled = priv != ""
+	m.enabled = enabled && priv != ""
 	if m.enabled {
 		m.phase = PhaseReady
 	}

@@ -102,6 +102,14 @@ func (h *Handler) UpdateSettings(w http.ResponseWriter, r *http.Request) {
 			writeError(w, http.StatusConflict, "disable the AWG server before switching backend")
 			return
 		}
+		// Status().Enabled stays false through every Enable phase (a kernel module
+		// install can take minutes). Switching mid-enable would finish the
+		// orchestrator on the OLD branch (iface + NAT up) while Status routes to the
+		// new one — a live, panel-invisible interface. Reject while in flight (Bug I1).
+		if h.awg != nil && h.awg.Busy() {
+			writeError(w, http.StatusConflict, "AWG server is starting up — wait before switching backend")
+			return
+		}
 		if h.config != nil && h.config.HasDraft() {
 			writeError(w, http.StatusConflict, "apply or discard pending config changes before switching backend")
 			return

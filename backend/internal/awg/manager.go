@@ -432,7 +432,12 @@ func (m *Manager) SweepExpired(ctx context.Context) {
 	if m.backendIs("singbox") {
 		m.addMu.Lock()
 		defer m.addMu.Unlock()
-		_ = m.singboxSync() // best-effort; expired peers drop out of renderServerSpec
+		// Best-effort self-heal: expired peers drop out of renderServerSpec, and a
+		// disabled server renders nil (no-op). A failure here means the active
+		// config silently diverges from the store — log it, don't swallow it.
+		if err := m.singboxSync(); err != nil {
+			log.Printf("awg: singbox sweep sync: %v", err)
+		}
 		return
 	}
 	now := m.store.now()
