@@ -371,16 +371,14 @@ func main() {
 	}
 	// Status.ConfigDirty compares the running config against the live saved settings.
 	awgMgr.SetDesired(awgDesired)
-	// Resolve the AWG backend: explicit setting wins; else router->kernel, vps->singbox.
+	// Resolve the AWG backend: explicit setting wins; otherwise default to singbox
+	// (no kernel module required). Kernel is opt-in only — a router/VPS never runs
+	// the kernel-module install path unless the operator explicitly selects it.
 	// MUST run before the sweep ticker + HTTP server start so no goroutine ever
 	// observes a half-wired Manager.
 	awgBackend := settingsMgr.Get().Awg.Backend
 	if awgBackend == "" {
-		if effectiveMode == "vps" {
-			awgBackend = "singbox"
-		} else {
-			awgBackend = "kernel"
-		}
+		awgBackend = "singbox"
 	}
 	awgMgr.SetBackend(awgBackend)
 	awgMgr.SetConfigSync(
