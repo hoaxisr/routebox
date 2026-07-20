@@ -236,7 +236,7 @@ func (m *Manager) saveLocked(config map[string]interface{}) error {
 	if _, err := os.Stat(m.path); err == nil {
 		backupPath := fmt.Sprintf("%s.%d.bak", m.path, time.Now().Unix())
 		if data, err := os.ReadFile(m.path); err == nil {
-			os.WriteFile(backupPath, data, 0644)
+			os.WriteFile(backupPath, data, 0600)
 		}
 	}
 
@@ -250,7 +250,7 @@ func (m *Manager) saveLocked(config map[string]interface{}) error {
 	}
 	data := buf.Bytes()
 
-	if err := atomicWriteFile(m.path, data, 0644); err != nil {
+	if err := atomicWriteFile(m.path, data, 0600); err != nil {
 		return fmt.Errorf("failed to write config: %w", err)
 	}
 	pruneBackups(dir, filepath.Base(m.path), 5)
@@ -524,7 +524,7 @@ func (m *Manager) applyDraftLocked() error {
 	if _, err := os.Stat(m.path); err == nil {
 		backupPath := fmt.Sprintf("%s.%d.bak", m.path, time.Now().Unix())
 		if data, err := os.ReadFile(m.path); err == nil {
-			os.WriteFile(backupPath, data, 0644)
+			os.WriteFile(backupPath, data, 0600)
 		}
 	}
 
@@ -537,7 +537,7 @@ func (m *Manager) applyDraftLocked() error {
 		return fmt.Errorf("failed to marshal config: %w", err)
 	}
 
-	if err := atomicWriteFile(m.path, buf.Bytes(), 0644); err != nil {
+	if err := atomicWriteFile(m.path, buf.Bytes(), 0600); err != nil {
 		return fmt.Errorf("failed to write config: %w", err)
 	}
 	pruneBackups(dir, filepath.Base(m.path), 5)
