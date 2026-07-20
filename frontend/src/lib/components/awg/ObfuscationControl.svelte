@@ -14,7 +14,13 @@
 	let advOpen = $state(false);
 
 	function pick(name: string) {
-		obf = PRESETS[name]();
+		// Presets don't carry the awg3 fields — preserve them across preset switches.
+		const prev = obf;
+		obf = {
+			...PRESETS[name](),
+			content_padding_addition: prev.content_padding_addition,
+			rekey_after_time: prev.rekey_after_time
+		};
 		preset = name;
 	}
 
@@ -50,7 +56,7 @@
 		</span>
 		{$t('awg.advanced')}
 		<span class="a-spacer"></span>
-		<span class="adv-keys">Jc · Jmin · Jmax · S1–S4 · H1–H4</span>
+		<span class="adv-keys">Jc · Jmin · Jmax · S1–S4 · H1–H4 · CPA · RAT</span>
 	</button>
 	{#if advOpen}
 		<div class="adv-body">
@@ -78,6 +84,36 @@
 						<input id="obf-{k}" type="text" bind:value={obf[k]} oninput={markCustom} />
 					</div>
 				{/each}
+			</div>
+			<div class="adv-grid two">
+				<div class="mini-field">
+					<label for="obf-cpa">{$t('awg.contentPadding')}</label>
+					<input
+						id="obf-cpa"
+						type="text"
+						placeholder="0-64"
+						value={obf.content_padding_addition ?? ''}
+						oninput={(e) => {
+							obf.content_padding_addition = e.currentTarget.value;
+							markCustom();
+						}}
+					/>
+					<span class="mini-hint">{$t('awg.contentPaddingHint')}</span>
+				</div>
+				<div class="mini-field">
+					<label for="obf-rat">{$t('awg.rekeyAfterTime')}</label>
+					<input
+						id="obf-rat"
+						type="text"
+						placeholder="120-180"
+						value={obf.rekey_after_time ?? ''}
+						oninput={(e) => {
+							obf.rekey_after_time = e.currentTarget.value;
+							markCustom();
+						}}
+					/>
+					<span class="mini-hint">{$t('awg.rekeyAfterTimeHint')}</span>
+				</div>
 			</div>
 		</div>
 	{/if}
@@ -158,6 +194,13 @@
 	}
 	.adv-grid + .adv-grid {
 		margin-top: 0.75rem;
+	}
+	.adv-grid.two {
+		grid-template-columns: repeat(2, 1fr);
+	}
+	.mini-hint {
+		font-size: 0.6875rem;
+		color: var(--ctp-overlay0);
 	}
 	.mini-field {
 		display: flex;

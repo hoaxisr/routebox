@@ -279,6 +279,8 @@
     "systemInterface": "System Interface",
     "systemInterfaceHint": "Use system network interface instead of userspace",
     "durationFormatHint": "Duration format: 5m, 1h, 30s",
+    "headerProtectionKey": "Header protection key",
+    "headerProtectionKeyHint": "AWG 3.0 header-protection key from the server config. Leave empty if the server does not use header protection.",
     "tabs": {
       "basic": "Basic",
       "obfuscation": "Obfuscation",
@@ -290,6 +292,7 @@
       "initPacketParams": "Init Packet Parameters",
       "headerParams": "Header Parameters (H1-H4)",
       "initParams": "Init Parameters (I1-I5)",
+      "awg3Params": "AWG 3.0 Parameters",
       "hint": "These parameters should match your AmneziaWG server configuration. Leave at 0 or empty to disable obfuscation features."
     },
     "placeholders": {
@@ -1729,7 +1732,13 @@
     "exportJson": "Copy JSON",
     "downloadJson": "Download JSON",
     "exportedJson": "Client config copied",
-    "singboxNoLiveness": "Live status is not available with the sing-box backend."
+    "singboxNoLiveness": "Live status is not available with the sing-box backend.",
+    "headerProtection": "Header protection (AWG 3.0)",
+    "headerProtectionHint": "Encrypts packet headers with a per-tunnel key. Requires S1–S4 ≥ 8 and an awg3-capable binary on both server and clients.",
+    "contentPadding": "Content padding (CPA)",
+    "contentPaddingHint": "Extra bytes appended to data packets — \"N\" or \"lo-hi\" range.",
+    "rekeyAfterTime": "Rekey interval (RAT)",
+    "rekeyAfterTimeHint": "Seconds between session rekeys — \"N\" or \"lo-hi\" range."
   },
   "monitor": {
     "perUserTitle": "Per-User Traffic",
