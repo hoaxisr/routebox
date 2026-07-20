@@ -523,4 +523,14 @@
 	.btn-ghost-sm:hover {
 		background: var(--ctp-surface2);
 	}
+	@media (max-width: 720px) {
+		.peer-row {
+			flex-wrap: wrap;
+		}
+		.peer-actions {
+			flex-basis: 100%;
+			flex-wrap: wrap;
+			justify-content: flex-start;
+		}
+	}
 </style>
