@@ -508,6 +508,7 @@
     "viewDetails": "View details",
     "advancedRules": "Advanced Rules",
     "rulesOrderHint": "Rules are evaluated in order. Drag to reorder.",
+    "ruleSetsOrderHint": "Rule sets are matched in order. Drag to reorder priority.",
     "guidedWizard": "Guided Wizard",
     "quickTemplates": "Quick Templates",
     "ruleSetDetails": "Rule Set Details",
