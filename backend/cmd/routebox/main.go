@@ -971,6 +971,10 @@ func runClientDiscovery(mgr *clients.Manager, clashAddr, secret string, stop <-c
 	client := &http.Client{Timeout: 10 * time.Second}
 	ticker := time.NewTicker(60 * time.Second)
 	defer ticker.Stop()
+	// lastErr dedupes the non-200 log: only transitions (ok→error, or a
+	// different status) are logged, so a persistent 401 (Clash secret changed
+	// without a RouteBox restart) produces one line, not one per tick.
+	lastErr := ""
 	tick := func() {
 		req, err := http.NewRequest("GET", "http://"+clashAddr+"/connections", nil)
 		if err != nil {
@@ -984,6 +988,15 @@ func runClientDiscovery(mgr *clients.Manager, clashAddr, secret string, stop <-c
 			return
 		}
 		defer resp.Body.Close()
+		if resp.StatusCode != http.StatusOK {
+			// A 401 body must not decode as "zero connections" — skip the tick.
+			if msg := fmt.Sprintf("clash /connections: status %d", resp.StatusCode); msg != lastErr {
+				log.Printf("client discovery: %s", msg)
+				lastErr = msg
+			}
+			return
+		}
+		lastErr = ""
 		var data struct {
 			Connections []struct {
 				Metadata struct {

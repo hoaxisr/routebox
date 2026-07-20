@@ -46,6 +46,13 @@ type Sampler struct {
 	store    *Store
 	mu       sync.Mutex
 	lastSeen map[string]connState // connID → last counters
+
+	// lastSampleErr dedupes fetch-error logging: only transitions (ok→error,
+	// or a different error text) are logged, so a persistent failure — e.g.
+	// the Clash secret changed in the panel without a RouteBox restart,
+	// yielding endless 401s — produces one diagnostic line, not one per tick.
+	// Touched only from the single Run goroutine; no locking needed.
+	lastSampleErr string
 }
 
 func NewSampler(store *Store) *Sampler {
@@ -165,6 +172,19 @@ func (s *Sampler) fetchSnapshot(clashAddr, secret string) ([]ConnectionSample, e
 	return out, nil
 }
 
+// noteSampleErr logs a fetch error only when it differs from the last one
+// logged (see lastSampleErr). Returns true if it logged. Only ever called
+// from the single Run goroutine.
+func (s *Sampler) noteSampleErr(err error) bool {
+	msg := err.Error()
+	if msg == s.lastSampleErr {
+		return false
+	}
+	s.lastSampleErr = msg
+	log.Printf("traffic sampler: %v", err)
+	return true
+}
+
 // Run starts the periodic sample → upsert loop. Stops when stop channel closes.
 // retentionDays controls how long history is kept (0 = no pruning).
 func (s *Sampler) Run(clashAddr, secret string, retentionDays int, stop <-chan struct{}) {
@@ -181,8 +201,10 @@ func (s *Sampler) Run(clashAddr, secret string, retentionDays int, stop <-chan s
 	doSample := func() {
 		snap, err := s.fetchSnapshot(clashAddr, secret)
 		if err != nil {
+			s.noteSampleErr(err)
 			return
 		}
+		s.lastSampleErr = "" // success — a later failure should log again
 		deltas := s.computeDeltas(snap)
 		now := time.Now().Unix()
 		bucket := (now / 60) * 60

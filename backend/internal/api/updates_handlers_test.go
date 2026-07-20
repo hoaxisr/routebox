@@ -1,6 +1,7 @@
 package api
 
 import (
+	"bytes"
 	"crypto/sha256"
 	"encoding/hex"
 	"encoding/json"
@@ -184,11 +185,26 @@ func TestApplySelfUpdateReExecsInstallPath(t *testing.T) {
 	t.Cleanup(gh.Close)
 	t.Setenv("UPDATES_API_BASE", gh.URL)
 
+	// Swap-aware BinaryPath: mimics os.Executable()//proc/self/exe, which
+	// follows the running inode. Before Apply's rename swap the file at
+	// installPath is still the original binary → return installPath. After
+	// Apply renames it to installPath+".old" (and moves the new binary in),
+	// the running executable resolves to the .old path. This pins the
+	// pre-Apply capture ordering: a refactor that captured execPath AFTER
+	// Apply would observe ".old" and fail the assertions below.
+	swapAwareBinaryPath := func() string {
+		cur, err := os.ReadFile(installPath)
+		if err == nil && bytes.Equal(cur, oldBytes) {
+			return installPath
+		}
+		return installPath + ".old"
+	}
+
 	target := updates.Target{
 		Name:           "routebox",
 		Repo:           "hoaxisr/routebox",
 		AssetSuffix:    func(string) (string, bool) { return "linux-amd64", true },
-		BinaryPath:     func() string { return installPath },
+		BinaryPath:     swapAwareBinaryPath,
 		CurrentVersion: func() (string, error) { return "1.0.0", nil },
 		SelfUpdate:     true,
 	}

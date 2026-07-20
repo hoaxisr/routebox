@@ -1,6 +1,7 @@
 package traffic
 
 import (
+	"fmt"
 	"net/http"
 	"net/http/httptest"
 	"strings"
@@ -151,6 +152,33 @@ func TestFetchSnapshot_Non200IsError(t *testing.T) {
 	snap, err := s.fetchSnapshot(addr, "")
 	if err == nil {
 		t.Fatalf("fetchSnapshot on 401 returned nil error (snapshot %+v); want loud failure", snap)
+	}
+}
+
+// noteSampleErr must log only on transitions: first failure, a different
+// failure, or a failure after a successful sample — never on identical repeats
+// (a persistent 401 would otherwise spam one line per 60s tick).
+func TestNoteSampleErr_DedupesRepeats(t *testing.T) {
+	s := NewSampler(nil)
+	err401 := fmt.Errorf("clash /connections: status 401")
+	err500 := fmt.Errorf("clash /connections: status 500")
+
+	if !s.noteSampleErr(err401) {
+		t.Error("first error must log")
+	}
+	if s.noteSampleErr(err401) {
+		t.Error("identical repeat must not log")
+	}
+	if !s.noteSampleErr(err500) {
+		t.Error("different error must log")
+	}
+	if s.noteSampleErr(err500) {
+		t.Error("identical repeat of new error must not log")
+	}
+	// Successful sample resets the dedupe state (doSample sets lastSampleErr = "").
+	s.lastSampleErr = ""
+	if !s.noteSampleErr(err500) {
+		t.Error("failure after success must log again")
 	}
 }
 
