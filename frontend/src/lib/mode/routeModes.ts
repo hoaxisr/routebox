@@ -2,9 +2,10 @@
 // inbound type picker. The sidebar, the soft-redirect guard, and InboundForm ALL
 // import from here so visibility and reachability can never drift.
 //
-// Fail-safe contract: router mode is the full UI. Every governed section is
-// allowed in 'router'; vps mode only ever SUBTRACTS router-only sections (and
-// adds the panel-only Users). Anything NOT listed here is allowed everywhere.
+// Fail-safe contract: router mode is the full UI minus the panel-only sections
+// (Users, per-user monitor, AWG server). vps mode SUBTRACTS the router-only
+// sections and adds the panel-only ones. Anything NOT listed here is allowed
+// everywhere.
 
 export type Mode = 'router' | 'vps';
 
