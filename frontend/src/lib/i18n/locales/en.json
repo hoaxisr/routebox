@@ -799,6 +799,8 @@
     "addressesHint": "Comma-separated CIDR addresses (IPv4 and/or IPv6)",
     "autoRoute": "Auto Route",
     "autoRouteHint": "automatically configure system routes",
+    "autoRedirect": "Auto Redirect",
+    "autoRedirectHint": "transparently redirect TCP via nftables (recommended for router mode)",
     "strictRoute": "Strict Route",
     "strictRouteHint": "prevent traffic leaks",
     "routingOptions": "Routing Options",

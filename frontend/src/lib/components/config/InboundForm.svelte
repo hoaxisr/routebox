@@ -37,6 +37,7 @@
 	let addresses = $state(getInitialAddresses());
 	let mtu = $state(inbound?.mtu ?? 9000);
 	let autoRoute = $state(inbound?.auto_route ?? true);
+	let autoRedirect = $state(inbound?.auto_redirect ?? false);
 	let strictRoute = $state(inbound?.strict_route ?? true);
 	let stack = $state<'system' | 'gvisor' | 'mixed'>(inbound?.stack ?? 'system');
 
@@ -174,6 +175,7 @@
 			ib.address = addresses.split(',').map(a => a.trim()).filter(Boolean);
 			if (mtu !== 9000) ib.mtu = mtu;  // Only include if not default
 			ib.auto_route = autoRoute;
+			ib.auto_redirect = autoRedirect;
 			ib.strict_route = strictRoute;
 			ib.stack = stack;
 		} else {
@@ -290,6 +292,15 @@
 					/>
 					{$t('inbounds.autoRoute')}
 					<span class="text-[var(--ctp-overlay0)]">— {$t('inbounds.autoRouteHint')}</span>
+				</label>
+				<label class="flex items-center gap-2 text-sm text-[var(--ctp-text)]">
+					<input
+						type="checkbox"
+						bind:checked={autoRedirect}
+						class="w-4 h-4 rounded border-[var(--ctp-surface2)] text-[var(--ctp-primary)] focus:ring-[var(--ctp-primary)]"
+					/>
+					{$t('inbounds.autoRedirect')}
+					<span class="text-[var(--ctp-overlay0)]">— {$t('inbounds.autoRedirectHint')}</span>
 				</label>
 				<label class="flex items-center gap-2 text-sm text-[var(--ctp-text)]">
 					<input
