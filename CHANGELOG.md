@@ -4,10 +4,30 @@ All notable changes to RouteBox are documented here.
 
 ## [Unreleased]
 
-## [0.23.2] - 2026-07-20
+## [0.24.0] - 2026-07-20
+
+### Features
+
+- **QR and `.conf` export for sing-box AWG peers** — the AmneziaWG client `.conf` now carries the
+  full awg3 field set (`HeaderProtectionKey`, `ContentPaddingAddition`, `RekeyAfterTime`), so it is
+  a valid config against a sing-box AWG server. Sing-box peers on `/config/awg` now offer **QR** and
+  **`.conf`** (for native AmneziaWG clients / phones) alongside the existing sing-box JSON export.
+  awg3 obfuscation stays sing-box-only: the kernel enable path clears these fields so a classic
+  `awg-quick` never sees an unknown key.
 
 ### Fixes
 
+- **Clash API secret is honoured** — with `experimental.clash_api.secret` set, the panel now
+  forwards it (`Authorization: Bearer …`) on every in-process Clash API call: the HTTP/WS proxy,
+  the traffic-history sampler, LAN client discovery, and the sing-box version probe. Previously the
+  secret was never sent, so sing-box replied 401 and the panel bounced you to the login screen when
+  opening the Outbounds page, while traffic history silently recorded nothing and version detection
+  degraded. A Clash upstream 401 is also no longer mistaken for a panel-session expiry, and the
+  sampler now surfaces a non-200 as an error instead of storing zero connections.
+- **Self-update restarts into the new binary** — after an in-app update RouteBox re-execed the
+  *old* binary (it resolved the running executable via `os.Executable()`, which points at the
+  `.old` backup once the swap renames files), so the UI kept showing the previous version. It now
+  re-execs the freshly installed binary path.
 - **AWG client configs work in router mode** — the `.conf` and sing-box JSON export on
   `/config/awg` no longer fail with *"public host not configured"* when no public domain is set
   (the usual case on a router, where clients connect to the LAN/WAN IP). A new **Server address**
