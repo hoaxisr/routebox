@@ -29,6 +29,15 @@
 			selectedInbounds = [...selectedInbounds, tag];
 		}
 	}
+
+	// Edit safety: tags already selected on an existing rule (e.g. a removed
+	// inbound or endpoint) must stay visible even without a matching option
+	let sourceOptions = $derived([
+		...inbounds,
+		...selectedInbounds
+			.filter((tag) => !inbounds.some((ib) => ib.tag === tag))
+			.map((tag) => ({ tag, type: '' }) as Inbound)
+	]);
 </script>
 
 <div class="space-y-4">
@@ -43,16 +52,18 @@
 	</label>
 
 	<!-- Inbound Filter -->
-	{#if inbounds.length > 0}
+	{#if sourceOptions.length > 0}
 		<div>
 			<label class="block text-sm font-medium text-[var(--ctp-subtext1)] mb-2">{$t('routes.matchFromInbound')}</label>
 			<div class="bg-[var(--ctp-surface0)] rounded-lg border border-[var(--ctp-surface2)] divide-y divide-[var(--ctp-surface2)]">
-				{#each inbounds as ib}
+				{#each sourceOptions as ib}
 					<button type="button" onclick={() => toggleInbound(ib.tag)}
 						class="w-full px-4 py-3 flex items-center justify-between hover:bg-[var(--ctp-surface1)] transition-colors text-left {selectedInbounds.includes(ib.tag) ? 'bg-[var(--ctp-surface1)]' : ''}">
 						<div class="flex items-center gap-2">
 							<span class="font-medium text-[var(--ctp-text)]">{ib.tag}</span>
-							<span class="selection-chip">{ib.type}</span>
+							{#if ib.type}
+								<span class="selection-chip">{ib.type}</span>
+							{/if}
 						</div>
 						{#if selectedInbounds.includes(ib.tag)}
 							<svg class="w-5 h-5 text-[var(--ctp-primary)]" fill="none" stroke="currentColor" viewBox="0 0 24 24">
