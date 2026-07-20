@@ -126,12 +126,16 @@ func (m *ModuleManager) Ensure(ctx context.Context) error {
 	if err != nil || ver == "" {
 		return m.fail(fmt.Sprintf("uname -r: %v", err))
 	}
-	// gnupg2 provides gpg; kernel headers are required for the DKMS module build.
-	// software-properties-common / add-apt-repository are NO LONGER used — the PPA
-	// is wired up explicitly (verified keyring + deb822 .sources) below.
+	// gnupg2 provides gpg; dirmngr is gpg's keyserver client, required for
+	// `gpg --recv-keys` (absent on clean/minimal Ubuntu — gnupg2 does not pull it
+	// as a hard dependency, see issue #14); kernel headers are required for the
+	// DKMS module build. software-properties-common / add-apt-repository are NO
+	// LONGER used — the PPA is wired up explicitly (verified keyring + deb822
+	// .sources) below.
 	prep := [][]string{
 		{"apt-get", "update"},
 		{"apt-get", "install", "-y", "gnupg2"},
+		{"apt-get", "install", "-y", "dirmngr"},
 		{"apt-get", "install", "-y", "linux-headers-" + ver},
 	}
 	for _, args := range prep {

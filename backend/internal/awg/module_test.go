@@ -33,12 +33,18 @@ func (f *fakeRunner) Run(_ context.Context, name string, args ...string) (string
 	return f.outputs[key], "", f.errs[key]
 }
 func (f *fakeRunner) sawContains(sub string) bool {
-	for _, c := range f.calls {
+	return f.indexOf(sub) >= 0
+}
+
+// indexOf returns the index of the first call whose joined argv contains sub,
+// or -1 if none did — used to assert call ordering.
+func (f *fakeRunner) indexOf(sub string) int {
+	for i, c := range f.calls {
 		if strings.Contains(strings.Join(c, " "), sub) {
-			return true
+			return i
 		}
 	}
-	return false
+	return -1
 }
 
 // errFake forces a scripted command error in tests (test-only symbol).
@@ -112,6 +118,17 @@ func TestModuleInstallsOnDebian(t *testing.T) {
 	// (verify-before-trust) and we must not use add-apt-repository.
 	if !f.sawContains("--recv-keys " + amneziaKeyFingerprint) {
 		t.Fatalf("must receive the PPA key by full fingerprint; calls=%v", f.calls)
+	}
+	// dirmngr is gpg's keyserver client: on clean Ubuntu it is absent (issue #14),
+	// so it must be installed BEFORE the gpg --recv-keys keyserver fetch.
+	dirmngrIdx := f.indexOf("apt-get install -y dirmngr")
+	recvIdx := f.indexOf("--recv-keys")
+	if dirmngrIdx < 0 {
+		t.Fatalf("must apt-get install dirmngr (gpg keyserver client); calls=%v", f.calls)
+	}
+	if dirmngrIdx > recvIdx {
+		t.Fatalf("dirmngr install (call %d) must precede gpg --recv-keys (call %d); calls=%v",
+			dirmngrIdx, recvIdx, f.calls)
 	}
 	if f.sawContains("add-apt-repository") {
 		t.Fatal("must NOT use add-apt-repository (deb822/inline-key path is broken)")
