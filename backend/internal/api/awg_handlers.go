@@ -84,8 +84,8 @@ func awgEnableInput(s settings.AwgSettings) awg.EnableInput {
 	}
 }
 
-// awgSingboxDraftBlocked reports whether an enable/disable must be rejected:
-// on the singbox backend these ops rewrite the ACTIVE config, and
+// awgSingboxDraftBlocked reports whether an enable/disable/peer op must be
+// rejected: on the singbox backend these ops rewrite the ACTIVE config, and
 // SyncAwgEndpointActive silently DEFERS while a draft is pending — the op would
 // flip enabled/phase without writing anything. Kernel mode is unaffected.
 func (h *Handler) awgSingboxDraftBlocked(r *http.Request) bool {
@@ -130,6 +130,10 @@ func (h *Handler) CreateAWGPeer(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusServiceUnavailable, "awg not available")
 		return
 	}
+	if h.awgSingboxDraftBlocked(r) {
+		writeError(w, http.StatusConflict, "apply or discard pending config changes first")
+		return
+	}
 	var body struct {
 		Name string `json:"name"`
 	}
@@ -154,6 +158,10 @@ func (h *Handler) CreateAWGPeer(w http.ResponseWriter, r *http.Request) {
 func (h *Handler) DeleteAWGPeer(w http.ResponseWriter, r *http.Request) {
 	if h.awg == nil {
 		writeError(w, http.StatusServiceUnavailable, "awg not available")
+		return
+	}
+	if h.awgSingboxDraftBlocked(r) {
+		writeError(w, http.StatusConflict, "apply or discard pending config changes first")
 		return
 	}
 	pub, err := awgPubKeyParam(r)
@@ -246,6 +254,10 @@ func (h *Handler) GetAWGPeerSingbox(w http.ResponseWriter, r *http.Request) {
 func (h *Handler) SetAWGPeerExpiry(w http.ResponseWriter, r *http.Request) {
 	if h.awg == nil {
 		writeError(w, http.StatusServiceUnavailable, "awg not available")
+		return
+	}
+	if h.awgSingboxDraftBlocked(r) {
+		writeError(w, http.StatusConflict, "apply or discard pending config changes first")
 		return
 	}
 	pub, err := awgPubKeyParam(r)
