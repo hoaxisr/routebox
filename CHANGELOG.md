@@ -4,6 +4,22 @@ All notable changes to RouteBox are documented here.
 
 ## [Unreleased]
 
+## [0.23.2] - 2026-07-20
+
+### Fixes
+
+- **AWG client configs work in router mode** — the `.conf` and sing-box JSON export on
+  `/config/awg` no longer fail with *"public host not configured"* when no public domain is set
+  (the usual case on a router, where clients connect to the LAN/WAN IP). A new **Server address**
+  field on the AWG page sets the endpoint host written into exported client configs; it falls
+  back to the panel's public host when left empty.
+- **AWG status shows Running for a sing-box server** — an enabled sing-box AWG server no longer
+  displayed *Stopped*. The status gate treated the kernel-only `iface_up` flag as required; it is
+  now satisfied by the sing-box backend directly.
+- **AWG status sub-line no longer shows a kernel interface name on sing-box** — the Running/Stopped
+  sub-line showed `awg-rb0` (the kernel interface), which is meaningless for the sing-box backend;
+  it now reads `sing-box` there.
+
 ## [0.23.1] - 2026-07-20
 
 ### Fixes
