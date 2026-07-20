@@ -15,6 +15,7 @@ import (
 
 	"routebox/backend/internal/auth"
 	"routebox/backend/internal/awg"
+	"routebox/backend/internal/config"
 	"routebox/backend/internal/settings"
 )
 
@@ -356,7 +357,123 @@ func TestAWGRoutesRequireAuth(t *testing.T) {
 	}
 }
 
-// awgEnableInput must map persisted settings (incl. obfuscation) into the
+// apiFakeSyncer satisfies awg.ConfigSyncer without a real config.Manager.
+type apiFakeSyncer struct{ lastSpec *config.AwgServerSpec }
+
+func (f *apiFakeSyncer) SyncAwgEndpointActive(_ string, spec *config.AwgServerSpec) (bool, error) {
+	f.lastSpec = spec
+	return true, nil
+}
+
+// newAWGSingboxHandler wires a Handler whose Manager runs the singbox backend
+// (fake config syncer, capability gate open) so Enable/Disable are exercisable
+// without kernel calls.
+func newAWGSingboxHandler(t *testing.T) (*Handler, *apiFakeSyncer) {
+	t.Helper()
+	dir := t.TempDir()
+	awgDir := filepath.Join(dir, "amneziawg")
+	if err := os.MkdirAll(awgDir, 0o700); err != nil {
+		t.Fatal(err)
+	}
+	m := awg.NewManagerForTest(awgNoopRunner{}, awgDir, serverPriv, awg.Config{
+		Iface: "awg-rb0", Subnet: "10.10.0.0/24", ServerIP: "10.10.0.1",
+		ListenPort: 51820, MTU: 1420, DNS: []string{"1.1.1.1"},
+	})
+	fs := &apiFakeSyncer{}
+	m.SetBackend("singbox")
+	m.SetConfigSync(fs, func() error { return nil }, func() bool { return true })
+	sm := newAWGSettings(t, dir, "vpn.example.com")
+	h := &Handler{settings: sm}
+	h.SetAWG(m)
+	return h, fs
+}
+
+// Bug C1: Enable/Disable must PERSIST awg.enabled so a RouteBox restart
+// rehydrates the server in the state the operator left it (Disable must stick).
+func TestAWGEnableDisablePersistEnabledFlag(t *testing.T) {
+	h, _ := newAWGSingboxHandler(t)
+
+	rec := httptest.NewRecorder()
+	h.EnableAWG(rec, httptest.NewRequest(http.MethodPost, "/api/awg/enable", nil))
+	if rec.Code != http.StatusOK {
+		t.Fatalf("enable = %d; want 200; body=%q", rec.Code, rec.Body.String())
+	}
+	if !h.settings.Get().Awg.Enabled {
+		t.Fatal("enable must persist awg.enabled=true")
+	}
+
+	rec = httptest.NewRecorder()
+	h.DisableAWG(rec, httptest.NewRequest(http.MethodPost, "/api/awg/disable", nil))
+	if rec.Code != http.StatusOK {
+		t.Fatalf("disable = %d; want 200; body=%q", rec.Code, rec.Body.String())
+	}
+	if h.settings.Get().Awg.Enabled {
+		t.Fatal("disable must persist awg.enabled=false")
+	}
+}
+
+// awgBlockingIPRunner blocks the Enable orchestrator at the WAN-detect step
+// (`ip route show default`) until release is closed, holding it in flight. Every
+// other command (awg show / iptables in Status) returns immediately.
+type awgBlockingIPRunner struct{ release chan struct{} }
+
+func (b awgBlockingIPRunner) Run(ctx context.Context, name string, _ ...string) (string, string, error) {
+	if name == "ip" {
+		select {
+		case <-b.release:
+		case <-ctx.Done():
+		}
+	}
+	return "", "", nil
+}
+
+// Bug I1: the awg.backend switch must be rejected while an Enable orchestrator is
+// in flight — Status().Enabled stays false through every phase (a module install
+// can take minutes), so the guard must also consult Busy().
+func TestBackendSwitchRejectedWhileEnableInFlight(t *testing.T) {
+	dir := t.TempDir()
+	awgDir := filepath.Join(dir, "amneziawg")
+	if err := os.MkdirAll(awgDir, 0o700); err != nil {
+		t.Fatal(err)
+	}
+	release := make(chan struct{})
+	m := awg.NewManagerForTest(awgBlockingIPRunner{release: release}, awgDir, serverPriv, awg.Config{
+		Iface: "awg-rb0", Subnet: "10.10.0.0/24", ServerIP: "10.10.0.1",
+		ListenPort: 51820, MTU: 1420, DNS: []string{"1.1.1.1"},
+	})
+	sm := newAWGSettings(t, dir, "")
+	h := &Handler{settings: sm}
+	h.SetAWG(m)
+
+	done := make(chan struct{})
+	go func() {
+		defer close(done)
+		// Kernel-branch enable: validation passes on these canonical values, then
+		// WAN detect blocks on the runner until release is closed.
+		_ = m.Enable(context.Background(), awg.EnableInput{
+			Subnet: "10.10.0.0/24", ListenPort: 51820, MTU: 1420, DNS: []string{"1.1.1.1"},
+		})
+	}()
+	defer func() { close(release); <-done }()
+
+	deadline := time.Now().Add(5 * time.Second)
+	for !m.Busy() {
+		if time.Now().After(deadline) {
+			t.Fatal("enable orchestrator never became busy")
+		}
+		time.Sleep(2 * time.Millisecond)
+	}
+
+	rec := httptest.NewRecorder()
+	req := httptest.NewRequest(http.MethodPut, "/api/settings", strings.NewReader(`{"awg.backend":"singbox"}`))
+	h.UpdateSettings(rec, req)
+	if rec.Code != http.StatusConflict {
+		t.Fatalf("backend switch mid-enable = %d; want 409; body=%q", rec.Code, rec.Body.String())
+	}
+	if got := sm.Get().Awg.Backend; got == "singbox" {
+		t.Fatal("rejected switch must not persist awg.backend")
+	}
+}
 // orchestrator input — the panel's Save is the single writer; Enable ignores body.
 func TestAwgEnableInputFromSettings(t *testing.T) {
 	in := awgEnableInput(settings.AwgSettings{

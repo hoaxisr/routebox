@@ -76,6 +76,24 @@ func (m *Manager) endEnable() {
 	m.mu.Unlock()
 }
 
+// Busy reports whether an Enable orchestrator is currently in flight or the
+// manager sits in a transitional (non-terminal) phase. The backend-switch guard
+// keys on it: switching awg.backend mid-enable would finish the orchestrator on
+// the OLD branch (kernel iface + NAT up) while Status routes to the new one — a
+// live, panel-invisible interface.
+func (m *Manager) Busy() bool {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	if m.inFlight {
+		return true
+	}
+	switch m.phase {
+	case PhaseValidating, PhaseInstalling, PhaseRendering, PhaseStarting, PhaseHealth:
+		return true
+	}
+	return false
+}
+
 // setPhase records the current orchestrator phase for a phased Status.
 func (m *Manager) setPhase(p EnablePhase) {
 	m.mu.Lock()
