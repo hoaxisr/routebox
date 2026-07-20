@@ -26,10 +26,11 @@ type Peer struct {
 // Store persists peer secrets to peers.toml (0600, dir 0700), atomically, mirroring
 // users/store.go. Keyed by PublicKey.
 type Store struct {
-	path string
-	mu   sync.RWMutex
-	byPK map[string]*Peer
-	now  func() int64 // injected clock
+	path      string
+	mu        sync.RWMutex
+	byPK      map[string]*Peer
+	serverKey string       // server private key (singbox backend); persisted top-level
+	now       func() int64 // injected clock
 }
 
 // NewStore constructs a Store. Empty path disables persistence (tests).
@@ -52,11 +53,13 @@ func (s *Store) Load() error {
 		return err
 	}
 	var doc struct {
-		Peers []Peer `toml:"peers"`
+		ServerKey string `toml:"server_key"`
+		Peers     []Peer `toml:"peers"`
 	}
 	if err := toml.Unmarshal(data, &doc); err != nil {
 		return err
 	}
+	s.serverKey = doc.ServerKey
 	s.byPK = make(map[string]*Peer, len(doc.Peers))
 	for i := range doc.Peers {
 		p := doc.Peers[i]
@@ -74,11 +77,27 @@ func (s *Store) saveLocked() error {
 		return nil
 	}
 	doc := struct {
-		Peers []Peer `toml:"peers"`
-	}{Peers: s.listLocked()}
+		ServerKey string `toml:"server_key,omitempty"`
+		Peers     []Peer `toml:"peers"`
+	}{ServerKey: s.serverKey, Peers: s.listLocked()}
 	// dir 0700: this directory holds client private keys, stricter than the
 	// 0755 users/store.go uses for its registry.
 	return util.WriteTOMLAtomic(s.path, 0700, doc)
+}
+
+// ServerKey returns the persisted server private key ("" if none).
+func (s *Store) ServerKey() string {
+	s.mu.RLock()
+	defer s.mu.RUnlock()
+	return s.serverKey
+}
+
+// SetServerKey persists the server private key alongside the peers.
+func (s *Store) SetServerKey(k string) error {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	s.serverKey = k
+	return s.saveLocked()
 }
 
 // Put inserts/replaces a peer (stamping CreatedAt if unset) and persists, rolling

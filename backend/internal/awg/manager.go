@@ -68,6 +68,14 @@ type Manager struct {
 	// Status to compute ConfigDirty. nil -> dirty is never reported.
 	desired func() EnableInput
 
+	// singbox backend wiring (SetBackend/SetConfigSync). backend selects the peer-op
+	// branch; cfgSync reconciles the managed endpoint in the sing-box config; applyFn
+	// reloads after a real change; supportsFn gates on binary capability (awg2.1+).
+	backend    string
+	cfgSync    ConfigSyncer
+	applyFn    func() error
+	supportsFn func() bool
+
 	addMu sync.Mutex // serialises the whole add-peer critical section
 
 	mu       sync.Mutex  // guards enabled/lastErr/phase/inFlight (distinct from addMu)
@@ -228,6 +236,10 @@ func (m *Manager) AddPeer(ctx context.Context, rawName string) (PeerSummary, err
 	m.addMu.Lock()
 	defer m.addMu.Unlock()
 
+	if m.backend == "singbox" {
+		return m.addPeerSingbox(ctx, name)
+	}
+
 	used, err := m.usedFromConf()
 	if err != nil {
 		return PeerSummary{}, err
@@ -376,6 +388,12 @@ func (m *Manager) RemovePeer(ctx context.Context, pub string) error {
 	}
 	m.addMu.Lock()
 	defer m.addMu.Unlock()
+	if m.backend == "singbox" {
+		if err := m.store.Delete(pub); err != nil {
+			return err
+		}
+		return m.singboxSync()
+	}
 	if err := m.suspend(ctx, pub); err != nil {
 		return err
 	}
@@ -400,6 +418,9 @@ func (m *Manager) RenewPeer(ctx context.Context, pub string, expiresAt int64) er
 	if err := m.store.Put(p); err != nil {
 		return err
 	}
+	if m.backend == "singbox" {
+		return m.singboxSync()
+	}
 	return m.admit(ctx, p)
 }
 
@@ -408,6 +429,12 @@ func (m *Manager) RenewPeer(ctx context.Context, pub string, expiresAt int64) er
 // cheap no-op when the interface is down (iface_ShowPeers errors → return). Run by
 // the sweep ticker.
 func (m *Manager) SweepExpired(ctx context.Context) {
+	if m.backend == "singbox" {
+		m.addMu.Lock()
+		defer m.addMu.Unlock()
+		_ = m.singboxSync() // best-effort; expired peers drop out of renderServerSpec
+		return
+	}
 	now := m.store.now()
 	expired := map[string]bool{}
 	for _, p := range m.store.List() {
