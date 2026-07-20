@@ -42,6 +42,7 @@ type AwgSettings struct {
 	Obf              AwgObf   `toml:"obf" json:"obf"`
 	ObfPreset        string   `toml:"obf_preset" json:"obf_preset"`               // "off"|"dns"|"web"|"stealth"|"custom" — selects param ranges + client CPS mimicry
 	Backend          string   `toml:"backend" json:"backend"`                     // "kernel"|"singbox"; "" => singbox (kernel is opt-in only, never the auto-default)
+	ServerHost       string   `toml:"server_host" json:"server_host"`             // client-facing address of the AWG server (host/IP clients connect to); falls back to Server.PublicHost; router LAN/WAN IP typically
 	HeaderProtection bool     `toml:"header_protection" json:"header_protection"` // AWG3 additional header protection toggle
 	Configured       bool     `toml:"configured" json:"configured"`               // sticky: set true after first successful Enable; drives wizard-vs-steady UI (never reset on Disable)
 }
@@ -729,6 +730,16 @@ func (m *Manager) Update(updates map[string]interface{}) error {
 				return fmt.Errorf("setting %s: value must be a whole number", key)
 			}
 			m.settings.Awg.MTU = v
+		case "awg.server_host":
+			v, ok := value.(string)
+			if !ok {
+				return fmt.Errorf("setting %s: value must be a string", key)
+			}
+			host, err := SanitizePublicHost(v)
+			if err != nil {
+				return fmt.Errorf("setting %s: %w", key, err)
+			}
+			m.settings.Awg.ServerHost = host
 		case "awg.wan_iface":
 			v, ok := value.(string)
 			if !ok {

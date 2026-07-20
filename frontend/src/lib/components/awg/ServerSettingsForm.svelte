@@ -33,6 +33,11 @@
 		<span class="hint">{$t('awg.listenPortHint')}</span>
 	</div>
 	<div class="field">
+		<label for="awg-host">{$t('awg.serverHost')}</label>
+		<input id="awg-host" type="text" bind:value={form.server_host} />
+		<span class="hint">{$t('awg.serverHostHint')}</span>
+	</div>
+	<div class="field">
 		<label for="awg-subnet">{$t('awg.subnet')}</label>
 		<input id="awg-subnet" type="text" bind:value={form.subnet} />
 		<span class="hint">{$t('awg.subnetHint')}</span>

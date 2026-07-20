@@ -206,9 +206,15 @@ func (h *Handler) GetAWGPeerConfig(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusConflict, "this server uses header protection — use the JSON export")
 		return
 	}
-	host := h.settings.Get().Server.PublicHost
+	// AWG server address is a distinct concept from the panel's public host: on a
+	// router PublicHost is legitimately empty (clients use the LAN/WAN IP).
+	s := h.settings.Get()
+	host := s.Awg.ServerHost
 	if host == "" {
-		http.Error(w, "public host not configured", http.StatusServiceUnavailable)
+		host = s.Server.PublicHost
+	}
+	if host == "" {
+		http.Error(w, "server address not set — set it on the AWG page", http.StatusServiceUnavailable)
 		return
 	}
 	body, err := h.awg.RenderClientConf(pub, host)
@@ -241,9 +247,15 @@ func (h *Handler) GetAWGPeerSingbox(w http.ResponseWriter, r *http.Request) {
 		http.NotFound(w, r)
 		return
 	}
-	host := h.settings.Get().Server.PublicHost
+	// Same host resolution as GetAWGPeerConfig: awg.server_host first, then the
+	// panel's public host; only 503 when both are unset.
+	s := h.settings.Get()
+	host := s.Awg.ServerHost
 	if host == "" {
-		writeError(w, http.StatusServiceUnavailable, "public host not configured")
+		host = s.Server.PublicHost
+	}
+	if host == "" {
+		writeError(w, http.StatusServiceUnavailable, "server address not set — set it on the AWG page")
 		return
 	}
 	ep, err := h.awg.ClientEndpoint(pub, name, host)
