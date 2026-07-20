@@ -198,14 +198,6 @@ func (h *Handler) GetAWGPeerConfig(w http.ResponseWriter, r *http.Request) {
 		http.NotFound(w, r)
 		return
 	}
-	// A singbox backend with header protection ON shares an HPK the wg-quick .conf
-	// format cannot carry — a client importing it would silently never connect.
-	// The UI already hides QR/.conf on singbox; this closes the direct-API footgun.
-	// With header protection OFF the .conf is still valid (no awg3 fields needed).
-	if h.awg.BackendName() == "singbox" && h.settings.Get().Awg.HeaderProtection {
-		writeError(w, http.StatusConflict, "this server uses header protection — use the JSON export")
-		return
-	}
 	// AWG server address is a distinct concept from the panel's public host: on a
 	// router PublicHost is legitimately empty (clients use the LAN/WAN IP).
 	s := h.settings.Get()
