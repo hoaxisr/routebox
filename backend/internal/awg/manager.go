@@ -76,6 +76,12 @@ type Manager struct {
 	applyFn    func() error
 	supportsFn func() bool
 
+	// AWG3 wiring: supports3Fn gates the three awg3-only fields on binary
+	// capability (nil = supported, tests inject a fake); headerKey is the active
+	// header-protection key ("" = off), guarded by m.mu like obf.
+	supports3Fn func() bool
+	headerKey   string
+
 	addMu sync.Mutex // serialises the whole add-peer critical section
 
 	mu       sync.Mutex  // guards enabled/lastErr/phase/inFlight (distinct from addMu)

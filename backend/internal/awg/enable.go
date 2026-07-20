@@ -53,6 +53,9 @@ type EnableInput struct {
 	WANIface   string      `json:"wan_iface"` // optional override; "" -> DetectWAN
 	Obf        Obfuscation `json:"obf"`
 	ObfPreset  string      `json:"obf_preset"`
+	// HeaderProtection toggles the AWG3 header-protection key (singbox backend,
+	// awg3+ binary only). Obf carries the awg3 CPA/RAT strings.
+	HeaderProtection bool `json:"header_protection"`
 }
 
 // beginEnable claims the single-flight slot. Returns false if an orchestrator is
