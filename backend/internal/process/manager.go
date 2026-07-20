@@ -529,6 +529,47 @@ func (m *Manager) SupportsV2RayAPI() bool {
 	return false
 }
 
+// parseSupportsAWGServer reports whether a `<binary> version` output advertises
+// an AmneziaWG level that can run as a SERVER: awg2.1 or newer (the awg2.1 build
+// carries commit 352205f9 — accepting client keepalives sent without S4 padding).
+// awg2.0 accepts the config but silently drops keepalives, so it fails closed.
+// It scans the "version" line for an "awgMAJOR.MINOR" suffix and compares. PURE.
+func parseSupportsAWGServer(versionOutput string) bool {
+	for _, line := range strings.Split(versionOutput, "\n") {
+		i := strings.Index(line, "awg")
+		if i < 0 {
+			continue
+		}
+		var maj, min int
+		if _, err := fmt.Sscanf(line[i:], "awg%d.%d", &maj, &min); err != nil {
+			continue
+		}
+		if maj > 2 || (maj == 2 && min >= 1) {
+			return true
+		}
+	}
+	return false
+}
+
+// SupportsAWGServer reports whether the running binary can host an AWG server
+// endpoint. FAIL-CLOSED: any exec/lookup error returns false, mirroring
+// SupportsV2RayAPI, so RouteBox never renders an awg-server endpoint a binary
+// would half-accept.
+func (m *Manager) SupportsAWGServer() bool {
+	if bp := m.getBinaryPath(); bp != "" {
+		if out, err := m.runVersionFull(bp); err == nil {
+			return parseSupportsAWGServer(out)
+		}
+	}
+	if path, err := exec.LookPath("amnezia-box"); err == nil {
+		if out, err := m.runVersionFull(path); err == nil {
+			m.setBinaryPath(path)
+			return parseSupportsAWGServer(out)
+		}
+	}
+	return false
+}
+
 // GetStatus returns the current process status
 func (m *Manager) GetStatus() Status {
 	// Get version info (cached in binaryPath if successful)
