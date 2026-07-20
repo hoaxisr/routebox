@@ -18,11 +18,20 @@ import (
 // onto the freshly-swapped binary. syscall.Exec replaces the image in place
 // (same PID), so the restart works under any systemd Restart= policy — and
 // even outside systemd — instead of relying on a respawn after os.Exit.
-var scheduleExit = func() {
+//
+// path must be the KNOWN install path (target.BinaryPath() captured BEFORE
+// the swap): after Apply renames the running binary to <path>.old,
+// os.Executable() (/proc/self/exe) follows the renamed inode and would
+// re-exec the OLD binary. Empty path falls back to os.Executable()
+// best-effort.
+var scheduleExit = func(path string) {
 	time.AfterFunc(500*time.Millisecond, func() {
-		exe, err := os.Executable()
-		if err != nil {
-			exe = os.Args[0]
+		exe := path
+		if exe == "" {
+			var err error
+			if exe, err = os.Executable(); err != nil {
+				exe = os.Args[0]
+			}
 		}
 		if err := syscall.Exec(exe, os.Args, os.Environ()); err != nil {
 			// Re-exec failed: fall back to a plain exit so a systemd
@@ -133,6 +142,11 @@ func (h *Handler) ApplyUpdate(w http.ResponseWriter, r *http.Request) {
 	}
 	rel := *cached.Release
 
+	// Capture the install path BEFORE Apply swaps binaries: post-swap both
+	// os.Executable() and BinaryPath() (for the routebox target) resolve to
+	// the <path>.old backup, and re-execing that would restart the OLD binary.
+	execPath := target.BinaryPath()
+
 	current, err := target.CurrentVersion()
 	if err != nil {
 		writeError(w, http.StatusInternalServerError, fmt.Sprintf("Cannot determine current version: %v", err))
@@ -162,7 +176,7 @@ func (h *Handler) ApplyUpdate(w http.ResponseWriter, r *http.Request) {
 			"version":    rel.Version,
 		})
 		if result.Restarting {
-			scheduleExit()
+			scheduleExit(execPath)
 		}
 		return
 	}
