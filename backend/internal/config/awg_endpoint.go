@@ -11,7 +11,8 @@ type AwgServerPeer struct {
 }
 
 // AwgServerSpec is the fully-resolved input for the managed awg-server endpoint.
-// Obf holds the already-validated jc/jmin/jmax/s1-s4/h1-h4 values (device-level).
+// Obf holds the already-validated jc/jmin/jmax/s1-s4/h1-h4 plus the awg3
+// cpa/rat values (device-level).
 type AwgServerSpec struct {
 	PrivateKey          string
 	Address             string
@@ -113,16 +114,13 @@ func (m *Manager) SyncAwgEndpointActive(tag string, spec *AwgServerSpec) (change
 		}
 		newEps = append(newEps, e)
 	}
-	if want != nil {
-		newEps = append(newEps, want)
-	}
-
-	// Change-gate: compare the managed slot only. deepCopy round-trips through JSON,
-	// so `want` (built with Go ints) and `current` (decoded as float64) must be
-	// compared in the SAME domain — normalise want through deepCopy too.
+	// Normalise want through deepCopy (JSON round-trip): `want` is built with Go
+	// ints while `current` was decoded as float64, so the change-gate compare and
+	// the stored active config must both use the JSON-normalised form.
 	var wantNorm map[string]interface{}
 	if want != nil {
 		wantNorm = m.deepCopy(map[string]interface{}{"e": want})["e"].(map[string]interface{})
+		newEps = append(newEps, wantNorm)
 	}
 	if reflect.DeepEqual(current, wantNorm) {
 		return false, nil

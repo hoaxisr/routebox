@@ -7,9 +7,10 @@ import (
 	"routebox/backend/internal/awg/cps"
 )
 
-// Obfuscation is the AWG 2.0 obfuscation preset. Numeric J/S fields; string H
-// fields (ranges like "lo-hi"). I-fields are intentionally NOT modelled in v1
-// (the live box uses none; they are not in the validated set).
+// Obfuscation is the AWG obfuscation preset. Numeric J/S fields; string H
+// fields (ranges like "lo-hi"); plus the AWG 3.0 cookie-protection fields
+// CPA/RAT. I-fields are intentionally NOT modelled in v1 (the live box uses
+// none; they are not in the validated set).
 type Obfuscation struct {
 	Jc, Jmin, Jmax int
 	S1, S2, S3, S4 int
