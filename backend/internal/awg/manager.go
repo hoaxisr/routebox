@@ -79,8 +79,13 @@ type Manager struct {
 	// AWG3 wiring: supports3Fn gates the three awg3-only fields on binary
 	// capability (nil = supported, tests inject a fake); headerKey is the active
 	// header-protection key ("" = off), guarded by m.mu like obf.
-	supports3Fn func() bool
-	headerKey   string
+	// headerProtection is the enabled-time toggle snapshot, compared against
+	// desired().HeaderProtection by statusSingbox's ConfigDirty (I1) — headerKey
+	// alone can't stand in for it (the key is persisted and may exist while the
+	// toggle is off).
+	supports3Fn      func() bool
+	headerKey        string
+	headerProtection bool
 
 	addMu sync.Mutex // serialises the whole add-peer critical section
 
