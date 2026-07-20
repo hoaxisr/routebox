@@ -4,6 +4,15 @@ All notable changes to RouteBox are documented here.
 
 ## [Unreleased]
 
+## [0.24.1] - 2026-07-20
+
+### Fixes
+
+- **AWG-server client rows no longer overflow on mobile** (#16) — on narrow screens the per-client
+  action buttons (Set expiry / QR / .conf / Export JSON / Download JSON / delete) were clipped off
+  the right edge and the client address was squeezed to an ellipsis. The button group now wraps
+  onto its own full-width row below the client name at ≤720px.
+
 ## [0.24.0] - 2026-07-20
 
 ### Features
