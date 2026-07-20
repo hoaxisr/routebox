@@ -6,10 +6,12 @@
 	interface Props {
 		obf: AwgObf;
 		preset: string;
+		/** Active backend is sing-box: shows the awg3-only fields (CPA/RAT). */
+		isSingbox?: boolean;
 	}
 
 	// Bindable so the parent's form.obf / form.obf_preset stay in sync.
-	let { obf = $bindable(), preset = $bindable() }: Props = $props();
+	let { obf = $bindable(), preset = $bindable(), isSingbox = false }: Props = $props();
 
 	let advOpen = $state(false);
 
@@ -56,7 +58,7 @@
 		</span>
 		{$t('awg.advanced')}
 		<span class="a-spacer"></span>
-		<span class="adv-keys">Jc · Jmin · Jmax · S1–S4 · H1–H4 · CPA · RAT</span>
+		<span class="adv-keys">Jc · Jmin · Jmax · S1–S4 · H1–H4{isSingbox ? ' · CPA · RAT' : ''}</span>
 	</button>
 	{#if advOpen}
 		<div class="adv-body">
@@ -85,6 +87,7 @@
 					</div>
 				{/each}
 			</div>
+			{#if isSingbox}
 			<div class="adv-grid two">
 				<div class="mini-field">
 					<label for="obf-cpa">{$t('awg.contentPadding')}</label>
@@ -115,6 +118,7 @@
 					<span class="mini-hint">{$t('awg.rekeyAfterTimeHint')}</span>
 				</div>
 			</div>
+			{/if}
 		</div>
 	{/if}
 </div>

@@ -7,11 +7,13 @@
 		form: AwgServerSettings;
 		pubkey?: string;
 		saving?: boolean;
+		/** Active backend is sing-box: shows awg3-only controls (header protection, CPA/RAT). */
+		isSingbox?: boolean;
 		onSave: () => void;
 		onReset: () => void;
 	}
 
-	let { form = $bindable(), pubkey = '', saving = false, onSave, onReset }: Props = $props();
+	let { form = $bindable(), pubkey = '', saving = false, isSingbox = false, onSave, onReset }: Props = $props();
 
 	// DNS is stored as string[]; edit it as a comma-separated field and write back.
 	let dnsText = $state((form.dns ?? []).join(', '));
@@ -60,19 +62,21 @@
 
 <div class="settings-divider"></div>
 
-<ObfuscationControl bind:obf={form.obf} bind:preset={form.obf_preset} />
+<ObfuscationControl bind:obf={form.obf} bind:preset={form.obf_preset} {isSingbox} />
 
-<div class="hp-row">
-	<button
-		type="button"
-		class="toggle-btn"
-		class:selected={form.header_protection}
-		onclick={() => (form.header_protection = !form.header_protection)}
-	>
-		{$t('awg.headerProtection')}
-	</button>
-	<span class="hint">{$t('awg.headerProtectionHint')}</span>
-</div>
+{#if isSingbox}
+	<div class="hp-row">
+		<button
+			type="button"
+			class="toggle-btn"
+			class:selected={form.header_protection}
+			onclick={() => (form.header_protection = !form.header_protection)}
+		>
+			{$t('awg.headerProtection')}
+		</button>
+		<span class="hint">{$t('awg.headerProtectionHint')}</span>
+	</div>
+{/if}
 
 <div class="save-row">
 	<button type="button" class="btn-ghost-sm" onclick={onReset}>{$t('awg.reset')}</button>
