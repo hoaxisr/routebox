@@ -85,6 +85,49 @@ PersistentKeepalive = 25
 	}
 }
 
+func TestBuildClientEmitsAwg3Fields(t *testing.T) {
+	c := ClientConf{
+		PrivateKey: "AAAA", Address: "10.10.0.2/32", ServerPub: "BBBB",
+		Endpoint: "1.2.3.4:51820", AllowedIPs: []string{"0.0.0.0/0"},
+		Obf:                 Obfuscation{Jc: 5, CPA: "200-400", RAT: "120"},
+		HeaderProtectionKey: "AAAAbbbbCCCCddddEEEEffffGGGGhhhhIIIIjjjjKK==",
+	}
+	out, err := BuildClient(c)
+	if err != nil {
+		t.Fatal(err)
+	}
+	peerIdx := strings.Index(out, "[Peer]")
+	if peerIdx < 0 {
+		t.Fatalf("no [Peer] block:\n%s", out)
+	}
+	iface := out[:peerIdx]
+	for _, want := range []string{
+		"ContentPaddingAddition = 200-400",
+		"RekeyAfterTime = 120",
+		"HeaderProtectionKey = AAAAbbbbCCCCddddEEEEffffGGGGhhhhIIIIjjjjKK==",
+	} {
+		if !strings.Contains(iface, want+"\n") {
+			t.Fatalf("[Interface] block missing %q:\n%s", want, out)
+		}
+	}
+}
+
+func TestBuildClientEmptyAwg3FieldsOmitted(t *testing.T) {
+	c := ClientConf{
+		PrivateKey: "A", Address: "10.0.0.2/32", ServerPub: "B",
+		Endpoint: "h:1", AllowedIPs: []string{"0.0.0.0/0"},
+	}
+	out, err := BuildClient(c)
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, absent := range []string{"ContentPaddingAddition", "RekeyAfterTime", "HeaderProtectionKey"} {
+		if strings.Contains(out, absent) {
+			t.Fatalf("empty awg3 field %q must be omitted:\n%s", absent, out)
+		}
+	}
+}
+
 func TestBuildClientEmptyOmitAndNoPSKAndV6(t *testing.T) {
 	in := ClientConf{
 		PrivateKey: "P==", Address: "10.10.0.2/32", MTU: 1420,
