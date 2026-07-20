@@ -1035,4 +1035,5 @@ export interface AwgServerSettings {
 	header_protection: boolean;
 	configured: boolean;
 	backend: string; // may be "" on fresh deploy; status.backend is authoritative
+	server_host: string; // client-facing AWG address; falls back to server.public_host when empty
 }

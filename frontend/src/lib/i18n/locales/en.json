@@ -1627,6 +1627,8 @@
     "disabled": "AmneziaWG server disabled",
     "disableFailed": "Failed to disable AmneziaWG server",
     "subnet": "Subnet",
+    "serverHost": "Server address",
+    "serverHostHint": "Host or IP clients use to reach this server — e.g. the router LAN/WAN IP or a domain.",
     "listenPort": "Listen port",
     "mtu": "MTU",
     "dns": "DNS (comma-separated)",
