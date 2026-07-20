@@ -404,6 +404,21 @@ func validateObf(o Obfuscation) (Obfuscation, error) {
 		}
 		seen[h] = true
 	}
+	// AWG 3.0 CPA/RAT are UintRange strings; validate + canonicalise when set.
+	if o.CPA != "" {
+		v, err := ValidateUintRange(o.CPA)
+		if err != nil {
+			return Obfuscation{}, fmt.Errorf("CPA: %w", err)
+		}
+		out.CPA = v
+	}
+	if o.RAT != "" {
+		v, err := ValidateUintRange(o.RAT)
+		if err != nil {
+			return Obfuscation{}, fmt.Errorf("RAT: %w", err)
+		}
+		out.RAT = v
+	}
 	return out, nil
 }
 
