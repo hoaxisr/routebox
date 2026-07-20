@@ -4,6 +4,20 @@ All notable changes to RouteBox are documented here.
 
 ## [Unreleased]
 
+### Fixes
+
+- **AWG server is VPS-only again; sing-box is the default backend** — the `/config/awg` page is no
+  longer shown in router mode, and a fresh install no longer defaults the AWG server to the
+  **kernel** backend. This removes the kernel-module install (`apt-get install linux-headers-…`)
+  from the default path — it was failing on non-standard kernels (e.g. Proxmox VE, where the
+  package is `pve-headers-*`, not `linux-headers-*`). The kernel backend is now used only when
+  explicitly selected.
+
+  **Upgrade note:** if you ran the **kernel** AWG server on a **router** with the backend picker
+  left untouched (so `awg.backend` is unset in `routebox.toml`), set `awg.backend = "kernel"`
+  before upgrading — otherwise the panel resolves to sing-box on boot and the live `awg-rb0`
+  interface is left unmanaged (disable it via `POST /api/awg/disable` or systemd).
+
 ## [0.23.0] - 2026-07-20
 
 ### Features
