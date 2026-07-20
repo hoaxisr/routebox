@@ -57,6 +57,11 @@
 	let i4 = $state(endpoint?.i4 ?? '');
 	let i5 = $state(endpoint?.i5 ?? '');
 
+	// AWG3
+	let headerProtectionKey = $state(endpoint?.header_protection_key ?? '');
+	let contentPaddingAddition = $state(endpoint?.content_padding_addition ?? '');
+	let rekeyAfterTime = $state(endpoint?.rekey_after_time ?? '');
+
 	let peers = $state<AWGPeer[]>(endpoint?.peers ?? [
 		{ address: '', port: 51820, public_key: '', allowed_ips: ['0.0.0.0/0', '::/0'] }
 	]);
@@ -103,6 +108,11 @@
 		i3 = ep.i3 ?? '';
 		i4 = ep.i4 ?? '';
 		i5 = ep.i5 ?? '';
+
+		// AWG3
+		headerProtectionKey = ep.header_protection_key ?? '';
+		contentPaddingAddition = ep.content_padding_addition ?? '';
+		rekeyAfterTime = ep.rekey_after_time ?? '';
 
 		if (ep.peers && ep.peers.length > 0) {
 			peers = ep.peers.map((p) => ({
@@ -288,6 +298,11 @@
 		if (i4.trim()) ep.i4 = i4.trim();
 		if (i5.trim()) ep.i5 = i5.trim();
 
+		// AWG3 - only add when set
+		if (headerProtectionKey.trim()) ep.header_protection_key = headerProtectionKey.trim();
+		if (contentPaddingAddition.trim()) ep.content_padding_addition = contentPaddingAddition.trim();
+		if (rekeyAfterTime.trim()) ep.rekey_after_time = rekeyAfterTime.trim();
+
 		// Advanced options
 		if (systemInterface) ep.system = true;
 		if (interfaceName.trim()) ep.name = interfaceName.trim();
@@ -417,12 +432,54 @@
 
 	<!-- Obfuscation Tab -->
 	{#if activeTab === 'obfuscation'}
-		<ObfuscationFields
-			bind:jc bind:jmin bind:jmax
-			bind:s1 bind:s2 bind:s3 bind:s4
-			bind:h1 bind:h2 bind:h3 bind:h4
-			bind:i1 bind:i2 bind:i3 bind:i4 bind:i5
-		/>
+		<div class="space-y-4">
+			<ObfuscationFields
+				bind:jc bind:jmin bind:jmax
+				bind:s1 bind:s2 bind:s3 bind:s4
+				bind:h1 bind:h2 bind:h3 bind:h4
+				bind:i1 bind:i2 bind:i3 bind:i4 bind:i5
+			/>
+
+			<!-- AWG3 (header protection + padding/rekey) -->
+			<div class="bg-[var(--ctp-surface0)] rounded-lg p-4 space-y-4">
+				<h3 class="text-sm font-medium text-[var(--ctp-subtext1)]">{$t('endpoints.obfuscation.awg3Params')}</h3>
+				<div>
+					<label for="headerProtectionKey" class="block text-xs text-[var(--ctp-overlay0)] mb-1">{$t('endpoints.headerProtectionKey')}</label>
+					<input
+						id="headerProtectionKey"
+						type="text"
+						bind:value={headerProtectionKey}
+						placeholder={$t('endpoints.placeholders.privateKey')}
+						class="w-full px-3 py-2 bg-[var(--ctp-mantle)] border border-[var(--ctp-surface2)] rounded-lg text-[var(--ctp-text)] placeholder-[var(--ctp-overlay0)] focus:outline-none focus:ring-2 focus:ring-[var(--ctp-primary)] font-mono text-sm"
+					/>
+					<p class="mt-1 text-xs text-[var(--ctp-overlay0)]">{$t('endpoints.headerProtectionKeyHint')}</p>
+				</div>
+				<div class="grid grid-cols-1 sm:grid-cols-2 gap-4">
+					<div>
+						<label for="contentPaddingAddition" class="block text-xs text-[var(--ctp-overlay0)] mb-1">{$t('awg.contentPadding')}</label>
+						<input
+							id="contentPaddingAddition"
+							type="text"
+							bind:value={contentPaddingAddition}
+							placeholder="0-64"
+							class="w-full px-3 py-2 bg-[var(--ctp-mantle)] border border-[var(--ctp-surface2)] rounded-lg text-[var(--ctp-text)] placeholder-[var(--ctp-overlay0)] focus:outline-none focus:ring-2 focus:ring-[var(--ctp-primary)] font-mono text-sm"
+						/>
+						<p class="mt-1 text-xs text-[var(--ctp-overlay0)]">{$t('awg.contentPaddingHint')}</p>
+					</div>
+					<div>
+						<label for="rekeyAfterTime" class="block text-xs text-[var(--ctp-overlay0)] mb-1">{$t('awg.rekeyAfterTime')}</label>
+						<input
+							id="rekeyAfterTime"
+							type="text"
+							bind:value={rekeyAfterTime}
+							placeholder="120-180"
+							class="w-full px-3 py-2 bg-[var(--ctp-mantle)] border border-[var(--ctp-surface2)] rounded-lg text-[var(--ctp-text)] placeholder-[var(--ctp-overlay0)] focus:outline-none focus:ring-2 focus:ring-[var(--ctp-primary)] font-mono text-sm"
+						/>
+						<p class="mt-1 text-xs text-[var(--ctp-overlay0)]">{$t('awg.rekeyAfterTimeHint')}</p>
+					</div>
+				</div>
+			</div>
+		</div>
 	{/if}
 
 	<!-- Peers Tab -->

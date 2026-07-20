@@ -75,7 +75,8 @@
 				'awg.dns': form.dns,
 				'awg.wan_iface': form.wan_iface,
 				'awg.obf': form.obf,
-				'awg.obf_preset': form.obf_preset
+				'awg.obf_preset': form.obf_preset,
+				'awg.header_protection': form.header_protection
 			});
 			settings = cloneSettings(form);
 			await refreshStatus();

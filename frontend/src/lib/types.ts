@@ -489,6 +489,10 @@ export interface Endpoint {
 	i3?: string;
 	i4?: string;
 	i5?: string;
+	// AWG3
+	header_protection_key?: string;
+	content_padding_addition?: string; // UintRange: "N" or "lo-hi"
+	rekey_after_time?: string;         // UintRange: "N" or "lo-hi" (seconds)
 	// Dialer options
 	detour?: string;
 	bind_interface?: string;
@@ -1012,6 +1016,9 @@ export interface AwgObf {
 	h2: string;
 	h3: string;
 	h4: string;
+	// AWG3: UintRange strings ("N" or "lo-hi"); backend sends "" when unset
+	content_padding_addition?: string;
+	rekey_after_time?: string;
 }
 
 export interface AwgServerSettings {
@@ -1024,6 +1031,7 @@ export interface AwgServerSettings {
 	wan_iface: string;
 	obf: AwgObf;
 	obf_preset: string;
+	header_protection: boolean;
 	configured: boolean;
 	backend: string; // may be "" on fresh deploy; status.backend is authoritative
 }
