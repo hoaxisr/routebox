@@ -49,7 +49,7 @@ async function requestRaw<T>(path: string, options: RequestInit = {}): Promise<T
 	});
 
 	if (!response.ok) {
-		if (response.status === 401 && typeof window !== 'undefined' && !window.location.pathname.startsWith('/login')) {
+		if (response.status === 401 && !path.startsWith('/clash') && typeof window !== 'undefined' && !window.location.pathname.startsWith('/login')) {
 			window.location.href = '/login';
 		}
 		let errorMessage = `HTTP ${response.status}`;
