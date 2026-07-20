@@ -268,6 +268,36 @@ func TestUpdateServerPublicHost(t *testing.T) {
 	}
 }
 
+// awg.server_host is the client-facing AWG address (router LAN/WAN IP or
+// domain). It validates through SanitizePublicHost (scheme/port/path stripped,
+// empty allowed) and defaults empty.
+func TestUpdateAwgServerHost(t *testing.T) {
+	if got := Default().Awg.ServerHost; got != "" {
+		t.Fatalf("awg.server_host must default empty; got %q", got)
+	}
+	m := &Manager{settings: Default(), path: ""}
+	if err := m.Update(map[string]interface{}{"awg.server_host": "https://192.168.1.200:8080/x"}); err != nil {
+		t.Fatalf("Update: %v", err)
+	}
+	if got := m.Get().Awg.ServerHost; got != "192.168.1.200" {
+		t.Fatalf("got %q; want sanitized 192.168.1.200", got)
+	}
+	if err := m.Update(map[string]interface{}{"awg.server_host": "bad host!!"}); err == nil {
+		t.Fatal("expected error for invalid awg.server_host")
+	}
+	// A rejected update must leave the previously stored value unchanged.
+	if got := m.Get().Awg.ServerHost; got != "192.168.1.200" {
+		t.Fatalf("rejected update must not modify ServerHost; got %q", got)
+	}
+	// Empty clears the setting (fallback to server.public_host resumes).
+	if err := m.Update(map[string]interface{}{"awg.server_host": ""}); err != nil {
+		t.Fatalf("clearing: %v", err)
+	}
+	if got := m.Get().Awg.ServerHost; got != "" {
+		t.Fatalf("clear failed; got %q", got)
+	}
+}
+
 func TestACMEAndPublicPortDefaults(t *testing.T) {
 	d := Default()
 	if d.Network.ACMEEnabled {

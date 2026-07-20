@@ -43,6 +43,9 @@
 			const resp = await api.getSettings();
 			settings = resp.settings.awg ?? null;
 			form = settings ? cloneSettings(settings) : null;
+			// Router-friendly default: prefill the client-facing server address with
+			// the host the admin browsed to (typically the router LAN/WAN IP).
+			if (form && !form.server_host) form.server_host = window.location.hostname;
 			peers = status?.enabled ? await api.getAwgPeers() : [];
 		} catch (e) {
 			notifications.error(`${$t('awg.loadFailed')}: ${e}`);
@@ -69,6 +72,7 @@
 		saving = true;
 		try {
 			await api.updateSettings({
+				'awg.server_host': form.server_host,
 				'awg.subnet': form.subnet,
 				'awg.listen_port': form.listen_port,
 				'awg.mtu': form.mtu,
