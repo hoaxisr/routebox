@@ -5,6 +5,7 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"strings"
+	"sync"
 	"testing"
 
 	"routebox/backend/internal/process"
@@ -76,6 +77,48 @@ func TestParseClashVersion(t *testing.T) {
 			}
 		})
 	}
+}
+
+// runningSingboxVersion must authenticate with the Clash API secret when one is
+// configured, and send no Authorization header when it is empty.
+func TestRunningSingboxVersion_SecretHeader(t *testing.T) {
+	var mu sync.Mutex
+	gotAuth := "unset"
+	clash := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		mu.Lock()
+		gotAuth = r.Header.Get("Authorization")
+		mu.Unlock()
+		if r.URL.Path != "/version" {
+			http.NotFound(w, r)
+			return
+		}
+		w.Write([]byte(`{"meta":true,"version":"1.13.13-awg2.1"}`))
+	}))
+	defer clash.Close()
+	addr := strings.TrimPrefix(clash.URL, "http://")
+
+	t.Run("secret sent as bearer", func(t *testing.T) {
+		ver, ok := runningSingboxVersion(addr, "s3cr3t")
+		if !ok || ver != "1.13.13-awg2.1" {
+			t.Fatalf("runningSingboxVersion = (%q, %v), want (1.13.13-awg2.1, true)", ver, ok)
+		}
+		mu.Lock()
+		defer mu.Unlock()
+		if gotAuth != "Bearer s3cr3t" {
+			t.Fatalf("Authorization = %q, want %q", gotAuth, "Bearer s3cr3t")
+		}
+	})
+
+	t.Run("no secret sends no header", func(t *testing.T) {
+		if _, ok := runningSingboxVersion(addr, ""); !ok {
+			t.Fatalf("runningSingboxVersion without secret failed")
+		}
+		mu.Lock()
+		defer mu.Unlock()
+		if gotAuth != "" {
+			t.Fatalf("Authorization = %q, want none", gotAuth)
+		}
+	})
 }
 
 func decodeStatus(t *testing.T, rec *httptest.ResponseRecorder) process.Status {

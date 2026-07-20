@@ -1,6 +1,10 @@
 package traffic
 
 import (
+	"net/http"
+	"net/http/httptest"
+	"strings"
+	"sync"
 	"testing"
 )
 
@@ -71,6 +75,82 @@ func TestComputeDeltas_AggregatesSameKey(t *testing.T) {
 	}
 	if total != 150 {
 		t.Errorf("total upload = %d, want 150", total)
+	}
+}
+
+// fetchSnapshot must authenticate with the configured Clash API secret; a
+// secret-protected server accepts the request and the snapshot decodes.
+func TestFetchSnapshot_SendsBearerSecret(t *testing.T) {
+	var mu sync.Mutex
+	var gotAuth string
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		mu.Lock()
+		gotAuth = r.Header.Get("Authorization")
+		mu.Unlock()
+		if r.Header.Get("Authorization") != "Bearer s3cr3t" {
+			w.WriteHeader(http.StatusUnauthorized)
+			w.Write([]byte(`{"message":"Unauthorized"}`))
+			return
+		}
+		w.Write([]byte(`{"connections":[{"id":"c1","upload":10,"download":20,"chains":["direct"],"metadata":{"sourceIP":"1.1.1.1","host":"a.com"}}]}`))
+	}))
+	defer srv.Close()
+
+	s := NewSampler(nil)
+	addr := strings.TrimPrefix(srv.URL, "http://")
+	snap, err := s.fetchSnapshot(addr, "s3cr3t")
+	if err != nil {
+		t.Fatalf("fetchSnapshot with secret: %v", err)
+	}
+	mu.Lock()
+	auth := gotAuth
+	mu.Unlock()
+	if auth != "Bearer s3cr3t" {
+		t.Fatalf("Authorization = %q, want %q", auth, "Bearer s3cr3t")
+	}
+	if len(snap) != 1 || snap[0].ID != "c1" {
+		t.Fatalf("snapshot = %+v, want one connection c1", snap)
+	}
+}
+
+// With no secret configured, no Authorization header may be sent.
+func TestFetchSnapshot_NoSecretSendsNoAuth(t *testing.T) {
+	var mu sync.Mutex
+	gotAuth := "unset"
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		mu.Lock()
+		gotAuth = r.Header.Get("Authorization")
+		mu.Unlock()
+		w.Write([]byte(`{"connections":[]}`))
+	}))
+	defer srv.Close()
+
+	s := NewSampler(nil)
+	addr := strings.TrimPrefix(srv.URL, "http://")
+	if _, err := s.fetchSnapshot(addr, ""); err != nil {
+		t.Fatalf("fetchSnapshot without secret: %v", err)
+	}
+	mu.Lock()
+	defer mu.Unlock()
+	if gotAuth != "" {
+		t.Fatalf("Authorization = %q, want none", gotAuth)
+	}
+}
+
+// A non-200 response (e.g. 401 from a secret-protected server) must surface as
+// an error — not decode into an empty snapshot that records zeros forever.
+func TestFetchSnapshot_Non200IsError(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.WriteHeader(http.StatusUnauthorized)
+		w.Write([]byte(`{"message":"Unauthorized"}`))
+	}))
+	defer srv.Close()
+
+	s := NewSampler(nil)
+	addr := strings.TrimPrefix(srv.URL, "http://")
+	snap, err := s.fetchSnapshot(addr, "")
+	if err == nil {
+		t.Fatalf("fetchSnapshot on 401 returned nil error (snapshot %+v); want loud failure", snap)
 	}
 }
 
