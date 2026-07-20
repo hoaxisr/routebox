@@ -22,3 +22,32 @@ func TestParseSupportsAWGServer(t *testing.T) {
 		})
 	}
 }
+
+func TestParseSupportsAWGServer_Awg3(t *testing.T) {
+	cases := map[string]bool{
+		"sing-box version 1.14.0-alpha.48-awg3-xhttp-mieru\n": true, // bare awg3, no dot
+		"sing-box version 1.13.13-awg2.1\n":                   true,
+		"sing-box version 1.13.13-awg2.0\n":                   false,
+		"sing-box version 1.14.0-alpha.48\n":                  true, // 1.14 base, no awg token
+		"sing-box version 1.13.13\n":                          false,
+	}
+	for in, want := range cases {
+		if got := parseSupportsAWGServer(in); got != want {
+			t.Errorf("Server(%q)=%v want %v", in, got, want)
+		}
+	}
+}
+
+func TestParseSupportsAWG3(t *testing.T) {
+	cases := map[string]bool{
+		"sing-box version 1.14.0-alpha.48-awg3-xhttp-mieru\n": true,
+		"sing-box version 1.14.0-alpha.48\n":                  true,  // 1.14 base
+		"sing-box version 1.13.13-awg2.1\n":                   false, // awg2.1 has no header_protection_key
+		"sing-box version 1.13.13\n":                          false,
+	}
+	for in, want := range cases {
+		if got := parseSupportsAWG3(in); got != want {
+			t.Errorf("AWG3(%q)=%v want %v", in, got, want)
+		}
+	}
+}

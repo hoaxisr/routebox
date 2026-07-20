@@ -529,26 +529,77 @@ func (m *Manager) SupportsV2RayAPI() bool {
 	return false
 }
 
-// parseSupportsAWGServer reports whether a `<binary> version` output advertises
-// an AmneziaWG level that can run as a SERVER: awg2.1 or newer (the awg2.1 build
-// carries commit 352205f9 — accepting client keepalives sent without S4 padding).
-// awg2.0 accepts the config but silently drops keepalives, so it fails closed.
-// It scans the "version" line for an "awgMAJOR.MINOR" suffix and compares. PURE.
-func parseSupportsAWGServer(versionOutput string) bool {
+// parseBaseAtLeast114 reports whether a "version X.Y.Z…" line is sing-box >= 1.14.
+func parseBaseAtLeast114(versionOutput string) bool {
 	for _, line := range strings.Split(versionOutput, "\n") {
-		i := strings.Index(line, "awg")
+		i := strings.Index(line, "version ")
 		if i < 0 {
 			continue
 		}
 		var maj, min int
-		if _, err := fmt.Sscanf(line[i:], "awg%d.%d", &maj, &min); err != nil {
+		if _, err := fmt.Sscanf(line[i+len("version "):], "%d.%d", &maj, &min); err != nil {
 			continue
 		}
-		if maj > 2 || (maj == 2 && min >= 1) {
+		if maj > 1 || (maj == 1 && min >= 14) {
 			return true
 		}
 	}
 	return false
+}
+
+// awgLevel returns (major, minor, ok) parsed from an "awgN[.M]" token in the line.
+func awgLevel(line string) (maj, min int, ok bool) {
+	i := strings.Index(line, "awg")
+	if i < 0 {
+		return 0, 0, false
+	}
+	rest := line[i+3:]
+	// major: leading digits
+	j := 0
+	for j < len(rest) && rest[j] >= '0' && rest[j] <= '9' {
+		j++
+	}
+	if j == 0 {
+		return 0, 0, false
+	}
+	maj, _ = strconv.Atoi(rest[:j])
+	// optional ".minor"
+	if j < len(rest) && rest[j] == '.' {
+		k := j + 1
+		for k < len(rest) && rest[k] >= '0' && rest[k] <= '9' {
+			k++
+		}
+		if k > j+1 {
+			min, _ = strconv.Atoi(rest[j+1 : k])
+		}
+	}
+	return maj, min, true
+}
+
+// parseSupportsAWGServer: awg server works on awg2.1+ (S4-keepalive fix) or awg3+
+// (bare "awg3" token) or any 1.14+ base build (all carry the fork's awg endpoint). PURE.
+func parseSupportsAWGServer(versionOutput string) bool {
+	for _, line := range strings.Split(versionOutput, "\n") {
+		if maj, min, ok := awgLevel(line); ok {
+			if maj > 2 || (maj == 2 && min >= 1) {
+				return true
+			}
+		}
+	}
+	return parseBaseAtLeast114(versionOutput)
+}
+
+// parseSupportsAWG3 reports whether the binary accepts the awg3 endpoint fields
+// (header_protection_key / content_padding_addition / rekey_after_time): an awg
+// major >= 3 token, or a 1.14+ base build. awg2.1 and older REJECT those fields,
+// so this fails closed for them. PURE.
+func parseSupportsAWG3(versionOutput string) bool {
+	for _, line := range strings.Split(versionOutput, "\n") {
+		if maj, _, ok := awgLevel(line); ok && maj >= 3 {
+			return true
+		}
+	}
+	return parseBaseAtLeast114(versionOutput)
 }
 
 // SupportsAWGServer reports whether the running binary can host an AWG server
@@ -565,6 +616,25 @@ func (m *Manager) SupportsAWGServer() bool {
 		if out, err := m.runVersionFull(path); err == nil {
 			m.setBinaryPath(path)
 			return parseSupportsAWGServer(out)
+		}
+	}
+	return false
+}
+
+// SupportsAWG3 reports whether the running binary accepts the awg3-only endpoint
+// fields (header_protection_key / content_padding_addition / rekey_after_time).
+// FAIL-CLOSED: any exec/lookup error returns false, mirroring SupportsAWGServer,
+// so RouteBox never emits fields an older binary would reject.
+func (m *Manager) SupportsAWG3() bool {
+	if bp := m.getBinaryPath(); bp != "" {
+		if out, err := m.runVersionFull(bp); err == nil {
+			return parseSupportsAWG3(out)
+		}
+	}
+	if path, err := exec.LookPath("amnezia-box"); err == nil {
+		if out, err := m.runVersionFull(path); err == nil {
+			m.setBinaryPath(path)
+			return parseSupportsAWG3(out)
 		}
 	}
 	return false
