@@ -42,6 +42,10 @@ func (h *Handler) EnableAWG(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusServiceUnavailable, "awg not available")
 		return
 	}
+	if h.awgSingboxDraftBlocked(r) {
+		writeError(w, http.StatusConflict, "apply or discard pending config changes first")
+		return
+	}
 	in := awgEnableInput(h.settings.Get().Awg)
 	if err := h.awg.Enable(r.Context(), in); err != nil {
 		// Enable already validated every field; a validation error is a 400.
@@ -73,10 +77,23 @@ func awgEnableInput(s settings.AwgSettings) awg.EnableInput {
 	}
 }
 
+// awgSingboxDraftBlocked reports whether an enable/disable must be rejected:
+// on the singbox backend these ops rewrite the ACTIVE config, and
+// SyncAwgEndpointActive silently DEFERS while a draft is pending — the op would
+// flip enabled/phase without writing anything. Kernel mode is unaffected.
+func (h *Handler) awgSingboxDraftBlocked(r *http.Request) bool {
+	return h.config != nil && h.config.HasDraft() &&
+		h.awg.Status(r.Context()).Backend == "singbox"
+}
+
 // DisableAWG stops the interface (PostDown reverts NAT).
 func (h *Handler) DisableAWG(w http.ResponseWriter, r *http.Request) {
 	if h.awg == nil {
 		writeError(w, http.StatusServiceUnavailable, "awg not available")
+		return
+	}
+	if h.awgSingboxDraftBlocked(r) {
+		writeError(w, http.StatusConflict, "apply or discard pending config changes first")
 		return
 	}
 	if err := h.awg.Disable(r.Context()); err != nil {
@@ -173,6 +190,42 @@ func (h *Handler) GetAWGPeerConfig(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Cache-Control", "no-store")
 	w.WriteHeader(http.StatusOK)
 	_, _ = w.Write([]byte(body))
+}
+
+// GetAWGPeerSingbox serves a client sing-box endpoint JSON for a peer (authorized).
+// Mirrors GetAWGPeerConfig hardening: validate key first, existence 404 before the
+// public-host 503, no err echo, Cache-Control no-store.
+func (h *Handler) GetAWGPeerSingbox(w http.ResponseWriter, r *http.Request) {
+	if h.awg == nil {
+		writeError(w, http.StatusServiceUnavailable, "awg not available")
+		return
+	}
+	pub, err := awgPubKeyParam(r)
+	if err != nil {
+		writeError(w, http.StatusBadRequest, "invalid public key")
+		return
+	}
+	name, ok := h.awg.PeerConfig(pub) // existence first (404 before 503)
+	if !ok {
+		http.NotFound(w, r)
+		return
+	}
+	host := h.settings.Get().Server.PublicHost
+	if host == "" {
+		writeError(w, http.StatusServiceUnavailable, "public host not configured")
+		return
+	}
+	ep, err := h.awg.ClientEndpoint(pub, name, host)
+	if err != nil {
+		writeError(w, http.StatusInternalServerError, "export unavailable")
+		return
+	}
+	// Envelope response (writeSuccess) so the frontend's request<T> helper — which
+	// reads {success,data} and returns .data — works. JSON escaping of the i-field
+	// "<b 0x..>" tags is harmless: JSON.parse restores them, and the client
+	// re-stringifies with literal angle brackets before copy/download.
+	w.Header().Set("Cache-Control", "no-store")
+	writeSuccess(w, ep)
 }
 
 // SetAWGPeerExpiry sets/extends/clears a peer's expiry (one operation backed by
