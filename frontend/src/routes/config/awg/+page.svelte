@@ -176,13 +176,13 @@
 					<span class="live-dot"></span>
 					<div>
 						<div class="label">{$t('awg.running')}</div>
-						<div class="sub">{settings.interface} · {status.peer_count} {$t('awg.peers')}</div>
+						<div class="sub">{isSingbox ? 'sing-box' : settings.interface} · {status.peer_count} {$t('awg.peers')}</div>
 					</div>
 				{:else}
 					<span class="dead-dot"></span>
 					<div>
 						<div class="label">{$t('awg.stopped')}</div>
-						<div class="sub">{settings.interface}</div>
+						<div class="sub">{isSingbox ? 'sing-box' : settings.interface}</div>
 					</div>
 				{/if}
 			</div>
@@ -300,7 +300,7 @@
 					<span class="live-dot"></span>
 					<div>
 						<div class="lp-label">{$t('awg.running')}</div>
-						<div class="lp-sub">{settings.interface} · {status.peer_count}</div>
+						<div class="lp-sub">{isSingbox ? 'sing-box' : settings.interface} · {status.peer_count}</div>
 					</div>
 				</div>
 			{/if}
