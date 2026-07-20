@@ -7,6 +7,7 @@
 	import type { AwgStatus, AwgPeer, AwgServerSettings } from '$lib/types';
 	import ServerSettingsForm from '$lib/components/awg/ServerSettingsForm.svelte';
 	import PeerRoster from '$lib/components/awg/PeerRoster.svelte';
+	import BackendPicker from '$lib/components/awg/BackendPicker.svelte';
 
 	let status = $state<AwgStatus | null>(null);
 	let settings = $state<AwgServerSettings | null>(null);
@@ -19,6 +20,17 @@
 	let settingsOpen = $state(false);
 
 	const mode = $derived(settings?.configured ? 'steady' : 'wizard');
+	const isSingbox = $derived((status?.backend ?? settings?.backend) === 'singbox');
+	const backendValue = $derived<'kernel' | 'singbox'>(isSingbox ? 'singbox' : 'kernel');
+
+	async function changeBackend(b: 'kernel' | 'singbox') {
+		try {
+			await api.updateSettings({ 'awg.backend': b });
+			await loadAll();
+		} catch (e) {
+			notifications.error(`${$t('awg.saveFailed')}: ${e}`);
+		}
+	}
 
 	function cloneSettings(s: AwgServerSettings): AwgServerSettings {
 		return { ...s, dns: [...(s.dns ?? [])], obf: { ...s.obf } };
@@ -150,6 +162,8 @@
 			<p>{$t('awg.description')}</p>
 		</div>
 
+		<BackendPicker value={backendValue} disabled={status.enabled} onChange={changeBackend} />
+
 		<!-- Status strip -->
 		<div class="status-strip">
 			<div class="strip-state">
@@ -188,7 +202,7 @@
 				{#if status.public_host}
 				<div class="strip-metric">
 					<span class="m-val mono">{status.public_host}</span>
-					<span class="m-key">WAN{status.wan_iface ? ` · ${status.wan_iface}` : ''}</span>
+					<span class="m-key">WAN{!isSingbox && status.wan_iface ? ` · ${status.wan_iface}` : ''}</span>
 				</div>
 			{/if}
 
@@ -210,7 +224,7 @@
 		{#if status.last_error}
 			<div class="status-badge error err-line">{status.last_error}</div>
 		{/if}
-		{#if status.enabled && status.nat_orphan}
+		{#if !isSingbox && status.enabled && status.nat_orphan}
 			<div class="status-badge error err-line">{$t('awg.natOrphan')}</div>
 		{/if}
 
@@ -261,10 +275,12 @@
 			{/if}
 		</div>
 
-		<div class="dep-note">
-			<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" width="14" height="14"><polyline points="20 6 9 17 4 12" /></svg>
-			{$t('awg.depNote', { values: { module: status.module } })}
-		</div>
+		{#if !isSingbox}
+			<div class="dep-note">
+				<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" width="14" height="14"><polyline points="20 6 9 17 4 12" /></svg>
+				{$t('awg.depNote', { values: { module: status.module } })}
+			</div>
+		{/if}
 	</div>
 {:else}
 	<!-- ================= WIZARD (Concept C — Guided Lifecycle) ================= -->
@@ -285,30 +301,34 @@
 			{/if}
 		</div>
 
+		<BackendPicker value={backendValue} disabled={status.enabled} onChange={changeBackend} />
+
 		<div class="spine">
-			<!-- STEP 1 — Setup / readiness -->
-			<section class="step done">
-				<div class="step-marker" aria-hidden="true">
-					<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 13l4 4L19 7" /></svg>
-				</div>
-				<div class="card">
-					<div class="step-head">
-						<div>
-							<div class="step-eyebrow">{$t('awg.stepSetup')}</div>
-							<h3 class="step-title">{$t('awg.stepReadinessTitle')}</h3>
-						</div>
-						<span class="status-badge success">{$t('awg.ready')}</span>
+			<!-- STEP 1 — Setup / readiness (kernel backend only) -->
+			{#if !isSingbox}
+				<section class="step done">
+					<div class="step-marker" aria-hidden="true">
+						<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 13l4 4L19 7" /></svg>
 					</div>
-					<p class="step-desc">{$t('awg.stepReadinessDesc')}</p>
-					<div class="ready-row">
-						<div class="ready-chip">
-							<span class="ok"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 13l4 4L19 7" /></svg></span>
-							<span>{$t('awg.kernelModule')}</span>
-							<span class="status-badge {status.module === 'loaded' ? 'success' : 'info'}">{status.module}</span>
+					<div class="card">
+						<div class="step-head">
+							<div>
+								<div class="step-eyebrow">{$t('awg.stepSetup')}</div>
+								<h3 class="step-title">{$t('awg.stepReadinessTitle')}</h3>
+							</div>
+							<span class="status-badge success">{$t('awg.ready')}</span>
+						</div>
+						<p class="step-desc">{$t('awg.stepReadinessDesc')}</p>
+						<div class="ready-row">
+							<div class="ready-chip">
+								<span class="ok"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 13l4 4L19 7" /></svg></span>
+								<span>{$t('awg.kernelModule')}</span>
+								<span class="status-badge {status.module === 'loaded' ? 'success' : 'info'}">{status.module}</span>
+							</div>
 						</div>
 					</div>
-				</div>
-			</section>
+				</section>
+			{/if}
 
 			<!-- STEP 2 — Configure -->
 			<section class="step" class:done={settings.configured} class:active={!status.enabled}>

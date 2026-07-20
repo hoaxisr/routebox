@@ -1719,7 +1719,15 @@
     "serverOff": "Server is off",
     "serverOffSub": "Settings are saved. Enable to bring the interface up.",
     "shareLocked": "Turn the server on to add and share clients.",
-    "reset": "Reset"
+    "reset": "Reset",
+    "backendKernel": "Kernel module",
+    "backendKernelHint": "amneziawg-quick interface (awg-rb0). Needs the kernel module.",
+    "backendSingbox": "sing-box",
+    "backendSingboxHint": "Runs inside amnezia-box. No kernel module. Peer changes reload the tunnel briefly.",
+    "exportJson": "Copy JSON",
+    "downloadJson": "Download JSON",
+    "exportedJson": "Client config copied",
+    "singboxNoLiveness": "Live status is not available with the sing-box backend."
   },
   "monitor": {
     "perUserTitle": "Per-User Traffic",
