@@ -12,10 +12,12 @@ type ClientEndpointSpec struct {
 	MTU        int
 	Obf        Obfuscation
 	Mimic      cps.Set
-	ServerPub  string
-	PSK        string
-	Host       string
-	Port       int
+	// HeaderProtectionKey is the AWG 3.0 shared secret; must equal the server's.
+	HeaderProtectionKey string
+	ServerPub           string
+	PSK                 string
+	Host                string
+	Port                int
 }
 
 // BuildClientEndpoint renders a sing-box endpoints[] element another RouteBox can
@@ -54,6 +56,9 @@ func BuildClientEndpoint(s ClientEndpointSpec) map[string]interface{} {
 	putObfStr("h2", s.Obf.H2)
 	putObfStr("h3", s.Obf.H3)
 	putObfStr("h4", s.Obf.H4)
+	putObfStr("content_padding_addition", s.Obf.CPA)
+	putObfStr("rekey_after_time", s.Obf.RAT)
+	putObfStr("header_protection_key", s.HeaderProtectionKey)
 	putObfStr("i1", s.Mimic.I1)
 	putObfStr("i2", s.Mimic.I2)
 	putObfStr("i3", s.Mimic.I3)
