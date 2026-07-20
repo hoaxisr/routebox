@@ -327,7 +327,7 @@ func (m *Manager) RenderClientConf(pub, host string) (string, error) {
 		return "", fmt.Errorf("no such peer")
 	}
 	m.mu.Lock()
-	serverPriv, dns, mtu, obf, port, preset := m.serverPriv, m.dns, m.mtu, m.obf, m.listenPort, m.obfPreset
+	serverPriv, dns, mtu, obf, port, preset, headerKey := m.serverPriv, m.dns, m.mtu, m.obf, m.listenPort, m.obfPreset, m.headerKey
 	m.mu.Unlock()
 	serverPub, err := PublicFromPrivate(serverPriv)
 	if err != nil {
@@ -337,17 +337,18 @@ func (m *Manager) RenderClientConf(pub, host string) (string, error) {
 		dns = []string{"1.1.1.1"}
 	}
 	return BuildClient(ClientConf{
-		PrivateKey: p.PrivateKey,
-		Address:    p.Address,
-		DNS:        dns,
-		MTU:        mtu,
-		Obf:        obf,
-		Mimic:      cps.Mimic(preset),
-		ServerPub:  serverPub,
-		Endpoint:   joinHostPort(host, port),
-		AllowedIPs: []string{"0.0.0.0/0"},
-		Keepalive:  25,
-		PSK:        p.PresharedKey,
+		PrivateKey:          p.PrivateKey,
+		Address:             p.Address,
+		DNS:                 dns,
+		MTU:                 mtu,
+		Obf:                 obf,
+		Mimic:               cps.Mimic(preset),
+		ServerPub:           serverPub,
+		Endpoint:            joinHostPort(host, port),
+		AllowedIPs:          []string{"0.0.0.0/0"},
+		Keepalive:           25,
+		PSK:                 p.PresharedKey,
+		HeaderProtectionKey: headerKey,
 	})
 }
 

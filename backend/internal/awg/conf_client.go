@@ -27,12 +27,14 @@ type ClientConf struct {
 	DNS        []string
 	MTU        int
 	Obf        Obfuscation
-	Mimic      cps.Set
-	ServerPub  string
-	PSK        string
-	Endpoint   string // host:port, IPv6 already bracketed
-	AllowedIPs []string
-	Keepalive  int
+	// HeaderProtectionKey is the AWG3 shared secret, must equal the server's; omitted when empty.
+	HeaderProtectionKey string
+	Mimic               cps.Set
+	ServerPub           string
+	PSK                 string
+	Endpoint            string // host:port, IPv6 already bracketed
+	AllowedIPs          []string
+	Keepalive           int
 }
 
 // BuildClient renders the extended-WireGuard client config an AmneziaWG client
@@ -54,6 +56,9 @@ func BuildClient(c ClientConf) (string, error) {
 	}
 	writeObf(&b, c.Obf)
 	writeMimic(&b, c.Mimic)
+	if c.HeaderProtectionKey != "" {
+		fmt.Fprintf(&b, "HeaderProtectionKey = %s\n", c.HeaderProtectionKey)
+	}
 	b.WriteString("\n[Peer]\n")
 	fmt.Fprintf(&b, "PublicKey = %s\n", c.ServerPub)
 	if c.PSK != "" {
@@ -78,7 +83,7 @@ func writeObf(b *strings.Builder, o Obfuscation) {
 			fmt.Fprintf(b, "%s = %d\n", f.k, f.v)
 		}
 	}
-	str := []struct{ k, v string }{{"H1", o.H1}, {"H2", o.H2}, {"H3", o.H3}, {"H4", o.H4}}
+	str := []struct{ k, v string }{{"H1", o.H1}, {"H2", o.H2}, {"H3", o.H3}, {"H4", o.H4}, {"ContentPaddingAddition", o.CPA}, {"RekeyAfterTime", o.RAT}}
 	for _, f := range str {
 		if f.v != "" {
 			fmt.Fprintf(b, "%s = %s\n", f.k, f.v)
