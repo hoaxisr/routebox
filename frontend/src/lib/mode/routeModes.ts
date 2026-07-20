@@ -3,9 +3,10 @@
 // import from here so visibility and reachability can never drift.
 //
 // Fail-safe contract: router mode is the full UI minus the panel-only sections
-// (Users, per-user monitor, AWG server). vps mode SUBTRACTS the router-only
-// sections and adds the panel-only ones. Anything NOT listed here is allowed
-// everywhere.
+// (Users, per-user monitor). vps mode SUBTRACTS the router-only sections and
+// adds the panel-only ones. The AWG server page is shared (both modes); router
+// mode restricts it to the sing-box backend in the page itself. Anything NOT
+// listed here is allowed everywhere.
 
 export type Mode = 'router' | 'vps';
 
@@ -38,9 +39,9 @@ export const SECTIONS: Section[] = [
 	{ path: '/config/updates', modes: BOTH },
 	{ path: '/monitor/logs', modes: BOTH },
 	{ path: '/monitor/connections', modes: BOTH },
+	{ path: '/config/awg', modes: BOTH },
 
 	// Panel-only
-	{ path: '/config/awg', modes: PANEL_ONLY },
 	{ path: '/config/users', modes: PANEL_ONLY },
 	{ path: '/monitor/users', modes: PANEL_ONLY },
 

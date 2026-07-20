@@ -3,13 +3,16 @@
 	interface Props {
 		value: 'kernel' | 'singbox';
 		disabled?: boolean;
+		/** Router mode is sing-box-only: pass false to hide the kernel option. */
+		allowKernel?: boolean;
 		onChange: (b: 'kernel' | 'singbox') => void;
 	}
-	let { value, disabled = false, onChange }: Props = $props();
-	const options: Array<{ id: 'kernel' | 'singbox'; label: string; hint: string }> = [
+	let { value, disabled = false, allowKernel = true, onChange }: Props = $props();
+	const allOptions: Array<{ id: 'kernel' | 'singbox'; label: string; hint: string }> = [
 		{ id: 'kernel', label: $t('awg.backendKernel'), hint: $t('awg.backendKernelHint') },
 		{ id: 'singbox', label: $t('awg.backendSingbox'), hint: $t('awg.backendSingboxHint') }
 	];
+	const options = $derived(allowKernel ? allOptions : allOptions.filter((o) => o.id !== 'kernel'));
 </script>
 
 <div class="backend-picker">
