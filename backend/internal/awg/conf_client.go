@@ -14,6 +14,8 @@ type Obfuscation struct {
 	Jc, Jmin, Jmax int
 	S1, S2, S3, S4 int
 	H1, H2, H3, H4 string
+	// AWG 3.0 cookie-protection fields: UintRange strings ("N" or "lo-hi").
+	CPA, RAT string
 }
 
 // ClientConf is the fully-assembled input to BuildClient. Pure — no FS/settings
