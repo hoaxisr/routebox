@@ -492,6 +492,59 @@ func TestAwgEnableInputFromSettings(t *testing.T) {
 	}
 }
 
+// On a singbox backend with header protection ON, the wg-quick .conf cannot
+// carry the shared header_protection_key — a client importing it would silently
+// fail to connect. The handler must 409 and point at the JSON export. With
+// header protection OFF the .conf is still valid — 200. Kernel is unaffected.
+func TestAWGPeerConfGatedOnSingboxHeaderProtection(t *testing.T) {
+	h, _ := newAWGSingboxHandler(t)
+	if err := h.awg.Store().Put(awg.Peer{
+		PublicKey:    knownPub,
+		PrivateKey:   knownPriv,
+		PresharedKey: knownPSK,
+		Address:      "10.10.0.2/32",
+		Name:         "phone",
+	}); err != nil {
+		t.Fatal(err)
+	}
+	r := chi.NewRouter()
+	r.Get("/api/awg/peers/{publicKey}/config", h.GetAWGPeerConfig)
+
+	// singbox + header protection ON -> 409.
+	if err := h.settings.Update(map[string]interface{}{"awg.header_protection": true}); err != nil {
+		t.Fatal(err)
+	}
+	rec := httptest.NewRecorder()
+	r.ServeHTTP(rec, httptest.NewRequest(http.MethodGet, "/api/awg/peers/"+knownPub+"/config", nil))
+	if rec.Code != http.StatusConflict {
+		t.Fatalf("singbox+HPK .conf = %d; want 409; body=%q", rec.Code, rec.Body.String())
+	}
+
+	// singbox + header protection OFF -> the .conf is still valid -> 200.
+	if err := h.settings.Update(map[string]interface{}{"awg.header_protection": false}); err != nil {
+		t.Fatal(err)
+	}
+	rec = httptest.NewRecorder()
+	r.ServeHTTP(rec, httptest.NewRequest(http.MethodGet, "/api/awg/peers/"+knownPub+"/config", nil))
+	if rec.Code != http.StatusOK {
+		t.Fatalf("singbox no-HPK .conf = %d; want 200; body=%q", rec.Code, rec.Body.String())
+	}
+}
+
+// The kernel backend never uses the header-protection key, so even a stale
+// awg.header_protection=true in settings must NOT block the kernel .conf.
+func TestAWGPeerConfKernelUnaffectedByHeaderProtection(t *testing.T) {
+	h, r := newAWGTestHandler(t)
+	if err := h.settings.Update(map[string]interface{}{"awg.header_protection": true}); err != nil {
+		t.Fatal(err)
+	}
+	rec := httptest.NewRecorder()
+	r.ServeHTTP(rec, httptest.NewRequest(http.MethodGet, "/api/awg/peers/"+knownPub+"/config", nil))
+	if rec.Code != http.StatusOK {
+		t.Fatalf("kernel .conf with header_protection set = %d; want 200; body=%q", rec.Code, rec.Body.String())
+	}
+}
+
 // The panel sends pubkeys URL-encoded (encodeURIComponent → %2B/%2F/%3D). The
 // handler must URL-decode the path param before base64-validating; otherwise every
 // key containing +,/,= 400s. Regression for the QR/.conf "HTTP 400" bug.

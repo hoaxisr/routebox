@@ -28,6 +28,19 @@ func (m *Manager) SetBackend(b string) { m.mu.Lock(); m.backend = b; m.mu.Unlock
 // the settings handler, so a bare m.backend read is a data race under -race.
 func (m *Manager) backendIs(b string) bool { m.mu.Lock(); defer m.mu.Unlock(); return m.backend == b }
 
+// BackendName reports the active backend ("kernel" | "singbox") under m.mu,
+// mirroring Status().Backend WITHOUT the kernel path's exec storm (awg show /
+// iptables). Hot-path guards (e.g. awgSingboxDraftBlocked, the .conf HPK gate)
+// key on it instead of running the full Status.
+func (m *Manager) BackendName() string {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	if m.backend == "singbox" {
+		return "singbox"
+	}
+	return "kernel"
+}
+
 // SetConfigSync wires the config-sync callback, the post-change apply (reload)
 // hook, and the binary-capability gate used by the singbox backend.
 func (m *Manager) SetConfigSync(s ConfigSyncer, apply func() error, supports func() bool) {

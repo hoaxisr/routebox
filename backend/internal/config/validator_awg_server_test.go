@@ -54,3 +54,48 @@ func TestValidateEndpoint_AWGServerMode(t *testing.T) {
 		t.Fatalf("client endpoint without peer address should error, got %v", errs)
 	}
 }
+
+// The server marker must be a VALUE check, not a presence check: an explicit
+// "listen_port": 0 or null is NOT a listener, so client strictness (peer
+// address required) must still apply.
+func TestValidateEndpoint_ListenPortValueCheck(t *testing.T) {
+	for name, lp := range map[string]interface{}{"zero": float64(0), "null": nil} {
+		client := map[string]interface{}{
+			"type": "awg", "tag": "vpn",
+			"private_key": "cGxhY2Vob2xkZXJwbGFjZWhvbGRlcnBsYWNlaG8=",
+			"address":     []interface{}{"10.10.0.2/32"},
+			"listen_port": lp,
+			"peers": []interface{}{
+				map[string]interface{}{"public_key": "cGxhY2Vob2xkZXJwbGFjZWhvbGRlcnBsYWNlaG8="},
+			},
+		}
+		errs := validateEndpoint(client, 0)
+		found := false
+		for _, e := range errs {
+			if strings.Contains(e, "missing 'address'") {
+				found = true
+			}
+		}
+		if !found {
+			t.Fatalf("listen_port=%s: peer without address must error (client mode), got %v", name, errs)
+		}
+	}
+
+	// And a client with listen_port 0 and NO peers at all must still require peers.
+	noPeers := map[string]interface{}{
+		"type": "awg", "tag": "vpn",
+		"private_key": "cGxhY2Vob2xkZXJwbGFjZWhvbGRlcnBsYWNlaG8=",
+		"address":     []interface{}{"10.10.0.2/32"},
+		"listen_port": float64(0),
+	}
+	errs := validateEndpoint(noPeers, 0)
+	found := false
+	for _, e := range errs {
+		if strings.Contains(e, "'peers'") {
+			found = true
+		}
+	}
+	if !found {
+		t.Fatalf("listen_port=0 with no peers must error, got %v", errs)
+	}
+}

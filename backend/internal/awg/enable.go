@@ -270,8 +270,15 @@ func (m *Manager) Status(ctx context.Context) AWGStatus {
 	configDirty := false
 	if enabled && desired != nil {
 		d := desired()
+		// CPA/RAT are singbox-only awg3 strings the kernel path never renders into
+		// the awg-quick conf — a difference there must NOT flag dirty here, or the
+		// Apply banner becomes permanent (a kernel restart is a no-op for them).
+		// Zero them on both operands before the struct compare. The singbox dirty
+		// compare (statusSingbox) deliberately KEEPS them.
+		dObf, runObf := d.Obf, obf
+		dObf.CPA, dObf.RAT, runObf.CPA, runObf.RAT = "", "", "", ""
 		configDirty = d.Subnet != subnet || d.ListenPort != port || d.MTU != mtu ||
-			(d.WANIface != "" && d.WANIface != wan) || d.Obf != obf || d.ObfPreset != obfPreset
+			(d.WANIface != "" && d.WANIface != wan) || dObf != runObf || d.ObfPreset != obfPreset
 	}
 	ifaceUp := false
 	if out, _, err := m.run.Run(ctx, "awg", "show", m.iface); err == nil && strings.Contains(out, "listening port") {

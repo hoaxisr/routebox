@@ -205,6 +205,32 @@ func TestConfigDirty(t *testing.T) {
 	}
 }
 
+// CPA/RAT are singbox-only awg3 strings that the kernel path NEVER renders into
+// the awg-quick conf — a difference there (an edit, or a leading-zero
+// canonicalization like "064"→"64") must NOT flag ConfigDirty on kernel, or the
+// Apply banner becomes permanent (restart is a no-op). Kernel-relevant obf
+// fields (H1-H4/J/S) must still flag dirty.
+func TestConfigDirtyKernelIgnoresSingboxObf(t *testing.T) {
+	f := newFakeRunner()
+	m := newEnableManager(t, f)
+	f.outputs["awg show awg-rb0"] = "interface: awg-rb0\n  listening port: 51820\n"
+	f.outputs["iptables -t nat -S"] = "-N RBOX-AWG-NAT\n"
+	desired := goodEnableInput()
+	m.desired = func() EnableInput { return desired }
+	if err := m.Enable(context.Background(), desired); err != nil {
+		t.Fatalf("Enable: %v", err)
+	}
+	desired.Obf.CPA = "10-20" // singbox-only fields changed in saved settings
+	desired.Obf.RAT = "120"
+	if m.Status(context.Background()).ConfigDirty {
+		t.Fatal("kernel ConfigDirty must ignore CPA/RAT (never rendered into awg-quick conf)")
+	}
+	desired.Obf.H1 = "12345" // a kernel-relevant obf field still flags dirty
+	if !m.Status(context.Background()).ConfigDirty {
+		t.Fatal("kernel-relevant obf change must still flag ConfigDirty")
+	}
+}
+
 // Switching only the obfuscation profile (same J/S/H values) must flag ConfigDirty
 // so the operator re-enables and the new client mimicry takes effect.
 func TestConfigDirtyOnPresetChange(t *testing.T) {
