@@ -108,6 +108,57 @@
 		return map;
 	});
 
+	// Derived: rule-sets that have a route rule, sorted by rule priority (route-rule order)
+	let assignedRuleSets = $derived(
+		ruleSets
+			.filter((rs) => ruleSetOutboundMap.has(rs.tag))
+			.map((rs) => ({ ruleSet: rs, ruleIndex: ruleSetOutboundMap.get(rs.tag)!.ruleIndex }))
+			.sort((a, b) => a.ruleIndex - b.ruleIndex)
+	);
+	// Derived: rule-sets without a route rule ("no route") — no priority, not draggable
+	let unassignedRuleSets = $derived(ruleSets.filter((rs) => !ruleSetOutboundMap.has(rs.tag)));
+
+	// Drag & drop state for the assigned rule-set list
+	let rsDraggedIndex = $state<number | null>(null);
+	let rsDropTargetIndex = $state<number | null>(null);
+
+	function handleRsDragStart(e: DragEvent, index: number) {
+		rsDraggedIndex = index;
+		if (e.dataTransfer) {
+			e.dataTransfer.effectAllowed = 'move';
+			e.dataTransfer.setData('text/plain', index.toString());
+		}
+	}
+
+	function handleRsDragOver(e: DragEvent, index: number) {
+		e.preventDefault();
+		if (e.dataTransfer) {
+			e.dataTransfer.dropEffect = 'move';
+		}
+		if (rsDraggedIndex !== null && rsDraggedIndex !== index) {
+			rsDropTargetIndex = index;
+		}
+	}
+
+	function handleRsDragLeave() {
+		rsDropTargetIndex = null;
+	}
+
+	async function handleRsDrop(e: DragEvent, toIndex: number) {
+		e.preventDefault();
+		if (rsDraggedIndex !== null && rsDraggedIndex !== toIndex) {
+			// Translate section positions to full rules-array indices and reuse the shared handler
+			await handleReorder(assignedRuleSets[rsDraggedIndex].ruleIndex, assignedRuleSets[toIndex].ruleIndex);
+		}
+		rsDraggedIndex = null;
+		rsDropTargetIndex = null;
+	}
+
+	function handleRsDragEnd() {
+		rsDraggedIndex = null;
+		rsDropTargetIndex = null;
+	}
+
 	// Derived: rules that are NOT simple rule_set mappings (shown in Rules section)
 	let filteredRules = $derived.by(() => {
 		return rules.map((rule, index) => ({ rule, originalIndex: index })).filter(({ rule }) => {
@@ -507,49 +558,99 @@
 						<p class="text-sm mt-1">{$t('routes.noRuleSetsHint')}</p>
 					</div>
 				{:else}
+					{#snippet ruleSetRowContent(ruleSet: RuleSet, hasMapping: boolean)}
+						{@const mapping = ruleSetOutboundMap.get(ruleSet.tag)}
+						<span class="px-2 py-0.5 text-xs rounded bg-[var(--ctp-surface2)] text-[var(--ctp-overlay1)] flex-shrink-0">
+							{ruleSet.type}
+						</span>
+						<span class="font-medium text-[var(--ctp-text)]">{ruleSet.tag}</span>
+						<span class="text-[var(--ctp-overlay0)]">→</span>
+						<select
+							value={mapping ? (mapping.action === 'reject' ? '__reject__' : mapping.outbound) : ''}
+							onchange={(e) => {
+								const val = (e.target as HTMLSelectElement).value;
+								if (val) handleRuleSetOutboundChange(ruleSet.tag, val);
+							}}
+							class="px-2 py-1 text-xs rounded bg-[var(--ctp-base)] border border-[var(--ctp-surface2)] text-[var(--ctp-text)] focus:outline-none focus:ring-1 focus:ring-[var(--ctp-primary)] cursor-pointer"
+						>
+							{#if !hasMapping}
+								<option value="" disabled selected>{$t('routes.noRoute')}</option>
+							{/if}
+							{#each allOutbounds as ob}
+								<option value={ob.tag}>{ob.tag}</option>
+							{/each}
+							<option value="__reject__">⛔ REJECT</option>
+						</select>
+					{/snippet}
+
+					{#snippet ruleSetDeleteButton(ruleSet: RuleSet)}
+						<button
+							onclick={() => handleDeleteRuleSetMapping(ruleSet.tag)}
+							class="p-1.5 rounded-md hover:bg-[var(--ctp-red)] hover:bg-opacity-10 text-[var(--ctp-overlay1)] hover:text-[var(--ctp-red)] transition-colors"
+							title={$t('common.delete')}
+						>
+							<svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+								<path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
+							</svg>
+						</button>
+					{/snippet}
+
 					<div class="divide-y divide-[var(--ctp-surface2)]">
-						{#each ruleSets as ruleSet}
-							{@const mapping = ruleSetOutboundMap.get(ruleSet.tag)}
-							<div class="group px-4 py-3 flex items-center justify-between hover:bg-[var(--ctp-surface1)] transition-colors">
+						<!-- Assigned rule-sets: draggable, ordered by route-rule priority -->
+						{#each assignedRuleSets as item, i (item.ruleSet.tag)}
+							<div
+								draggable="true"
+								ondragstart={(e) => handleRsDragStart(e, i)}
+								ondragover={(e) => handleRsDragOver(e, i)}
+								ondragleave={handleRsDragLeave}
+								ondrop={(e) => handleRsDrop(e, i)}
+								ondragend={handleRsDragEnd}
+								class="group relative px-4 py-3 flex items-center justify-between hover:bg-[var(--ctp-surface1)] transition-colors cursor-move
+									{rsDraggedIndex === i ? 'opacity-50' : ''}"
+							>
 								<div class="flex items-center gap-3 min-w-0 flex-1">
-									<span class="px-2 py-0.5 text-xs rounded bg-[var(--ctp-surface2)] text-[var(--ctp-overlay1)] flex-shrink-0">
-										{ruleSet.type}
-									</span>
-									<span class="font-medium text-[var(--ctp-text)]">{ruleSet.tag}</span>
-									<span class="text-[var(--ctp-overlay0)]">→</span>
-									<select
-										value={mapping ? (mapping.action === 'reject' ? '__reject__' : mapping.outbound) : ''}
-										onchange={(e) => {
-											const val = (e.target as HTMLSelectElement).value;
-											if (val) handleRuleSetOutboundChange(ruleSet.tag, val);
-										}}
-										class="px-2 py-1 text-xs rounded bg-[var(--ctp-base)] border border-[var(--ctp-surface2)] text-[var(--ctp-text)] focus:outline-none focus:ring-1 focus:ring-[var(--ctp-primary)] cursor-pointer"
-									>
-										{#if !mapping}
-											<option value="" disabled selected>{$t('routes.noRoute')}</option>
-										{/if}
-										{#each allOutbounds as ob}
-											<option value={ob.tag}>{ob.tag}</option>
-										{/each}
-										<option value="__reject__">⛔ REJECT</option>
-									</select>
+									<!-- Drag handle -->
+									<div class="flex-shrink-0 text-[var(--ctp-overlay0)] group-hover:text-[var(--ctp-text)] transition-colors">
+										<svg class="w-5 h-5" fill="currentColor" viewBox="0 0 20 20">
+											<path d="M7 2a2 2 0 1 0 .001 4.001A2 2 0 0 0 7 2zm0 6a2 2 0 1 0 .001 4.001A2 2 0 0 0 7 8zm0 6a2 2 0 1 0 .001 4.001A2 2 0 0 0 7 14zm6-8a2 2 0 1 0-.001-4.001A2 2 0 0 0 13 6zm0 2a2 2 0 1 0 .001 4.001A2 2 0 0 0 13 8zm0 6a2 2 0 1 0 .001 4.001A2 2 0 0 0 13 14z" />
+										</svg>
+									</div>
+									<!-- Priority number -->
+									<div class="w-6 h-6 flex-shrink-0 rounded-full bg-[var(--ctp-surface2)] flex items-center justify-center text-xs font-medium text-[var(--ctp-subtext0)]">
+										{i + 1}
+									</div>
+									{@render ruleSetRowContent(item.ruleSet, true)}
 								</div>
 								<div class="flex items-center gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
-									{#if mapping}
-										<button
-											onclick={() => handleDeleteRuleSetMapping(ruleSet.tag)}
-											class="p-1.5 rounded-md hover:bg-[var(--ctp-red)] hover:bg-opacity-10 text-[var(--ctp-overlay1)] hover:text-[var(--ctp-red)] transition-colors"
-											title={$t('common.delete')}
-										>
-											<svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-												<path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
-											</svg>
-										</button>
-									{/if}
+									{@render ruleSetDeleteButton(item.ruleSet)}
+								</div>
+								<!-- Drop indicator -->
+								{#if rsDropTargetIndex === i}
+									<div class="absolute -top-px left-0 right-0 h-0.5 bg-[var(--ctp-primary)] z-10"></div>
+								{/if}
+							</div>
+						{/each}
+
+						<!-- Unassigned rule-sets: no route rule, no priority, not draggable -->
+						{#each unassignedRuleSets as ruleSet (ruleSet.tag)}
+							<div class="group px-4 py-3 flex items-center justify-between hover:bg-[var(--ctp-surface1)] transition-colors">
+								<div class="flex items-center gap-3 min-w-0 flex-1">
+									{@render ruleSetRowContent(ruleSet, false)}
 								</div>
 							</div>
 						{/each}
 					</div>
+
+					{#if assignedRuleSets.length > 1}
+						<div class="px-4 py-3 border-t border-[var(--ctp-surface2)] bg-[var(--ctp-surface1)]">
+							<div class="flex items-center gap-2 text-sm text-[var(--ctp-overlay1)]">
+								<svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+									<path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
+								</svg>
+								<span>{$t('routes.ruleSetsOrderHint')}</span>
+							</div>
+						</div>
+					{/if}
 				{/if}
 			{/if}
 		</div>
