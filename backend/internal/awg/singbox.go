@@ -3,6 +3,7 @@ package awg
 import (
 	"context"
 	"crypto/rand"
+	"encoding/base64"
 	"fmt"
 	"net/netip"
 	"strings"
@@ -34,6 +35,14 @@ func (m *Manager) SetConfigSync(s ConfigSyncer, apply func() error, supports fun
 	m.mu.Unlock()
 }
 
+// SetSupportsAWG3 wires the awg3 binary-capability gate for the three awg3-only
+// endpoint fields (cpa/rat/header_protection_key). nil (unset) = supported.
+func (m *Manager) SetSupportsAWG3(fn func() bool) {
+	m.mu.Lock()
+	m.supports3Fn = fn
+	m.mu.Unlock()
+}
+
 // renderServerSpec snapshots the live server config + non-expired store peers into
 // a config.AwgServerSpec. Returns nil when the server is disabled OR the server
 // key is unset. The enabled gate is what makes Disable STICK: disableSingbox
@@ -43,10 +52,12 @@ func (m *Manager) renderServerSpec() *config.AwgServerSpec {
 	m.mu.Lock()
 	enabled := m.enabled
 	priv, ip, subnet, port, mtu, obf := m.serverPriv, m.serverIP, m.subnet, m.listenPort, m.mtu, m.obf
+	headerKey, s3fn := m.headerKey, m.supports3Fn
 	m.mu.Unlock()
 	if !enabled || priv == "" {
 		return nil
 	}
+	supports3 := s3fn == nil || s3fn()
 	now := m.store.now()
 	var peers []config.AwgServerPeer
 	for _, p := range m.store.List() {
@@ -57,17 +68,31 @@ func (m *Manager) renderServerSpec() *config.AwgServerSpec {
 			PublicKey: p.PublicKey, PresharedKey: p.PresharedKey, AllowedIP: p.Address,
 		})
 	}
+	obfMap := map[string]interface{}{
+		"jc": obf.Jc, "jmin": obf.Jmin, "jmax": obf.Jmax,
+		"s1": obf.S1, "s2": obf.S2, "s3": obf.S3, "s4": obf.S4,
+		"h1": obf.H1, "h2": obf.H2, "h3": obf.H3, "h4": obf.H4,
+	}
+	// Additivity: on a pre-awg3 binary NONE of the three awg3 fields may appear,
+	// or the config load breaks. Gate them all on supports3.
+	if supports3 {
+		if obf.CPA != "" {
+			obfMap["content_padding_addition"] = obf.CPA
+		}
+		if obf.RAT != "" {
+			obfMap["rekey_after_time"] = obf.RAT
+		}
+	} else {
+		headerKey = ""
+	}
 	return &config.AwgServerSpec{
-		PrivateKey: priv,
-		Address:    ip + maskSuffix(subnet),
-		ListenPort: port,
-		MTU:        mtu,
-		Obf: map[string]interface{}{
-			"jc": obf.Jc, "jmin": obf.Jmin, "jmax": obf.Jmax,
-			"s1": obf.S1, "s2": obf.S2, "s3": obf.S3, "s4": obf.S4,
-			"h1": obf.H1, "h2": obf.H2, "h3": obf.H3, "h4": obf.H4,
-		},
-		Peers: peers,
+		PrivateKey:          priv,
+		Address:             ip + maskSuffix(subnet),
+		ListenPort:          port,
+		MTU:                 mtu,
+		HeaderProtectionKey: headerKey,
+		Obf:                 obfMap,
+		Peers:               peers,
 	}
 }
 
@@ -147,6 +172,28 @@ func (m *Manager) enableSingbox(ctx context.Context, in EnableInput) error {
 	if err != nil {
 		return m.enableFail("obfuscation: " + err.Error())
 	}
+	// AWG3 header protection: hard-gate on binary capability (emitting the field
+	// on an old binary breaks the config load), enforce the fork's S>=8 rule, and
+	// ensure a persisted header key so client exports survive restarts.
+	hpk := ""
+	if in.HeaderProtection {
+		if m.supports3Fn != nil && !m.supports3Fn() {
+			return m.enableFail("header protection requires an awg3 binary")
+		}
+		if err := validateHPKConstraint(obf, true); err != nil {
+			return m.enableFail(err.Error())
+		}
+		if hpk = m.store.HeaderKey(); hpk == "" {
+			raw := make([]byte, 32)
+			if _, err := rand.Read(raw); err != nil {
+				return m.enableFail(err.Error())
+			}
+			hpk = base64.StdEncoding.EncodeToString(raw)
+			if err := m.store.SetHeaderKey(hpk); err != nil {
+				return m.enableFail(err.Error())
+			}
+		}
+	}
 	serverIP, err := firstHost(subnet)
 	if err != nil {
 		return m.enableFail(err.Error())
@@ -164,6 +211,7 @@ func (m *Manager) enableSingbox(ctx context.Context, in EnableInput) error {
 	m.mu.Lock()
 	m.subnet, m.serverIP, m.listenPort, m.mtu, m.obf, m.serverPriv = subnet, serverIP, port, mtu, obf, priv
 	m.obfPreset = in.ObfPreset
+	m.headerKey = hpk // "" when header protection is off
 	// renderServerSpec gates on m.enabled, so it MUST be true BEFORE the sync
 	// below or the spec renders nil and Enable writes nothing. On sync failure
 	// enableFail rolls it back to false (so a later sweep stays a no-op).
@@ -229,22 +277,29 @@ func (m *Manager) ClientEndpoint(pub, name, host string) (map[string]interface{}
 	}
 	m.mu.Lock()
 	priv, obf, mtu, port, preset := m.serverPriv, m.obf, m.mtu, m.listenPort, m.obfPreset
+	headerKey, s3fn := m.headerKey, m.supports3Fn
 	m.mu.Unlock()
 	serverPub, err := PublicFromPrivate(priv)
 	if err != nil {
 		return nil, err
 	}
+	// Same awg3 gate as renderServerSpec: the export may be pasted into another
+	// box running a pre-awg3 binary, so strip cpa/rat/hpk when unsupported.
+	if s3fn != nil && !s3fn() {
+		obf.CPA, obf.RAT, headerKey = "", "", ""
+	}
 	return BuildClientEndpoint(ClientEndpointSpec{
-		Tag:        "awg-" + SanitizeName(name),
-		PrivateKey: p.PrivateKey,
-		Address:    p.Address,
-		MTU:        mtu,
-		Obf:        obf,
-		Mimic:      cps.Mimic(preset),
-		ServerPub:  serverPub,
-		PSK:        p.PresharedKey,
-		Host:       host,
-		Port:       port,
+		Tag:                 "awg-" + SanitizeName(name),
+		PrivateKey:          p.PrivateKey,
+		Address:             p.Address,
+		MTU:                 mtu,
+		Obf:                 obf,
+		Mimic:               cps.Mimic(preset),
+		HeaderProtectionKey: headerKey,
+		ServerPub:           serverPub,
+		PSK:                 p.PresharedKey,
+		Host:                host,
+		Port:                port,
 	}), nil
 }
 
@@ -271,9 +326,17 @@ func (m *Manager) RehydrateSingbox(in EnableInput, enabled bool) {
 		return
 	}
 	priv := m.store.ServerKey()
+	// Restore the header key alongside the server key so a restart keeps exporting
+	// the SAME HPK — but only when header protection is desired (Enable with it off
+	// sets m.headerKey="", and rehydrate must not resurrect it).
+	hpk := ""
+	if in.HeaderProtection {
+		hpk = m.store.HeaderKey()
+	}
 	m.mu.Lock()
 	m.subnet, m.serverIP, m.listenPort, m.mtu, m.obf, m.serverPriv = subnet, serverIP, port, mtu, obf, priv
 	m.obfPreset = in.ObfPreset
+	m.headerKey = hpk
 	m.enabled = enabled && priv != ""
 	if m.enabled {
 		m.phase = PhaseReady

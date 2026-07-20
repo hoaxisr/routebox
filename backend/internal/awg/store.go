@@ -30,6 +30,7 @@ type Store struct {
 	mu        sync.RWMutex
 	byPK      map[string]*Peer
 	serverKey string       // server private key (singbox backend); persisted top-level
+	headerKey string       // AWG3 header-protection key (singbox backend); persisted top-level
 	now       func() int64 // injected clock
 }
 
@@ -54,12 +55,14 @@ func (s *Store) Load() error {
 	}
 	var doc struct {
 		ServerKey string `toml:"server_key"`
+		HeaderKey string `toml:"header_key"`
 		Peers     []Peer `toml:"peers"`
 	}
 	if err := toml.Unmarshal(data, &doc); err != nil {
 		return err
 	}
 	s.serverKey = doc.ServerKey
+	s.headerKey = doc.HeaderKey
 	s.byPK = make(map[string]*Peer, len(doc.Peers))
 	for i := range doc.Peers {
 		p := doc.Peers[i]
@@ -76,10 +79,13 @@ func (s *Store) saveLocked() error {
 	if s.path == "" {
 		return nil
 	}
+	// header_key is omitempty so the kernel backend's peers.toml (which never sets
+	// it) stays byte-identical to the pre-awg3 format.
 	doc := struct {
 		ServerKey string `toml:"server_key,omitempty"`
+		HeaderKey string `toml:"header_key,omitempty"`
 		Peers     []Peer `toml:"peers"`
-	}{ServerKey: s.serverKey, Peers: s.listLocked()}
+	}{ServerKey: s.serverKey, HeaderKey: s.headerKey, Peers: s.listLocked()}
 	// dir 0700: this directory holds client private keys, stricter than the
 	// 0755 users/store.go uses for its registry.
 	return util.WriteTOMLAtomic(s.path, 0700, doc)
@@ -97,6 +103,21 @@ func (s *Store) SetServerKey(k string) error {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	s.serverKey = k
+	return s.saveLocked()
+}
+
+// HeaderKey returns the persisted AWG3 header-protection key ("" if none).
+func (s *Store) HeaderKey() string {
+	s.mu.RLock()
+	defer s.mu.RUnlock()
+	return s.headerKey
+}
+
+// SetHeaderKey persists the AWG3 header-protection key alongside the peers.
+func (s *Store) SetHeaderKey(k string) error {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	s.headerKey = k
 	return s.saveLocked()
 }
 
