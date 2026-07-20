@@ -222,6 +222,7 @@
   },
   "endpoints": {
     "title": "Endpoints",
+    "managedByAwg": "managed by AWG server",
     "description": "Manage VPN endpoints (WireGuard, AmneziaWG)",
     "addEndpoint": "Add Endpoint",
     "editEndpoint": "Edit Endpoint",
@@ -1377,6 +1378,7 @@
     "maxValue": "Maximum value is {value}"
   },
   "validation": {
+    "invalidJson": "Invalid JSON",
     "tagRequired": "Tag is required",
     "tagExists": "Tag already exists",
     "privateKeyRequired": "Private key is required",

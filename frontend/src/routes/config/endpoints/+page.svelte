@@ -219,6 +219,7 @@
 			{#each endpoints as endpoint}
 				{@const groups = containedIn.get(endpoint.tag) || []}
 				{@const statusColor = getStatusColor(endpoint.tag)}
+				{@const managed = endpoint.tag === 'awg-server'}
 				<div class="bg-[var(--ctp-surface0)] rounded-xl p-4 hover:bg-[var(--ctp-surface1)] transition-colors">
 					<div class="flex items-start justify-between">
 						<div class="flex items-start gap-4">
@@ -233,6 +234,9 @@
 									<span class="px-2 py-0.5 text-xs bg-[var(--ctp-surface2)] rounded text-[var(--ctp-subtext1)]">
 										{endpoint.type.toUpperCase()}
 									</span>
+									{#if managed}
+										<span class="status-badge info">{$t('endpoints.managedByAwg')}</span>
+									{/if}
 									{#if groups.length > 0}
 										<span class="px-2 py-0.5 text-xs rounded flex items-center gap-1" style="background-color: color-mix(in srgb, var(--ctp-blue) 15%, transparent); color: var(--ctp-blue)" title="{$t('outbounds.memberOf')}">
 											<svg class="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -258,8 +262,9 @@
 						<div class="flex items-center gap-2">
 							<button
 								onclick={() => openEdit(endpoint)}
-								class="p-2 hover:bg-[var(--ctp-surface2)] rounded-lg transition-colors"
-								title={$t('common.edit')}
+								disabled={managed}
+								class="p-2 hover:bg-[var(--ctp-surface2)] rounded-lg transition-colors disabled:opacity-40 disabled:cursor-not-allowed disabled:hover:bg-transparent"
+								title={managed ? $t('endpoints.managedByAwg') : $t('common.edit')}
 							>
 								<svg class="w-5 h-5 text-[var(--ctp-overlay1)]" fill="none" stroke="currentColor" viewBox="0 0 24 24">
 									<path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z" />
@@ -267,8 +272,9 @@
 							</button>
 							<button
 								onclick={() => handleDelete(endpoint.tag)}
-								class="action-btn-danger"
-								title={$t('common.delete')}
+								disabled={managed}
+								class="action-btn-danger disabled:opacity-40 disabled:cursor-not-allowed"
+								title={managed ? $t('endpoints.managedByAwg') : $t('common.delete')}
 							>
 								<svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
 									<path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
