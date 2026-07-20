@@ -4,6 +4,49 @@ All notable changes to RouteBox are documented here.
 
 ## [Unreleased]
 
+## [0.23.0] - 2026-07-20
+
+### Features
+
+- **AWG server via sing-box (no kernel module)** — a second AmneziaWG *server* backend that runs
+  through the amnezia-box fork's `type:"awg"` endpoint, selectable on `/config/awg` (kernel |
+  sing-box). No kernel module required. The managed `awg-server` endpoint is change-gated into the
+  active config; the peer roster (key generation, IPAM, expiry) is shared with the kernel path.
+  Client configs are delivered as a sing-box endpoint JSON export (Copy / Download in the roster)
+  and imported by pasting the JSON into the endpoint form. Available in both router and VPS mode.
+- **AWG3 obfuscation** — `header_protection_key` (a 32-byte shared secret behind a Header
+  Protection toggle; requires S1–S4 ≥ 8), `content_padding_addition`, and `rekey_after_time`.
+  All three are emitted symmetrically in the server endpoint and every client export, and are
+  feature-gated on an awg3-capable amnezia-box binary (older binaries never receive fields they
+  would reject).
+- **AWG server as a route-rule source** (#10) — the `awg-server` endpoint is now selectable as a
+  *source* in route rules, so traffic arriving on the AWG server can be matched and routed (e.g.
+  into the tun/VPN) from the web UI.
+- **Drag & drop in Rule Set Based Routing** (#9) — assigned rule-set → outbound mappings can be
+  reordered by priority (route-rule order, first-match-wins).
+- **tun `auto_redirect` checkbox** (#11) — exposed in the tun inbound form (auto-configures the
+  nftables redirect; the field the backend already accepted).
+
+### Fixes
+
+- **AmneziaWG kernel-module install on clean Ubuntu 24.04** (#14) — install `dirmngr` before the
+  PPA signing-key fetch, so `gpg --recv-keys` no longer fails on a minimal image (no manual
+  `apt install dirmngr` needed).
+- **sing-box AWG server Disable now sticks** — a disabled server is no longer resurrected by the
+  30-second expiry sweep or a RouteBox restart; the enabled state is persisted.
+- **Backend switch blocked mid-enable** — switching kernel↔sing-box is rejected while an enable
+  orchestrator is in flight, avoiding a live interface the panel can't represent.
+- **Deterministic sweep-loop stop** — `RunSweepLoop` prioritizes the stop signal (removes a
+  race-detector flake).
+
+### Deploy notes (VPS)
+
+- A sing-box AWG server enabled on a build **before this release** must be re-enabled once after
+  updating (or set `enabled = true` under `[awg]` in `routebox.toml` before restart) — otherwise
+  it rehydrates as disabled and the sweep removes the endpoint.
+- Header Protection derives a shared secret; toggling it or rotating the key invalidates
+  previously exported client configs — re-export them.
+
 ## [0.22.0] - 2026-07-14
 
 ### Features
