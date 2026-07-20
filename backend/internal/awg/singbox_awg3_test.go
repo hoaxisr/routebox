@@ -176,6 +176,46 @@ func TestSingbox_RehydrateRestoresHeaderKey(t *testing.T) {
 	}
 }
 
+// Bug M1 regression: RehydrateSingbox must apply the same S>=8 gate as Enable.
+// The settings page persists header_protection=true BEFORE Enable validates, so
+// a bad combo (S<8) can land on disk; restoring the header key for it would make
+// the next sweep render a spec the fork REJECTS at config load (tunnel down).
+// Rehydrate must instead drop the HPK: degraded-but-loadable beats rejected.
+func TestSingbox_RehydrateGatesHPKOnS8(t *testing.T) {
+	m, fs, _ := newSingboxMgr(t)
+	m.SetSupportsAWG3(func() bool { return true })
+	if err := m.store.SetServerKey(m.serverPriv); err != nil {
+		t.Fatal(err)
+	}
+	if err := m.store.SetHeaderKey("persisted-hpk"); err != nil {
+		t.Fatal(err)
+	}
+
+	in := awg3EnableInput()
+	in.Obf.S2 = 7 // persisted invalid combo: header protection on, S2 < 8
+	m.RehydrateSingbox(in, true)
+
+	if err := m.singboxSync(); err != nil { // what the 30s sweep does
+		t.Fatal(err)
+	}
+	if fs.lastSpec == nil {
+		t.Fatal("enabled rehydrate must still render a non-nil spec")
+	}
+	if fs.lastSpec.HeaderProtectionKey != "" {
+		t.Fatalf("rehydrate must NOT restore the HPK when S<8 (fork rejects such a config), got %q",
+			fs.lastSpec.HeaderProtectionKey)
+	}
+
+	// Happy path through the same route: all S>=8 restores the persisted key.
+	m.RehydrateSingbox(awg3EnableInput(), true)
+	if err := m.singboxSync(); err != nil {
+		t.Fatal(err)
+	}
+	if got := fs.lastSpec.HeaderProtectionKey; got != "persisted-hpk" {
+		t.Fatalf("valid rehydrate must restore the stored HPK, got %q", got)
+	}
+}
+
 // Store round-trip: header_key persists in peers.toml, and stays ABSENT from the
 // file when never set (kernel peers.toml must stay byte-identical).
 func TestStore_HeaderKeyPersistence(t *testing.T) {
