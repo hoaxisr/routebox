@@ -25,6 +25,9 @@ func newSingboxAWGHandler(t *testing.T) (*Handler, http.Handler) {
 		r.Get("/peers/{publicKey}/singbox", h.GetAWGPeerSingbox)
 		r.Post("/enable", h.EnableAWG)
 		r.Post("/disable", h.DisableAWG)
+		r.Post("/peers", h.CreateAWGPeer)
+		r.Delete("/peers/{publicKey}", h.DeleteAWGPeer)
+		r.Patch("/peers/{publicKey}/expiry", h.SetAWGPeerExpiry)
 	})
 	return h, r
 }
@@ -99,5 +102,49 @@ func TestEnableAWGSingboxPendingDraftIs409(t *testing.T) {
 		if rec.Code != http.StatusConflict {
 			t.Fatalf("%s with pending draft = %d; want 409; body=%q", path, rec.Code, rec.Body.String())
 		}
+	}
+}
+
+// Same guard for the PEER ops: on the singbox backend they rewrite the ACTIVE
+// config too, and SyncAwgEndpointActive silently defers while a draft is pending
+// — the handler would report success for a peer that is not live. 409 BEFORE the
+// op, same message as enable/disable.
+func TestAWGPeerOpsSingboxPendingDraftIs409(t *testing.T) {
+	h, r := newSingboxAWGHandler(t)
+	cm := config.NewEmptyManager(filepath.Join(t.TempDir(), "config.json"))
+	if err := cm.EnsureDraft(); err != nil {
+		t.Fatal(err)
+	}
+	h.config = cm
+
+	cases := []struct{ method, path, body string }{
+		{http.MethodPost, "/api/awg/peers", `{"name":"drafty"}`},
+		{http.MethodDelete, "/api/awg/peers/" + knownPub, ""},
+		{http.MethodPatch, "/api/awg/peers/" + knownPub + "/expiry", `{"expires_at":0}`},
+	}
+	for _, tc := range cases {
+		rec := httptest.NewRecorder()
+		r.ServeHTTP(rec, httptest.NewRequest(tc.method, tc.path, strings.NewReader(tc.body)))
+		if rec.Code != http.StatusConflict {
+			t.Fatalf("%s %s with pending draft = %d; want 409; body=%q",
+				tc.method, tc.path, rec.Code, rec.Body.String())
+		}
+	}
+}
+
+// Kernel backend is NOT draft-guarded: peer ops touch awg-quick/.conf, not the
+// sing-box config, so a pending draft must not block them.
+func TestAWGPeerOpsKernelIgnoreDraft(t *testing.T) {
+	h, r := newAWGTestHandler(t) // kernel backend
+	cm := config.NewEmptyManager(filepath.Join(t.TempDir(), "config.json"))
+	if err := cm.EnsureDraft(); err != nil {
+		t.Fatal(err)
+	}
+	h.config = cm
+
+	rec := httptest.NewRecorder()
+	r.ServeHTTP(rec, httptest.NewRequest(http.MethodPost, "/api/awg/peers", strings.NewReader(`{"name":"kern"}`)))
+	if rec.Code != http.StatusOK {
+		t.Fatalf("kernel create with pending draft = %d; want 200; body=%q", rec.Code, rec.Body.String())
 	}
 }

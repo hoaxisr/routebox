@@ -5,6 +5,7 @@ import (
 	"crypto/rand"
 	"encoding/base64"
 	"fmt"
+	"log"
 	"net/netip"
 	"strings"
 
@@ -117,12 +118,17 @@ func (m *Manager) singboxSync() error {
 // peer is deleted again (compensation) so the store never claims a peer that is
 // not live. Caller holds m.addMu.
 func (m *Manager) addPeerSingbox(ctx context.Context, name string) (PeerSummary, error) {
+	// Snapshot under m.mu: enableSingbox writes serverIP/subnet under m.mu, and
+	// addMu (held by our caller) does not order against it.
+	m.mu.Lock()
+	serverIP, subnet := m.serverIP, m.subnet
+	m.mu.Unlock()
 	used := m.usedFromStore()
-	server, err := netip.ParseAddr(m.serverIP)
+	server, err := netip.ParseAddr(serverIP)
 	if err != nil {
 		return PeerSummary{}, err
 	}
-	ip, err := NextFree(m.subnet, used, server)
+	ip, err := NextFree(subnet, used, server)
 	if err != nil {
 		if strings.Contains(err.Error(), "exhausted") {
 			return PeerSummary{}, ErrSubnetExhausted
@@ -153,7 +159,13 @@ func (m *Manager) addPeerSingbox(ctx context.Context, name string) (PeerSummary,
 // version-gates the binary, ensures a server key, syncs+applies. No module, no
 // awg-quick, no NAT — the fork's endpoint does everything in-process.
 func (m *Manager) enableSingbox(ctx context.Context, in EnableInput) error {
-	if m.supportsFn != nil && !m.supportsFn() {
+	// Snapshot the capability gates under m.mu (their setters write under m.mu;
+	// a bare read here races a runtime re-wire) and invoke after unlock, exactly
+	// as renderServerSpec does.
+	m.mu.Lock()
+	supportsFn, supports3Fn := m.supportsFn, m.supports3Fn
+	m.mu.Unlock()
+	if supportsFn != nil && !supportsFn() {
 		return m.enableFail("binary too old: AWG server needs amnezia-box awg2.1+")
 	}
 	subnet, err := ValidateSubnet(in.Subnet)
@@ -177,7 +189,7 @@ func (m *Manager) enableSingbox(ctx context.Context, in EnableInput) error {
 	// ensure a persisted header key so client exports survive restarts.
 	hpk := ""
 	if in.HeaderProtection {
-		if m.supports3Fn != nil && !m.supports3Fn() {
+		if supports3Fn != nil && !supports3Fn() {
 			return m.enableFail("header protection requires an awg3 binary")
 		}
 		if err := validateHPKConstraint(obf, true); err != nil {
@@ -212,6 +224,7 @@ func (m *Manager) enableSingbox(ctx context.Context, in EnableInput) error {
 	m.subnet, m.serverIP, m.listenPort, m.mtu, m.obf, m.serverPriv = subnet, serverIP, port, mtu, obf, priv
 	m.obfPreset = in.ObfPreset
 	m.headerKey = hpk // "" when header protection is off
+	m.headerProtection = in.HeaderProtection
 	// renderServerSpec gates on m.enabled, so it MUST be true BEFORE the sync
 	// below or the spec renders nil and Enable writes nothing. On sync failure
 	// enableFail rolls it back to false (so a later sweep stays a no-op).
@@ -252,19 +265,32 @@ func (m *Manager) disableSingbox(ctx context.Context) error {
 func (m *Manager) statusSingbox(ctx context.Context) AWGStatus {
 	m.mu.Lock()
 	enabled, lastErr, port, phase := m.enabled, m.lastErr, m.listenPort, m.phase
+	subnet, mtu, obf, obfPreset, hp, desired := m.subnet, m.mtu, m.obf, m.obfPreset, m.headerProtection, m.desired
 	m.mu.Unlock()
 	if phase == "" {
 		phase = PhaseIdle
 	}
+	// ConfigDirty mirrors the kernel Status: enabled AND the saved settings differ
+	// from the running snapshot on any field that needs a re-apply — subnet, port,
+	// mtu, obf (CPA/RAT ride in the struct compare), the obf preset (client-export
+	// mimicry), and the header-protection toggle (a shared secret flip). WAN/DNS
+	// are not applicable on singbox.
+	configDirty := false
+	if enabled && desired != nil {
+		d := desired()
+		configDirty = d.Subnet != subnet || d.ListenPort != port || d.MTU != mtu ||
+			d.Obf != obf || d.ObfPreset != obfPreset || d.HeaderProtection != hp
+	}
 	return AWGStatus{
-		Backend:    "singbox",
-		Enabled:    enabled,
-		Phase:      phase,
-		ListenPort: port,
-		PublicHost: m.publicHost,
-		PeerCount:  len(m.store.List()),
-		Module:     StateReady, // module not applicable; report ready so UI doesn't warn
-		LastError:  lastErr,
+		Backend:     "singbox",
+		Enabled:     enabled,
+		Phase:       phase,
+		ListenPort:  port,
+		PublicHost:  m.publicHost,
+		PeerCount:   len(m.store.List()),
+		Module:      StateReady, // module not applicable; report ready so UI doesn't warn
+		ConfigDirty: configDirty,
+		LastError:   lastErr,
 	}
 }
 
@@ -334,13 +360,20 @@ func (m *Manager) RehydrateSingbox(in EnableInput, enabled bool) {
 	// it would make the sweep render a spec the fork rejects at config load.
 	// Dropping the HPK yields a degraded-but-loadable config instead.
 	hpk := ""
-	if in.HeaderProtection && validateHPKConstraint(obf, true) == nil {
-		hpk = m.store.HeaderKey()
+	if in.HeaderProtection {
+		if err := validateHPKConstraint(obf, true); err == nil {
+			hpk = m.store.HeaderKey()
+		} else {
+			log.Printf("awg: rehydrate: header protection is enabled in settings but %v — dropping the header key (degraded, loadable config)", err)
+		}
 	}
 	m.mu.Lock()
 	m.subnet, m.serverIP, m.listenPort, m.mtu, m.obf, m.serverPriv = subnet, serverIP, port, mtu, obf, priv
 	m.obfPreset = in.ObfPreset
 	m.headerKey = hpk
+	// Snapshot the toggle from the SAME saved settings desired() reads, so a
+	// restart does not fabricate a ConfigDirty (I1).
+	m.headerProtection = in.HeaderProtection
 	m.enabled = enabled && priv != ""
 	if m.enabled {
 		m.phase = PhaseReady
