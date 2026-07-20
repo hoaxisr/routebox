@@ -32,17 +32,18 @@ type Settings struct {
 
 // AwgSettings configures the RouteBox-owned AmneziaWG server interface.
 type AwgSettings struct {
-	Enabled    bool     `toml:"enabled" json:"enabled"`
-	Interface  string   `toml:"interface" json:"interface"`
-	Subnet     string   `toml:"subnet" json:"subnet"`
-	ListenPort int      `toml:"listen_port" json:"listen_port"`
-	MTU        int      `toml:"mtu" json:"mtu"`
-	DNS        []string `toml:"dns" json:"dns"`
-	WANIface   string   `toml:"wan_iface" json:"wan_iface"`
-	Obf        AwgObf   `toml:"obf" json:"obf"`
-	ObfPreset  string   `toml:"obf_preset" json:"obf_preset"` // "off"|"dns"|"web"|"stealth"|"custom" — selects param ranges + client CPS mimicry
-	Backend    string   `toml:"backend" json:"backend"`       // "kernel"|"singbox"; "" => resolve by mode at wiring (router=kernel, vps=singbox)
-	Configured bool     `toml:"configured" json:"configured"` // sticky: set true after first successful Enable; drives wizard-vs-steady UI (never reset on Disable)
+	Enabled          bool     `toml:"enabled" json:"enabled"`
+	Interface        string   `toml:"interface" json:"interface"`
+	Subnet           string   `toml:"subnet" json:"subnet"`
+	ListenPort       int      `toml:"listen_port" json:"listen_port"`
+	MTU              int      `toml:"mtu" json:"mtu"`
+	DNS              []string `toml:"dns" json:"dns"`
+	WANIface         string   `toml:"wan_iface" json:"wan_iface"`
+	Obf              AwgObf   `toml:"obf" json:"obf"`
+	ObfPreset        string   `toml:"obf_preset" json:"obf_preset"`               // "off"|"dns"|"web"|"stealth"|"custom" — selects param ranges + client CPS mimicry
+	Backend          string   `toml:"backend" json:"backend"`                     // "kernel"|"singbox"; "" => resolve by mode at wiring (router=kernel, vps=singbox)
+	HeaderProtection bool     `toml:"header_protection" json:"header_protection"` // AWG3 additional header protection toggle
+	Configured       bool     `toml:"configured" json:"configured"`               // sticky: set true after first successful Enable; drives wizard-vs-steady UI (never reset on Disable)
 }
 
 // AwgObf holds AmneziaWG obfuscation values. Numeric J/S fields; string H fields
@@ -59,6 +60,9 @@ type AwgObf struct {
 	H2   string `toml:"h2" json:"h2"`
 	H3   string `toml:"h3" json:"h3"`
 	H4   string `toml:"h4" json:"h4"`
+	// AWG3 params: string form (digits or "lo-hi" range), validated by the awg package.
+	ContentPaddingAddition string `toml:"content_padding_addition" json:"content_padding_addition"`
+	RekeyAfterTime         string `toml:"rekey_after_time" json:"rekey_after_time"`
 }
 
 // UpdatesSettings configures binary update checks
@@ -701,6 +705,12 @@ func (m *Manager) Update(updates map[string]interface{}) error {
 			// Guard "only switch while disabled" is enforced by the caller (handler),
 			// which has the live server status; settings stays status-agnostic.
 			m.settings.Awg.Backend = v
+		case "awg.header_protection":
+			v, ok := value.(bool)
+			if !ok {
+				return fmt.Errorf("setting %s: value must be a boolean", key)
+			}
+			m.settings.Awg.HeaderProtection = v
 		case "awg.subnet":
 			v, ok := value.(string)
 			if !ok {
