@@ -27,6 +27,7 @@ const (
 
 // AWGStatus is the aggregate status surfaced at GET /api/awg/status.
 type AWGStatus struct {
+	Backend     string      `json:"backend"` // "kernel" | "singbox"
 	Module      State       `json:"module"`
 	Enabled     bool        `json:"enabled"`
 	Phase       EnablePhase `json:"phase"`
@@ -96,6 +97,10 @@ func (m *Manager) Enable(ctx context.Context, in EnableInput) error {
 	}
 	defer m.endEnable()
 	m.setPhase(PhaseValidating)
+
+	if m.backend == "singbox" {
+		return m.enableSingbox(ctx, in)
+	}
 
 	// ---- Validation (canonicalise EVERY operator field before any render/run) ----
 	subnet, err := ValidateSubnet(in.Subnet)
@@ -213,6 +218,9 @@ func (m *Manager) enableFail(msg string) error {
 
 // Disable stops the interface (PostDown reverts NAT).
 func (m *Manager) Disable(ctx context.Context) error {
+	if m.backend == "singbox" {
+		return m.disableSingbox(ctx)
+	}
 	if err := m.iface_Down(ctx); err != nil {
 		return err
 	}
@@ -225,6 +233,9 @@ func (m *Manager) Disable(ctx context.Context) error {
 // Status aggregates module + interface + NAT-orphan state. nat_orphan = RBOX-AWG-*
 // rules present while the interface is down.
 func (m *Manager) Status(ctx context.Context) AWGStatus {
+	if m.backend == "singbox" {
+		return m.statusSingbox(ctx)
+	}
 	m.mu.Lock()
 	enabled, lastErr, port, phase, wan := m.enabled, m.lastErr, m.listenPort, m.phase, m.wan
 	subnet, mtu, obf, desired, obfPreset := m.subnet, m.mtu, m.obf, m.desired, m.obfPreset
@@ -279,7 +290,8 @@ func (m *Manager) Status(ctx context.Context) AWGStatus {
 		mod = StateReady
 	}
 	return AWGStatus{
-		Module: mod, Enabled: enabled, Phase: phase, IfaceUp: ifaceUp, ListenPort: port,
+		Backend: "kernel",
+		Module:  mod, Enabled: enabled, Phase: phase, IfaceUp: ifaceUp, ListenPort: port,
 		PublicHost: m.publicHost, PeerCount: len(peers), Online: online, Rx: rx, Tx: tx, WANIface: wan,
 		NATOrphan: rulesPresent && !ifaceUp, ConfigDirty: configDirty, LastError: lastErr,
 	}
