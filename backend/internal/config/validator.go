@@ -227,20 +227,29 @@ func validateEndpoint(ep map[string]interface{}, index int) []string {
 			errors = append(errors, fmt.Sprintf("%s: missing or empty 'address'", prefix))
 		}
 
-		// Required: at least one peer
-		if peers, ok := ep["peers"].([]interface{}); !ok || len(peers) == 0 {
+		// Server mode: an endpoint with a listen_port is a listener. Its peers are
+		// roaming (inbound) — they carry public_key + allowed_ips but NO
+		// address/port, and there may be zero peers before the first client joins.
+		_, isServer := ep["listen_port"]
+
+		peers, hasPeers := ep["peers"].([]interface{})
+		if !isServer && (!hasPeers || len(peers) == 0) {
 			errors = append(errors, fmt.Sprintf("%s: missing or empty 'peers'", prefix))
-		} else {
-			for j, peer := range peers {
-				if peerObj, ok := peer.(map[string]interface{}); ok {
-					peerPrefix := fmt.Sprintf("%s.peers[%d]", prefix, j)
-					if addr, ok := peerObj["address"].(string); !ok || addr == "" {
-						errors = append(errors, fmt.Sprintf("%s: missing 'address'", peerPrefix))
-					}
-					if pk, ok := peerObj["public_key"].(string); !ok || pk == "" {
-						errors = append(errors, fmt.Sprintf("%s: missing 'public_key'", peerPrefix))
-					}
+		}
+		for j, peer := range peers {
+			peerObj, ok := peer.(map[string]interface{})
+			if !ok {
+				continue
+			}
+			peerPrefix := fmt.Sprintf("%s.peers[%d]", prefix, j)
+			// Client peers point AT a server, so they need address; server peers do not.
+			if !isServer {
+				if addr, ok := peerObj["address"].(string); !ok || addr == "" {
+					errors = append(errors, fmt.Sprintf("%s: missing 'address'", peerPrefix))
 				}
+			}
+			if pk, ok := peerObj["public_key"].(string); !ok || pk == "" {
+				errors = append(errors, fmt.Sprintf("%s: missing 'public_key'", peerPrefix))
 			}
 		}
 	}
