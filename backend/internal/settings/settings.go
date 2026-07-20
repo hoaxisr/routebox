@@ -41,6 +41,7 @@ type AwgSettings struct {
 	WANIface   string   `toml:"wan_iface" json:"wan_iface"`
 	Obf        AwgObf   `toml:"obf" json:"obf"`
 	ObfPreset  string   `toml:"obf_preset" json:"obf_preset"` // "off"|"dns"|"web"|"stealth"|"custom" — selects param ranges + client CPS mimicry
+	Backend    string   `toml:"backend" json:"backend"`       // "kernel"|"singbox"; "" => resolve by mode at wiring (router=kernel, vps=singbox)
 	Configured bool     `toml:"configured" json:"configured"` // sticky: set true after first successful Enable; drives wizard-vs-steady UI (never reset on Disable)
 }
 
@@ -692,6 +693,14 @@ func (m *Manager) Update(updates map[string]interface{}) error {
 				return fmt.Errorf("setting %s: value must be a boolean", key)
 			}
 			m.settings.Awg.Enabled = v
+		case "awg.backend":
+			v, ok := value.(string)
+			if !ok || (v != "kernel" && v != "singbox") {
+				return fmt.Errorf("invalid awg.backend %q (want kernel|singbox)", value)
+			}
+			// Guard "only switch while disabled" is enforced by the caller (handler),
+			// which has the live server status; settings stays status-agnostic.
+			m.settings.Awg.Backend = v
 		case "awg.subnet":
 			v, ok := value.(string)
 			if !ok {
