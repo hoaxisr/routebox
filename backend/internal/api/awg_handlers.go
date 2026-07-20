@@ -42,7 +42,7 @@ func (h *Handler) EnableAWG(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusServiceUnavailable, "awg not available")
 		return
 	}
-	if h.awgSingboxDraftBlocked(r) {
+	if h.awgSingboxDraftBlocked() {
 		writeError(w, http.StatusConflict, "apply or discard pending config changes first")
 		return
 	}
@@ -88,9 +88,12 @@ func awgEnableInput(s settings.AwgSettings) awg.EnableInput {
 // rejected: on the singbox backend these ops rewrite the ACTIVE config, and
 // SyncAwgEndpointActive silently DEFERS while a draft is pending — the op would
 // flip enabled/phase without writing anything. Kernel mode is unaffected.
-func (h *Handler) awgSingboxDraftBlocked(r *http.Request) bool {
+// BackendName (not Status().Backend) keeps this predicate cheap: on kernel the
+// full Status execs `awg show`/`iptables` per call, an exec-storm for a guard
+// that only needs the backend string.
+func (h *Handler) awgSingboxDraftBlocked() bool {
 	return h.config != nil && h.config.HasDraft() &&
-		h.awg.Status(r.Context()).Backend == "singbox"
+		h.awg.BackendName() == "singbox"
 }
 
 // DisableAWG stops the interface (PostDown reverts NAT).
@@ -99,7 +102,7 @@ func (h *Handler) DisableAWG(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusServiceUnavailable, "awg not available")
 		return
 	}
-	if h.awgSingboxDraftBlocked(r) {
+	if h.awgSingboxDraftBlocked() {
 		writeError(w, http.StatusConflict, "apply or discard pending config changes first")
 		return
 	}
@@ -130,7 +133,7 @@ func (h *Handler) CreateAWGPeer(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusServiceUnavailable, "awg not available")
 		return
 	}
-	if h.awgSingboxDraftBlocked(r) {
+	if h.awgSingboxDraftBlocked() {
 		writeError(w, http.StatusConflict, "apply or discard pending config changes first")
 		return
 	}
@@ -160,7 +163,7 @@ func (h *Handler) DeleteAWGPeer(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusServiceUnavailable, "awg not available")
 		return
 	}
-	if h.awgSingboxDraftBlocked(r) {
+	if h.awgSingboxDraftBlocked() {
 		writeError(w, http.StatusConflict, "apply or discard pending config changes first")
 		return
 	}
@@ -193,6 +196,14 @@ func (h *Handler) GetAWGPeerConfig(w http.ResponseWriter, r *http.Request) {
 	name, ok := h.awg.PeerConfig(pub) // existence first (404 before 503)
 	if !ok {
 		http.NotFound(w, r)
+		return
+	}
+	// A singbox backend with header protection ON shares an HPK the wg-quick .conf
+	// format cannot carry — a client importing it would silently never connect.
+	// The UI already hides QR/.conf on singbox; this closes the direct-API footgun.
+	// With header protection OFF the .conf is still valid (no awg3 fields needed).
+	if h.awg.BackendName() == "singbox" && h.settings.Get().Awg.HeaderProtection {
+		writeError(w, http.StatusConflict, "this server uses header protection — use the JSON export")
 		return
 	}
 	host := h.settings.Get().Server.PublicHost
@@ -256,7 +267,7 @@ func (h *Handler) SetAWGPeerExpiry(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusServiceUnavailable, "awg not available")
 		return
 	}
-	if h.awgSingboxDraftBlocked(r) {
+	if h.awgSingboxDraftBlocked() {
 		writeError(w, http.StatusConflict, "apply or discard pending config changes first")
 		return
 	}

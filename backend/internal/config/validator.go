@@ -233,10 +233,13 @@ func validateEndpoint(ep map[string]interface{}, index int) []string {
 			errors = append(errors, fmt.Sprintf("%s: missing or empty 'address'", prefix))
 		}
 
-		// Server mode: an endpoint with a listen_port is a listener. Its peers are
-		// roaming (inbound) — they carry public_key + allowed_ips but NO
+		// Server mode: an endpoint with a real listen_port is a listener. Its peers
+		// are roaming (inbound) — they carry public_key + allowed_ips but NO
 		// address/port, and there may be zero peers before the first client joins.
-		_, isServer := ep["listen_port"]
+		// VALUE check, not presence: an explicit `"listen_port": null` or `0` is
+		// not a listener and must keep client strictness (peers + peer address).
+		lp, lpOK := ep["listen_port"].(float64)
+		isServer := lpOK && lp > 0
 
 		peers, hasPeers := ep["peers"].([]interface{})
 		if !isServer && (!hasPeers || len(peers) == 0) {
