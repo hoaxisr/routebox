@@ -4,6 +4,8 @@ All notable changes to RouteBox are documented here.
 
 ## [Unreleased]
 
+## [0.23.1] - 2026-07-20
+
 ### Fixes
 
 - **sing-box is the default AWG backend; router mode is sing-box-only** — a fresh install no
