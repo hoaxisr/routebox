@@ -360,10 +360,12 @@ func main() {
 		return awg.EnableInput{
 			Subnet: s.Subnet, ListenPort: s.ListenPort, MTU: s.MTU,
 			DNS: s.DNS, WANIface: s.WANIface, ObfPreset: s.ObfPreset,
+			HeaderProtection: s.HeaderProtection,
 			Obf: awg.Obfuscation{
 				Jc: s.Obf.Jc, Jmin: s.Obf.Jmin, Jmax: s.Obf.Jmax,
 				S1: s.Obf.S1, S2: s.Obf.S2, S3: s.Obf.S3, S4: s.Obf.S4,
 				H1: s.Obf.H1, H2: s.Obf.H2, H3: s.Obf.H3, H4: s.Obf.H4,
+				CPA: s.Obf.ContentPaddingAddition, RAT: s.Obf.RekeyAfterTime,
 			},
 		}
 	}
@@ -386,6 +388,9 @@ func main() {
 		func() error { return applyAwgReload(cfgMgr, procMgr) }, // reload after change
 		procMgr.SupportsAWGServer,
 	)
+	// awg3 capability gate: cpa/rat/header_protection_key are emitted only when the
+	// running binary accepts them (additivity — old binaries reject unknown fields).
+	awgMgr.SetSupportsAWG3(procMgr.SupportsAWG3)
 	// Warm the Manager so client-config rendering works after a restart without a
 	// re-enable: singbox restores serverPriv/obf from settings + the store server key
 	// (no awg-quick); kernel reads the persisted .conf (iface keeps running via systemd).
