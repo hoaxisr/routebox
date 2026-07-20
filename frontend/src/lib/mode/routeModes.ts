@@ -35,12 +35,12 @@ export const SECTIONS: Section[] = [
 	{ path: '/config/app', modes: BOTH },
 	{ path: '/config/settings', modes: BOTH },
 	{ path: '/config/updates', modes: BOTH },
+	{ path: '/config/awg', modes: BOTH },
 	{ path: '/monitor/logs', modes: BOTH },
 	{ path: '/monitor/connections', modes: BOTH },
 
 	// Panel-only
 	{ path: '/config/users', modes: PANEL_ONLY },
-	{ path: '/config/awg', modes: PANEL_ONLY },
 	{ path: '/monitor/users', modes: PANEL_ONLY },
 
 	// Router-only

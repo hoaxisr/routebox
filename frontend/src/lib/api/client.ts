@@ -249,6 +249,8 @@ export const api = {
 	deleteAwgPeer: (pk: string) =>
 		requestRaw<void>(`/awg/peers/${encodeURIComponent(pk)}`, { method: 'DELETE' }),
 	getAwgPeerConfig: (pk: string) => requestText(`/awg/peers/${encodeURIComponent(pk)}/config`),
+	getAwgPeerSingbox: (pk: string) =>
+		request<Record<string, unknown>>(`/awg/peers/${encodeURIComponent(pk)}/singbox`),
 	setAwgPeerExpiry: (pk: string, expiresAt: number) =>
 		requestRaw<void>(`/awg/peers/${encodeURIComponent(pk)}/expiry`, {
 			method: 'PATCH',
