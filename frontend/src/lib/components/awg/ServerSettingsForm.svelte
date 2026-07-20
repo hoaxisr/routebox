@@ -62,6 +62,18 @@
 
 <ObfuscationControl bind:obf={form.obf} bind:preset={form.obf_preset} />
 
+<div class="hp-row">
+	<button
+		type="button"
+		class="toggle-btn"
+		class:selected={form.header_protection}
+		onclick={() => (form.header_protection = !form.header_protection)}
+	>
+		{$t('awg.headerProtection')}
+	</button>
+	<span class="hint">{$t('awg.headerProtectionHint')}</span>
+</div>
+
 <div class="save-row">
 	<button type="button" class="btn-ghost-sm" onclick={onReset}>{$t('awg.reset')}</button>
 	<button type="button" class="btn-save" onclick={onSave} disabled={saving}>
@@ -113,6 +125,18 @@
 		height: 1px;
 		background: var(--ctp-surface0);
 		margin: 1.5rem 0;
+	}
+	.hp-row {
+		display: flex;
+		align-items: center;
+		gap: 0.75rem;
+		margin-top: 1rem;
+		flex-wrap: wrap;
+	}
+	.hp-row .hint {
+		font-size: 0.75rem;
+		color: var(--ctp-overlay0);
+		max-width: 46ch;
 	}
 	.save-row {
 		display: flex;
