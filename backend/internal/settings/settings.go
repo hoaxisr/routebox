@@ -41,7 +41,7 @@ type AwgSettings struct {
 	WANIface         string   `toml:"wan_iface" json:"wan_iface"`
 	Obf              AwgObf   `toml:"obf" json:"obf"`
 	ObfPreset        string   `toml:"obf_preset" json:"obf_preset"`               // "off"|"dns"|"web"|"stealth"|"custom" — selects param ranges + client CPS mimicry
-	Backend          string   `toml:"backend" json:"backend"`                     // "kernel"|"singbox"; "" => resolve by mode at wiring (router=kernel, vps=singbox)
+	Backend          string   `toml:"backend" json:"backend"`                     // "kernel"|"singbox"; "" => singbox (kernel is opt-in only, never the auto-default)
 	HeaderProtection bool     `toml:"header_protection" json:"header_protection"` // AWG3 additional header protection toggle
 	Configured       bool     `toml:"configured" json:"configured"`               // sticky: set true after first successful Enable; drives wizard-vs-steady UI (never reset on Disable)
 }
