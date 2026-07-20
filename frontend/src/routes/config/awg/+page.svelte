@@ -271,7 +271,7 @@
 			</button>
 			{#if settingsOpen}
 				<div class="disclosure-body">
-					<ServerSettingsForm bind:form saving={saving || enabling} onSave={onSaveClick} onReset={onResetClick} />
+					<ServerSettingsForm bind:form saving={saving || enabling} {isSingbox} onSave={onSaveClick} onReset={onResetClick} />
 				</div>
 			{/if}
 		</div>
@@ -342,7 +342,7 @@
 						</div>
 					</div>
 					<p class="step-desc">{$t('awg.stepConfigureDesc')}</p>
-					<ServerSettingsForm bind:form saving={saving || enabling} onSave={onSaveClick} onReset={onResetClick} />
+					<ServerSettingsForm bind:form saving={saving || enabling} {isSingbox} onSave={onSaveClick} onReset={onResetClick} />
 				</div>
 			</section>
 

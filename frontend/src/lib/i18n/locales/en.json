@@ -297,6 +297,7 @@
     },
     "placeholders": {
       "privateKey": "Base64-encoded private key",
+      "headerProtectionKey": "Base64-encoded shared header key (AWG 3.0)",
       "publicKey": "Base64-encoded public key",
       "psk": "Base64-encoded PSK",
       "random": "Random",
