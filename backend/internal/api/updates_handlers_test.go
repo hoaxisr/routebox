@@ -1,9 +1,14 @@
 package api
 
 import (
+	"crypto/sha256"
+	"encoding/hex"
 	"encoding/json"
+	"fmt"
 	"net/http"
 	"net/http/httptest"
+	"os"
+	"path/filepath"
 	"strings"
 	"testing"
 
@@ -128,6 +133,97 @@ func TestApplyUnknownTarget(t *testing.T) {
 	h.ApplyUpdate(rec, req)
 	if rec.Code != http.StatusNotFound {
 		t.Errorf("status = %d, want 404", rec.Code)
+	}
+}
+
+// TestApplySelfUpdateReExecsInstallPath: after Apply swaps the new binary
+// into the install path (and the running binary to <path>.old), the handler
+// must re-exec the INSTALL path — not os.Executable(), which on Linux
+// resolves /proc/self/exe to the renamed .old backup.
+func TestApplySelfUpdateReExecsInstallPath(t *testing.T) {
+	dir := t.TempDir()
+	installPath := filepath.Join(dir, "routebox")
+
+	// Current binary on disk: a real ELF so nothing chokes on it.
+	oldBytes, err := os.ReadFile("/bin/true")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(installPath, oldBytes, 0755); err != nil {
+		t.Fatal(err)
+	}
+	// New binary: same ELF + padding so content differs but still runs.
+	newBytes := append(append([]byte{}, oldBytes...), []byte("\npad")...)
+	sum := sha256.Sum256(newBytes)
+	hash := hex.EncodeToString(sum[:])
+
+	// Asset server: binary + single-file checksum.
+	mux := http.NewServeMux()
+	mux.HandleFunc("/asset", func(w http.ResponseWriter, r *http.Request) {
+		w.Write(newBytes)
+	})
+	mux.HandleFunc("/checksums.txt", func(w http.ResponseWriter, r *http.Request) {
+		fmt.Fprintf(w, "%s  routebox-linux-amd64\n", hash)
+	})
+	assets := httptest.NewServer(mux)
+	t.Cleanup(assets.Close)
+
+	// GitHub API fixture pointing at the asset server.
+	ghJSON := fmt.Sprintf(`{
+	  "tag_name": "v2.0.0",
+	  "body": "notes",
+	  "published_at": "2026-06-01T10:00:00Z",
+	  "assets": [
+	    {"name": "routebox-linux-amd64", "browser_download_url": %q},
+	    {"name": "checksums.txt", "browser_download_url": %q}
+	  ]
+	}`, assets.URL+"/asset", assets.URL+"/checksums.txt")
+	gh := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Write([]byte(ghJSON))
+	}))
+	t.Cleanup(gh.Close)
+	t.Setenv("UPDATES_API_BASE", gh.URL)
+
+	target := updates.Target{
+		Name:           "routebox",
+		Repo:           "hoaxisr/routebox",
+		AssetSuffix:    func(string) (string, bool) { return "linux-amd64", true },
+		BinaryPath:     func() string { return installPath },
+		CurrentVersion: func() (string, error) { return "1.0.0", nil },
+		SelfUpdate:     true,
+	}
+	h := NewHandler(nil, nil, "", nil, nil, nil, nil)
+	h.SetUpdatesService(&updates.Service{
+		Checker: updates.NewChecker(),
+		Updater: updates.NewUpdater(),
+		Targets: []updates.Target{target},
+	})
+
+	// Swap the exit seam so the test process survives, capturing the path.
+	got := "(not called)"
+	orig := scheduleExit
+	scheduleExit = func(path string) { got = path }
+	t.Cleanup(func() { scheduleExit = orig })
+
+	rec := httptest.NewRecorder()
+	req := httptest.NewRequest("POST", "/api/updates/apply", strings.NewReader(`{"target":"routebox"}`))
+	h.ApplyUpdate(rec, req)
+	if rec.Code != http.StatusOK {
+		t.Fatalf("status = %d: %s", rec.Code, rec.Body.String())
+	}
+	data := decodeData(t, rec)
+	if data["restarting"] != true {
+		t.Fatalf("restarting = %v, want true", data["restarting"])
+	}
+
+	if got == "(not called)" {
+		t.Fatal("scheduleExit was not called on successful self-update")
+	}
+	if got != installPath {
+		t.Errorf("scheduleExit path = %q, want install path %q", got, installPath)
+	}
+	if got == "" || strings.HasSuffix(got, ".old") {
+		t.Errorf("scheduleExit must never receive empty or .old path, got %q", got)
 	}
 }
 
