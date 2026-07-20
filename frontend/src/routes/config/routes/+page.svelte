@@ -26,6 +26,15 @@
 		...outbounds,
 		...endpoints.map(e => ({ tag: e.tag, type: e.type } as Outbound))
 	]);
+	// Source options: inbounds + server-capable endpoints (listen_port set).
+	// amnezia-box tags AWG/WG server traffic with the endpoint tag as inbound,
+	// so endpoint tags are valid values for the rule `inbound` field.
+	let sourceInbounds = $derived([
+		...inbounds,
+		...endpoints
+			.filter(e => (e.type === 'awg' || e.type === 'wireguard') && e.listen_port)
+			.map(e => ({ tag: e.tag, type: `${e.type} ${$t('routes.serverEndpoint')}` } as Inbound))
+	]);
 	let loading = $state(true);
 	let hasChanges = $state(false);
 	let applying = $state(false);
@@ -632,7 +641,7 @@
 					rule={editingRuleIndex !== null ? rules[editingRuleIndex] : undefined}
 					{ruleSets}
 					outbounds={allOutbounds}
-					{inbounds}
+					inbounds={sourceInbounds}
 					onSave={editingRuleIndex !== null ? handleUpdateRule : handleCreateRule}
 					onCancel={() => { showRuleForm = false; editingRuleIndex = null; }}
 					onRuleSetCreated={handleRuleSetCreated}
@@ -690,7 +699,7 @@
 				<RuleWizard
 					{ruleSets}
 					outbounds={allOutbounds}
-					{inbounds}
+					inbounds={sourceInbounds}
 					usedRuleSets={new Set(ruleSetOutboundMap.keys())}
 					onSave={handleWizardSave}
 					onCancel={() => showWizard = false}
