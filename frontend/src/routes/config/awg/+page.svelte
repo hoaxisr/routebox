@@ -2,7 +2,7 @@
 	import { onMount } from 'svelte';
 	import { t } from 'svelte-i18n';
 	import { api } from '$lib/api/client';
-	import { notifications } from '$lib/stores';
+	import { notifications, routerMode } from '$lib/stores';
 	import { formatBytes } from '$lib/stores/settings';
 	import type { AwgStatus, AwgPeer, AwgServerSettings } from '$lib/types';
 	import ServerSettingsForm from '$lib/components/awg/ServerSettingsForm.svelte';
@@ -163,7 +163,7 @@
 			<p>{$t('awg.description')}</p>
 		</div>
 
-		<BackendPicker value={backendValue} disabled={status.enabled} onChange={changeBackend} />
+		<BackendPicker value={backendValue} disabled={status.enabled} allowKernel={!$routerMode} onChange={changeBackend} />
 
 		<!-- Status strip -->
 		<div class="status-strip">
@@ -302,7 +302,7 @@
 			{/if}
 		</div>
 
-		<BackendPicker value={backendValue} disabled={status.enabled} onChange={changeBackend} />
+		<BackendPicker value={backendValue} disabled={status.enabled} allowKernel={!$routerMode} onChange={changeBackend} />
 
 		<div class="spine">
 			<!-- STEP 1 — Setup / readiness (kernel backend only) -->

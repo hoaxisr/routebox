@@ -26,8 +26,8 @@ describe('SECTIONS table (DRY single source)', () => {
 describe('isPathAllowed — additivity / router = full UI', () => {
 	it('router mode allows EVERY router-governed section (gating only subtracts in vps)', () => {
 		// Additivity: every section whose modes include 'router' must be reachable
-		// in router mode. (The lone panel-only section, /config/users, is asserted
-		// separately below — it is deliberately NOT router-reachable.)
+		// in router mode. (The panel-only sections — /config/users, /monitor/users —
+		// are asserted separately below; they are deliberately NOT router-reachable.)
 		for (const s of SECTIONS) {
 			if (s.modes.includes('router')) {
 				expect(isPathAllowed(s.path, 'router')).toBe(true);
@@ -57,9 +57,9 @@ describe('isPathAllowed — vps subtracts router-only', () => {
 		expect(isPathAllowed('/config/users', 'router')).toBe(false);
 		expect(isPathAllowed('/config/users', 'vps')).toBe(true);
 	});
-	it('panel-only AWG server page is blocked in router, allowed in vps', () => {
+	it('AWG server page is shared: allowed in BOTH modes (router restricts it to sing-box in-page)', () => {
 		expect(isPathAllowed('/config/awg', 'vps')).toBe(true);
-		expect(isPathAllowed('/config/awg', 'router')).toBe(false);
+		expect(isPathAllowed('/config/awg', 'router')).toBe(true);
 	});
 	it('shared paths are allowed in both modes', () => {
 		for (const p of ['/config/endpoints', '/config/outbounds', '/config/inbounds', '/config/dns', '/config/routes', '/config/rule-sets', '/config/domains', '/config/app', '/config/settings', '/config/updates', '/monitor/logs', '/monitor/connections']) {
@@ -152,6 +152,6 @@ describe('single-mode classification (sidebar drift guard)', () => {
 	});
 
 	it('panel-only sections are exactly these (update +layout.svelte {#if $panelMode} if this changes)', () => {
-		expect(singleMode('vps')).toEqual(['/config/awg', '/config/users', '/monitor/users']);
+		expect(singleMode('vps')).toEqual(['/config/users', '/monitor/users']);
 	});
 });

@@ -246,15 +246,13 @@
 					{$t('nav.overview')}
 				</a>
 
-				<!-- AmneziaWG (panel-only) -->
-				{#if $panelMode}
-					<a href="/config/awg" onclick={handleNavClick} class="flex items-center gap-3 px-3 py-2 rounded-lg hover:bg-[var(--ctp-surface0)] text-[var(--ctp-subtext1)] hover:text-[var(--ctp-text)] transition-colors">
-						<svg class="w-5 h-5 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-							<path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 2 4 5v6c0 5 3.5 8 8 11 4.5-3 8-6 8-11V5l-8-3Z" />
-						</svg>
-						{$t('nav.awg')}
-					</a>
-				{/if}
+				<!-- AmneziaWG (both modes; router is sing-box-only inside the page) -->
+				<a href="/config/awg" onclick={handleNavClick} class="flex items-center gap-3 px-3 py-2 rounded-lg hover:bg-[var(--ctp-surface0)] text-[var(--ctp-subtext1)] hover:text-[var(--ctp-text)] transition-colors">
+					<svg class="w-5 h-5 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+						<path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 2 4 5v6c0 5 3.5 8 8 11 4.5-3 8-6 8-11V5l-8-3Z" />
+					</svg>
+					{$t('nav.awg')}
+				</a>
 
 				<!-- Network Group -->
 				<div>
