@@ -492,11 +492,10 @@ func TestAwgEnableInputFromSettings(t *testing.T) {
 	}
 }
 
-// On a singbox backend with header protection ON, the wg-quick .conf cannot
-// carry the shared header_protection_key — a client importing it would silently
-// fail to connect. The handler must 409 and point at the JSON export. With
-// header protection OFF the .conf is still valid — 200. Kernel is unaffected.
-func TestAWGPeerConfGatedOnSingboxHeaderProtection(t *testing.T) {
+// The wg-quick .conf now carries the awg3 fields (HeaderProtectionKey/CPA/RAT),
+// so a singbox backend serves it regardless of the header-protection toggle —
+// 200 in both states, no 409 gate. Kernel is unaffected (see next test).
+func TestAWGPeerConfServedOnSingboxHeaderProtection(t *testing.T) {
 	h, _ := newAWGSingboxHandler(t)
 	if err := h.awg.Store().Put(awg.Peer{
 		PublicKey:    knownPub,
@@ -510,17 +509,17 @@ func TestAWGPeerConfGatedOnSingboxHeaderProtection(t *testing.T) {
 	r := chi.NewRouter()
 	r.Get("/api/awg/peers/{publicKey}/config", h.GetAWGPeerConfig)
 
-	// singbox + header protection ON -> 409.
+	// singbox + header protection ON -> the awg3-capable .conf is valid -> 200.
 	if err := h.settings.Update(map[string]interface{}{"awg.header_protection": true}); err != nil {
 		t.Fatal(err)
 	}
 	rec := httptest.NewRecorder()
 	r.ServeHTTP(rec, httptest.NewRequest(http.MethodGet, "/api/awg/peers/"+knownPub+"/config", nil))
-	if rec.Code != http.StatusConflict {
-		t.Fatalf("singbox+HPK .conf = %d; want 409; body=%q", rec.Code, rec.Body.String())
+	if rec.Code != http.StatusOK {
+		t.Fatalf("singbox+HPK .conf = %d; want 200; body=%q", rec.Code, rec.Body.String())
 	}
 
-	// singbox + header protection OFF -> the .conf is still valid -> 200.
+	// singbox + header protection OFF -> 200 as before.
 	if err := h.settings.Update(map[string]interface{}{"awg.header_protection": false}); err != nil {
 		t.Fatal(err)
 	}
