@@ -156,6 +156,7 @@ export interface Inbound {
 	address?: string[];          // NEW: unified address array (sing-box 1.8+)
 	mtu?: number;
 	auto_route?: boolean;
+	auto_redirect?: boolean;
 	strict_route?: boolean;
 	stack?: 'system' | 'gvisor' | 'mixed';
 	// DEPRECATED: keep for backward compat
