@@ -44,8 +44,9 @@ func parseClashVersion(body []byte) (string, bool) {
 // runningSingboxVersion queries the running sing-box process for its self-reported
 // version via the Clash API /version endpoint (loopback, short timeout). Returns
 // (version, true) on success; ("", false) on any error, non-200, or empty version
-// so callers can fall back to the on-disk binary version.
-func runningSingboxVersion(clashAddr string) (string, bool) {
+// so callers can fall back to the on-disk binary version. A non-empty secret is
+// sent as a Bearer token (Clash API auth).
+func runningSingboxVersion(clashAddr, secret string) (string, bool) {
 	if clashAddr == "" {
 		return "", false
 	}
@@ -57,6 +58,9 @@ func runningSingboxVersion(clashAddr string) (string, bool) {
 	req, err := http.NewRequestWithContext(ctx, http.MethodGet, url, nil)
 	if err != nil {
 		return "", false
+	}
+	if secret != "" {
+		req.Header.Set("Authorization", "Bearer "+secret)
 	}
 
 	resp, err := http.DefaultClient.Do(req)

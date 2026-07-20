@@ -2,6 +2,7 @@ package traffic
 
 import (
 	"encoding/json"
+	"fmt"
 	"log"
 	"net/http"
 	"sync"
@@ -98,12 +99,25 @@ func (s *Sampler) computeDeltas(snapshot []ConnectionSample) []Delta {
 }
 
 // fetchSnapshot pulls /connections from Clash and converts to our shape.
-func (s *Sampler) fetchSnapshot(clashAddr string) ([]ConnectionSample, error) {
-	resp, err := clashHTTPClient.Get("http://" + clashAddr + "/connections")
+// A non-empty secret is sent as a Bearer token (Clash API auth); a non-200
+// response is a hard error — a 401 body must never decode into an empty
+// snapshot that silently records zero traffic forever.
+func (s *Sampler) fetchSnapshot(clashAddr, secret string) ([]ConnectionSample, error) {
+	req, err := http.NewRequest("GET", "http://"+clashAddr+"/connections", nil)
+	if err != nil {
+		return nil, err
+	}
+	if secret != "" {
+		req.Header.Set("Authorization", "Bearer "+secret)
+	}
+	resp, err := clashHTTPClient.Do(req)
 	if err != nil {
 		return nil, err
 	}
 	defer resp.Body.Close()
+	if resp.StatusCode != http.StatusOK {
+		return nil, fmt.Errorf("clash /connections: status %d", resp.StatusCode)
+	}
 	var data struct {
 		Connections []struct {
 			ID       string   `json:"id"`
@@ -153,7 +167,7 @@ func (s *Sampler) fetchSnapshot(clashAddr string) ([]ConnectionSample, error) {
 
 // Run starts the periodic sample → upsert loop. Stops when stop channel closes.
 // retentionDays controls how long history is kept (0 = no pruning).
-func (s *Sampler) Run(clashAddr string, retentionDays int, stop <-chan struct{}) {
+func (s *Sampler) Run(clashAddr, secret string, retentionDays int, stop <-chan struct{}) {
 	if s.store == nil {
 		return
 	}
@@ -165,7 +179,7 @@ func (s *Sampler) Run(clashAddr string, retentionDays int, stop <-chan struct{})
 	defer prune.Stop()
 
 	doSample := func() {
-		snap, err := s.fetchSnapshot(clashAddr)
+		snap, err := s.fetchSnapshot(clashAddr, secret)
 		if err != nil {
 			return
 		}
