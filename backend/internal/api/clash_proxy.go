@@ -61,6 +61,23 @@ func (h *Handler) getClashAddr() string {
 	return ""
 }
 
+// getClashSecret returns the Clash API secret from config, or "" when not set.
+// The panel is the legitimate Clash API client: proxied requests must
+// authenticate upstream with this secret or sing-box answers 401.
+func (h *Handler) getClashSecret() string {
+	cfg := h.config.Get()
+	if cfg != nil {
+		if exp, ok := cfg["experimental"].(map[string]interface{}); ok {
+			if clashApi, ok := exp["clash_api"].(map[string]interface{}); ok {
+				if secret, ok := clashApi["secret"].(string); ok {
+					return secret
+				}
+			}
+		}
+	}
+	return ""
+}
+
 // isEnrichmentEnabled checks if GeoIP enrichment is enabled in settings
 func (h *Handler) isEnrichmentEnabled() bool {
 	if h.settings == nil {
@@ -106,6 +123,10 @@ func (h *Handler) ProxyClashAPI(w http.ResponseWriter, r *http.Request) {
 	// Don't leak panel credentials to the clash process.
 	proxyReq.Header.Del("Cookie")
 	proxyReq.Header.Del("Authorization")
+	// Authenticate upstream with the configured Clash API secret, if any.
+	if secret := h.getClashSecret(); secret != "" {
+		proxyReq.Header.Set("Authorization", "Bearer "+secret)
+	}
 
 	// Send request
 	client := &http.Client{}
@@ -160,6 +181,10 @@ func (h *Handler) ProxyClashWebSocket(w http.ResponseWriter, r *http.Request) {
 		// Don't leak panel credentials to the clash process.
 		proxyReq.Header.Del("Cookie")
 		proxyReq.Header.Del("Authorization")
+		// Authenticate upstream with the configured Clash API secret, if any.
+		if secret := h.getClashSecret(); secret != "" {
+			proxyReq.Header.Set("Authorization", "Bearer "+secret)
+		}
 
 		client := &http.Client{}
 		resp, err := client.Do(proxyReq)
@@ -196,7 +221,13 @@ func (h *Handler) ProxyClashWebSocket(w http.ResponseWriter, r *http.Request) {
 		RawQuery: r.URL.RawQuery,
 	}
 
-	clashConn, _, err := websocket.DefaultDialer.Dial(wsURL.String(), nil)
+	// Authenticate the upstream WS dial with the configured Clash API secret,
+	// if any (server-side dial, so a header is fine — nil header is valid).
+	var wsHeader http.Header
+	if secret := h.getClashSecret(); secret != "" {
+		wsHeader = http.Header{"Authorization": []string{"Bearer " + secret}}
+	}
+	clashConn, _, err := websocket.DefaultDialer.Dial(wsURL.String(), wsHeader)
 	if err != nil {
 		errMsg := fmt.Sprintf(`{"error": "Failed to connect to Clash API at %s: %v"}`, clashAddr, err)
 		clientConn.WriteMessage(websocket.TextMessage, []byte(errMsg))
