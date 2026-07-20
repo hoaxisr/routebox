@@ -198,6 +198,12 @@ func (m *Manager) Validate(config map[string]interface{}) []string {
 	return errors
 }
 
+// ValidateEndpointExported validates a single endpoint object (exported wrapper
+// for cross-package tests / import handlers). Returns human-readable errors.
+func ValidateEndpointExported(ep map[string]interface{}) []string {
+	return validateEndpoint(ep, 0)
+}
+
 // validateEndpoint validates a single endpoint object
 func validateEndpoint(ep map[string]interface{}, index int) []string {
 	var errors []string
