@@ -270,3 +270,23 @@ func TestRenewPeerNoDuplicateConfBlock(t *testing.T) {
 		t.Fatalf("admit must upsert (one block), got %d:\n%s", n, data)
 	}
 }
+
+// A non-empty m.headerKey must surface as HeaderProtectionKey in the rendered
+// client conf (awg3, sing-box backend). The kernel Enable path clears the field,
+// so this pins the render plumbing the kernel-leak fix depends on.
+func TestRenderClientConfEmitsHeaderProtectionKey(t *testing.T) {
+	const hpk = "TESTHPK000000000000000000000000000000000000=="
+	f := newFakeRunner()
+	m := newTestManager(t, f)
+	m.serverPriv = "AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAEs=" // any 32-byte std-base64
+	m.headerKey = hpk
+	_ = m.store.Put(Peer{PublicKey: validPub, PrivateKey: "cpriv", PresharedKey: "psk", Address: "10.10.0.2/32", Name: "bob"})
+
+	conf, err := m.RenderClientConf(validPub, "1.2.3.4")
+	if err != nil {
+		t.Fatalf("RenderClientConf: %v", err)
+	}
+	if !strings.Contains(conf, "HeaderProtectionKey = "+hpk) {
+		t.Fatalf("client conf missing HeaderProtectionKey:\n%s", conf)
+	}
+}

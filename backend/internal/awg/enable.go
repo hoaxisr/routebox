@@ -178,6 +178,10 @@ func (m *Manager) Enable(ctx context.Context, in EnableInput) error {
 	// wan<-ValidateWANIface, port<-ValidateListenPort, mtu<-ValidateMTU,
 	// obf<-validateObf. Raw in.* is never threaded into the conf.
 	m.setPhase(PhaseRendering)
+	// awg3 obfuscation (content padding / rekey) is a sing-box-backend feature;
+	// the kernel awg-quick path must never emit it into the server or client conf
+	// (a pre-awg3 awg-quick hard-fails on unknown [Interface] keys).
+	obf.CPA, obf.RAT = "", ""
 	sc := ServerConf{
 		PrivateKey: priv, Address: serverIP + maskSuffix(subnet), ListenPort: port, MTU: mtu,
 		Subnet: subnet, WAN: wan, Iface: m.iface, Obf: obf,
@@ -190,6 +194,7 @@ func (m *Manager) Enable(ctx context.Context, in EnableInput) error {
 	m.subnet, m.serverIP, m.listenPort, m.mtu, m.wan, m.dns, m.serverPriv, m.obf =
 		subnet, serverIP, port, mtu, wan, dns, priv, obf
 	m.obfPreset = in.ObfPreset
+	m.headerKey, m.headerProtection = "", false // awg3 header protection is sing-box-only; never on the kernel path
 	m.mu.Unlock()
 
 	m.setPhase(PhaseStarting)
