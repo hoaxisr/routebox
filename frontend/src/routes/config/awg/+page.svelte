@@ -172,7 +172,7 @@
 		<!-- Status strip -->
 		<div class="status-strip">
 			<div class="strip-state">
-				{#if status.enabled && status.iface_up}
+				{#if status.enabled && (isSingbox || status.iface_up)}
 					<span class="live-dot"></span>
 					<div>
 						<div class="label">{$t('awg.running')}</div>
