@@ -13,17 +13,18 @@ type AwgServerPeer struct {
 // AwgServerSpec is the fully-resolved input for the managed awg-server endpoint.
 // Obf holds the already-validated jc/jmin/jmax/s1-s4/h1-h4 values (device-level).
 type AwgServerSpec struct {
-	PrivateKey string
-	Address    string
-	ListenPort int
-	MTU        int
-	Obf        map[string]interface{}
-	Peers      []AwgServerPeer
+	PrivateKey          string
+	Address             string
+	ListenPort          int
+	MTU                 int
+	HeaderProtectionKey string
+	Obf                 map[string]interface{}
+	Peers               []AwgServerPeer
 }
 
 // obfKeyOrder fixes the emit order so the rendered map is deterministic (a stable
 // block => the change-gate in SyncAwgEndpointActive is a true no-op when unchanged).
-var obfKeyOrder = []string{"jc", "jmin", "jmax", "s1", "s2", "s3", "s4", "h1", "h2", "h3", "h4"}
+var obfKeyOrder = []string{"jc", "jmin", "jmax", "s1", "s2", "s3", "s4", "h1", "h2", "h3", "h4", "content_padding_addition", "rekey_after_time"}
 
 // BuildAwgServerEndpoint renders the sing-box endpoints[] element for the fork's
 // AWG server: type "awg", listen_port set, peers without address/port. Zero/empty
@@ -54,6 +55,9 @@ func BuildAwgServerEndpoint(tag string, spec AwgServerSpec) map[string]interface
 				ep[k] = vv
 			}
 		}
+	}
+	if spec.HeaderProtectionKey != "" {
+		ep["header_protection_key"] = spec.HeaderProtectionKey
 	}
 	if len(spec.Peers) > 0 {
 		peers := make([]interface{}, 0, len(spec.Peers))
