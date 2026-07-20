@@ -29,7 +29,7 @@ func (h *Handler) GetVersion(w http.ResponseWriter, r *http.Request) {
 func (h *Handler) GetStatus(w http.ResponseWriter, r *http.Request) {
 	status := h.getProcessStatus()
 	if status.Running {
-		if v, ok := runningSingboxVersion(h.getClashAddr()); ok {
+		if v, ok := runningSingboxVersion(h.getClashAddr(), h.getClashSecret()); ok {
 			status.Version = v
 		}
 	}

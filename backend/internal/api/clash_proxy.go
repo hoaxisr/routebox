@@ -65,6 +65,9 @@ func (h *Handler) getClashAddr() string {
 // The panel is the legitimate Clash API client: proxied requests must
 // authenticate upstream with this secret or sing-box answers 401.
 func (h *Handler) getClashSecret() string {
+	if h.config == nil {
+		return ""
+	}
 	cfg := h.config.Get()
 	if cfg != nil {
 		if exp, ok := cfg["experimental"].(map[string]interface{}); ok {

@@ -193,6 +193,9 @@ func main() {
 	if resolvedClashAddr == "" {
 		resolvedClashAddr = resolveClashAddrFromConfig(cfgMgr)
 	}
+	// Clash API secret for in-process clients (discovery loop, traffic sampler).
+	// Resolved once at startup, like the address: changing it requires a restart.
+	resolvedClashSecret := resolveClashSecretFromConfig(cfgMgr)
 
 	// Resolve GeoIP path: CLI flag > settings
 	resolvedGeoipPath := *geoipPath
@@ -235,7 +238,7 @@ func main() {
 
 	// Auto-discover LAN clients from Clash /connections
 	stopDiscovery := make(chan struct{})
-	go runClientDiscovery(clientsMgr, resolvedClashAddr, stopDiscovery)
+	go runClientDiscovery(clientsMgr, resolvedClashAddr, resolvedClashSecret, stopDiscovery)
 
 	// Open traffic history store (next to settings file)
 	var trafficStore *traffic.Store
@@ -252,7 +255,7 @@ func main() {
 	stopSampler := make(chan struct{})
 	if trafficStore != nil {
 		sampler := traffic.NewSampler(trafficStore)
-		go sampler.Run(resolvedClashAddr, 35, stopSampler)
+		go sampler.Run(resolvedClashAddr, resolvedClashSecret, 35, stopSampler)
 	}
 
 	// Per-user StatsService sampler (v2ray_api). No-op without a store; graceful
@@ -961,7 +964,7 @@ func isNonLoopback(addr string) bool {
 
 // runClientDiscovery polls the Clash /connections endpoint every 60s and feeds
 // observed source IPs into the clients manager. Exits cleanly when stop closes.
-func runClientDiscovery(mgr *clients.Manager, clashAddr string, stop <-chan struct{}) {
+func runClientDiscovery(mgr *clients.Manager, clashAddr, secret string, stop <-chan struct{}) {
 	if clashAddr == "" {
 		return
 	}
@@ -969,7 +972,14 @@ func runClientDiscovery(mgr *clients.Manager, clashAddr string, stop <-chan stru
 	ticker := time.NewTicker(60 * time.Second)
 	defer ticker.Stop()
 	tick := func() {
-		resp, err := client.Get("http://" + clashAddr + "/connections")
+		req, err := http.NewRequest("GET", "http://"+clashAddr+"/connections", nil)
+		if err != nil {
+			return
+		}
+		if secret != "" {
+			req.Header.Set("Authorization", "Bearer "+secret)
+		}
+		resp, err := client.Do(req)
 		if err != nil {
 			return
 		}
@@ -1000,6 +1010,25 @@ func runClientDiscovery(mgr *clients.Manager, clashAddr string, stop <-chan stru
 			return
 		}
 	}
+}
+
+// resolveClashSecretFromConfig extracts the Clash API secret from sing-box
+// config (experimental.clash_api.secret); "" when absent.
+func resolveClashSecretFromConfig(cfgMgr *config.Manager) string {
+	cfg := cfgMgr.Get()
+	if cfg == nil {
+		return ""
+	}
+
+	if exp, ok := cfg["experimental"].(map[string]interface{}); ok {
+		if clashApi, ok := exp["clash_api"].(map[string]interface{}); ok {
+			if secret, ok := clashApi["secret"].(string); ok {
+				return secret
+			}
+		}
+	}
+
+	return ""
 }
 
 // resolveClashAddrFromConfig extracts Clash API address from sing-box config

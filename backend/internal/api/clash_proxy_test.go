@@ -6,6 +6,7 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
+	"sync"
 	"testing"
 
 	"routebox/backend/internal/config"
@@ -37,16 +38,24 @@ func newClashProxyHandler(t *testing.T, addr, secret string) *Handler {
 }
 
 // fakeClash starts an httptest server recording the Authorization header of the
-// last request it saw.
-func fakeClash(t *testing.T) (*httptest.Server, *string) {
+// last request it saw. The returned getter is mutex-guarded so tests reading it
+// from the test goroutine are race-free.
+func fakeClash(t *testing.T) (*httptest.Server, func() string) {
 	t.Helper()
+	var mu sync.Mutex
 	var gotAuth string
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		mu.Lock()
 		gotAuth = r.Header.Get("Authorization")
+		mu.Unlock()
 		w.Write([]byte(`{}`))
 	}))
 	t.Cleanup(srv.Close)
-	return srv, &gotAuth
+	return srv, func() string {
+		mu.Lock()
+		defer mu.Unlock()
+		return gotAuth
+	}
 }
 
 func TestGetClashSecret(t *testing.T) {
@@ -94,8 +103,8 @@ func TestProxyClashAPI_ForwardsConfiguredSecret(t *testing.T) {
 	if rec.Code != http.StatusOK {
 		t.Fatalf("status = %d, want 200 (body %s)", rec.Code, rec.Body.String())
 	}
-	if *gotAuth != "Bearer s3cr3t" {
-		t.Fatalf("upstream Authorization = %q, want %q", *gotAuth, "Bearer s3cr3t")
+	if got := gotAuth(); got != "Bearer s3cr3t" {
+		t.Fatalf("upstream Authorization = %q, want %q", got, "Bearer s3cr3t")
 	}
 }
 
@@ -115,8 +124,8 @@ func TestProxyClashAPI_NoSecretSendsNoAuth(t *testing.T) {
 	if rec.Code != http.StatusOK {
 		t.Fatalf("status = %d, want 200 (body %s)", rec.Code, rec.Body.String())
 	}
-	if *gotAuth != "" {
-		t.Fatalf("upstream Authorization = %q, want none", *gotAuth)
+	if got := gotAuth(); got != "" {
+		t.Fatalf("upstream Authorization = %q, want none", got)
 	}
 }
 
@@ -136,7 +145,7 @@ func TestProxyClashWebSocket_HTTPFallbackForwardsSecret(t *testing.T) {
 	if rec.Code != http.StatusOK {
 		t.Fatalf("status = %d, want 200 (body %s)", rec.Code, rec.Body.String())
 	}
-	if *gotAuth != "Bearer s3cr3t" {
-		t.Fatalf("upstream Authorization = %q, want %q", *gotAuth, "Bearer s3cr3t")
+	if got := gotAuth(); got != "Bearer s3cr3t" {
+		t.Fatalf("upstream Authorization = %q, want %q", got, "Bearer s3cr3t")
 	}
 }
