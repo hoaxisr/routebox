@@ -984,6 +984,7 @@ export interface AwgStatus {
 	wan_iface: string;
 	nat_orphan: boolean;
 	config_dirty: boolean;
+	backend: string; // "kernel" | "singbox" — authoritative (always set by the backend)
 	last_error?: string;
 }
 
@@ -1024,4 +1025,5 @@ export interface AwgServerSettings {
 	obf: AwgObf;
 	obf_preset: string;
 	configured: boolean;
+	backend: string; // may be "" on fresh deploy; status.backend is authoritative
 }
