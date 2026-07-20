@@ -7,6 +7,7 @@ import (
 	"os"
 	"path/filepath"
 	"regexp"
+	"strconv"
 	"strings"
 
 	"routebox/backend/internal/util"
@@ -104,6 +105,49 @@ func ValidateHField(s string) (string, error) {
 		return "", fmt.Errorf("invalid obfuscation H value %q", s)
 	}
 	return s, nil
+}
+
+// ValidateUintRange validates an AWG UintRange value: "" (unset), a single
+// decimal uint32 "N", or a "lo-hi" range with lo <= hi. Mirrors the fork's
+// parser (decimal, uint32 bounds). Returns the canonical form.
+func ValidateUintRange(s string) (string, error) {
+	if s == "" {
+		return "", nil
+	}
+	parts := strings.Split(s, "-")
+	if len(parts) > 2 {
+		return "", fmt.Errorf("invalid uint range %q", s)
+	}
+	vals := make([]uint64, len(parts))
+	for i, part := range parts {
+		v, err := strconv.ParseUint(part, 10, 32)
+		if err != nil {
+			return "", fmt.Errorf("invalid uint range %q", s)
+		}
+		vals[i] = v
+	}
+	if len(vals) == 2 {
+		if vals[0] > vals[1] {
+			return "", fmt.Errorf("invalid uint range %q: lo > hi", s)
+		}
+		return fmt.Sprintf("%d-%d", vals[0], vals[1]), nil
+	}
+	return fmt.Sprintf("%d", vals[0]), nil
+}
+
+// validateHPKConstraint enforces the fork's rule that when header_protection_key
+// is enabled, every S1-S4 padding must be at least 8 bytes — the fork rejects
+// the endpoint otherwise, so surface it as a clear 400 instead.
+func validateHPKConstraint(o Obfuscation, hpkOn bool) error {
+	if !hpkOn {
+		return nil
+	}
+	for i, s := range []int{o.S1, o.S2, o.S3, o.S4} {
+		if s < 8 {
+			return fmt.Errorf("S%d must be >= 8 when header protection key is enabled (got %d)", i+1, s)
+		}
+	}
+	return nil
 }
 
 // ValidatePublicKey requires an exact std-base64 string decoding to 32 bytes.
