@@ -76,7 +76,60 @@
 	let errors = $state<Record<string, string>>({});
 	let showImport = $state(false);
 
+	// Inverse of handleSubmit's assembly: map a sing-box endpoint JSON into form state.
+	// Fields outside the form (dialer options, detour, etc.) are dropped on round-trip.
+	function applyEndpointJson(ep: Endpoint) {
+		tag = ep.tag ?? '';
+		type = ep.type ?? 'awg';
+		privateKey = ep.private_key ?? '';
+		addresses = ep.address?.join(', ') ?? '';
+		mtu = ep.mtu ?? 1280;
+		listenPort = ep.listen_port ?? 0;
+
+		// AWG obfuscation
+		jc = ep.jc ?? 0;
+		jmin = ep.jmin ?? 0;
+		jmax = ep.jmax ?? 0;
+		s1 = ep.s1 ?? 0;
+		s2 = ep.s2 ?? 0;
+		s3 = ep.s3 ?? 0;
+		s4 = ep.s4 ?? 0;
+		h1 = ep.h1 ?? '';
+		h2 = ep.h2 ?? '';
+		h3 = ep.h3 ?? '';
+		h4 = ep.h4 ?? '';
+		i1 = ep.i1 ?? '';
+		i2 = ep.i2 ?? '';
+		i3 = ep.i3 ?? '';
+		i4 = ep.i4 ?? '';
+		i5 = ep.i5 ?? '';
+
+		if (ep.peers && ep.peers.length > 0) {
+			peers = ep.peers.map((p) => ({
+				address: p.address ?? '',
+				port: p.port ?? 51820,
+				public_key: p.public_key ?? '',
+				preshared_key: p.preshared_key || undefined,
+				allowed_ips: p.allowed_ips ?? ['0.0.0.0/0', '::/0'],
+				persistent_keepalive_interval: p.persistent_keepalive_interval || undefined
+			}));
+		}
+	}
+
 	function parseAwgConfig(text: string) {
+		const trimmed = text.trim();
+		if (trimmed.startsWith('{')) {
+			try {
+				const ep = JSON.parse(trimmed) as Endpoint;
+				applyEndpointJson(ep);
+				showImport = false;
+				return;
+			} catch {
+				notifications.error($t('validation.invalidJson'));
+				return;
+			}
+		}
+
 		const lines = text.split('\n').map(l => l.trim());
 		const config: Record<string, string> = {};
 		let currentSection = '';
