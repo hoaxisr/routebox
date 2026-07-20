@@ -369,9 +369,31 @@ func main() {
 	}
 	// Status.ConfigDirty compares the running config against the live saved settings.
 	awgMgr.SetDesired(awgDesired)
-	// Warm the Manager from the persisted .conf + settings so client-config rendering
-	// works after a restart without a re-enable (the iface keeps running via systemd).
-	awgMgr.Rehydrate(context.Background(), awgDesired())
+	// Resolve the AWG backend: explicit setting wins; else router->kernel, vps->singbox.
+	// MUST run before the sweep ticker + HTTP server start so no goroutine ever
+	// observes a half-wired Manager.
+	awgBackend := settingsMgr.Get().Awg.Backend
+	if awgBackend == "" {
+		if effectiveMode == "vps" {
+			awgBackend = "singbox"
+		} else {
+			awgBackend = "kernel"
+		}
+	}
+	awgMgr.SetBackend(awgBackend)
+	awgMgr.SetConfigSync(
+		cfgMgr, // *config.Manager satisfies awg.ConfigSyncer
+		func() error { return applyAwgReload(cfgMgr, procMgr) }, // reload after change
+		procMgr.SupportsAWGServer,
+	)
+	// Warm the Manager so client-config rendering works after a restart without a
+	// re-enable: singbox restores serverPriv/obf from settings + the store server key
+	// (no awg-quick); kernel reads the persisted .conf (iface keeps running via systemd).
+	if awgBackend == "singbox" {
+		awgMgr.RehydrateSingbox(awgDesired())
+	} else {
+		awgMgr.Rehydrate(context.Background(), awgDesired())
+	}
 	apiHandler.SetAWG(awgMgr)
 
 	// AWG expiry sweep — tied to AWG's lifecycle, NOT the vps-only mode gate.
@@ -571,6 +593,7 @@ func main() {
 				r.Post("/peers", apiHandler.CreateAWGPeer)
 				r.Delete("/peers/{publicKey}", apiHandler.DeleteAWGPeer)
 				r.Get("/peers/{publicKey}/config", apiHandler.GetAWGPeerConfig)
+				r.Get("/peers/{publicKey}/singbox", apiHandler.GetAWGPeerSingbox)
 				r.Patch("/peers/{publicKey}/expiry", apiHandler.SetAWGPeerExpiry)
 			})
 
@@ -856,6 +879,19 @@ func main() {
 }
 
 // generatePassword returns a 24-character URL-safe random password.
+// applyAwgReload reloads sing-box after the managed AWG endpoint changed. SIGHUP
+// first, restart fallback (mirrors ApplyConfig's mode==reload branch). No-op if
+// the process is not running — it picks up the synced config on its own start.
+func applyAwgReload(cfg *config.Manager, proc *process.Manager) error {
+	if !proc.GetStatus().Running {
+		return nil
+	}
+	if err := proc.Reload(); err != nil {
+		return proc.Restart(cfg.GetPath())
+	}
+	return nil
+}
+
 func generatePassword() (string, error) {
 	b := make([]byte, 18)
 	if _, err := rand.Read(b); err != nil {

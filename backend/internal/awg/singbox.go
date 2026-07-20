@@ -21,6 +21,11 @@ type ConfigSyncer interface {
 // "singbox" (managed endpoint in the sing-box config).
 func (m *Manager) SetBackend(b string) { m.mu.Lock(); m.backend = b; m.mu.Unlock() }
 
+// backendIs is the lock-safe read counterpart of SetBackend: the op guards and
+// the 30s sweep ticker read the backend concurrently with runtime switches from
+// the settings handler, so a bare m.backend read is a data race under -race.
+func (m *Manager) backendIs(b string) bool { m.mu.Lock(); defer m.mu.Unlock(); return m.backend == b }
+
 // SetConfigSync wires the config-sync callback, the post-change apply (reload)
 // hook, and the binary-capability gate used by the singbox backend.
 func (m *Manager) SetConfigSync(s ConfigSyncer, apply func() error, supports func() bool) {

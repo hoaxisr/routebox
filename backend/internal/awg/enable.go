@@ -98,7 +98,7 @@ func (m *Manager) Enable(ctx context.Context, in EnableInput) error {
 	defer m.endEnable()
 	m.setPhase(PhaseValidating)
 
-	if m.backend == "singbox" {
+	if m.backendIs("singbox") {
 		return m.enableSingbox(ctx, in)
 	}
 
@@ -218,7 +218,7 @@ func (m *Manager) enableFail(msg string) error {
 
 // Disable stops the interface (PostDown reverts NAT).
 func (m *Manager) Disable(ctx context.Context) error {
-	if m.backend == "singbox" {
+	if m.backendIs("singbox") {
 		return m.disableSingbox(ctx)
 	}
 	if err := m.iface_Down(ctx); err != nil {
@@ -233,7 +233,7 @@ func (m *Manager) Disable(ctx context.Context) error {
 // Status aggregates module + interface + NAT-orphan state. nat_orphan = RBOX-AWG-*
 // rules present while the interface is down.
 func (m *Manager) Status(ctx context.Context) AWGStatus {
-	if m.backend == "singbox" {
+	if m.backendIs("singbox") {
 		return m.statusSingbox(ctx)
 	}
 	m.mu.Lock()

@@ -88,6 +88,26 @@ func (h *Handler) UpdateSettings(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	// Backend switch: only while the AWG server is disabled and no config draft is
+	// pending (a singbox enable/disable rewrites the ACTIVE config, and a pending
+	// draft would silently defer the sync). Mirrored to the live Manager below —
+	// persisting the setting alone does NOT change Manager.backend (set at boot).
+	if v, ok := updates["awg.backend"]; ok {
+		bs, _ := v.(string)
+		if bs != "kernel" && bs != "singbox" {
+			writeError(w, http.StatusBadRequest, "invalid awg.backend")
+			return
+		}
+		if h.awg != nil && h.awg.Status(r.Context()).Enabled {
+			writeError(w, http.StatusConflict, "disable the AWG server before switching backend")
+			return
+		}
+		if h.config != nil && h.config.HasDraft() {
+			writeError(w, http.StatusConflict, "apply or discard pending config changes before switching backend")
+			return
+		}
+	}
+
 	// Apply updates
 	if err := h.settings.Update(updates); err != nil {
 		writeError(w, http.StatusBadRequest, err.Error())
@@ -98,6 +118,13 @@ func (h *Handler) UpdateSettings(w http.ResponseWriter, r *http.Request) {
 	if err := h.settings.Save(); err != nil {
 		writeError(w, http.StatusInternalServerError, fmt.Sprintf("Failed to save settings: %v", err))
 		return
+	}
+
+	// Apply a validated backend switch to the live Manager.
+	if v, ok := updates["awg.backend"]; ok {
+		if bs, _ := v.(string); (bs == "kernel" || bs == "singbox") && h.awg != nil {
+			h.awg.SetBackend(bs)
+		}
 	}
 
 	writeSuccess(w, map[string]interface{}{

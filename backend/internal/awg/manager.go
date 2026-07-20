@@ -236,7 +236,7 @@ func (m *Manager) AddPeer(ctx context.Context, rawName string) (PeerSummary, err
 	m.addMu.Lock()
 	defer m.addMu.Unlock()
 
-	if m.backend == "singbox" {
+	if m.backendIs("singbox") {
 		return m.addPeerSingbox(ctx, name)
 	}
 
@@ -388,7 +388,7 @@ func (m *Manager) RemovePeer(ctx context.Context, pub string) error {
 	}
 	m.addMu.Lock()
 	defer m.addMu.Unlock()
-	if m.backend == "singbox" {
+	if m.backendIs("singbox") {
 		if err := m.store.Delete(pub); err != nil {
 			return err
 		}
@@ -418,7 +418,7 @@ func (m *Manager) RenewPeer(ctx context.Context, pub string, expiresAt int64) er
 	if err := m.store.Put(p); err != nil {
 		return err
 	}
-	if m.backend == "singbox" {
+	if m.backendIs("singbox") {
 		return m.singboxSync()
 	}
 	return m.admit(ctx, p)
@@ -429,7 +429,7 @@ func (m *Manager) RenewPeer(ctx context.Context, pub string, expiresAt int64) er
 // cheap no-op when the interface is down (iface_ShowPeers errors → return). Run by
 // the sweep ticker.
 func (m *Manager) SweepExpired(ctx context.Context) {
-	if m.backend == "singbox" {
+	if m.backendIs("singbox") {
 		m.addMu.Lock()
 		defer m.addMu.Unlock()
 		_ = m.singboxSync() // best-effort; expired peers drop out of renderServerSpec
