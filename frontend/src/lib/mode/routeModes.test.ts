@@ -57,6 +57,10 @@ describe('isPathAllowed — vps subtracts router-only', () => {
 		expect(isPathAllowed('/config/users', 'router')).toBe(false);
 		expect(isPathAllowed('/config/users', 'vps')).toBe(true);
 	});
+	it('awg page is reachable in both modes', () => {
+		expect(isPathAllowed('/config/awg', 'router')).toBe(true);
+		expect(isPathAllowed('/config/awg', 'vps')).toBe(true);
+	});
 	it('shared paths are allowed in both modes', () => {
 		for (const p of ['/config/endpoints', '/config/outbounds', '/config/inbounds', '/config/dns', '/config/routes', '/config/rule-sets', '/config/domains', '/config/app', '/config/settings', '/config/updates', '/monitor/logs', '/monitor/connections']) {
 			expect(isPathAllowed(p, 'router')).toBe(true);
@@ -148,6 +152,6 @@ describe('single-mode classification (sidebar drift guard)', () => {
 	});
 
 	it('panel-only sections are exactly these (update +layout.svelte {#if $panelMode} if this changes)', () => {
-		expect(singleMode('vps')).toEqual(['/config/awg', '/config/users', '/monitor/users']);
+		expect(singleMode('vps')).toEqual(['/config/users', '/monitor/users']);
 	});
 });
