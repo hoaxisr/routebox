@@ -252,7 +252,7 @@
 			</div>
 			<div class="clients-body">
 				{#if status.enabled}
-					<PeerRoster {peers} subnet={form.subnet} onChange={async () => { await refreshStatus(); await refreshPeers(); }} />
+					<PeerRoster {peers} subnet={form.subnet} singbox={isSingbox} onChange={async () => { await refreshStatus(); await refreshPeers(); }} />
 				{:else}
 					<div class="locked-note">{$t('awg.shareLocked')}</div>
 				{/if}
@@ -412,7 +412,7 @@
 					<p class="step-desc">{$t('awg.stepShareDesc')}</p>
 
 					{#if status.enabled}
-						<PeerRoster {peers} subnet={form.subnet} onChange={async () => { await refreshStatus(); await refreshPeers(); }} />
+						<PeerRoster {peers} subnet={form.subnet} singbox={isSingbox} onChange={async () => { await refreshStatus(); await refreshPeers(); }} />
 					{:else}
 						<div class="locked-note">{$t('awg.shareLocked')}</div>
 					{/if}
