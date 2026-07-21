@@ -174,6 +174,28 @@ func (h *Handler) DeleteUser(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusNotFound, "user not found")
 		return
 	}
+	// Pre-check ALL bindings before staging any removal: if any binding would
+	// trip the mieru last-user guard, return 409 WITHOUT mutating the draft.
+	// Otherwise an earlier (non-mieru) binding would already be removed from the
+	// draft when a later binding trips the guard — a partial mutation hidden
+	// behind a "nothing happened" 409. Uses the SAME predicate the guard enforces,
+	// read against the current working config (bindings live on distinct inbounds,
+	// so this dry-run matches what the sequential loop would see).
+	for _, b := range u.Bindings {
+		field := users.CredentialKey(b.Protocol)
+		if field == "" {
+			continue // unknown protocol: removeUserFromDraft is a no-op anyway
+		}
+		ib, ok := h.config.GetInbound(b.InboundTag)
+		if !ok {
+			continue // inbound already gone: removal is a harmless no-op
+		}
+		if mieruLastUserRemoval(ib, field, b.Credential) {
+			writeError(w, http.StatusConflict,
+				fmt.Sprintf("%s: inbound %q", ErrLastMieruUser, b.InboundTag))
+			return
+		}
+	}
 	for _, b := range u.Bindings {
 		if err := h.removeUserFromDraft(b.InboundTag, b.Protocol, b.Credential); err != nil {
 			// The last-user-of-a-mieru-inbound guard is a client-actionable
@@ -314,6 +336,13 @@ func (h *Handler) removeUserFromDraft(tag, protocol, cred string) error {
 		return nil // unknown protocol: nothing to match/remove
 	}
 	err := h.config.MutateInbound(tag, func(inbound map[string]interface{}) error {
+		// Guard: never stage a mieru inbound into a 0-user state (unappliable).
+		// Only fires when this removal is what empties it — an already-empty
+		// inbound is a harmless no-op. Named error, tags the inbound but never
+		// the credential. Shared predicate so DeleteUser's pre-check cannot drift.
+		if mieruLastUserRemoval(inbound, field, cred) {
+			return fmt.Errorf("%w: inbound %q", ErrLastMieruUser, tag)
+		}
 		// inbound is a draft-private clone held under the lock; mutate directly.
 		arr, _ := inbound["users"].([]interface{})
 		kept := make([]interface{}, 0, len(arr))
@@ -327,13 +356,6 @@ func (h *Handler) removeUserFromDraft(tag, protocol, cred string) error {
 			}
 			kept = append(kept, u)
 		}
-		// Guard: never stage a mieru inbound into a 0-user state (unappliable).
-		// Only fires when this removal is what empties it (arr had users, kept
-		// has none) — an already-empty inbound is a harmless no-op. Named error,
-		// tags the inbound but never the credential.
-		if t, _ := inbound["type"].(string); t == "mieru" && len(arr) > 0 && len(kept) == 0 {
-			return fmt.Errorf("%w: inbound %q", ErrLastMieruUser, tag)
-		}
 		inbound["users"] = kept
 		return nil
 	})
@@ -342,6 +364,34 @@ func (h *Handler) removeUserFromDraft(tag, protocol, cred string) error {
 		return nil
 	}
 	return err
+}
+
+// mieruLastUserRemoval reports whether removing the user matched by (field, cred)
+// from this inbound would empty a MIERU inbound — the exact condition
+// ErrLastMieruUser guards (mieru + had users + no survivor remains). It is the
+// SINGLE source of truth for that guard: removeUserFromDraft (the enforcing
+// mutation) and DeleteUser (the dry-run pre-check) both call it, so the two can
+// never diverge. Non-mieru inbounds and already-empty inbounds always return
+// false (no guard, no-op). Mirrors removeUserFromDraft's filter: malformed
+// (non-map) entries are treated as removed, exactly as the mutation drops them.
+func mieruLastUserRemoval(inbound map[string]interface{}, field, cred string) bool {
+	if t, _ := inbound["type"].(string); t != "mieru" {
+		return false
+	}
+	arr, _ := inbound["users"].([]interface{})
+	if len(arr) == 0 {
+		return false // already empty: harmless no-op, not a guard trip
+	}
+	for _, u := range arr {
+		um, ok := u.(map[string]interface{})
+		if !ok {
+			continue // malformed entry is dropped by the mutation too
+		}
+		if c, _ := um[field].(string); c != cred {
+			return false // a survivor remains → removal does not empty it
+		}
+	}
+	return true
 }
 
 // genCredential returns a fresh credential for the protocol: a UUIDv4 for vless,

@@ -643,10 +643,22 @@ func TestBuildMieru(t *testing.T) {
 	if strings.Contains(link, "@example.com:2020") {
 		t.Fatalf("port must be in the query, not the authority: %s", link)
 	}
-	for _, want := range []string{"port=2020", "protocol=UDP", "profile="} {
-		if !strings.Contains(link, want) {
-			t.Errorf("link missing %q: %s", want, link)
-		}
+	// Anchor the query-value asserts on real param boundaries (a bare substring
+	// like "port=2020" would also match inside another value): parse the link and
+	// read the decoded query values back.
+	pu, err := url.Parse(link)
+	if err != nil {
+		t.Fatalf("url.Parse(%q): %v", link, err)
+	}
+	q := pu.Query()
+	if q.Get("port") != "2020" {
+		t.Errorf("port=%q want 2020 (%s)", q.Get("port"), link)
+	}
+	if q.Get("protocol") != "UDP" {
+		t.Errorf("protocol=%q want UDP (%s)", q.Get("protocol"), link)
+	}
+	if q.Get("profile") == "" {
+		t.Errorf("profile must be present and non-empty: %s", link)
 	}
 	if strings.Contains(link, "multiplexing") {
 		t.Errorf("inbound link must not carry multiplexing: %s", link)
@@ -693,5 +705,27 @@ func TestBuildMieruNoPassword(t *testing.T) {
 	}
 	if !strings.Contains(err.Error(), "alice") {
 		t.Fatalf("error should name the offending user: %v", err)
+	}
+}
+
+// TestBuildMieruTransportDefault proves buildMieru defaults an absent transport
+// to "TCP" so the emitted link always carries a valid protocol= (the mierus://
+// parser requires it). Anchored on the decoded query value, not a substring.
+func TestBuildMieruTransportDefault(t *testing.T) {
+	inbound := map[string]interface{}{
+		"type": "mieru", "tag": "m-in", "listen_port": float64(2020), // NO transport field
+	}
+	user := map[string]interface{}{"name": "alice", "password": "pw"}
+
+	link, err := buildMieru(inbound, user, "example.com", 2020)
+	if err != nil {
+		t.Fatalf("buildMieru error: %v", err)
+	}
+	pu, err := url.Parse(link)
+	if err != nil {
+		t.Fatalf("url.Parse(%q): %v", link, err)
+	}
+	if got := pu.Query().Get("protocol"); got != "TCP" {
+		t.Fatalf("absent transport must default to protocol=TCP, got %q (%s)", got, link)
 	}
 }

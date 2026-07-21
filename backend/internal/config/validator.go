@@ -3,6 +3,7 @@ package config
 import (
 	"encoding/base64"
 	"fmt"
+	"math"
 	"os"
 	"path/filepath"
 	"regexp"
@@ -490,6 +491,10 @@ func validateMieruInbound(ib map[string]interface{}, prefix string) []string {
 
 	if lp, ok := ib["listen_port"].(float64); !ok || lp < 1 || lp > 65535 {
 		errors = append(errors, prefix+": mieru inbound requires 'listen_port' (1-65535)")
+	} else if lp != math.Trunc(lp) {
+		// The fork wants an integer port; a fractional listen_port (e.g. 2020.5)
+		// is in range but not a whole number. Mieru-scoped hardening.
+		errors = append(errors, prefix+": mieru inbound 'listen_port' must be an integer")
 	}
 
 	tr, _ := ib["transport"].(string)
