@@ -4,6 +4,8 @@ All notable changes to RouteBox are documented here.
 
 ## [Unreleased]
 
+## [0.27.0] - 2026-07-21
+
 ### Fixes
 
 - **The update checker now recognizes a newer fork build that differs only in the trailing `-N`
