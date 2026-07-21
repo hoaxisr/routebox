@@ -6,6 +6,16 @@ All notable changes to RouteBox are documented here.
 
 ## [0.26.0] - 2026-07-21
 
+### Breaking
+
+- **AWG3 header protection now requires S1–S4 ≥ 12** (was ≥ 8). The amnezia-box `-4` fork switched
+  header protection from BLAKE2s to ChaCha20 (12-byte nonce); a client and server using header
+  protection must both run an awg3-capable `-4`+ binary, and must be updated together — BLAKE2s and
+  ChaCha20 are not interoperable. Existing header-protection configs with S1–S4 in 8..11 will no
+  longer establish a handshake; raise the S values to ≥ 12 and re-export client configs. (RouteBox
+  drops the header key on restart for any persisted S<12 combo so the tunnel still comes up, but
+  without header protection until you fix the S values.)
+
 ### Features
 
 - **Mieru inbound (server)** (#12) — RouteBox VPS panels can now run a [mieru](https://github.com/enfein/mieru)

@@ -136,15 +136,15 @@ func ValidateUintRange(s string) (string, error) {
 }
 
 // validateHPKConstraint enforces the fork's rule that when header_protection_key
-// is enabled, every S1-S4 padding must be at least 8 bytes — the fork rejects
+// is enabled, every S1-S4 padding must be at least 12 bytes — the fork rejects
 // the endpoint otherwise, so surface it as a clear 400 instead.
 func validateHPKConstraint(o Obfuscation, hpkOn bool) error {
 	if !hpkOn {
 		return nil
 	}
 	for i, s := range []int{o.S1, o.S2, o.S3, o.S4} {
-		if s < 8 {
-			return fmt.Errorf("S%d must be >= 8 when header protection key is enabled (got %d)", i+1, s)
+		if s < 12 {
+			return fmt.Errorf("S%d must be >= 12 when header protection key is enabled (got %d)", i+1, s)
 		}
 	}
 	return nil

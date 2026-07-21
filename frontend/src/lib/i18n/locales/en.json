@@ -1765,7 +1765,7 @@
     "exportedJson": "Client config copied",
     "singboxNoLiveness": "Live status is not available with the sing-box backend.",
     "headerProtection": "Header protection (AWG 3.0)",
-    "headerProtectionHint": "Encrypts packet headers with a per-tunnel key. Requires S1–S4 ≥ 8 and an awg3-capable binary on both server and clients.",
+    "headerProtectionHint": "Encrypts packet headers with a per-tunnel key. Requires S1–S4 ≥ 12 and an awg3-capable binary on both server and clients.",
     "contentPadding": "Content padding (CPA)",
     "contentPaddingHint": "Extra bytes appended to data packets — \"N\" or \"lo-hi\" range.",
     "rekeyAfterTime": "Rekey interval (RAT)",

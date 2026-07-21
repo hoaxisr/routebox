@@ -9,11 +9,11 @@ import (
 )
 
 // awg3EnableInput is a valid submission with header protection on and every
-// S-padding at the fork-required minimum of 8 (validateHPKConstraint).
+// S-padding at the fork-required minimum of 12 (validateHPKConstraint).
 func awg3EnableInput() EnableInput {
 	in := singboxEnableInput()
 	in.HeaderProtection = true
-	in.Obf = Obfuscation{S1: 8, S2: 8, S3: 8, S4: 8, CPA: "10-20", RAT: "120"}
+	in.Obf = Obfuscation{S1: 12, S2: 12, S3: 12, S4: 12, CPA: "10-20", RAT: "120"}
 	return in
 }
 
@@ -57,18 +57,18 @@ func TestSingbox_AWG3_OmittedWhenBinaryTooOld(t *testing.T) {
 	}
 }
 
-func TestSingbox_HPK_RequiresS8(t *testing.T) {
+func TestSingbox_HPK_RequiresS12(t *testing.T) {
 	m, _, _ := newSingboxMgr(t)
 	m.SetSupportsAWG3(func() bool { return true })
 
 	in := awg3EnableInput()
-	in.Obf.S2 = 7
+	in.Obf.S2 = 11
 	err := m.Enable(context.Background(), in)
 	if err == nil {
-		t.Fatal("enable must fail when header protection is on and an S field is < 8")
+		t.Fatal("enable must fail when header protection is on and an S field is < 12")
 	}
-	if !strings.Contains(err.Error(), "S2") || !strings.Contains(err.Error(), ">= 8") {
-		t.Fatalf("expected the S>=8 constraint error for S2, got: %v", err)
+	if !strings.Contains(err.Error(), "S2") || !strings.Contains(err.Error(), ">= 12") {
+		t.Fatalf("expected the S>=12 constraint error for S2, got: %v", err)
 	}
 }
 
@@ -176,12 +176,12 @@ func TestSingbox_RehydrateRestoresHeaderKey(t *testing.T) {
 	}
 }
 
-// Bug M1 regression: RehydrateSingbox must apply the same S>=8 gate as Enable.
+// Bug M1 regression: RehydrateSingbox must apply the same S>=12 gate as Enable.
 // The settings page persists header_protection=true BEFORE Enable validates, so
-// a bad combo (S<8) can land on disk; restoring the header key for it would make
+// a bad combo (S<12) can land on disk; restoring the header key for it would make
 // the next sweep render a spec the fork REJECTS at config load (tunnel down).
 // Rehydrate must instead drop the HPK: degraded-but-loadable beats rejected.
-func TestSingbox_RehydrateGatesHPKOnS8(t *testing.T) {
+func TestSingbox_RehydrateGatesHPKOnS12(t *testing.T) {
 	m, fs, _ := newSingboxMgr(t)
 	m.SetSupportsAWG3(func() bool { return true })
 	if err := m.store.SetServerKey(m.serverPriv); err != nil {
@@ -192,7 +192,7 @@ func TestSingbox_RehydrateGatesHPKOnS8(t *testing.T) {
 	}
 
 	in := awg3EnableInput()
-	in.Obf.S2 = 7 // persisted invalid combo: header protection on, S2 < 8
+	in.Obf.S2 = 11 // persisted invalid combo: header protection on, S2 < 12
 	m.RehydrateSingbox(in, true)
 
 	if err := m.singboxSync(); err != nil { // what the 30s sweep does
@@ -202,11 +202,11 @@ func TestSingbox_RehydrateGatesHPKOnS8(t *testing.T) {
 		t.Fatal("enabled rehydrate must still render a non-nil spec")
 	}
 	if fs.lastSpec.HeaderProtectionKey != "" {
-		t.Fatalf("rehydrate must NOT restore the HPK when S<8 (fork rejects such a config), got %q",
+		t.Fatalf("rehydrate must NOT restore the HPK when S<12 (fork rejects such a config), got %q",
 			fs.lastSpec.HeaderProtectionKey)
 	}
 
-	// Happy path through the same route: all S>=8 restores the persisted key.
+	// Happy path through the same route: all S>=12 restores the persisted key.
 	m.RehydrateSingbox(awg3EnableInput(), true)
 	if err := m.singboxSync(); err != nil {
 		t.Fatal(err)
