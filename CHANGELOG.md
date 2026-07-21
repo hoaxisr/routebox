@@ -4,6 +4,8 @@ All notable changes to RouteBox are documented here.
 
 ## [Unreleased]
 
+## [0.27.1] - 2026-07-21
+
 ### Fixes
 
 - **The sing-box AWG server page no longer shows misleading "0 / N connected" and "0 B" traffic.**
