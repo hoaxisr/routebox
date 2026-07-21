@@ -6,6 +6,13 @@ All notable changes to RouteBox are documented here.
 
 ### Fixes
 
+- **The sing-box AWG server page no longer shows misleading "0 / N connected" and "0 B" traffic.**
+  The sing-box backend exposes no per-peer connectivity or transfer stats, so the status strip and
+  every client row previously reported hard zeros. The page is now expiry-aware on that backend:
+  each client shows its expiry health via the dot (green = active/no-expiry, amber = expiring within
+  7 days, red = expired) with the expiry phrase inline ("no expiry" / "expires in 30d" / "expired"),
+  and the status strip shows a client count instead of a connected/traffic tile. The kernel backend
+  (which reads real `awg show` data) is unchanged.
 - **The managed AWG server endpoint (configured on the AWG tab) is no longer shown as a broken,
   uneditable card in the Endpoints list.** It rendered with an empty "· :" address line and its
   edit/delete buttons were already disabled; it is now hidden from the list entirely.

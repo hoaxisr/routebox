@@ -194,15 +194,22 @@
 				<span class="m-key">{$t('awg.listenPort')}</span>
 			</div>
 
-			<div class="strip-metric">
-				<span class="m-val">{status.online} / {status.peer_count}</span>
-				<span class="m-key">{$t('awg.connected')}</span>
-			</div>
+			{#if isSingbox}
+				<div class="strip-metric">
+					<span class="m-val">{status.peer_count}</span>
+					<span class="m-key">{$t('awg.clients')}</span>
+				</div>
+			{:else}
+				<div class="strip-metric">
+					<span class="m-val">{status.online} / {status.peer_count}</span>
+					<span class="m-key">{$t('awg.connected')}</span>
+				</div>
 
-			<div class="strip-metric">
+				<div class="strip-metric">
 					<span class="m-val mono">↓ {formatBytes(status.rx)} &nbsp;↑ {formatBytes(status.tx)}</span>
 					<span class="m-key">{$t('awg.traffic')}</span>
 				</div>
+			{/if}
 
 				{#if status.public_host}
 				<div class="strip-metric">
