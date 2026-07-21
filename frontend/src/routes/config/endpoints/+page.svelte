@@ -8,6 +8,11 @@
 	import EndpointForm from '$lib/components/config/EndpointForm.svelte';
 
 	let endpoints = $state<Endpoint[]>([]);
+	// The managed awg-server endpoint is configured on the /config/awg tab and is
+	// read-only here (no editable peer address), so hide it from the list. Filter
+	// only for rendering — the source `endpoints` array still feeds latency tests
+	// and any other consumers unchanged.
+	let visibleEndpoints = $derived(endpoints.filter((e) => e.tag !== 'awg-server'));
 	let outbounds = $state<Outbound[]>([]);
 	let dnsServers = $state<DnsServer[]>([]);
 	let routeSettings = $state<RouteSettings | null>(null);
@@ -204,7 +209,7 @@
 
 	{#if loading}
 		<div class="text-[var(--ctp-overlay0)]">{$t('common.loading')}</div>
-	{:else if endpoints.length === 0}
+	{:else if visibleEndpoints.length === 0}
 		<div class="bg-[var(--ctp-surface0)] rounded-xl p-8 text-center">
 			<div class="text-[var(--ctp-overlay1)] mb-4">{$t('endpoints.noEndpoints')}</div>
 			<button
@@ -216,7 +221,7 @@
 		</div>
 	{:else}
 		<div class="space-y-4">
-			{#each endpoints as endpoint}
+			{#each visibleEndpoints as endpoint}
 				{@const groups = containedIn.get(endpoint.tag) || []}
 				{@const statusColor = getStatusColor(endpoint.tag)}
 				{@const managed = endpoint.tag === 'awg-server'}

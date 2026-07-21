@@ -6,6 +6,9 @@ All notable changes to RouteBox are documented here.
 
 ### Fixes
 
+- **The managed AWG server endpoint (configured on the AWG tab) is no longer shown as a broken,
+  uneditable card in the Endpoints list.** It rendered with an empty "· :" address line and its
+  edit/delete buttons were already disabled; it is now hidden from the list entirely.
 - **RouteBox now resolves the amnezia-box binary from the systemd unit's `ExecStart` when
   systemd-managed**, so self-updates patch the exact binary the service launches. Previously the
   binary path was chosen from a hardcoded list of common locations, so a stale copy at a
