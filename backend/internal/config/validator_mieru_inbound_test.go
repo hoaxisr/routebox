@@ -26,11 +26,12 @@ func TestValidateMieruInbound(t *testing.T) {
 	}
 
 	bad := map[string]func(map[string]interface{}){
-		"missing listen_port": func(m map[string]interface{}) { delete(m, "listen_port") },
-		"zero listen_port":    func(m map[string]interface{}) { m["listen_port"] = float64(0) },
-		"missing transport":   func(m map[string]interface{}) { delete(m, "transport") },
-		"bad transport":       func(m map[string]interface{}) { m["transport"] = "QUIC" },
-		"empty users":         func(m map[string]interface{}) { m["users"] = []interface{}{} },
+		"missing listen_port":    func(m map[string]interface{}) { delete(m, "listen_port") },
+		"zero listen_port":       func(m map[string]interface{}) { m["listen_port"] = float64(0) },
+		"fractional listen_port": func(m map[string]interface{}) { m["listen_port"] = float64(2020.5) },
+		"missing transport":      func(m map[string]interface{}) { delete(m, "transport") },
+		"bad transport":          func(m map[string]interface{}) { m["transport"] = "QUIC" },
+		"empty users":            func(m map[string]interface{}) { m["users"] = []interface{}{} },
 		"user no name": func(m map[string]interface{}) {
 			m["users"] = []interface{}{map[string]interface{}{"name": "", "password": "p"}}
 		},

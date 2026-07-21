@@ -216,6 +216,81 @@ func TestDeleteLastMieruUserReturns409(t *testing.T) {
 	}
 }
 
+// newConfigWithVlessAndMieru writes a config with a vless inbound and a mieru
+// inbound that BOTH carry a user named "alice" — so Reconcile derives ONE panel
+// user with two bindings. The mieru inbound has alice as its only (last) user.
+func newConfigWithVlessAndMieru(t *testing.T) (*config.Manager, string) {
+	t.Helper()
+	dir := t.TempDir()
+	path := filepath.Join(dir, "config.json")
+	cfg := `{
+	  "inbounds": [
+	    {"type":"vless","tag":"vless-in","listen_port":443,
+	     "tls":{"enabled":true,"reality":{"enabled":true,"private_key":"` + testRealityPriv + `","short_id":"aa"}},
+	     "users":[{"name":"alice","uuid":"u-1","flow":"xtls-rprx-vision"}]},
+	    {"type":"mieru","tag":"mieru-in","listen_port":9000,"transport":"TCP",
+	     "users":[{"name":"alice","password":"secretpw"}]}
+	  ],
+	  "outbounds": [{"type":"direct","tag":"direct"}]
+	}`
+	if err := os.WriteFile(path, []byte(cfg), 0644); err != nil {
+		t.Fatal(err)
+	}
+	m, err := config.NewManager(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	return m, dir
+}
+
+// TestDeleteUser_MieruLastUserPreCheckStagesNothing proves the multi-binding
+// pre-check (FU-B4): a user whose bindings include a NON-mieru binding AND a
+// mieru-last-user binding is rejected with 409 WITHOUT staging any removal — the
+// non-mieru (vless) binding must remain present in the draft. This guards against
+// the partial-mutation bug where the vless removal was staged before the mieru
+// guard tripped, hiding a mutation behind a "nothing happened" 409.
+func TestDeleteUser_MieruLastUserPreCheckStagesNothing(t *testing.T) {
+	cfg, dir := newConfigWithVlessAndMieru(t)
+	um := users.NewManager(filepath.Join(dir, "users.toml"))
+	if _, err := um.Reconcile(cfg.GetActive()); err != nil {
+		t.Fatal(err)
+	}
+	h := &Handler{config: cfg}
+	h.SetUsers(um)
+
+	// One panel user (alice) with two bindings (vless-in + mieru-in).
+	list := um.List()
+	if len(list) != 1 {
+		t.Fatalf("expected 1 reconciled user, got %d", len(list))
+	}
+	alice := list[0]
+	if len(alice.Bindings) != 2 {
+		t.Fatalf("alice should have 2 bindings (vless+mieru), got %d: %+v", len(alice.Bindings), alice.Bindings)
+	}
+
+	r := chi.NewRouter()
+	r.Delete("/api/users/{id}", h.DeleteUser)
+	req := httptest.NewRequest(http.MethodDelete, "/api/users/"+alice.ID, nil)
+	w := httptest.NewRecorder()
+	r.ServeHTTP(w, req)
+	if w.Code != http.StatusConflict {
+		t.Fatalf("delete must be 409 (mieru last user), got %d: %s", w.Code, w.Body.String())
+	}
+	if strings.Contains(w.Body.String(), "secretpw") {
+		t.Fatalf("response must not leak the credential: %s", w.Body.String())
+	}
+	// CRITICAL: nothing staged — the non-mieru (vless) binding is still present.
+	vless, _ := cfg.GetInbound("vless-in")
+	if us, _ := vless["users"].([]interface{}); len(us) != 1 {
+		t.Fatalf("vless-in must still have its user (nothing staged), got %d", len(us))
+	}
+	// And the mieru inbound is untouched too.
+	mieru, _ := cfg.GetInbound("mieru-in")
+	if us, _ := mieru["users"].([]interface{}); len(us) != 1 {
+		t.Fatalf("mieru-in must still have its user, got %d", len(us))
+	}
+}
+
 func TestGenCredentialTrojan(t *testing.T) {
 	// Characterization: trojan falls through genCredential to randomPassword (NOT uuid).
 	cred, err := genCredential("trojan")
