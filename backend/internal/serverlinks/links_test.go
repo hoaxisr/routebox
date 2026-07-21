@@ -677,3 +677,21 @@ func TestBuildMieru(t *testing.T) {
 		t.Errorf("link should omit traffic-pattern when inbound has none: %s", linkNoTP)
 	}
 }
+
+func TestBuildMieruNoPassword(t *testing.T) {
+	inbound := map[string]interface{}{
+		"type": "mieru", "tag": "m-in", "listen_port": float64(2020),
+	}
+	user := map[string]interface{}{"name": "alice"} // no password
+	link, err := buildMieru(inbound, user, "example.com", 2020)
+	if err == nil {
+		t.Fatalf("mieru with no password must error, got link=%q", link)
+	}
+	// The error must never echo the (empty) password value; only the name.
+	if strings.Contains(err.Error(), ":@") {
+		t.Fatalf("error must not leak the emitted userinfo: %v", err)
+	}
+	if !strings.Contains(err.Error(), "alice") {
+		t.Fatalf("error should name the offending user: %v", err)
+	}
+}
