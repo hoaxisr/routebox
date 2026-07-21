@@ -91,7 +91,7 @@ describe('inboundTypesFor — picker by mode (add-new only)', () => {
 		expect(inboundTypesFor('router')).toEqual(['tun', 'mixed', 'socks', 'http']);
 	});
 	it('vps gets server types in order', () => {
-		expect(inboundTypesFor('vps')).toEqual(['vless', 'trojan', 'naive', 'hysteria2']);
+		expect(inboundTypesFor('vps')).toEqual(['vless', 'trojan', 'naive', 'hysteria2', 'mieru']);
 	});
 	it('returns a fresh array each call (callers may not mutate shared state)', () => {
 		const a = inboundTypesFor('router');
@@ -107,7 +107,7 @@ describe('inboundTypesFor — picker by mode (add-new only)', () => {
 
 describe('visibleInboundTypes — edit-safety', () => {
 	it('add-new in vps shows only server types', () => {
-		expect(visibleInboundTypes('vps')).toEqual(['vless', 'trojan', 'naive', 'hysteria2']);
+		expect(visibleInboundTypes('vps')).toEqual(['vless', 'trojan', 'naive', 'hysteria2', 'mieru']);
 	});
 	it('add-new in router shows only LAN types', () => {
 		expect(visibleInboundTypes('router')).toEqual(['tun', 'mixed', 'socks', 'http']);
@@ -116,15 +116,15 @@ describe('visibleInboundTypes — edit-safety', () => {
 		expect(visibleInboundTypes('router', 'vless')).toEqual(['tun', 'mixed', 'socks', 'http', 'vless']);
 	});
 	it('editing a tun inbound in vps keeps tun selectable', () => {
-		expect(visibleInboundTypes('vps', 'tun')).toEqual(['vless', 'trojan', 'naive', 'hysteria2', 'tun']);
+		expect(visibleInboundTypes('vps', 'tun')).toEqual(['vless', 'trojan', 'naive', 'hysteria2', 'mieru', 'tun']);
 	});
 	it('does not duplicate a current type already in the list', () => {
-		expect(visibleInboundTypes('vps', 'vless')).toEqual(['vless', 'trojan', 'naive', 'hysteria2']);
+		expect(visibleInboundTypes('vps', 'vless')).toEqual(['vless', 'trojan', 'naive', 'hysteria2', 'mieru']);
 		expect(visibleInboundTypes('router', 'tun')).toEqual(['tun', 'mixed', 'socks', 'http']);
 	});
 	it('empty/undefined currentType adds nothing', () => {
-		expect(visibleInboundTypes('vps', '')).toEqual(['vless', 'trojan', 'naive', 'hysteria2']);
-		expect(visibleInboundTypes('vps', undefined)).toEqual(['vless', 'trojan', 'naive', 'hysteria2']);
+		expect(visibleInboundTypes('vps', '')).toEqual(['vless', 'trojan', 'naive', 'hysteria2', 'mieru']);
+		expect(visibleInboundTypes('vps', undefined)).toEqual(['vless', 'trojan', 'naive', 'hysteria2', 'mieru']);
 	});
 });
 
