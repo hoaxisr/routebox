@@ -8,7 +8,7 @@
 	import ServerNaiveInbound from './inbound/ServerNaiveInbound.svelte';
 	import ServerHysteria2Inbound from './inbound/ServerHysteria2Inbound.svelte';
 	import ServerMieruInbound from './inbound/ServerMieruInbound.svelte';
-	import { buildServerInbound, parseServerInbound, type ServerFormState, type ServerInboundType } from '$lib/utils/serverInbound';
+	import { buildServerInbound, parseServerInbound, validateServerInbound, type ServerFormState, type ServerInboundType } from '$lib/utils/serverInbound';
 	import { visibleInboundTypes } from '$lib/mode/routeModes';
 
 	interface Props {
@@ -103,34 +103,11 @@
 		const req = (field: string) => $t('errors.fieldNamedRequired', { values: { field } });
 		if (isServerType(type)) {
 			if (!tag.trim()) errors['tag'] = req($t('common.tag'));
-			if (serverState.listenPort < 1 || serverState.listenPort > 65535) {
-				errors['port'] = $t('form.minValue', { values: { value: 1 } });
-			}
-			if (serverState.users.length === 0) errors['users'] = $t('inbounds.server.needUser');
-			// TLS mode required fields. mieru has no TLS section, so its form never
-			// renders these fields — validating them would raise invisible, unclearable
-			// errors that permanently block Save. Skip the whole block for mieru.
-			if (type !== 'mieru') {
-				if (serverState.tlsMode === 'acme') {
-					if (!serverState.tls.acme.domain.trim()) errors['acmeDomain'] = req($t('inbounds.server.domain'));
-					if (!serverState.tls.acme.email.trim()) errors['acmeEmail'] = req($t('inbounds.server.email'));
-				} else if (serverState.tlsMode === 'reality') {
-					if (!serverState.tls.server_name.trim()) errors['serverName'] = req($t('inbounds.server.handshakeServer'));
-					if (!serverState.tls.reality.private_key.trim()) errors['realityKey'] = $t('inbounds.server.realityKeyRequired');
-				} else if (serverState.tlsMode === 'manual') {
-					if (!serverState.tls.certificate_path.trim()) errors['certPath'] = req($t('inbounds.server.certificatePath'));
-					if (!serverState.tls.key_path.trim()) errors['keyPath'] = req($t('inbounds.server.keyPath'));
-				}
-				// 'panel' mode injects the canonical cert/key paths at build time — nothing to validate.
-			}
-			// Per-user credential required fields
-			for (const u of serverState.users) {
-				if (type === 'vless' && !u.uuid?.trim()) { errors['userCred'] = $t('inbounds.server.needUserCred'); break; }
-				if (type === 'naive' && (!u.username?.trim() || !u.password?.trim())) { errors['userCred'] = $t('inbounds.server.needUserCred'); break; }
-				if (type === 'hysteria2' && !u.password?.trim()) { errors['userCred'] = $t('inbounds.server.needUserCred'); break; }
-				if (type === 'trojan' && !u.password?.trim()) { errors['userCred'] = $t('inbounds.server.needUserCred'); break; }
-				if (type === 'mieru' && (!u.name?.trim() || !u.password?.trim())) { errors['userCred'] = $t('inbounds.server.needUserCred'); break; }
-			}
+			// Server-inbound validation (port/users/TLS-block/per-user creds, incl.
+			// the mieru TLS-exemption) is extracted to a pure, tested function. Merge
+			// preserves insertion order so tag stays first and the first-error
+			// notification is byte-identical to the pre-extraction behavior.
+			errors = { ...errors, ...validateServerInbound({ ...serverState, type }, $t) };
 			const keys = Object.keys(errors);
 			if (keys.length > 0) {
 				notifications.error(errors[keys[0]]);
