@@ -4,6 +4,19 @@ All notable changes to RouteBox are documented here.
 
 ## [Unreleased]
 
+### Features
+
+- **Mieru inbound (server)** (#12) — RouteBox VPS panels can now run a [mieru](https://github.com/enfein/mieru)
+  server. Add a **Mieru** inbound on `/config/inbounds` (listen port, TCP/UDP transport, one or more
+  users with name+password, optional traffic pattern, and a "require user hint" toggle) — mieru carries
+  its own encryption, so there is no TLS to configure. Users reconcile into the panel like every other
+  server protocol: they appear on the Users page, in subscriptions, and in the share modal as `mierus://`
+  links a client RouteBox imports (the outbound side shipped in 0.25.0), and they participate in per-user
+  expiry/disable and traffic stats. Configs are validated before apply (transport, unique user
+  names/passwords, no stray TLS/multiplexing); deleting the last user of a live mieru inbound is blocked
+  (it would wedge every later apply) — delete the inbound instead. Requires amnezia-box
+  `1.14.0-alpha.48-awg3-xhttp-mieru` or newer.
+
 ## [0.25.0] - 2026-07-21
 
 ### Features
