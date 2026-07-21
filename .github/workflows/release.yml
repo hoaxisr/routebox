@@ -1,0 +1,84 @@
+# Release pipeline: push a version tag (v1.2.3) and this builds the panel
+# (frontend embedded into the Go binary), runs the full test suite as a gate,
+# publishes routebox-linux-{amd64,arm64} + .sha256 sidecars (the exact asset
+# names install.sh and the in-app self-updater download), and fills the release
+# body with the tag's CHANGELOG.md section via .github/scripts/extract-changelog.sh.
+name: Release
+
+on:
+  push:
+    tags: ['v*']
+
+permissions:
+  contents: write # create the release + upload assets
+
+jobs:
+  release:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0 # the changelog fallback needs tags + history (git describe)
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: frontend/package-lock.json
+
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: go.mod
+          cache: true
+
+      - name: Build frontend
+        working-directory: frontend
+        run: |
+          npm ci
+          npm run check
+          npm test
+          npm run build
+
+      # go:embed all:dist compiles the SPA into the binary — the dist dir is
+      # gitignored (only .gitkeep), so populate it from the fresh build.
+      - name: Embed frontend into the Go binary
+        run: |
+          rm -rf backend/internal/embedded/dist
+          mkdir -p backend/internal/embedded/dist
+          cp -r frontend/build/. backend/internal/embedded/dist/
+
+      - name: Backend tests
+        run: |
+          go vet ./backend/...
+          go test ./backend/...
+
+      # CGO_ENABLED=0: all deps are pure Go (modernc.org/sqlite), so the binary
+      # is static and runs on any glibc/musl box. Version is stamped the way
+      # main.go expects (-X main.Version, no leading "v").
+      - name: Build release binaries
+        run: |
+          VERSION="${GITHUB_REF_NAME#v}"
+          mkdir -p dist
+          for arch in amd64 arm64; do
+            CGO_ENABLED=0 GOOS=linux GOARCH="$arch" \
+              go build -trimpath -ldflags "-s -w -X main.Version=${VERSION}" \
+              -o "dist/routebox-linux-${arch}" ./backend/cmd/routebox
+          done
+          cd dist
+          for f in routebox-linux-*; do
+            sha256sum "$f" > "$f.sha256"
+          done
+          ls -la
+
+      - name: Build release notes
+        run: |
+          ./.github/scripts/extract-changelog.sh "${GITHUB_REF_NAME#v}" > release-notes.md
+          echo "----- release body -----"
+          cat release-notes.md
+
+      - name: Publish release
+        uses: softprops/action-gh-release@v2
+        with:
+          name: ${{ github.ref_name }}
+          body_path: release-notes.md
+          files: dist/*
