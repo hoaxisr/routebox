@@ -170,7 +170,9 @@ export interface Inbound {
 	up_mbps?: number;     // hysteria2
 	down_mbps?: number;   // hysteria2
 	obfs?: { type: string; password?: string }; // hysteria2
-	transport?: TransportConfig; // vless/trojan stream transport (ws/grpc/httpupgrade)
+	transport?: TransportConfig | string; // vless/trojan stream transport object; mieru emits a "TCP"/"UDP" string
+	traffic_pattern?: string;           // mieru
+	user_hint_is_mandatory?: boolean;   // mieru
 }
 
 export interface ServerInboundUser {

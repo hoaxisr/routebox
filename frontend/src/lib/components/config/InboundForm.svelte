@@ -71,7 +71,8 @@
 					},
 					handshakeServer: '', handshakePort: 443,
 					users: [], transport: { type: 'raw' },
-					upMbps: 0, downMbps: 0, obfsType: '', obfsPassword: ''
+					upMbps: 0, downMbps: 0, obfsType: '', obfsPassword: '',
+					mieruTransport: 'TCP', trafficPattern: '', userHintIsMandatory: false
 				}
 	);
 

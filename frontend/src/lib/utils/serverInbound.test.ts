@@ -21,7 +21,10 @@ const base: ServerFormState = {
 	downMbps: 0,
 	obfsType: '',
 	obfsPassword: '',
-	transport: { type: 'raw' }
+	transport: { type: 'raw' },
+	mieruTransport: 'TCP',
+	trafficPattern: '',
+	userHintIsMandatory: false
 };
 
 describe('buildServerInbound', () => {
@@ -224,5 +227,43 @@ describe('buildServerInbound flow-strip (vless)', () => {
 		});
 		expect((ib.users![0] as Record<string, unknown>).flow).toBeUndefined();
 		expect((ib.users![0] as Record<string, unknown>).password).toBe('pw');
+	});
+});
+
+function mieruState(): ServerFormState {
+	const base = parseServerInbound({ type: 'mieru', tag: 't', listen: '::', listen_port: 2020,
+		transport: 'TCP', users: [{ name: 'a', password: 'p' }] });
+	return base;
+}
+
+describe('serverInbound mieru', () => {
+	it('builds a mieru inbound with no tls and string transport', () => {
+		const s = mieruState();
+		s.mieruTransport = 'UDP';
+		const ib = buildServerInbound(s);
+		expect(ib.type).toBe('mieru');
+		expect(ib.transport).toBe('UDP');        // STRING, not an object
+		expect(ib.tls).toBeUndefined();           // never emit tls for mieru
+		expect(ib.users).toEqual([{ name: 'a', password: 'p' }]);
+	});
+
+	it('emits traffic_pattern and user_hint_is_mandatory only when set', () => {
+		const s = mieruState();
+		let ib = buildServerInbound(s);
+		expect(ib.traffic_pattern).toBeUndefined();
+		expect(ib.user_hint_is_mandatory).toBeUndefined();
+		s.trafficPattern = 'YWJj';
+		s.userHintIsMandatory = true;
+		ib = buildServerInbound(s);
+		expect(ib.traffic_pattern).toBe('YWJj');
+		expect(ib.user_hint_is_mandatory).toBe(true);
+	});
+
+	it('round-trips transport through parse', () => {
+		const ib = { type: 'mieru', tag: 't', listen: '::', listen_port: 2020,
+			transport: 'UDP', users: [{ name: 'a', password: 'p' }] };
+		const s = parseServerInbound(ib);
+		expect(s.type).toBe('mieru');
+		expect(s.mieruTransport).toBe('UDP');
 	});
 });
