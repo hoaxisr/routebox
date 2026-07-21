@@ -1,6 +1,7 @@
 package process
 
 import (
+	"context"
 	"fmt"
 	"os"
 	"os/exec"
@@ -477,6 +478,20 @@ func (m *Manager) runVersionFull(binaryPath string) (string, error) {
 	m.stateMu.Unlock()
 
 	return full, nil
+}
+
+// BinarySupportsV2RayAPI reports whether the binary at path advertises the
+// with_v2ray_api build tag, via a FRESH `<path> version` run (no cache) —
+// callers pass downloaded, not-yet-installed binaries (update preflight).
+// Fail-closed like SupportsV2RayAPI: any exec error reads as unsupported.
+func BinarySupportsV2RayAPI(path string) bool {
+	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+	defer cancel()
+	out, err := exec.CommandContext(ctx, path, "version").Output()
+	if err != nil {
+		return false
+	}
+	return parseSupportsV2RayAPI(string(out))
 }
 
 // parseSupportsV2RayAPI reports whether a `<binary> version` output advertises

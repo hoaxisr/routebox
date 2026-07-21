@@ -4,6 +4,25 @@ All notable changes to RouteBox are documented here.
 
 ## [Unreleased]
 
+### Fixes
+
+- **amnezia-box updates to 1.14+ builds no longer fail with "service restarted but is not
+  running".** The new builds dropped `with_v2ray_api`, but the config still carried the
+  RouteBox-owned `experimental.v2ray_api` block, so the new binary refused to start and every
+  update rolled back — a catch-22, since the running old binary supports the block and the panel
+  kept it in the config. The updater now runs a **preflight** before the binary swap: the existing
+  config is validated with the NEW binary (`check -c`); if it fails and the new build lacks
+  `with_v2ray_api`, the v2ray_api block is stripped automatically (per-user traffic accounting is
+  unavailable on such builds) and the check retried. Anything else the new binary rejects aborts
+  the update **before** the swap — the running service is untouched and the UI shows sing-box's
+  real validation error instead of the opaque restart failure.
+- **The Clash API secret no longer "reappears" out of nowhere.** The Experimental page's secret
+  field was a bare `type=password` input, so browser password managers autofilled the saved
+  **panel password** into it on page load — firing a change event (phantom "unsaved changes" the
+  moment you opened the page) and, on Apply, silently writing the panel password into
+  `experimental.clash_api.secret`. The field now opts out of autofill
+  (`autocomplete="new-password"` + password-manager ignore hints).
+
 ## [0.26.0] - 2026-07-21
 
 ### Breaking
@@ -43,6 +62,23 @@ All notable changes to RouteBox are documented here.
   of a cryptic decode error. Requires amnezia-box `1.14.0-alpha.48-awg3-xhttp-mieru` or newer.
 
 ### Fixes
+
+- **amnezia-box updates to 1.14+ builds no longer fail with "service restarted but is not
+  running".** The new builds dropped `with_v2ray_api`, but the config still carried the
+  RouteBox-owned `experimental.v2ray_api` block, so the new binary refused to start and every
+  update rolled back — a catch-22, since the running old binary supports the block and the panel
+  kept it in the config. The updater now runs a **preflight** before the binary swap: the existing
+  config is validated with the NEW binary (`check -c`); if it fails and the new build lacks
+  `with_v2ray_api`, the v2ray_api block is stripped automatically (per-user traffic accounting is
+  unavailable on such builds) and the check retried. Anything else the new binary rejects aborts
+  the update **before** the swap — the running service is untouched and the UI shows sing-box's
+  real validation error instead of the opaque restart failure.
+- **The Clash API secret no longer "reappears" out of nowhere.** The Experimental page's secret
+  field was a bare `type=password` input, so browser password managers autofilled the saved
+  **panel password** into it on page load — firing a change event (phantom "unsaved changes" the
+  moment you opened the page) and, on Apply, silently writing the panel password into
+  `experimental.clash_api.secret`. The field now opts out of autofill
+  (`autocomplete="new-password"` + password-manager ignore hints).
 
 - **Switching the AWG backend now actually decommissions the kernel runtime.** The
   kernel→singbox switch used to only check "server disabled" and flip the setting — an

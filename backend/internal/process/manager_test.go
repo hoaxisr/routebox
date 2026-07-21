@@ -279,3 +279,31 @@ func TestSupportsV2RayAPIDetectsFromFakeBinary(t *testing.T) {
 		t.Fatal("expected SupportsV2RayAPI=false after binary downgraded to drop with_v2ray_api (cache not invalidated)")
 	}
 }
+
+// BinarySupportsV2RayAPI runs an explicit (not-yet-installed) binary path —
+// the update-preflight seam. Tags present -> true; absent or exec error -> false.
+func TestBinarySupportsV2RayAPI(t *testing.T) {
+	if _, err := exec.LookPath("sh"); err != nil {
+		t.Skip("sh not available")
+	}
+	dir := t.TempDir()
+	write := func(name, versionOutput string) string {
+		p := filepath.Join(dir, name)
+		script := "#!/bin/sh\nprintf '%s\\n' '" + versionOutput + "'\n"
+		if err := os.WriteFile(p, []byte(script), 0755); err != nil {
+			t.Fatal(err)
+		}
+		return p
+	}
+	with := write("with", "fake version 1.13.13\nTags: with_gvisor,with_v2ray_api,with_clash_api")
+	without := write("without", "fake version 1.14.0-alpha.48\nTags: with_gvisor,with_clash_api")
+	if !BinarySupportsV2RayAPI(with) {
+		t.Error("with_v2ray_api tag must report supported")
+	}
+	if BinarySupportsV2RayAPI(without) {
+		t.Error("missing tag must report unsupported")
+	}
+	if BinarySupportsV2RayAPI(filepath.Join(dir, "no-such-binary")) {
+		t.Error("exec error must fail closed")
+	}
+}

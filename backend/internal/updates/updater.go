@@ -149,6 +149,15 @@ func (u *Updater) apply(t Target, rel ReleaseInfo) (ApplyResult, error) {
 		os.Remove(newPath)
 		return ApplyResult{}, fmt.Errorf("smoke test: %w", err)
 	}
+	// Preflight (still before the swap): the running service is untouched on
+	// failure, so a config the new binary rejects aborts cleanly here instead
+	// of failing the restart and rolling back with an opaque error.
+	if t.Preflight != nil {
+		if err := t.Preflight(newPath); err != nil {
+			os.Remove(newPath)
+			return ApplyResult{}, fmt.Errorf("preflight: %w", err)
+		}
+	}
 
 	// 3. Swap
 	u.setPhase(t.Name, PhaseSwap)
