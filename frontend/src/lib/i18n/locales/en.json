@@ -404,6 +404,7 @@
       "portsInvalid": "Invalid port entry (use N or N-N, ports 1-65535)",
       "transport": "Transport",
       "multiplexing": "Multiplexing",
+      "multiplexingDefault": "Default (unset)",
       "trafficPattern": "Traffic Pattern",
       "trafficPatternHint": "Opaque base64 blob from the server operator (optional)",
       "mixedPrompt": "This link has both TCP and UDP ports — pick one transport:"

@@ -193,6 +193,7 @@
 
 		<textarea
 			bind:value={importText}
+			oninput={() => (mieruMixed = null)}
 			placeholder={placeholders[protocol]}
 			rows="4"
 			class="w-full px-3 py-2 bg-[var(--ctp-mantle)] border border-[var(--ctp-surface2)] rounded-lg text-[var(--ctp-text)] placeholder-[var(--ctp-overlay0)] focus:outline-none focus:ring-2 focus:ring-[var(--ctp-primary)] font-mono text-sm resize-none"
