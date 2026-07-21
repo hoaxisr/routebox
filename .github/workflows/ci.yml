@@ -1,0 +1,41 @@
+# CI gate for the development branch: the same checks the release pipeline
+# runs, minus the binary build/publish, so a red tag build is never a surprise.
+name: CI
+
+on:
+  push:
+    branches: [source]
+  pull_request:
+    branches: [source]
+
+jobs:
+  frontend:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: frontend/package-lock.json
+      - name: Check, test, build
+        working-directory: frontend
+        run: |
+          npm ci
+          npm run check
+          npm test
+          npm run build
+
+  backend:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: go.mod
+          cache: true
+      - name: Vet, test, build
+        run: |
+          go vet ./backend/...
+          go test ./backend/...
+          CGO_ENABLED=0 go build ./backend/cmd/routebox
