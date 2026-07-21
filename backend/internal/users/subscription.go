@@ -2,6 +2,7 @@ package users
 
 import (
 	"encoding/base64"
+	"log"
 	"strings"
 
 	"routebox/backend/internal/serverlinks"
@@ -52,6 +53,17 @@ func BuildSubscription(user *PanelUser, active map[string]interface{}, host stri
 			}
 			link, err := serverlinks.BuildShareLink(inbound, userMap, host)
 			if err != nil {
+				// A resolvable inbound+credential that still can't render a link is
+				// the diagnosable silent-skip: an unsupported inbound type
+				// (BuildShareLink's default branch) or a malformed inbound. Log it
+				// (tag+type, never the credential) so a dropped binding is
+				// discoverable. host=="" is NOT this case — it is the handler's
+				// "public host not configured" policy where every binding skips by
+				// design, so stay silent there to avoid per-request log noise.
+				if host != "" {
+					typ, _ := inbound["type"].(string)
+					log.Printf("users: subscription skipped binding tag=%q type=%q: %v", b.InboundTag, typ, err)
+				}
 				continue // empty host / malformed inbound: skip, don't fail
 			}
 			links = append(links, link)
