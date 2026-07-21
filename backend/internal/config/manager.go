@@ -642,6 +642,20 @@ func stripAnsi(s string) string {
 	return ansiEscapeRegex.ReplaceAllString(s, "")
 }
 
+// mieruUnsupportedHint detects the sing-box decoder's "unknown outbound/inbound
+// type: mieru" failure — the config uses mieru but the running amnezia-box
+// binary predates mieru support — and appends a human explanation. Mirrors the
+// supportsV2RayAPI() capability-gate precedent (api/handler.go): name the
+// binary-capability gap instead of surfacing only the raw decoder error.
+func mieruUnsupportedHint(errs []string) []string {
+	for _, e := range errs {
+		if strings.Contains(e, "type: mieru") && strings.Contains(e, "unknown") {
+			return append(errs, "This amnezia-box build does not support mieru. Update the binary to an awg3-xhttp-mieru release (1.14.0-alpha.48 or newer), or remove the mieru outbound.")
+		}
+	}
+	return errs
+}
+
 // CheckConfig validates config using the detected sing-box/amnezia-box binary
 func (m *Manager) CheckConfig(configPath string) (bool, []string) {
 	m.mu.RLock()
@@ -681,7 +695,7 @@ func (m *Manager) CheckConfig(configPath string) (bool, []string) {
 		if len(checkErrs) == 0 {
 			checkErrs = append(checkErrs, err.Error())
 		}
-		return false, checkErrs
+		return false, mieruUnsupportedHint(checkErrs)
 	}
 
 	return true, nil
