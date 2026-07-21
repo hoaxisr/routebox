@@ -18,6 +18,14 @@ type Target struct {
 	// Restart restarts the managed process after the swap. nil for
 	// self-update targets — the API handler owns process exit (see Updater).
 	Restart func() error
+	// Preflight runs after verify but BEFORE the binary swap, receiving the
+	// path of the downloaded (verified) new binary. Returning an error aborts
+	// the update with the running service completely untouched — the wiring
+	// layer uses it to `check` the existing config against the NEW binary
+	// (and self-heal RouteBox-owned blocks the new build dropped, e.g.
+	// experimental.v2ray_api), so a config the new binary rejects surfaces a
+	// clear message instead of a restart-fail + rollback. nil = no preflight.
+	Preflight func(newBinaryPath string) error
 	// SelfUpdate marks the RouteBox binary itself: Apply skips Restart and
 	// reports whether a supervisor (systemd) will respawn the process.
 	SelfUpdate bool

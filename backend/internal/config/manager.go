@@ -679,6 +679,14 @@ func (m *Manager) CheckConfig(configPath string) (bool, []string) {
 		return false, []string{fmt.Sprintf("cannot run config check with %s: %v", binary, err)}
 	}
 
+	return CheckConfigWith(binary, configPath)
+}
+
+// CheckConfigWith validates configPath with an EXPLICIT binary — used by
+// CheckConfig above (detected binary) and by the update preflight, which tests
+// the existing config against a downloaded, not-yet-installed binary. Failure
+// returns sing-box's output with ANSI colors stripped, one line per entry.
+func CheckConfigWith(binary, configPath string) (bool, []string) {
 	cmd := exec.Command(binary, "check", "-c", configPath)
 	output, err := cmd.CombinedOutput()
 

@@ -223,6 +223,76 @@ func TestApplyRollbackOnSmokeFailure(t *testing.T) {
 	}
 }
 
+// A failing Preflight must abort BEFORE the swap: installed binary untouched,
+// no restart attempted, .new cleaned up — the running service never blinks.
+func TestApplyPreflightFailureAbortsBeforeSwap(t *testing.T) {
+	dir := t.TempDir()
+	var restarts int32
+	target, path := happyTarget(dir, &restarts, nil)
+	var sawPath string
+	target.Preflight = func(newBin string) error {
+		sawPath = newBin
+		return fmt.Errorf("new binary rejects the current config: unknown field v2ray_api")
+	}
+	oldBytes := copyFile(t, "/bin/true", path)
+
+	newBytes, _ := os.ReadFile("/bin/true")
+	newBytes = append(newBytes, []byte("\npad")...)
+	srv := assetServer(t, "fake-asset", newBytes, sha256Hex(newBytes))
+
+	u := NewUpdater()
+	_, err := u.Apply(target, ReleaseInfo{
+		AssetName: "fake-asset",
+		AssetURL:  srv.URL + "/asset",
+		Sha256URL: srv.URL + "/checksums.txt",
+	})
+	if err == nil || !strings.Contains(err.Error(), "preflight") {
+		t.Fatalf("err = %v, want preflight failure", err)
+	}
+	if sawPath != path+".new" {
+		t.Errorf("preflight ran against %q, want the downloaded %q", sawPath, path+".new")
+	}
+	got, _ := os.ReadFile(path)
+	if string(got) != string(oldBytes) {
+		t.Error("installed binary must be untouched on preflight failure")
+	}
+	if _, err := os.Stat(path + ".new"); !os.IsNotExist(err) {
+		t.Error(".new must be cleaned up on preflight failure")
+	}
+	if atomic.LoadInt32(&restarts) != 0 {
+		t.Error("restart must not run on preflight failure")
+	}
+}
+
+// A passing Preflight lets the update proceed to swap + restart as usual.
+func TestApplyPreflightPassProceeds(t *testing.T) {
+	dir := t.TempDir()
+	var restarts int32
+	target, path := happyTarget(dir, &restarts, nil)
+	target.Preflight = func(string) error { return nil }
+	copyFile(t, "/bin/true", path)
+
+	newBytes, _ := os.ReadFile("/bin/true")
+	newBytes = append(newBytes, []byte("\npad")...)
+	srv := assetServer(t, "fake-asset", newBytes, sha256Hex(newBytes))
+
+	u := NewUpdater()
+	if _, err := u.Apply(target, ReleaseInfo{
+		AssetName: "fake-asset",
+		AssetURL:  srv.URL + "/asset",
+		Sha256URL: srv.URL + "/checksums.txt",
+	}); err != nil {
+		t.Fatalf("Apply: %v", err)
+	}
+	got, _ := os.ReadFile(path)
+	if string(got) != string(newBytes) {
+		t.Error("binary not replaced after passing preflight")
+	}
+	if atomic.LoadInt32(&restarts) != 1 {
+		t.Errorf("restarts = %d, want 1", restarts)
+	}
+}
+
 func TestApplyRollbackOnRestartFailure(t *testing.T) {
 	dir := t.TempDir()
 	var restarts int32

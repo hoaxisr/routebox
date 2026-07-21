@@ -262,9 +262,18 @@
 						{$t('experimental.secret')}
 						<span class="font-normal text-[var(--ctp-overlay0)]">({$t('common.optional')})</span>
 					</label>
+					<!-- autocomplete="new-password" stops browser password managers from
+					     autofilling the saved PANEL password here on page load (a lone
+					     type=password input on the same origin is a prime autofill
+					     target). The autofill fired a change event -> phantom "unsaved
+					     changes" on entering the page, and Apply then silently wrote
+					     the panel password into clash_api.secret. -->
 					<input
 						id="api-secret"
 						type="password"
+						autocomplete="new-password"
+						data-1p-ignore
+						data-lpignore="true"
 						bind:value={secret}
 						onchange={handleChange}
 						placeholder="Enter secret..."

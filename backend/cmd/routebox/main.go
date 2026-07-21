@@ -14,6 +14,7 @@ import (
 	"os"
 	"os/signal"
 	"path/filepath"
+	"strings"
 	"syscall"
 	"time"
 
@@ -285,7 +286,7 @@ func main() {
 	updTargets := []updates.Target{
 		updates.AmneziaTarget(procMgr.GetBinaryPath, procMgr.GetVersion, func() error {
 			return procMgr.Restart(cfgMgr.GetPath())
-		}),
+		}, amneziaPreflight(cfgMgr, settingsMgr)),
 		updates.RouteBoxTarget(Version),
 	}
 	stopUpdates := make(chan struct{})
@@ -903,6 +904,48 @@ func applyAwgReload(cfg *config.Manager, proc *process.Manager) error {
 		return proc.Restart(cfg.GetPath())
 	}
 	return nil
+}
+
+// amneziaPreflight builds the amnezia-box update preflight: it validates the
+// EXISTING config against the NEW (downloaded, verified, not-yet-installed)
+// binary before the swap. Without it, a config the new build rejects — e.g.
+// experimental.v2ray_api against a 1.14+ build that dropped with_v2ray_api —
+// fails only at the post-swap restart, and the update rolls back forever with
+// an opaque "service restarted but is not running" (a catch-22: the running
+// old binary supports the block, so the panel keeps it in the config).
+//
+// Self-heal: when the check fails AND the new binary lacks with_v2ray_api, the
+// RouteBox-owned v2ray_api block is stripped (change-gated; harmless for the
+// still-running old binary — the block is optional) and the check retried.
+// Anything else the new binary rejects aborts the update BEFORE the swap with
+// sing-box's real error message, leaving the running service untouched.
+func amneziaPreflight(cfg *config.Manager, sm *settings.Manager) func(string) error {
+	return func(newBin string) error {
+		cfgPath := cfg.GetPath()
+		if cfgPath == "" {
+			return nil
+		}
+		if ok, _ := config.CheckConfigWith(newBin, cfgPath); ok {
+			return nil
+		}
+		if !process.BinarySupportsV2RayAPI(newBin) {
+			listen := sm.Get().Singbox.V2RayAPI
+			if listen == "" {
+				listen = "127.0.0.1:8081"
+			}
+			changed, err := cfg.SyncV2RayAPI(listen, nil)
+			if err != nil {
+				return fmt.Errorf("strip experimental.v2ray_api: %w", err)
+			}
+			if changed {
+				log.Printf("updates: stripped experimental.v2ray_api — the new amnezia-box build lacks with_v2ray_api (per-user traffic accounting is unavailable on it)")
+			}
+		}
+		if ok, errs := config.CheckConfigWith(newBin, cfgPath); !ok {
+			return fmt.Errorf("the new binary rejects the current config: %s", strings.Join(errs, "; "))
+		}
+		return nil
+	}
 }
 
 func generatePassword() (string, error) {
