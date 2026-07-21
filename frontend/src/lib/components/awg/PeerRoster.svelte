@@ -28,6 +28,23 @@
 		return Math.floor(Date.now() / 1000);
 	}
 
+	// Expiry-health level for the singbox per-client dot (sing-box exposes no
+	// connectivity data, so the dot reflects expiry instead).
+	type ExpiryDot = 'ok' | 'soon' | 'expired';
+	function expiryDot(expires: number, now: number): ExpiryDot {
+		if (!expires || expires === 0) return 'ok';
+		if (expires <= now) return 'expired';
+		if (expires - now < 7 * 86400) return 'soon';
+		return 'ok';
+	}
+
+	// Short relative expiry phrase: "30d" when >=1 day out, else "5h".
+	function relExpiry(expires: number, now: number): string {
+		const s = Math.max(0, expires - now);
+		if (s >= 86400) return `${Math.floor(s / 86400)}d`;
+		return `${Math.max(1, Math.floor(s / 3600))}h`;
+	}
+
 	function openRenew(p: AwgPeer) {
 		renewing = p.public_key;
 		renewDate = unixToDateInput(p.expires_at);
@@ -170,8 +187,18 @@
 					<div class="peer-name">
 						<span
 							class="conn-dot"
-							class:on={!singbox && p.online}
-							title={singbox ? undefined : p.online ? $t('awg.online') : $t('awg.offline')}
+							class:on={singbox ? expiryDot(p.expires_at, nowSec()) === 'ok' : p.online}
+							class:exp-soon={singbox && expiryDot(p.expires_at, nowSec()) === 'soon'}
+							class:exp-expired={singbox && expiryDot(p.expires_at, nowSec()) === 'expired'}
+							title={singbox
+								? !p.expires_at
+									? $t('awg.noExpiry')
+									: expiryDot(p.expires_at, nowSec()) === 'expired'
+										? $t('awg.expiredLabel')
+										: $t('awg.expiresIn', { values: { rel: relExpiry(p.expires_at, nowSec()) } })
+								: p.online
+									? $t('awg.online')
+									: $t('awg.offline')}
 						></span>
 						{p.name || '(unnamed)'}
 						{#if expiryStatus(p.expires_at, nowSec()) === 'suspended'}
@@ -182,17 +209,21 @@
 						<span class="addr">{p.address}</span>
 						<span class="dot-sep">·</span>
 						{#if singbox}
-							<span class="seen">—</span>
-							<span class="dot-sep">·</span>
-							<span class="xfer">—</span>
+							{#if !p.expires_at}
+								<span class="exp">{$t('awg.noExpiry')}</span>
+							{:else if expiryStatus(p.expires_at, nowSec()) === 'active'}
+								<span class="exp">{$t('awg.expiresIn', { values: { rel: relExpiry(p.expires_at, nowSec()) } })}</span>
+							{:else}
+								<span class="exp">{$t('awg.expiredLabel')}</span>
+							{/if}
 						{:else}
 							<span class="seen">{p.online ? $t('awg.online') : lastSeen(p.last_handshake)}</span>
 							<span class="dot-sep">·</span>
 							<span class="xfer">↓ {formatBytes(p.rx)} &nbsp;↑ {formatBytes(p.tx)}</span>
-						{/if}
-						{#if expiryStatus(p.expires_at, nowSec()) === 'active'}
-							<span class="dot-sep">·</span>
-							<span class="exp">{$t('awg.expires', { values: { date: unixToDateInput(p.expires_at) } })}</span>
+							{#if expiryStatus(p.expires_at, nowSec()) === 'active'}
+								<span class="dot-sep">·</span>
+								<span class="exp">{$t('awg.expires', { values: { date: unixToDateInput(p.expires_at) } })}</span>
+							{/if}
 						{/if}
 					</div>
 				</div>
@@ -360,6 +391,14 @@
 	.conn-dot.on {
 		background: var(--ctp-green);
 		box-shadow: 0 0 0 3px color-mix(in srgb, var(--ctp-green) 25%, transparent);
+	}
+	.conn-dot.exp-soon {
+		background: var(--ctp-primary);
+		box-shadow: 0 0 0 3px color-mix(in srgb, var(--ctp-primary) 25%, transparent);
+	}
+	.conn-dot.exp-expired {
+		background: var(--ctp-red);
+		box-shadow: 0 0 0 3px color-mix(in srgb, var(--ctp-red) 25%, transparent);
 	}
 	.peer-meta .dot-sep {
 		color: var(--ctp-overlay0);
