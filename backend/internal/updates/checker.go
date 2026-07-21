@@ -152,8 +152,9 @@ func NormalizeVersion(v string) string {
 // CompareVersions compares two semver-ish versions after normalization.
 // Returns -1, 0 or 1. Missing segments count as 0 ("0.17" == "0.17.0").
 func CompareVersions(a, b string) int {
-	as := strings.Split(NormalizeVersion(a), ".")
-	bs := strings.Split(NormalizeVersion(b), ".")
+	sep := func(r rune) bool { return r == '.' || r == '-' }
+	as := strings.FieldsFunc(NormalizeVersion(a), sep)
+	bs := strings.FieldsFunc(NormalizeVersion(b), sep)
 	for i := 0; i < len(as) || i < len(bs); i++ {
 		ai, bi := segmentNum(as, i), segmentNum(bs, i)
 		if ai < bi {
