@@ -18,11 +18,11 @@ func TestValidateUintRange(t *testing.T) {
 }
 
 func TestValidateHPKConstraint(t *testing.T) {
-	if err := validateHPKConstraint(Obfuscation{S1: 8, S2: 8, S3: 8, S4: 8}, true); err != nil {
-		t.Fatalf("S=8 with HPK should pass: %v", err)
+	if err := validateHPKConstraint(Obfuscation{S1: 12, S2: 12, S3: 12, S4: 12}, true); err != nil {
+		t.Fatalf("S=12 with HPK should pass: %v", err)
 	}
-	if err := validateHPKConstraint(Obfuscation{S1: 8, S2: 7, S3: 8, S4: 8}, true); err == nil {
-		t.Fatal("S2=7 with HPK must fail")
+	if err := validateHPKConstraint(Obfuscation{S1: 12, S2: 11, S3: 12, S4: 12}, true); err == nil {
+		t.Fatal("S2=11 with HPK must fail")
 	}
 	if err := validateHPKConstraint(Obfuscation{S1: 0}, false); err != nil {
 		t.Fatal("HPK off → no S constraint")

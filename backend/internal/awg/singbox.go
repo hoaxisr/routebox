@@ -278,7 +278,7 @@ func (m *Manager) enableSingbox(ctx context.Context, in EnableInput) error {
 		return m.enableFail("obfuscation: " + err.Error())
 	}
 	// AWG3 header protection: hard-gate on binary capability (emitting the field
-	// on an old binary breaks the config load), enforce the fork's S>=8 rule, and
+	// on an old binary breaks the config load), enforce the fork's S>=12 rule, and
 	// ensure a persisted header key so client exports survive restarts.
 	hpk := ""
 	if in.HeaderProtection {
@@ -441,9 +441,9 @@ func (m *Manager) RehydrateSingbox(in EnableInput, enabled bool) {
 	priv := m.store.ServerKey()
 	// Restore the header key alongside the server key so a restart keeps exporting
 	// the SAME HPK — but only when header protection is desired (Enable with it off
-	// sets m.headerKey="", and rehydrate must not resurrect it). Same S>=8 gate as
+	// sets m.headerKey="", and rehydrate must not resurrect it). Same S>=12 gate as
 	// enableSingbox (Bug M1): settings persist BEFORE Enable validates, so an
-	// invalid header_protection+S<8 combo can be on disk — restoring the key for
+	// invalid header_protection+S<12 combo can be on disk — restoring the key for
 	// it would make the sweep render a spec the fork rejects at config load.
 	// Dropping the HPK yields a degraded-but-loadable config instead.
 	hpk := ""
