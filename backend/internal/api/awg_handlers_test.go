@@ -474,6 +474,72 @@ func TestBackendSwitchRejectedWhileEnableInFlight(t *testing.T) {
 		t.Fatal("rejected switch must not persist awg.backend")
 	}
 }
+// awgRecordingRunner records every argv (thread-safe not needed: handler path is
+// synchronous) and answers everything with ("", nil).
+type awgRecordingRunner struct{ calls [][]string }
+
+func (r *awgRecordingRunner) Run(_ context.Context, name string, args ...string) (string, string, error) {
+	r.calls = append(r.calls, append([]string{name}, args...))
+	return "", "", nil
+}
+
+func (r *awgRecordingRunner) saw(sub string) bool {
+	for _, c := range r.calls {
+		if strings.Contains(strings.Join(c, " "), sub) {
+			return true
+		}
+	}
+	return false
+}
+
+// A validated kernel->singbox switch must (1) decommission the kernel runtime —
+// at minimum clear awg-quick@'s boot persistence, which the Enabled==false guard
+// alone never did (the reported bug: kernel kept running after the switch),
+// (2) persist the new backend, (3) reset a stale-true awg.enabled so a restart
+// can't rehydrate the NEW backend as silently enabled, and (4) mirror the switch
+// onto the live Manager.
+func TestBackendSwitchDecommissionsKernel(t *testing.T) {
+	dir := t.TempDir()
+	awgDir := filepath.Join(dir, "amneziawg")
+	if err := os.MkdirAll(awgDir, 0o700); err != nil {
+		t.Fatal(err)
+	}
+	run := &awgRecordingRunner{}
+	m := awg.NewManagerForTest(run, awgDir, serverPriv, awg.Config{
+		Iface: "awg-rb0", Subnet: "10.10.0.0/24", ServerIP: "10.10.0.1",
+		ListenPort: 51820, MTU: 1420, DNS: []string{"1.1.1.1"},
+	})
+	m.SetBackend("kernel")
+	sm := newAWGSettings(t, dir, "")
+	// Stale persisted state: backend kernel, enabled=true, but the live probe sees
+	// no iface (e.g. `awg` tool broken after a restart) — the guard passes.
+	if err := sm.Update(map[string]interface{}{"awg.backend": "kernel", "awg.enabled": true}); err != nil {
+		t.Fatal(err)
+	}
+	h := &Handler{settings: sm}
+	h.SetAWG(m)
+
+	rec := httptest.NewRecorder()
+	req := httptest.NewRequest(http.MethodPut, "/api/settings", strings.NewReader(`{"awg.backend":"singbox"}`))
+	h.UpdateSettings(rec, req)
+	if rec.Code != http.StatusOK {
+		t.Fatalf("switch = %d; want 200; body=%q", rec.Code, rec.Body.String())
+	}
+	if !run.saw("systemctl disable --now awg-quick@awg-rb0") {
+		t.Fatalf("switch must decommission the kernel unit; calls=%v", run.calls)
+	}
+	got := sm.Get().Awg
+	if got.Backend != "singbox" {
+		t.Fatalf("backend not persisted: %q", got.Backend)
+	}
+	if got.Enabled {
+		t.Fatal("switch must reset the stale awg.enabled flag")
+	}
+	if m.BackendName() != "singbox" {
+		t.Fatalf("live Manager backend = %q; want singbox", m.BackendName())
+	}
+}
+
 // orchestrator input — the panel's Save is the single writer; Enable ignores body.
 func TestAwgEnableInputFromSettings(t *testing.T) {
 	in := awgEnableInput(settings.AwgSettings{

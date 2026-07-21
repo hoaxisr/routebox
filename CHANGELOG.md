@@ -4,6 +4,29 @@ All notable changes to RouteBox are documented here.
 
 ## [Unreleased]
 
+### Fixes
+
+- **Switching the AWG backend now actually decommissions the kernel runtime.** The
+  kernel→singbox switch used to only check "server disabled" and flip the setting — an
+  enabled-but-inactive `awg-quick@` unit, a manually-launched interface (`awg-quick up`
+  outside the unit), or a broken `awg` tool all passed that check while the kernel tunnel
+  stayed (or came back at next boot) alive, invisible to the panel and competing with the
+  singbox endpoint for the UDP port. The switch now tears the old backend down first:
+  `systemctl disable --now awg-quick@<iface>` (clears boot persistence), then `awg-quick
+  down` for manually-launched interfaces, then `ip link delete` + explicit RBOX-AWG-*
+  chain cleanup as a last resort — success is judged by the interface actually being gone,
+  not by any one command's exit code. The reverse (singbox→kernel) switch likewise drops an
+  orphaned managed endpoint from the active config.
+- **Boot-time backend residue reconcile.** Installs already in the split state (settings say
+  `singbox`, `awg-quick@` still enabled/running — or settings say `kernel` with a leftover
+  managed endpoint in the config) are healed at RouteBox startup. Only interfaces RouteBox
+  ever rendered a conf for are touched, so an operator's unrelated awg-quick setup is safe.
+- **Kernel AWG Disable handles every launch variant** — non-systemd boxes and manually
+  launched interfaces are now taken down too (previously only the systemd unit was stopped,
+  and Disable reported success while the interface kept running).
+- **Backend switch resets a stale `awg.enabled=true`** so a later RouteBox restart cannot
+  rehydrate the newly selected backend as silently enabled.
+
 ## [0.24.1] - 2026-07-20
 
 ### Fixes

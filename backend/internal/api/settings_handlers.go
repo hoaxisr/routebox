@@ -114,6 +114,25 @@ func (h *Handler) UpdateSettings(w http.ResponseWriter, r *http.Request) {
 			writeError(w, http.StatusConflict, "apply or discard pending config changes before switching backend")
 			return
 		}
+		// Decommission the OUTGOING backend BEFORE the setting is persisted. The
+		// Enabled==false guard above is necessary but not sufficient: an
+		// enabled-but-inactive awg-quick unit, a manually-launched iface, or a
+		// broken `awg` tool all pass it while the kernel tunnel is (or will be at
+		// next boot) alive — and after the switch Status routes to the new
+		// backend, so the leftover keeps running panel-invisibly. Failing here
+		// leaves settings AND Manager.backend unchanged (no split state).
+		if h.awg != nil {
+			if err := h.awg.PrepareBackendSwitch(r.Context(), bs); err != nil {
+				writeError(w, http.StatusConflict, "failed to decommission the previous backend: "+err.Error())
+				return
+			}
+		}
+		// The switch requires a disabled server, but the PERSISTED awg.enabled can
+		// still be stale-true (e.g. kernel was enabled, RouteBox restarted, and the
+		// live-iface probe failed). Left as-is, the next restart would rehydrate
+		// the NEW backend as enabled and silently start serving. Persist false
+		// atomically with the backend value.
+		updates["awg.enabled"] = false
 	}
 
 	// Apply updates
