@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"log"
 	"net/netip"
+	"os"
 	"strings"
 
 	"routebox/backend/internal/awg/cps"
@@ -39,6 +40,85 @@ func (m *Manager) BackendName() string {
 		return "singbox"
 	}
 	return "kernel"
+}
+
+// PrepareBackendSwitch decommissions the OUTGOING backend's runtime before a
+// validated backend switch is persisted. The handler's Enabled==false guard is
+// not enough: an enabled-but-inactive awg-quick unit, a manually-launched iface
+// (`awg-quick up` outside the unit), or a broken `awg` tool all read as
+// "disabled" while the kernel tunnel is (or will be, at next boot) alive — and
+// once Status routes to the new backend, that leftover is panel-invisible and
+// competes with the singbox endpoint for the UDP listen port. Idempotent; a
+// same-backend call is a no-op.
+func (m *Manager) PrepareBackendSwitch(ctx context.Context, target string) error {
+	if m.BackendName() == target {
+		return nil
+	}
+	switch target {
+	case "singbox":
+		// kernel -> singbox: stop the iface (whatever launched it) and clear the
+		// unit's boot persistence.
+		return m.iface_Down(ctx)
+	case "kernel":
+		// singbox -> kernel: drop the managed endpoint from the active config so a
+		// disable that failed mid-way (or hand-edited settings) can't leave the
+		// fork serving AWG alongside the kernel iface.
+		return m.decommissionSingbox()
+	}
+	return fmt.Errorf("invalid backend %q", target)
+}
+
+// decommissionSingbox removes the managed AWG endpoint from the ACTIVE sing-box
+// config (reloading only on a real change). Shared by disableSingbox, the
+// singbox->kernel switch, and the boot-time residue reconcile. A nil cfgSync
+// (not wired yet) is a no-op, not an error.
+func (m *Manager) decommissionSingbox() error {
+	m.mu.Lock()
+	s, apply := m.cfgSync, m.applyFn
+	m.mu.Unlock()
+	if s == nil {
+		return nil
+	}
+	changed, err := s.SyncAwgEndpointActive(config.ManagedAwgServerTag, nil)
+	if err != nil {
+		return err
+	}
+	if changed && apply != nil {
+		return apply()
+	}
+	return nil
+}
+
+// ReconcileBackendResidue heals leftovers of the INACTIVE backend at boot. The
+// switch path (PrepareBackendSwitch) protects new switches, but installs that
+// switched on older builds — or crashed mid-switch — can already be in the split
+// state: settings say "singbox" while awg-quick@<iface> is still enabled/running
+// (the reported bug: the kernel backend kept working after the switch), or say
+// "kernel" while an orphaned managed endpoint sits in the active config.
+// Best-effort: failures are logged, never fatal to boot.
+func (m *Manager) ReconcileBackendResidue(ctx context.Context) {
+	if m.backendIs("singbox") {
+		// Only touch the kernel unit/iface when RouteBox ever rendered its conf —
+		// the conf file marks the iface name as ours, so an operator's unrelated
+		// awg-quick setup is never torn down.
+		if _, err := os.Stat(m.confPath); err != nil {
+			return
+		}
+		unitEnabled := m.kernelUnitEnabled(ctx)
+		ifacePresent := m.kernelIfacePresent(ctx)
+		if !unitEnabled && !ifacePresent {
+			return
+		}
+		log.Printf("awg: backend is singbox but the kernel runtime is still around (unit enabled=%v, iface %s present=%v) — decommissioning", unitEnabled, m.iface, ifacePresent)
+		if err := m.iface_Down(ctx); err != nil {
+			log.Printf("awg: decommission kernel residue: %v", err)
+		}
+		return
+	}
+	// kernel backend: drop an orphaned managed endpoint from the active config.
+	if err := m.decommissionSingbox(); err != nil {
+		log.Printf("awg: remove orphaned singbox endpoint: %v", err)
+	}
 }
 
 // SetConfigSync wires the config-sync callback, the post-change apply (reload)
@@ -258,14 +338,8 @@ func (m *Manager) disableSingbox(ctx context.Context) error {
 	if m.cfgSync == nil {
 		return fmt.Errorf("config sync not wired")
 	}
-	changed, err := m.cfgSync.SyncAwgEndpointActive(config.ManagedAwgServerTag, nil)
-	if err != nil {
+	if err := m.decommissionSingbox(); err != nil {
 		return err
-	}
-	if changed && m.applyFn != nil {
-		if err := m.applyFn(); err != nil {
-			return err
-		}
 	}
 	m.mu.Lock()
 	m.enabled, m.phase = false, PhaseIdle

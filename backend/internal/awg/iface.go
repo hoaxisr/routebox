@@ -24,10 +24,76 @@ func (m *Manager) iface_Up(ctx context.Context) error {
 	return err
 }
 
-// iface_Down stops+disables the interface (PostDown reverts NAT).
+// iface_Down stops the interface AND clears its boot persistence, covering every
+// launch variant — not just the systemd unit:
+//   - `systemctl disable --now` handles the unit-managed case and removes the
+//     enable symlink (an enabled-but-inactive unit would resurrect the kernel
+//     iface at the next boot);
+//   - a manually-launched iface (`awg-quick up` outside the unit) is untouched by
+//     the unit stop, so if the link is still present we run `awg-quick down`
+//     directly (its PostDown reverts NAT);
+//   - with awg-tools broken/missing (or no systemd at all), the last resort is
+//     `ip link delete` plus an explicit RBOX-AWG-* chain teardown, because
+//     PostDown never ran on that path.
+//
+// Success is judged by the OUTCOME (link gone), not by any one command's exit
+// code — `systemctl` legitimately fails on non-systemd boxes.
 func (m *Manager) iface_Down(ctx context.Context) error {
-	_, _, err := m.run.Run(ctx, "systemctl", "disable", "--now", "awg-quick@"+m.iface)
-	return err
+	_, _, sysErr := m.run.Run(ctx, "systemctl", "disable", "--now", "awg-quick@"+m.iface)
+	if !m.kernelIfacePresent(ctx) {
+		return nil
+	}
+	if _, _, err := m.run.Run(ctx, "awg-quick", "down", m.iface); err == nil && !m.kernelIfacePresent(ctx) {
+		return nil
+	}
+	_, _, _ = m.run.Run(ctx, "ip", "link", "delete", "dev", m.iface)
+	m.cleanupNATChains(ctx)
+	if m.kernelIfacePresent(ctx) {
+		if sysErr != nil {
+			return fmt.Errorf("interface %s is still up after teardown (systemctl: %v)", m.iface, sysErr)
+		}
+		return fmt.Errorf("interface %s is still up after teardown", m.iface)
+	}
+	return nil
+}
+
+// kernelIfacePresent reports whether the kernel netdev exists, independent of the
+// awg tool (which may be broken/uninstalled while the module keeps the iface
+// alive). `ip link show dev <iface>` exits non-zero when the device is absent and
+// names it in stdout when present; both are required so a permissive fake runner
+// ("" output, nil error) reads as absent.
+func (m *Manager) kernelIfacePresent(ctx context.Context) bool {
+	out, _, err := m.run.Run(ctx, "ip", "link", "show", "dev", m.iface)
+	return err == nil && strings.Contains(out, m.iface)
+}
+
+// kernelUnitEnabled reports whether awg-quick@<iface> is systemd-enabled (boot
+// persistence). Degrades to false where systemctl is absent or the unit unknown.
+func (m *Manager) kernelUnitEnabled(ctx context.Context) bool {
+	out, _, err := m.run.Run(ctx, "systemctl", "is-enabled", "awg-quick@"+m.iface)
+	return err == nil && strings.TrimSpace(out) == "enabled"
+}
+
+// cleanupNATChains reverts the RBOX-AWG-* chains exactly like the rendered
+// PostDown (unlink/flush/delete per chain), for teardown paths where awg-quick
+// never ran PostDown. Every step tolerates absence; errors are ignored.
+func (m *Manager) cleanupNATChains(ctx context.Context) {
+	for _, ch := range []struct {
+		table   []string
+		builtin string
+		chain   string
+	}{
+		{[]string{"-t", "nat"}, "POSTROUTING", "RBOX-AWG-NAT"},
+		{nil, "FORWARD", "RBOX-AWG-FWD"},
+		{nil, "INPUT", "RBOX-AWG-IN"},
+	} {
+		unlink := append(append([]string{}, ch.table...), "-D", ch.builtin, "-j", ch.chain)
+		flush := append(append([]string{}, ch.table...), "-F", ch.chain)
+		del := append(append([]string{}, ch.table...), "-X", ch.chain)
+		_, _, _ = m.run.Run(ctx, "iptables", unlink...)
+		_, _, _ = m.run.Run(ctx, "iptables", flush...)
+		_, _, _ = m.run.Run(ctx, "iptables", del...)
+	}
 }
 
 // iface_SyncConf reloads peers live: `awg-quick strip` -> 0600 temp file ->
