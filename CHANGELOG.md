@@ -4,6 +4,17 @@ All notable changes to RouteBox are documented here.
 
 ## [Unreleased]
 
+### Features
+
+- **Mieru outbound (client)** (#12) — RouteBox can now dial through a [mieru](https://github.com/enfein/mieru)
+  proxy server. Add it manually on `/config/outbounds` (new **Mieru** type: server, TCP/UDP transport,
+  port or port ranges, username/password, optional multiplexing level and traffic pattern) or import a
+  `mierus://` link — a link carrying both TCP and UDP port groups asks which transport to use and imports
+  a single outbound. Configs are validated against the fork's rules before apply (dash port ranges,
+  multiplexing enum, base64 traffic pattern with a 64 KB cap), and applying a mieru config against an
+  older amnezia-box binary without mieru support now fails with a clear "update the binary" hint instead
+  of a cryptic decode error. Requires amnezia-box `1.14.0-alpha.48-awg3-xhttp-mieru` or newer.
+
 ### Fixes
 
 - **Switching the AWG backend now actually decommissions the kernel runtime.** The
