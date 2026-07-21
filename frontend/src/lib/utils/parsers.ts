@@ -78,6 +78,19 @@ export interface ParsedNaive {
 	quic?: boolean;
 }
 
+export interface ParsedMieru {
+	type: 'mieru';
+	name: string;
+	server: string;
+	server_port?: number;
+	server_ports?: string[];
+	transport: 'TCP' | 'UDP';
+	username: string;
+	password: string;
+	multiplexing?: string;
+	traffic_pattern?: string;
+}
+
 export interface ParsedAWG {
 	type: 'awg';
 	name: string;
@@ -112,12 +125,14 @@ export interface ParsedAWG {
 	i5?: string;
 }
 
-export type ParsedConfig = ParsedVless | ParsedTrojan | ParsedHysteria2 | ParsedShadowsocks | ParsedNaive | ParsedAWG;
+export type ParsedConfig = ParsedVless | ParsedTrojan | ParsedHysteria2 | ParsedShadowsocks | ParsedNaive | ParsedMieru | ParsedAWG;
 
 export interface ParseResult {
 	success: boolean;
 	config?: ParsedConfig;
 	error?: string;
+	/** Set when a mierus:// link mixes TCP and UDP and no transport was chosen. */
+	mieruTransports?: ('TCP' | 'UDP')[];
 }
 
 /**
@@ -511,6 +526,102 @@ export function parseNaive(uri: string): ParseResult {
 	}
 }
 
+const MIERU_MUX = new Set(['MULTIPLEXING_DEFAULT', 'MULTIPLEXING_OFF', 'MULTIPLEXING_LOW', 'MULTIPLEXING_MIDDLE', 'MULTIPLEXING_HIGH']);
+const MIERU_TP_MAX = 64 * 1024;
+const MIERU_MAX_PORTS = 64;
+
+// Matches Go base64.StdEncoding exactly: strict alphabet [A-Za-z0-9+/],
+// length % 4 === 0, correct '=' padding. A link that imports here must never
+// fail Go-side at apply.
+function isStdBase64(s: string): boolean {
+	if (s.length % 4 !== 0) return false;
+	return /^(?:[A-Za-z0-9+/]{4})*(?:[A-Za-z0-9+/]{2}==|[A-Za-z0-9+/]{3}=)?$/.test(s);
+}
+
+// normalizeMieruPort: "443" | "9000-9010" (dash) → canonical, else null.
+export function normalizeMieruPort(spec: string): string | null {
+	const parts = spec.split('-');
+	if (parts.length > 2) return null;
+	const nums = parts.map((p) => (/^\d+$/.test(p) ? parseInt(p, 10) : NaN));
+	if (nums.some((n) => !Number.isInteger(n) || n < 1 || n > 65535)) return null;
+	if (nums.length === 2 && nums[0] > nums[1]) return null;
+	return nums.length === 1 ? String(nums[0]) : `${nums[0]}-${nums[1]}`;
+}
+
+// parseMieruLink parses a plain-URL mierus:// link into ONE mieru outbound
+// (single transport). For a mixed TCP+UDP link with no `transport` given it
+// returns {success:false, mieruTransports:[...]} so the caller can offer a choice.
+export function parseMieruLink(uri: string, transport?: 'TCP' | 'UDP'): ParseResult {
+	try {
+		if (!uri.startsWith('mierus://')) return { success: false, error: 'Invalid mieru link: must start with mierus://' };
+		const u = new URL(uri);
+		const username = decodeURIComponent(u.username);
+		const password = decodeURIComponent(u.password);
+		if (!username || !password) return { success: false, error: 'mieru link: username and password are required' };
+		if (u.port) return { success: false, error: 'mieru link: port must be in the query (?port=…), not the host' };
+		// WHATWG URL keeps IPv6 brackets in hostname ("[2001:db8::1]") — strip them.
+		const host = u.hostname.startsWith('[') && u.hostname.endsWith(']')
+			? u.hostname.slice(1, -1)
+			: u.hostname;
+		if (!host) return { success: false, error: 'mieru link: missing host' };
+		const q = u.searchParams;
+		const profile = q.get('profile');
+		if (!profile) return { success: false, error: 'mieru link: profile is required' };
+
+		const ports = q.getAll('port');
+		if (ports.length === 0) return { success: false, error: 'mieru link: at least one port is required' };
+		// Cap BEFORE any per-element work (hostile-link guard).
+		if (ports.length > MIERU_MAX_PORTS) return { success: false, error: 'mieru link: too many ports' };
+		let protocols = q.getAll('protocol').map((p) => p.toUpperCase());
+		if (protocols.length === 0) return { success: false, error: 'mieru link: protocol is required (TCP or UDP)' };
+		if (protocols.length === 1) protocols = ports.map(() => protocols[0]); // broadcast
+		if (protocols.length !== ports.length) return { success: false, error: 'mieru link: port/protocol count mismatch' };
+		if (protocols.some((p) => p !== 'TCP' && p !== 'UDP')) return { success: false, error: 'mieru link: protocol must be TCP or UDP' };
+
+		const norm = ports.map(normalizeMieruPort);
+		if (norm.some((n) => n === null)) return { success: false, error: 'mieru link: invalid port (want N or N-N, 1–65535)' };
+
+		const available = Array.from(new Set(protocols)) as ('TCP' | 'UDP')[];
+		if (!transport) {
+			if (available.length > 1) return { success: false, error: 'mieru link mixes TCP and UDP — choose one', mieruTransports: available };
+			transport = available[0];
+		}
+		// keep only ports of the chosen transport; de-dup identical specs
+		// (element ordering in server_ports is not spec-significant)
+		const chosen = Array.from(new Set(norm.filter((_, i) => protocols[i] === transport) as string[]));
+		if (chosen.length === 0) return { success: false, error: `mieru link has no ${transport} ports` };
+
+		const config: ParsedMieru = { type: 'mieru', name: profile, server: host, transport, username, password };
+		const singles = chosen.filter((s) => !s.includes('-'));
+		const ranges = chosen.filter((s) => s.includes('-'));
+		const extraSingles: string[] = [];
+		if (singles.length > 0) {
+			config.server_port = parseInt(singles[0], 10);
+			for (const s of singles.slice(1)) extraSingles.push(`${s}-${s}`); // degenerate range, never bare
+		}
+		const sp = [...ranges, ...extraSingles];
+		if (sp.length > 0) config.server_ports = sp;
+
+		const mux = q.get('multiplexing');
+		if (mux) {
+			if (!MIERU_MUX.has(mux)) return { success: false, error: `mieru link: invalid multiplexing ${mux}` };
+			config.multiplexing = mux;
+		}
+		const tpRaw = q.get('traffic-pattern');
+		if (tpRaw) {
+			const tp = tpRaw.replace(/ /g, '+'); // URLSearchParams turned + into space
+			// Size cap BEFORE the alphabet check (never regex a 90 KB hostile blob).
+			if (tp.length > MIERU_TP_MAX) return { success: false, error: 'mieru link: traffic-pattern too large' };
+			if (!isStdBase64(tp)) return { success: false, error: 'mieru link: traffic-pattern is not valid base64' };
+			config.traffic_pattern = tp;
+		}
+		return { success: true, config };
+	} catch {
+		// FIXED message: the raw input always carries a password — never echo it.
+		return { success: false, error: 'Failed to parse mieru link' };
+	}
+}
+
 /**
  * Parse an AmneziaWG/WireGuard configuration
  * INI-like format with [Interface] and [Peer] sections
@@ -838,6 +949,11 @@ export function toSingboxConfig(parsed: ParsedConfig): { endpoint?: Endpoint; ou
 
 			return { outbound: outbound as unknown as OutboundTyped, outboundTag: outbound.tag as string };
 		}
+
+		case 'mieru':
+			// mieru import goes through OutboundForm.applyMieruConfig, never this
+			// (test-only) converter. Explicit throw keeps the switch exhaustive.
+			throw new Error('mieru is not supported by toSingboxConfig — use the OutboundForm import path');
 
 		case 'awg': {
 			const tag = parsed.name.replace(/[^a-zA-Z0-9-_]/g, '-');

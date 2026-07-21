@@ -22,7 +22,9 @@ import {
 	parseHysteria2,
 	parseTrojan,
 	parseConfig,
-	toSingboxConfig
+	toSingboxConfig,
+	parseMieruLink,
+	normalizeMieruPort
 } from './parsers';
 
 describe('parseLines', () => {
@@ -530,5 +532,97 @@ describe('toSingboxConfig host-matrix', () => {
 		const { outbound } = toSingboxConfig({ type: 'trojan', name: 'n', server: 's', port: 8443, password: 'pw',
 			security: 'tls', sni: 's', transport: 'httpupgrade', path: '/hu', host: 'cdn.example.com' } as never);
 		expect((outbound as unknown as Record<string, unknown>).transport).toEqual({ type: 'httpupgrade', path: '/hu', host: 'cdn.example.com' });
+	});
+});
+
+describe('normalizeMieruPort', () => {
+	it('keeps single ports and ranges', () => {
+		expect(normalizeMieruPort('443')).toBe('443');
+		expect(normalizeMieruPort('9000-9010')).toBe('9000-9010');
+	});
+	it('rejects bad forms', () => {
+		for (const s of ['0', '65536', '-1', 'abc', '9000:9010', '9010-9000', '1-2-3', ''])
+			expect(normalizeMieruPort(s)).toBeNull();
+	});
+});
+
+describe('parseMieruLink', () => {
+	it('single TCP port → server_port', () => {
+		const r = parseMieruLink('mierus://alice:s3cret@example.com?profile=home&port=443&protocol=TCP');
+		expect(r.success).toBe(true);
+		const c = r.config as any;
+		expect(c).toMatchObject({ type: 'mieru', name: 'home', server: 'example.com', username: 'alice', password: 's3cret', transport: 'TCP', server_port: 443 });
+		expect(c.server_ports).toBeUndefined();
+	});
+	it('two single TCP ports → server_port + degenerate range (never bare)', () => {
+		const c = parseMieruLink('mierus://a:b@h?profile=p&port=443&port=8443&protocol=TCP').config as any;
+		expect(c.server_port).toBe(443);
+		expect(c.server_ports).toEqual(['8443-8443']);
+	});
+	it('range → server_ports', () => {
+		const c = parseMieruLink('mierus://a:b@h?profile=p&port=9000-9010&protocol=TCP').config as any;
+		expect(c.server_ports).toEqual(['9000-9010']);
+	});
+	it('duplicate identical port specs are de-duplicated', () => {
+		const c = parseMieruLink('mierus://a:b@h?profile=p&port=443&port=443&protocol=TCP').config as any;
+		expect(c.server_port).toBe(443);
+		expect(c.server_ports).toBeUndefined();
+	});
+	it('single protocol broadcasts to all ports', () => {
+		const c = parseMieruLink('mierus://a:b@h?profile=p&port=443&port=8443&protocol=UDP').config as any;
+		expect(c.transport).toBe('UDP');
+		expect(c.server_port).toBe(443);
+		expect(c.server_ports).toEqual(['8443-8443']);
+	});
+	it('missing protocol → reject (no TCP default)', () => {
+		const r = parseMieruLink('mierus://a:b@h?profile=p&port=443');
+		expect(r.success).toBe(false);
+		expect(r.error).toContain('protocol');
+	});
+	it('mixed TCP+UDP without a choice → signals transports', () => {
+		const r = parseMieruLink('mierus://a:b@h?profile=p&port=443&protocol=TCP&port=444&protocol=UDP');
+		expect(r.success).toBe(false);
+		expect(r.mieruTransports).toEqual(['TCP', 'UDP']);
+	});
+	it('mixed link with a chosen transport → that transport only', () => {
+		const c = parseMieruLink('mierus://a:b@h?profile=p&port=443&protocol=TCP&port=444&protocol=UDP', 'UDP').config as any;
+		expect(c.transport).toBe('UDP');
+		expect(c.server_port).toBe(444);
+		expect(c.server_ports).toBeUndefined();
+	});
+	it('IPv6 host loses the URL brackets', () => {
+		const c = parseMieruLink('mierus://a:b@[2001:db8::1]?profile=p&port=443&protocol=TCP').config as any;
+		expect(c.server).toBe('2001:db8::1');
+	});
+	it('multiplexing (incl DEFAULT) + traffic-pattern with + fixed to space', () => {
+		const c = parseMieruLink('mierus://a:b@h?profile=p&port=443&protocol=TCP&multiplexing=MULTIPLEXING_DEFAULT&traffic-pattern=YQ b').config as any;
+		expect(c.multiplexing).toBe('MULTIPLEXING_DEFAULT');
+		expect(c.traffic_pattern).toBe('YQ+b'); // space restored to +
+	});
+	it('percent-encoded userinfo round-trips', () => {
+		const c = parseMieruLink('mierus://a:p%40ss%3Aw%23rd%25@h?profile=p&port=443&protocol=TCP').config as any;
+		expect(c.password).toBe('p@ss:w#rd%');
+	});
+	it('rejects non-Std-base64 traffic-pattern (bad alphabet)', () => {
+		expect(parseMieruLink('mierus://a:b@h?profile=p&port=443&protocol=TCP&traffic-pattern=ab$d').success).toBe(false);
+	});
+	it('rejects unpadded traffic-pattern (length % 4 !== 0 — Go StdEncoding would fail at apply)', () => {
+		expect(parseMieruLink('mierus://a:b@h?profile=p&port=443&protocol=TCP&traffic-pattern=YQ').success).toBe(false);
+		expect(parseMieruLink('mierus://a:b@h?profile=p&port=443&protocol=TCP&traffic-pattern=YWJjZA%3D').success).toBe(false);
+	});
+	it('rejects missing userinfo / profile / port / bad multiplexing / oversize pattern', () => {
+		expect(parseMieruLink('mierus://h?profile=p&port=443&protocol=TCP').success).toBe(false);
+		expect(parseMieruLink('mierus://a:b@h?port=443&protocol=TCP').success).toBe(false);
+		expect(parseMieruLink('mierus://a:b@h?profile=p&protocol=TCP').success).toBe(false);
+		expect(parseMieruLink('mierus://a:b@h?profile=p&port=443&protocol=TCP&multiplexing=BOGUS').success).toBe(false);
+		const big = 'A'.repeat(90000);
+		expect(parseMieruLink(`mierus://a:b@h?profile=p&port=443&protocol=TCP&traffic-pattern=${big}`).success).toBe(false);
+	});
+	it('catch-path error is fixed and never leaks the credential', () => {
+		// '%' alone in the username makes decodeURIComponent throw (URIError)
+		const r = parseMieruLink('mierus://a%:secretpass@h?profile=p&port=443&protocol=TCP');
+		expect(r.success).toBe(false);
+		expect(r.error).toBe('Failed to parse mieru link');
+		expect(r.error).not.toContain('secretpass');
 	});
 });
