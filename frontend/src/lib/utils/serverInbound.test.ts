@@ -1,5 +1,9 @@
 import { describe, it, expect } from 'vitest';
-import { buildServerInbound, parseServerInbound, type ServerFormState } from './serverInbound';
+import { buildServerInbound, parseServerInbound, validateServerInbound, type ServerFormState } from './serverInbound';
+
+// Mock translator: returns the i18n key so tests can assert on error KEYS while
+// still exercising the exact translation call sites the component uses.
+const tr = (k: string) => k;
 
 const base: ServerFormState = {
 	type: 'vless',
@@ -231,9 +235,9 @@ describe('buildServerInbound flow-strip (vless)', () => {
 });
 
 function mieruState(): ServerFormState {
-	const base = parseServerInbound({ type: 'mieru', tag: 't', listen: '::', listen_port: 2020,
+	const s = parseServerInbound({ type: 'mieru', tag: 't', listen: '::', listen_port: 2020,
 		transport: 'TCP', users: [{ name: 'a', password: 'p' }] });
-	return base;
+	return s;
 }
 
 describe('serverInbound mieru', () => {
@@ -265,5 +269,76 @@ describe('serverInbound mieru', () => {
 		const s = parseServerInbound(ib);
 		expect(s.type).toBe('mieru');
 		expect(s.mieruTransport).toBe('UDP');
+	});
+
+	// FU-3: parse robustness — a non-'TCP'/'UDP' transport (garbage object or an
+	// unsupported string like 'quic') must fall back to the 'TCP' default.
+	it('falls back to TCP when mieru transport is an object', () => {
+		const s = parseServerInbound({ type: 'mieru', tag: 't', listen_port: 2020,
+			transport: { type: 'ws', path: '/x' }, users: [{ name: 'a', password: 'p' }] } as never);
+		expect(s.mieruTransport).toBe('TCP');
+	});
+	it('falls back to TCP when mieru transport is an unsupported string', () => {
+		const s = parseServerInbound({ type: 'mieru', tag: 't', listen_port: 2020,
+			transport: 'quic', users: [{ name: 'a', password: 'p' }] } as never);
+		expect(s.mieruTransport).toBe('TCP');
+	});
+});
+
+describe('validateServerInbound', () => {
+	// FU-1: the make-or-break TLS-exemption. A mieru state with empty acme
+	// domain/email and cert/key paths must NOT produce any TLS required-field
+	// errors — those fields aren't rendered for mieru, so an error would be
+	// invisible and permanently block Save.
+	it('mieru with empty acme+cert fields produces NO tls errors', () => {
+		const s = mieruState();
+		s.tlsMode = 'acme';                 // even with a TLS mode selected, mieru skips the block
+		s.tls.acme = { domain: '', email: '' };
+		s.tls.certificate_path = '';
+		s.tls.key_path = '';
+		const errors = validateServerInbound(s, tr);
+		expect(errors['acmeDomain']).toBeUndefined();
+		expect(errors['acmeEmail']).toBeUndefined();
+		expect(errors['certPath']).toBeUndefined();
+		expect(errors['keyPath']).toBeUndefined();
+	});
+
+	// The exemption is type-specific, not a blanket skip: the SAME empty state as
+	// a trojan with tlsMode='acme' MUST raise the acme errors.
+	it('trojan with empty acme fields DOES produce acme errors (exemption is type-specific)', () => {
+		const s = mieruState();
+		s.type = 'trojan';
+		s.tlsMode = 'acme';
+		s.tls.acme = { domain: '', email: '' };
+		s.users = [{ name: 'a', password: 'p' }]; // valid trojan cred, isolate the acme errors
+		const errors = validateServerInbound(s, tr);
+		expect(errors['acmeDomain']).toBe('errors.fieldNamedRequired');
+		expect(errors['acmeEmail']).toBe('errors.fieldNamedRequired');
+	});
+
+	it('mieru with a user missing name or password produces userCred error', () => {
+		const s = mieruState();
+		s.users = [{ name: 'a', password: '' }];
+		expect(validateServerInbound(s, tr)['userCred']).toBe('inbounds.server.needUserCred');
+		s.users = [{ name: '', password: 'p' }];
+		expect(validateServerInbound(s, tr)['userCred']).toBe('inbounds.server.needUserCred');
+	});
+
+	it('mieru with zero users produces needUser error', () => {
+		const s = mieruState();
+		s.users = [];
+		const errors = validateServerInbound(s, tr);
+		expect(errors['users']).toBe('inbounds.server.needUser');
+		expect(errors['userCred']).toBeUndefined();
+	});
+
+	it('a valid mieru state produces no errors', () => {
+		expect(validateServerInbound(mieruState(), tr)).toEqual({});
+	});
+
+	it('flags an out-of-range port', () => {
+		const s = mieruState();
+		s.listenPort = 70000;
+		expect(validateServerInbound(s, tr)['port']).toBe('form.minValue');
 	});
 });

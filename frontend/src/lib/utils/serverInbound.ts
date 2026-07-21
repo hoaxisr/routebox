@@ -120,6 +120,59 @@ export function buildServerInbound(s: ServerFormState): Inbound {
 	return ib;
 }
 
+// Translator matches the shape of svelte-i18n's $t: a key plus optional
+// interpolation values, returning the localized string. Kept structural so this
+// util stays decoupled from svelte-i18n while producing byte-identical messages.
+export type Translator = (
+	key: string,
+	options?: { values?: Record<string, string | number | boolean | Date | null | undefined> }
+) => string;
+
+// validateServerInbound is the pure extraction of InboundForm.svelte's
+// server-inbound validation. It owns the port range check, the ≥1-user guard,
+// the TLS-mode required-field block (SKIPPED for mieru — the make-or-break
+// exemption: mieru renders no TLS fields, so validating them would raise
+// invisible, unclearable errors that permanently block Save), and the per-user
+// credential checks. The component keeps the tag check and merges this result,
+// so insertion order (port → users → tls → userCred) and messages stay identical.
+export function validateServerInbound(state: ServerFormState, t: Translator): Record<string, string> {
+	const errors: Record<string, string> = {};
+	const req = (field: string) => t('errors.fieldNamedRequired', { values: { field } });
+
+	if (state.listenPort < 1 || state.listenPort > 65535) {
+		errors['port'] = t('form.minValue', { values: { value: 1 } });
+	}
+	if (state.users.length === 0) errors['users'] = t('inbounds.server.needUser');
+
+	// TLS mode required fields. mieru has no TLS section, so its form never
+	// renders these fields — validating them would raise invisible, unclearable
+	// errors that permanently block Save. Skip the whole block for mieru.
+	if (state.type !== 'mieru') {
+		if (state.tlsMode === 'acme') {
+			if (!state.tls.acme.domain.trim()) errors['acmeDomain'] = req(t('inbounds.server.domain'));
+			if (!state.tls.acme.email.trim()) errors['acmeEmail'] = req(t('inbounds.server.email'));
+		} else if (state.tlsMode === 'reality') {
+			if (!state.tls.server_name.trim()) errors['serverName'] = req(t('inbounds.server.handshakeServer'));
+			if (!state.tls.reality.private_key.trim()) errors['realityKey'] = t('inbounds.server.realityKeyRequired');
+		} else if (state.tlsMode === 'manual') {
+			if (!state.tls.certificate_path.trim()) errors['certPath'] = req(t('inbounds.server.certificatePath'));
+			if (!state.tls.key_path.trim()) errors['keyPath'] = req(t('inbounds.server.keyPath'));
+		}
+		// 'panel' mode injects the canonical cert/key paths at build time — nothing to validate.
+	}
+
+	// Per-user credential required fields
+	for (const u of state.users) {
+		if (state.type === 'vless' && !u.uuid?.trim()) { errors['userCred'] = t('inbounds.server.needUserCred'); break; }
+		if (state.type === 'naive' && (!u.username?.trim() || !u.password?.trim())) { errors['userCred'] = t('inbounds.server.needUserCred'); break; }
+		if (state.type === 'hysteria2' && !u.password?.trim()) { errors['userCred'] = t('inbounds.server.needUserCred'); break; }
+		if (state.type === 'trojan' && !u.password?.trim()) { errors['userCred'] = t('inbounds.server.needUserCred'); break; }
+		if (state.type === 'mieru' && (!u.name?.trim() || !u.password?.trim())) { errors['userCred'] = t('inbounds.server.needUserCred'); break; }
+	}
+
+	return errors;
+}
+
 // parseServerInbound is the inverse used to populate the form when editing.
 export function parseServerInbound(ib: Inbound): ServerFormState {
 	const tls = ib.tls ?? {};

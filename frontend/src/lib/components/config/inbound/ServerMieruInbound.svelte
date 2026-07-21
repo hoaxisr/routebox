@@ -27,7 +27,7 @@
 
 	<div>
 		<span class="block text-sm font-medium text-[var(--ctp-subtext1)] mb-1">{$t('inbounds.server.mieruTransport')} *</span>
-		<div class="flex gap-2">
+		<div class="flex gap-2" role="group" aria-label={$t('inbounds.server.mieruTransport')}>
 			<button type="button" class="toggle-btn {state.mieruTransport === 'TCP' ? 'selected' : ''}"
 				onclick={() => (state.mieruTransport = 'TCP')}>TCP</button>
 			<button type="button" class="toggle-btn {state.mieruTransport === 'UDP' ? 'selected' : ''}"
