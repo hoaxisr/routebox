@@ -781,7 +781,8 @@
       "vless": "VLESS",
       "trojan": "Trojan",
       "naive": "NaiveProxy",
-      "hysteria2": "Hysteria2"
+      "hysteria2": "Hysteria2",
+      "mieru": "Mieru"
     },
     "typeDescriptions": {
       "tun": "System-level tunnel interface",
@@ -791,7 +792,8 @@
       "vless": "VLESS server (Reality/TLS)",
       "trojan": "Trojan server (TLS/Reality)",
       "naive": "NaiveProxy server (HTTP/2 + TLS)",
-      "hysteria2": "Hysteria2 server (QUIC)"
+      "hysteria2": "Hysteria2 server (QUIC)",
+      "mieru": "Mieru server (TCP/UDP, self-encrypting)"
     },
     "typeHints": {
       "mixed": "Mixed inbound accepts both HTTP and SOCKS5 connections on the same port.",
@@ -868,7 +870,13 @@
       "transportPath": "Path",
       "transportHost": "Host",
       "transportServiceName": "Service Name",
-      "visionRawOnly": "xtls-rprx-vision flow requires raw TCP; it is stripped on save for non-raw transports."
+      "visionRawOnly": "xtls-rprx-vision flow requires raw TCP; it is stripped on save for non-raw transports.",
+      "mieruTransport": "Transport",
+      "mieruTransportHint": "TCP or UDP — must match what clients dial.",
+      "trafficPattern": "Traffic pattern (optional)",
+      "trafficPatternHint": "Base64 traffic-shaping profile; leave empty for default.",
+      "userHintMandatory": "Require user hint",
+      "userHintMandatoryHint": "Enable only if every client sends a user hint — otherwise those clients silently fail to connect, and it cannot be expressed in the share link."
     },
     "inboundCreated": "Inbound created",
     "inboundUpdated": "Inbound updated",
