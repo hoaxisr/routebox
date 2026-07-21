@@ -1,7 +1,7 @@
 import type { Inbound, ServerInboundUser, ServerTlsConfig } from '$lib/types';
 
 export type TlsMode = 'acme' | 'reality' | 'manual' | 'panel';
-export type ServerInboundType = 'vless' | 'trojan' | 'naive' | 'hysteria2';
+export type ServerInboundType = 'vless' | 'trojan' | 'naive' | 'hysteria2' | 'mieru';
 
 export const PANEL_CERT_PATH = '/etc/routebox/panel-cert/fullchain.pem';
 export const PANEL_KEY_PATH = '/etc/routebox/panel-cert/key.pem';
@@ -35,6 +35,9 @@ export interface ServerFormState {
 	downMbps: number;
 	obfsType: string;
 	obfsPassword: string;
+	mieruTransport: 'TCP' | 'UDP';
+	trafficPattern: string;
+	userHintIsMandatory: boolean;
 }
 
 // buildServerInbound converts form state into a sing-box inbound object,
@@ -46,6 +49,14 @@ export function buildServerInbound(s: ServerFormState): Inbound {
 		listen: s.listen.trim() || '::',
 		listen_port: s.listenPort
 	};
+
+	if (s.type === 'mieru') {
+		ib.transport = s.mieruTransport;               // STRING "TCP"|"UDP"
+		ib.users = s.users.map((u) => ({ ...u }));
+		if (s.trafficPattern.trim()) ib.traffic_pattern = s.trafficPattern.trim();
+		if (s.userHintIsMandatory) ib.user_hint_is_mandatory = true;
+		return ib;
+	}
 
 	const tls: ServerTlsConfig = { enabled: true };
 	if (s.tlsMode === 'acme') {
@@ -117,7 +128,7 @@ export function parseServerInbound(ib: Inbound): ServerFormState {
 	else if (tls.reality) tlsMode = 'reality';
 	else if (tls.certificate_path === PANEL_CERT_PATH) tlsMode = 'panel';
 
-	const serverTypes = ['vless', 'trojan', 'naive', 'hysteria2'] as const;
+	const serverTypes = ['vless', 'trojan', 'naive', 'hysteria2', 'mieru'] as const;
 	const type: ServerInboundType = (serverTypes as readonly string[]).includes(ib.type)
 		? (ib.type as ServerInboundType)
 		: 'vless';
@@ -160,6 +171,9 @@ export function parseServerInbound(ib: Inbound): ServerFormState {
 		upMbps: ib.up_mbps ?? 0,
 		downMbps: ib.down_mbps ?? 0,
 		obfsType: ib.obfs?.type ?? '',
-		obfsPassword: ib.obfs?.password ?? ''
+		obfsPassword: ib.obfs?.password ?? '',
+		mieruTransport: (ib.type === 'mieru' && (ib.transport === 'UDP' || ib.transport === 'TCP')) ? ib.transport : 'TCP',
+		trafficPattern: typeof ib.traffic_pattern === 'string' ? ib.traffic_pattern : '',
+		userHintIsMandatory: ib.user_hint_is_mandatory === true
 	};
 }
