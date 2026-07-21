@@ -1,8 +1,8 @@
 <script lang="ts">
 	import type { Outbound, Endpoint, DnsServer, TLSConfig, TransportConfig, MultiplexConfig, ObfsConfig } from '$lib/types';
 	import { notifications } from '$lib/stores';
-	import { parsePortRanges, parseKeyValuePairs, formatKeyValuePairs } from '$lib/utils/parsers';
-	import type { ParsedVless, ParsedTrojan, ParsedHysteria2, ParsedShadowsocks, ParsedNaive } from '$lib/utils/parsers';
+	import { parsePortRanges, parseKeyValuePairs, formatKeyValuePairs, normalizeMieruPort } from '$lib/utils/parsers';
+	import type { ParsedVless, ParsedTrojan, ParsedHysteria2, ParsedShadowsocks, ParsedNaive, ParsedMieru } from '$lib/utils/parsers';
 	import {
 		validateRequired,
 		validatePort,
@@ -21,6 +21,7 @@
 	import ShadowtlsForm from './outbound/ShadowtlsForm.svelte';
 	import AnytlsForm from './outbound/AnytlsForm.svelte';
 	import NaiveForm from './outbound/NaiveForm.svelte';
+	import MieruForm from './outbound/MieruForm.svelte';
 	import ImportModal from './outbound/ImportModal.svelte';
 
 	interface Props {
@@ -54,7 +55,7 @@
 
 	// Common server-based fields
 	let server = $state(outbound?.server ?? '');
-	let serverPort = $state(outbound?.server_port ?? 443);
+	let serverPort = $state(outbound?.server_port ?? (outbound?.type === 'mieru' ? 0 : 443));
 	let domainResolver = $state(outbound?.domain_resolver ?? '');
 
 	// mieru stores `transport` as a plain string ("TCP"/"UDP"); vless/trojan use
@@ -182,6 +183,14 @@
 	let nvQuicCC = $state(outbound?.quic_congestion_control ?? '');
 	let nvUdpOverTcp = $state(outbound?.udp_over_tcp ?? false);
 
+	// Mieru state (server/serverPort are the shared fields above — naive pattern)
+	let mieruPorts = $state(outbound?.type === 'mieru' ? (outbound.server_ports ?? []).join(', ') : '');
+	let mieruTransport = $state<'TCP' | 'UDP'>(outbound?.type === 'mieru' && outbound.transport === 'UDP' ? 'UDP' : 'TCP');
+	let mieruUsername = $state(outbound?.type === 'mieru' ? (outbound.username ?? '') : '');
+	let mieruPassword = $state(outbound?.type === 'mieru' ? (outbound.password ?? '') : '');
+	let mieruMux = $state(outbound?.type === 'mieru' ? (outbound.multiplexing ?? '') : '');
+	let mieruTrafficPattern = $state(outbound?.type === 'mieru' ? (outbound.traffic_pattern ?? '') : '');
+
 	// Available outbounds for selector
 	let availableForSelection = $derived.by(() => {
 		if (type === 'selector' || type === 'urltest') {
@@ -193,7 +202,7 @@
 	});
 
 	// Import handlers
-	function handleImport(config: ParsedVless | ParsedTrojan | ParsedHysteria2 | ParsedShadowsocks | ParsedNaive) {
+	function handleImport(config: ParsedVless | ParsedTrojan | ParsedHysteria2 | ParsedShadowsocks | ParsedNaive | ParsedMieru) {
 		if (config.type === 'vless') {
 			applyVlessConfig(config);
 		} else if (config.type === 'trojan') {
@@ -202,8 +211,10 @@
 			applyHysteria2Config(config);
 		} else if (config.type === 'ss') {
 			applyShadowsocksConfig(config);
-		} else {
+		} else if (config.type === 'naive') {
 			applyNaiveConfig(config);
+		} else {
+			applyMieruConfig(config);
 		}
 		showImport = false;
 	}
@@ -303,6 +314,19 @@
 		nvUdpOverTcp = false;
 	}
 
+	function applyMieruConfig(config: ParsedMieru) {
+		type = 'mieru';
+		tag = (config.name || `mieru-${config.server}`).replace(/[^a-zA-Z0-9-_]/g, '-');
+		server = config.server;
+		serverPort = config.server_port ?? 0;
+		mieruPorts = (config.server_ports ?? []).join(', ');
+		mieruTransport = config.transport;
+		mieruUsername = config.username;
+		mieruPassword = config.password;
+		mieruMux = config.multiplexing ?? '';
+		mieruTrafficPattern = config.traffic_pattern ?? '';
+	}
+
 	function validate(): boolean {
 		errors = {};
 
@@ -369,6 +393,25 @@
 				errors['username'] = $t('validation.credentialsPaired');
 				errors['password'] = $t('validation.credentialsPaired');
 			}
+		}
+
+		if (type === 'mieru') {
+			const serverResult = validateRequired(server, 'Server');
+			if (!serverResult.valid) errors['server'] = serverResult.error!;
+			const extraPorts = mieruPorts.split(',').map((s) => s.trim()).filter(Boolean);
+			if (serverPort <= 0 && extraPorts.length === 0) {
+				errors['serverPort'] = $t('outbounds.mieruForm.portRequired');
+			}
+			for (const p of extraPorts) {
+				if (normalizeMieruPort(p) === null) {
+					errors['serverPorts'] = $t('outbounds.mieruForm.portsInvalid');
+					break;
+				}
+			}
+			const userResult = validateRequired(mieruUsername, 'Username');
+			if (!userResult.valid) errors['username'] = userResult.error!;
+			const pwResult = validateRequired(mieruPassword, 'Password');
+			if (!pwResult.valid) errors['password'] = pwResult.error!;
 		}
 
 		if (hasValidationErrors(errors)) {
@@ -572,8 +615,25 @@
 			if (nvUdpOverTcp) ob.udp_over_tcp = true;
 		}
 
+		if (type === 'mieru') {
+			ob.server = server.trim();
+			if (serverPort > 0) ob.server_port = serverPort;
+			const ports = mieruPorts
+				.split(',')
+				.map((s) => s.trim())
+				.filter(Boolean)
+				.map((s) => normalizeMieruPort(s) ?? s) // validate() guarantees non-null
+				.map((s) => (s.includes('-') ? s : `${s}-${s}`)); // degenerate range — fork rejects bare "N"
+			if (ports.length > 0) ob.server_ports = ports;
+			ob.transport = mieruTransport;
+			ob.username = mieruUsername.trim();
+			ob.password = mieruPassword;
+			if (mieruMux) ob.multiplexing = mieruMux;
+			if (mieruTrafficPattern.trim()) ob.traffic_pattern = mieruTrafficPattern.trim();
+		}
+
 		// Add domain_resolver for server-based outbounds
-		const serverBasedTypes = ['vless', 'trojan', 'hysteria2', 'shadowsocks', 'shadowtls', 'anytls', 'naive'];
+		const serverBasedTypes = ['vless', 'trojan', 'hysteria2', 'shadowsocks', 'shadowtls', 'anytls', 'naive', 'mieru'];
 		if (serverBasedTypes.includes(type) && domainResolver.trim()) {
 			ob.domain_resolver = domainResolver.trim();
 		}
@@ -592,7 +652,8 @@
 		{ value: 'shadowsocks', labelKey: 'outbounds.shadowsocks', descKey: 'outbounds.shadowsocksDesc' },
 		{ value: 'shadowtls', labelKey: 'outbounds.shadowtls', descKey: 'outbounds.shadowtlsDesc' },
 		{ value: 'anytls', labelKey: 'outbounds.anytls', descKey: 'outbounds.anytlsDesc' },
-		{ value: 'naive', labelKey: 'outbounds.naive', descKey: 'outbounds.naiveDesc' }
+		{ value: 'naive', labelKey: 'outbounds.naive', descKey: 'outbounds.naiveDesc' },
+		{ value: 'mieru', labelKey: 'outbounds.mieru', descKey: 'outbounds.mieruDesc' }
 	];
 </script>
 
@@ -760,6 +821,24 @@
 			bind:quic={nvQuic}
 			bind:quicCongestionControl={nvQuicCC}
 			bind:udpOverTcp={nvUdpOverTcp}
+			bind:domainResolver
+			{dnsServers}
+			{hasDefaultResolver}
+			{errors}
+			onImport={() => showImport = true}
+		/>
+	{/if}
+
+	{#if type === 'mieru'}
+		<MieruForm
+			bind:server
+			bind:serverPort
+			bind:ports={mieruPorts}
+			bind:transport={mieruTransport}
+			bind:username={mieruUsername}
+			bind:password={mieruPassword}
+			bind:multiplexing={mieruMux}
+			bind:trafficPattern={mieruTrafficPattern}
 			bind:domainResolver
 			{dnsServers}
 			{hasDefaultResolver}
