@@ -384,6 +384,8 @@
     "anytlsDesc": "AnyTLS multiplexed proxy",
     "naive": "NaiveProxy",
     "naiveDesc": "NaiveProxy (Chromium stack)",
+    "mieru": "Mieru",
+    "mieruDesc": "Mieru proxy protocol",
     "username": "Username",
     "caCertificate": "CA Certificate (PEM)",
     "caCertificateHint": "Optional: pin a custom CA or self-signed certificate",
