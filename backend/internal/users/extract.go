@@ -4,8 +4,8 @@ package users
 // It is the join surface between the active config and the registry.
 type ConfigUser struct {
 	InboundTag string
-	Protocol   string // "vless" | "trojan" | "naive" | "hysteria2"
-	Credential string // uuid (vless) | password (trojan) | username (naive) | password (hysteria2)
+	Protocol   string // "vless" | "trojan" | "naive" | "hysteria2" | "mieru"
+	Credential string // uuid (vless) | password (trojan) | username (naive) | password (hysteria2|mieru)
 	Name       string // display name (best-effort)
 	Flow       string // vless only
 }
@@ -24,6 +24,8 @@ func CredentialKey(protocol string) string {
 	case "naive":
 		return "username"
 	case "hysteria2":
+		return "password"
+	case "mieru":
 		return "password"
 	}
 	return ""

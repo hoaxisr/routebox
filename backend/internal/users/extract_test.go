@@ -108,6 +108,16 @@ func TestCredentialKeyTrojan(t *testing.T) {
 	}
 }
 
+func TestCredentialKeyMieru(t *testing.T) {
+	if got := CredentialKey("mieru"); got != "password" {
+		t.Fatalf("CredentialKey(mieru) = %q, want \"password\"", got)
+	}
+	// unchanged siblings
+	if CredentialKey("trojan") != "password" || CredentialKey("vless") != "uuid" {
+		t.Fatal("sibling credential keys regressed")
+	}
+}
+
 func TestServerInboundUsersTrojan(t *testing.T) {
 	ib := map[string]interface{}{
 		"type": "trojan", "tag": "trojan-in",

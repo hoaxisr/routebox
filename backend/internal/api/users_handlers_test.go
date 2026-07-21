@@ -87,6 +87,135 @@ func newConfigWithTrojan(t *testing.T) (*config.Manager, string) {
 	return m, dir
 }
 
+// newConfigWithMieru writes a config.json with one mieru server inbound seeded
+// with the given users (raw JSON, bypassing the validator — that branch is Task
+// 1's and load-time is not validated). Returns a config.Manager loaded from it.
+func newConfigWithMieru(t *testing.T, usersJSON string) (*config.Manager, string) {
+	t.Helper()
+	dir := t.TempDir()
+	path := filepath.Join(dir, "config.json")
+	cfg := `{
+	  "inbounds": [
+	    {"type":"mieru","tag":"mieru-in","listen_port":9000,
+	     "transport":"TCP","users":[` + usersJSON + `]}
+	  ],
+	  "outbounds": [{"type":"direct","tag":"direct"}]
+	}`
+	if err := os.WriteFile(path, []byte(cfg), 0644); err != nil {
+		t.Fatal(err)
+	}
+	m, err := config.NewManager(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	return m, dir
+}
+
+func TestStageUserInDraftMieru(t *testing.T) {
+	cfg, _ := newConfigWithMieru(t, "")
+	h := &Handler{config: cfg}
+
+	cred, err := h.stageUserInDraft("mieru-in", "mieru", "carol")
+	if err != nil {
+		t.Fatalf("mieru stageUserInDraft errored: %v", err)
+	}
+	if cred == "" {
+		t.Fatal("mieru stageUserInDraft returned empty credential")
+	}
+	ib, _ := cfg.GetInbound("mieru-in")
+	us, _ := ib["users"].([]interface{})
+	if len(us) != 1 {
+		t.Fatalf("draft mieru inbound should have 1 user, got %d", len(us))
+	}
+	u := us[0].(map[string]interface{})
+	if u["name"] != "carol" || u["password"] != cred {
+		t.Fatalf("mieru user shape wrong: %+v (cred=%q)", u, cred)
+	}
+	if _, hasUUID := u["uuid"]; hasUUID {
+		t.Fatal("mieru user must not carry uuid")
+	}
+	if _, hasFlow := u["flow"]; hasFlow {
+		t.Fatal("mieru user must not carry flow")
+	}
+}
+
+// TestRemoveLastMieruUserRejected proves the backend guard: removing the last
+// user of a live mieru inbound is rejected (Task 1's validator makes a 0-user
+// mieru inbound unappliable, which would wedge every later ApplyConfig). The user
+// must remain in the draft and the error must never leak the credential.
+func TestRemoveLastMieruUserRejected(t *testing.T) {
+	cfg, _ := newConfigWithMieru(t, `{"name":"carol","password":"secretpw"}`)
+	h := &Handler{config: cfg}
+
+	err := h.removeUserFromDraft("mieru-in", "mieru", "secretpw")
+	if err == nil {
+		t.Fatal("removing the last mieru user must be rejected")
+	}
+	if strings.Contains(err.Error(), "secretpw") {
+		t.Fatalf("guard error must not contain the credential: %q", err.Error())
+	}
+	// The user must still be present (removal aborted, nothing staged).
+	ib, _ := cfg.GetInbound("mieru-in")
+	us, _ := ib["users"].([]interface{})
+	if len(us) != 1 {
+		t.Fatalf("mieru inbound must still have 1 user after rejected removal, got %d", len(us))
+	}
+}
+
+// TestRemoveNonLastMieruUserAllowed proves the guard only fires on the LAST user:
+// dropping one of two mieru users still leaves a valid (non-empty) inbound.
+func TestRemoveNonLastMieruUserAllowed(t *testing.T) {
+	cfg, _ := newConfigWithMieru(t,
+		`{"name":"carol","password":"pw1"},{"name":"dave","password":"pw2"}`)
+	h := &Handler{config: cfg}
+
+	if err := h.removeUserFromDraft("mieru-in", "mieru", "pw1"); err != nil {
+		t.Fatalf("removing a non-last mieru user must succeed, got %v", err)
+	}
+	ib, _ := cfg.GetInbound("mieru-in")
+	us, _ := ib["users"].([]interface{})
+	if len(us) != 1 {
+		t.Fatalf("mieru inbound should have 1 user left, got %d", len(us))
+	}
+	if u := us[0].(map[string]interface{}); u["name"] != "dave" {
+		t.Fatalf("wrong user removed: remaining %+v", u)
+	}
+}
+
+// TestDeleteLastMieruUserReturns409 proves the guard is surfaced through the
+// DeleteUser handler as a 409 (not a 500), and the draft is left untouched.
+func TestDeleteLastMieruUserReturns409(t *testing.T) {
+	cfg, dir := newConfigWithMieru(t, `{"name":"carol","password":"secretpw"}`)
+	um := users.NewManager(filepath.Join(dir, "users.toml"))
+	if _, err := um.Reconcile(cfg.GetActive()); err != nil {
+		t.Fatal(err)
+	}
+	h := &Handler{config: cfg}
+	h.SetUsers(um)
+
+	list := um.List()
+	if len(list) != 1 {
+		t.Fatalf("expected 1 reconciled mieru user, got %d", len(list))
+	}
+	id := list[0].ID
+
+	r := chi.NewRouter()
+	r.Delete("/api/users/{id}", h.DeleteUser)
+	req := httptest.NewRequest(http.MethodDelete, "/api/users/"+id, nil)
+	w := httptest.NewRecorder()
+	r.ServeHTTP(w, req)
+	if w.Code != http.StatusConflict {
+		t.Fatalf("deleting the last mieru user must be 409, got %d: %s", w.Code, w.Body.String())
+	}
+	if strings.Contains(w.Body.String(), "secretpw") {
+		t.Fatalf("response must not leak the credential: %s", w.Body.String())
+	}
+	ib, _ := cfg.GetInbound("mieru-in")
+	if us, _ := ib["users"].([]interface{}); len(us) != 1 {
+		t.Fatalf("mieru inbound must still have 1 user after 409, got %d", len(us))
+	}
+}
+
 func TestGenCredentialTrojan(t *testing.T) {
 	// Characterization: trojan falls through genCredential to randomPassword (NOT uuid).
 	cred, err := genCredential("trojan")
