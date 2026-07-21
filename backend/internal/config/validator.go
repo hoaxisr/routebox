@@ -1,10 +1,13 @@
 package config
 
 import (
+	"encoding/base64"
 	"fmt"
 	"os"
 	"path/filepath"
 	"regexp"
+	"strconv"
+	"strings"
 )
 
 // ValidateLocalRuleSetPaths checks that every rule_set of type "local" points
@@ -385,9 +388,92 @@ func validateOutbound(ob map[string]interface{}, index int) []string {
 		// trojan has no flow field — no Vision conflict possible.
 	case "vless":
 		errors = append(errors, validateOutboundVisionFlow(ob, prefix)...)
+	case "mieru":
+		errors = append(errors, validateMieruOutbound(ob, prefix)...)
 	}
 
 	return errors
+}
+
+var mieruRangeRe = regexp.MustCompile(`^\d+-\d+$`)
+
+var mieruMux = map[string]bool{
+	"MULTIPLEXING_DEFAULT": true, "MULTIPLEXING_OFF": true, "MULTIPLEXING_LOW": true,
+	"MULTIPLEXING_MIDDLE": true, "MULTIPLEXING_HIGH": true,
+}
+
+const mieruTrafficPatternMax = 64 * 1024 // decoded bytes
+const mieruMaxPortRanges = 64
+
+// validMieruRange mirrors the fork's Sscanf("%d-%d") plus the TS
+// normalizeMieruPort bounds: "lo-hi" with 1 <= lo <= hi <= 65535.
+// A bare "8443" is invalid — the fork rejects non-dash elements.
+func validMieruRange(s string) bool {
+	if !mieruRangeRe.MatchString(s) {
+		return false
+	}
+	dash := strings.IndexByte(s, '-')
+	lo, err1 := strconv.Atoi(s[:dash])
+	hi, err2 := strconv.Atoi(s[dash+1:])
+	if err1 != nil || err2 != nil {
+		return false
+	}
+	return lo >= 1 && hi <= 65535 && lo <= hi
+}
+
+// validateMieruOutbound mirrors the fork's runtime validation for a mieru
+// outbound (protocol/mieru/outbound.go) so a bad config fails HERE with a
+// named message instead of failing the whole config at `amnezia-box check`.
+func validateMieruOutbound(ob map[string]interface{}, prefix string) []string {
+	var errs []string
+	if s, ok := ob["server"].(string); !ok || s == "" {
+		errs = append(errs, prefix+": mieru requires 'server'")
+	}
+	if u, ok := ob["username"].(string); !ok || u == "" {
+		errs = append(errs, prefix+": mieru requires 'username'")
+	}
+	if p, ok := ob["password"].(string); !ok || p == "" {
+		errs = append(errs, prefix+": mieru requires 'password'")
+	}
+	tr, _ := ob["transport"].(string)
+	if tr != "TCP" && tr != "UDP" {
+		errs = append(errs, prefix+": mieru 'transport' must be TCP or UDP")
+	}
+	// At least one of server_port>0 / non-empty server_ports (0 = unset, fork
+	// semantics); a present non-zero server_port must be a real port.
+	sp, _ := ob["server_port"].(float64)
+	if sp != 0 && (sp < 1 || sp > 65535) {
+		errs = append(errs, prefix+": mieru 'server_port' must be 1-65535")
+	}
+	ports, hasPorts := ob["server_ports"].([]interface{})
+	if sp <= 0 && (!hasPorts || len(ports) == 0) {
+		errs = append(errs, prefix+": mieru requires 'server_port' or non-empty 'server_ports'")
+	}
+	if len(ports) > mieruMaxPortRanges {
+		errs = append(errs, fmt.Sprintf("%s: mieru 'server_ports' has too many entries (max %d)", prefix, mieruMaxPortRanges))
+	} else {
+		for i, e := range ports {
+			s, _ := e.(string)
+			if !validMieruRange(s) {
+				errs = append(errs, fmt.Sprintf("%s: mieru server_ports[%d] must be a range 'lo-hi' (1-65535, lo<=hi; got %q)", prefix, i, s))
+			}
+		}
+	}
+	if mux, ok := ob["multiplexing"].(string); ok && mux != "" && !mieruMux[mux] {
+		errs = append(errs, fmt.Sprintf("%s: mieru invalid 'multiplexing' %q", prefix, mux))
+	}
+	if tp, ok := ob["traffic_pattern"].(string); ok && tp != "" {
+		// Encoded-length pre-check so a hostile multi-MB blob is never decoded;
+		// 64 KB decoded == ceil(64K*4/3)+padding encoded.
+		if len(tp) > mieruTrafficPatternMax*4/3+4 {
+			errs = append(errs, prefix+": mieru 'traffic_pattern' exceeds 64 KB")
+		} else if decoded, err := base64.StdEncoding.DecodeString(tp); err != nil {
+			errs = append(errs, prefix+": mieru 'traffic_pattern' must be valid base64")
+		} else if len(decoded) > mieruTrafficPatternMax {
+			errs = append(errs, prefix+": mieru 'traffic_pattern' exceeds 64 KB")
+		}
+	}
+	return errs
 }
 
 // validateOutboundVisionFlow enforces the Vision-flow conflict on a vless client
