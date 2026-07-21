@@ -307,3 +307,52 @@ func TestBinarySupportsV2RayAPI(t *testing.T) {
 		t.Error("exec error must fail closed")
 	}
 }
+
+// TestParseExecStartBinary covers the pure parsing seam behind
+// getBinaryFromSystemd: extract the executable `path=` from `systemctl show -p
+// ExecStart` output. os.Stat existence is enforced by the caller, not here.
+func TestParseExecStartBinary(t *testing.T) {
+	tests := []struct {
+		name string
+		in   string
+		want string
+	}{
+		{
+			name: "opt path",
+			in:   "ExecStart={ path=/opt/amnezia-box/amnezia-box ; argv[]=/opt/amnezia-box/amnezia-box run -c /etc/amnezia-box/config.json ; ignore_errors=no }",
+			want: "/opt/amnezia-box/amnezia-box",
+		},
+		{
+			name: "usr local with extra flags and trailing props",
+			in:   "ExecStart={ path=/usr/local/bin/amnezia-box ; argv[]=/usr/local/bin/amnezia-box run -c /etc/amnezia-box/config.json ; ignore_errors=no ; start_time=[n/a] ; stop_time=[n/a] ; pid=0 ; code=(null) ; status=0/0 }",
+			want: "/usr/local/bin/amnezia-box",
+		},
+		{
+			name: "realistic run -c args",
+			in:   "ExecStart={ path=/usr/bin/amnezia-box ; argv[]=/usr/bin/amnezia-box run -c /etc/amnezia-box/config.json -D /var/lib/amnezia-box ; ignore_errors=no }",
+			want: "/usr/bin/amnezia-box",
+		},
+		{
+			name: "no path= is empty",
+			in:   "ExecStart={ argv[]=/usr/local/bin/amnezia-box run ; ignore_errors=no }",
+			want: "",
+		},
+		{
+			name: "malformed line",
+			in:   "some totally unrelated output",
+			want: "",
+		},
+		{
+			name: "empty input",
+			in:   "",
+			want: "",
+		},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			if got := parseExecStartBinary(tt.in); got != tt.want {
+				t.Fatalf("parseExecStartBinary(%q) = %q, want %q", tt.in, got, tt.want)
+			}
+		})
+	}
+}
