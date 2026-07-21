@@ -4,6 +4,8 @@ All notable changes to RouteBox are documented here.
 
 ## [Unreleased]
 
+## [0.25.0] - 2026-07-21
+
 ### Features
 
 - **Mieru outbound (client)** (#12) — RouteBox can now dial through a [mieru](https://github.com/enfein/mieru)
