@@ -4,6 +4,8 @@ All notable changes to RouteBox are documented here.
 
 ## [Unreleased]
 
+## [0.26.0] - 2026-07-21
+
 ### Features
 
 - **Mieru inbound (server)** (#12) — RouteBox VPS panels can now run a [mieru](https://github.com/enfein/mieru)
