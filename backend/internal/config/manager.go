@@ -650,7 +650,7 @@ func stripAnsi(s string) string {
 func mieruUnsupportedHint(errs []string) []string {
 	for _, e := range errs {
 		if strings.Contains(e, "type: mieru") && strings.Contains(e, "unknown") {
-			return append(errs, "This amnezia-box build does not support mieru. Update the binary to an awg3-xhttp-mieru release (1.14.0-alpha.48 or newer), or remove the mieru outbound.")
+			return append(errs, "This amnezia-box build does not support mieru. Update the binary to an awg3-xhttp-mieru release (1.14.0-alpha.48 or newer), or remove the mieru inbound/outbound.")
 		}
 	}
 	return errs
