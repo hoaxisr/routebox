@@ -7,6 +7,7 @@
 	import ServerTrojanInbound from './inbound/ServerTrojanInbound.svelte';
 	import ServerNaiveInbound from './inbound/ServerNaiveInbound.svelte';
 	import ServerHysteria2Inbound from './inbound/ServerHysteria2Inbound.svelte';
+	import ServerMieruInbound from './inbound/ServerMieruInbound.svelte';
 	import { buildServerInbound, parseServerInbound, type ServerFormState, type ServerInboundType } from '$lib/utils/serverInbound';
 	import { visibleInboundTypes } from '$lib/mode/routeModes';
 
@@ -52,7 +53,7 @@
 	// type of the inbound being edited (edit-safety — a hand-edited cross-mode
 	// inbound must remain editable). Only the add-new choices are filtered.
 	let inboundTypes = $derived(visibleInboundTypes($serverMode, inbound?.type));
-	const serverTypes = ['vless', 'trojan', 'naive', 'hysteria2'] as const;
+	const serverTypes = ['vless', 'trojan', 'naive', 'hysteria2', 'mieru'] as const;
 	function isServerType(ty: string): ty is ServerInboundType {
 		return (serverTypes as readonly string[]).includes(ty);
 	}
@@ -87,6 +88,10 @@
 			if (newType !== 'vless' && newType !== 'trojan' && serverState.tlsMode === 'reality') {
 				serverState.tlsMode = 'acme';
 			}
+			if (newType === 'mieru') {
+				serverState.tlsMode = 'acme';           // harmless default; tls is never emitted for mieru
+				serverState.transport = { type: 'raw' }; // drop any leftover ws/grpc object
+			}
 			serverState.type = newType;
 		}
 		type = newType;
@@ -102,24 +107,29 @@
 				errors['port'] = $t('form.minValue', { values: { value: 1 } });
 			}
 			if (serverState.users.length === 0) errors['users'] = $t('inbounds.server.needUser');
-			// TLS mode required fields
-			if (serverState.tlsMode === 'acme') {
-				if (!serverState.tls.acme.domain.trim()) errors['acmeDomain'] = req($t('inbounds.server.domain'));
-				if (!serverState.tls.acme.email.trim()) errors['acmeEmail'] = req($t('inbounds.server.email'));
-			} else if (serverState.tlsMode === 'reality') {
-				if (!serverState.tls.server_name.trim()) errors['serverName'] = req($t('inbounds.server.handshakeServer'));
-				if (!serverState.tls.reality.private_key.trim()) errors['realityKey'] = $t('inbounds.server.realityKeyRequired');
-			} else if (serverState.tlsMode === 'manual') {
-				if (!serverState.tls.certificate_path.trim()) errors['certPath'] = req($t('inbounds.server.certificatePath'));
-				if (!serverState.tls.key_path.trim()) errors['keyPath'] = req($t('inbounds.server.keyPath'));
+			// TLS mode required fields. mieru has no TLS section, so its form never
+			// renders these fields — validating them would raise invisible, unclearable
+			// errors that permanently block Save. Skip the whole block for mieru.
+			if (type !== 'mieru') {
+				if (serverState.tlsMode === 'acme') {
+					if (!serverState.tls.acme.domain.trim()) errors['acmeDomain'] = req($t('inbounds.server.domain'));
+					if (!serverState.tls.acme.email.trim()) errors['acmeEmail'] = req($t('inbounds.server.email'));
+				} else if (serverState.tlsMode === 'reality') {
+					if (!serverState.tls.server_name.trim()) errors['serverName'] = req($t('inbounds.server.handshakeServer'));
+					if (!serverState.tls.reality.private_key.trim()) errors['realityKey'] = $t('inbounds.server.realityKeyRequired');
+				} else if (serverState.tlsMode === 'manual') {
+					if (!serverState.tls.certificate_path.trim()) errors['certPath'] = req($t('inbounds.server.certificatePath'));
+					if (!serverState.tls.key_path.trim()) errors['keyPath'] = req($t('inbounds.server.keyPath'));
+				}
+				// 'panel' mode injects the canonical cert/key paths at build time — nothing to validate.
 			}
-			// 'panel' mode injects the canonical cert/key paths at build time — nothing to validate.
 			// Per-user credential required fields
 			for (const u of serverState.users) {
 				if (type === 'vless' && !u.uuid?.trim()) { errors['userCred'] = $t('inbounds.server.needUserCred'); break; }
 				if (type === 'naive' && (!u.username?.trim() || !u.password?.trim())) { errors['userCred'] = $t('inbounds.server.needUserCred'); break; }
 				if (type === 'hysteria2' && !u.password?.trim()) { errors['userCred'] = $t('inbounds.server.needUserCred'); break; }
 				if (type === 'trojan' && !u.password?.trim()) { errors['userCred'] = $t('inbounds.server.needUserCred'); break; }
+				if (type === 'mieru' && (!u.name?.trim() || !u.password?.trim())) { errors['userCred'] = $t('inbounds.server.needUserCred'); break; }
 			}
 			const keys = Object.keys(errors);
 			if (keys.length > 0) {
@@ -373,6 +383,8 @@
 		<ServerNaiveInbound bind:state={serverState} {errors} />
 	{:else if type === 'hysteria2'}
 		<ServerHysteria2Inbound bind:state={serverState} {errors} />
+	{:else if type === 'mieru'}
+		<ServerMieruInbound bind:state={serverState} {errors} />
 	{/if}
 
 	<!-- Actions -->

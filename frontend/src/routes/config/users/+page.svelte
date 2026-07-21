@@ -27,7 +27,7 @@
 	let publicHost = $state('');
 	let publicPort = $state<number | undefined>(undefined);
 
-	const serverTypes = ['vless', 'naive', 'hysteria2'];
+	const serverTypes = ['vless', 'naive', 'hysteria2', 'mieru'];
 
 	// Per-user traffic history, lazily fetched on expand. Keyed by user id.
 	// 'loading' marks an in-flight fetch so the row can show a placeholder.
