@@ -618,6 +618,16 @@ describe('parseMieruLink', () => {
 		const big = 'A'.repeat(90000);
 		expect(parseMieruLink(`mierus://a:b@h?profile=p&port=443&protocol=TCP&traffic-pattern=${big}`).success).toBe(false);
 	});
+	it('rejects port in authority', () => {
+		const r = parseMieruLink('mierus://a:b@h:443?profile=p&port=443&protocol=TCP');
+		expect(r.success).toBe(false);
+		expect(r.error).toContain('port must be in the query');
+	});
+	it('rejects mismatched port/protocol counts with >=2 protocols', () => {
+		const r = parseMieruLink('mierus://a:b@h?profile=p&port=1&port=2&port=3&protocol=TCP&protocol=TCP');
+		expect(r.success).toBe(false);
+		expect(r.error).toContain('port/protocol count mismatch');
+	});
 	it('catch-path error is fixed and never leaks the credential', () => {
 		// '%' alone in the username makes decodeURIComponent throw (URIError)
 		const r = parseMieruLink('mierus://a%:secretpass@h?profile=p&port=443&protocol=TCP');

@@ -37,13 +37,14 @@
 
 	const transports: ('TCP' | 'UDP')[] = ['TCP', 'UDP'];
 
+	// '' = unset; the MULTIPLEXING_* labels are intentionally raw enum identifiers.
 	const muxOptions = [
-		{ value: '', label: 'Default (unset)' },
-		{ value: 'MULTIPLEXING_DEFAULT', label: 'MULTIPLEXING_DEFAULT' },
-		{ value: 'MULTIPLEXING_OFF', label: 'MULTIPLEXING_OFF' },
-		{ value: 'MULTIPLEXING_LOW', label: 'MULTIPLEXING_LOW' },
-		{ value: 'MULTIPLEXING_MIDDLE', label: 'MULTIPLEXING_MIDDLE' },
-		{ value: 'MULTIPLEXING_HIGH', label: 'MULTIPLEXING_HIGH' }
+		'',
+		'MULTIPLEXING_DEFAULT',
+		'MULTIPLEXING_OFF',
+		'MULTIPLEXING_LOW',
+		'MULTIPLEXING_MIDDLE',
+		'MULTIPLEXING_HIGH'
 	];
 </script>
 
@@ -193,7 +194,7 @@
 				class="w-full px-3 py-2 bg-[var(--ctp-mantle)] border border-[var(--ctp-surface2)] rounded-lg text-[var(--ctp-text)] focus:outline-none focus:ring-2 focus:ring-[var(--ctp-primary)] text-sm"
 			>
 				{#each muxOptions as opt}
-					<option value={opt.value}>{opt.label}</option>
+					<option value={opt}>{opt || $t('outbounds.mieruForm.multiplexingDefault')}</option>
 				{/each}
 			</select>
 		</div>
