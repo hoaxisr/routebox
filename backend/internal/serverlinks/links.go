@@ -285,6 +285,12 @@ func buildMieru(inbound, user map[string]interface{}, host string, port int) (st
 	if name == "" {
 		return "", fmt.Errorf("mieru user has no name")
 	}
+	// Guard empty password (parity with buildTrojan/buildHysteria2): an empty
+	// password would emit "mierus://alice:@host?..." which the client-side
+	// parser hard-rejects. Never echo the password value in the error.
+	if password == "" {
+		return "", fmt.Errorf("mieru user %q has no password", name)
+	}
 	transport, _ := inbound["transport"].(string)
 	if transport == "" {
 		transport = "TCP"
