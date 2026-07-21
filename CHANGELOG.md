@@ -4,6 +4,15 @@ All notable changes to RouteBox are documented here.
 
 ## [Unreleased]
 
+### Fixes
+
+- **RouteBox now resolves the amnezia-box binary from the systemd unit's `ExecStart` when
+  systemd-managed**, so self-updates patch the exact binary the service launches. Previously the
+  binary path was chosen from a hardcoded list of common locations, so a stale copy at a
+  higher-priority path could be updated while systemd kept launching the old binary from its
+  `ExecStart` path — the Dashboard (running process version) and the Updates page (updated-binary
+  version) then disagreed on the version after a "successful" update.
+
 ## [0.27.0] - 2026-07-21
 
 ### Fixes

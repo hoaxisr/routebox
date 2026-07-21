@@ -111,6 +111,16 @@ func NewManager() *Manager {
 	}
 	// Try to detect systemd service
 	m.serviceName = m.detectSystemdService()
+	// When systemd-managed, prefer the exact binary the unit's ExecStart
+	// launches over the findBinary() guess. Otherwise the updater could patch a
+	// stale copy at a hardcoded path while systemd keeps running the old one
+	// (Dashboard and Updates page then disagree on the version). Falls back to
+	// the findBinary() result if ExecStart can't be resolved.
+	if m.serviceName != "" {
+		if p := m.getBinaryFromSystemd(); p != "" {
+			m.binaryPath = p
+		}
+	}
 	return m
 }
 
@@ -307,6 +317,55 @@ func (m *Manager) getConfigFromSystemd() string {
 	}
 
 	return ""
+}
+
+// parseExecStartBinary extracts the executable path from `systemctl show
+// <svc>.service --property=ExecStart` output. That output looks like:
+//
+//	ExecStart={ path=/usr/local/bin/amnezia-box ; argv[]=/usr/local/bin/amnezia-box run -c /etc/amnezia-box/config.json ; ignore_errors=no ; ... }
+//
+// It returns the `path=` value (the executable systemd actually launches), or
+// "" if the line has no `path=` field. Existence on disk is enforced by the
+// caller, not here.
+func parseExecStartBinary(showOutput string) string {
+	line := strings.TrimSpace(showOutput)
+	idx := strings.Index(line, "path=")
+	if idx < 0 {
+		return ""
+	}
+	rest := line[idx+len("path="):]
+	// The executable path ends at the first space or semicolon.
+	endIdx := strings.IndexAny(rest, " ;")
+	if endIdx == -1 {
+		endIdx = len(rest)
+	}
+	return strings.TrimSpace(rest[:endIdx])
+}
+
+// getBinaryFromSystemd resolves the executable path from the systemd unit's
+// ExecStart, so the updater and version probe target the exact binary systemd
+// launches (rather than a hardcoded findBinary() guess that may point at a
+// stale copy). Returns "" when there is no service, the command errors, no
+// path= is present, or the resolved path does not exist on disk.
+func (m *Manager) getBinaryFromSystemd() string {
+	if m.serviceName == "" {
+		return ""
+	}
+
+	cmd := exec.Command("systemctl", "show", m.serviceName+".service", "--property=ExecStart")
+	output, err := cmd.Output()
+	if err != nil {
+		return ""
+	}
+
+	path := parseExecStartBinary(string(output))
+	if path == "" {
+		return ""
+	}
+	if _, err := os.Stat(path); err != nil {
+		return ""
+	}
+	return path
 }
 
 // IsSystemdManaged returns true if the process is managed by systemd
