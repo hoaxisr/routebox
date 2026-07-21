@@ -625,3 +625,55 @@ func TestBuildTrojanNoPassword(t *testing.T) {
 		t.Fatalf("trojan with no password must error")
 	}
 }
+
+func TestBuildMieru(t *testing.T) {
+	inbound := map[string]interface{}{
+		"type": "mieru", "tag": "m-in", "listen_port": float64(2020), "transport": "UDP",
+	}
+	user := map[string]interface{}{"name": "alice", "password": "p@ss w#rd"}
+
+	link, err := buildMieru(inbound, user, "example.com", 2020)
+	if err != nil {
+		t.Fatalf("buildMieru error: %v", err)
+	}
+	// scheme + userinfo (percent-encoded), host in authority with NO port
+	if !strings.HasPrefix(link, "mierus://") {
+		t.Fatalf("bad scheme: %s", link)
+	}
+	if strings.Contains(link, "@example.com:2020") {
+		t.Fatalf("port must be in the query, not the authority: %s", link)
+	}
+	for _, want := range []string{"port=2020", "protocol=UDP", "profile="} {
+		if !strings.Contains(link, want) {
+			t.Errorf("link missing %q: %s", want, link)
+		}
+	}
+	if strings.Contains(link, "multiplexing") {
+		t.Errorf("inbound link must not carry multiplexing: %s", link)
+	}
+	// userinfo is percent-encoded (password has a space and '#').
+	if !strings.Contains(link, "alice:p%40ss%20w%23rd@") {
+		t.Errorf("userinfo not percent-encoded as expected: %s", link)
+	}
+
+	// IPv6 host is bracketed in the authority.
+	link6, err := buildMieru(inbound, user, "2001:db8::1", 2020)
+	if err != nil {
+		t.Fatalf("buildMieru ipv6 error: %v", err)
+	}
+	if !strings.Contains(link6, "@[2001:db8::1]?") {
+		t.Errorf("IPv6 host must be bracketed with no port: %s", link6)
+	}
+
+	// traffic_pattern only when the inbound has one
+	inbound["traffic_pattern"] = "YWJj"
+	linkTP, _ := buildMieru(inbound, user, "example.com", 2020)
+	if !strings.Contains(linkTP, "traffic-pattern=YWJj") {
+		t.Errorf("expected traffic-pattern in link: %s", linkTP)
+	}
+	delete(inbound, "traffic_pattern")
+	linkNoTP, _ := buildMieru(inbound, user, "example.com", 2020)
+	if strings.Contains(linkNoTP, "traffic-pattern") {
+		t.Errorf("link should omit traffic-pattern when inbound has none: %s", linkNoTP)
+	}
+}

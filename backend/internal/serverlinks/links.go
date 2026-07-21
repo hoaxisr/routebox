@@ -5,6 +5,7 @@ import (
 	"net"
 	"net/url"
 	"strconv"
+	"strings"
 )
 
 // defaultFingerprint is the uTLS fingerprint advertised to clients in TLS/Reality
@@ -33,6 +34,8 @@ func BuildShareLink(inbound, user map[string]interface{}, host string) (string, 
 		return buildHysteria2(inbound, user, host, port)
 	case "trojan":
 		return buildTrojan(inbound, user, host, port)
+	case "mieru":
+		return buildMieru(inbound, user, host, port)
 	default:
 		return "", fmt.Errorf("unsupported inbound type for share link: %q", typ)
 	}
@@ -270,6 +273,38 @@ func buildNaive(inbound, user map[string]interface{}, host string, port int) (st
 	userinfo := url.UserPassword(username, password).String()
 	return fmt.Sprintf("naive+https://%s@%s#%s",
 		userinfo, hostPort(host, port), url.PathEscape(remarkOf(inbound, user, "NaiveProxy"))), nil
+}
+
+// buildMieru emits a mierus:// link for a mieru inbound user. Unlike naive the
+// port lives in the query (?port=), NOT the authority — the fork's mierus://
+// grammar. IPv6 hosts are bracketed manually (no JoinHostPort, which would add
+// a port). No multiplexing (inbound has none); traffic-pattern only if set.
+func buildMieru(inbound, user map[string]interface{}, host string, port int) (string, error) {
+	name, _ := user["name"].(string)
+	password, _ := user["password"].(string)
+	if name == "" {
+		return "", fmt.Errorf("mieru user has no name")
+	}
+	transport, _ := inbound["transport"].(string)
+	if transport == "" {
+		transport = "TCP"
+	}
+
+	authHost := host
+	if strings.Contains(host, ":") { // IPv6 literal → bracket, still no port
+		authHost = "[" + host + "]"
+	}
+
+	q := url.Values{}
+	q.Set("profile", remarkOf(inbound, user, "Mieru"))
+	q.Set("port", strconv.Itoa(port))
+	q.Set("protocol", transport)
+	if tp, _ := inbound["traffic_pattern"].(string); tp != "" {
+		q.Set("traffic-pattern", tp)
+	}
+
+	return fmt.Sprintf("mierus://%s@%s?%s",
+		url.UserPassword(name, password).String(), authHost, q.Encode()), nil
 }
 
 func buildHysteria2(inbound, user map[string]interface{}, host string, port int) (string, error) {
