@@ -6,6 +6,12 @@ All notable changes to RouteBox are documented here.
 
 ### Fixes
 
+- **The update checker now recognizes a newer fork build that differs only in the trailing `-N`
+  build counter** (e.g. `1.14.0-alpha.48-awg3-xhttp-mieru-3` → `-4`). Version comparison split the
+  string only on `.`, so the last segment (`48-awg3-xhttp-mieru-N`) compared only its leading `48`
+  and the `-N` counter was invisible — the Updates page showed "Up to date" and the apply gate
+  refused the update. Comparison now splits on both `.` and `-`, so the numeric `-N` token drives the
+  result. The Update button and the update itself are no longer blocked.
 - **amnezia-box updates to 1.14+ builds no longer fail with "service restarted but is not
   running".** The new builds dropped `with_v2ray_api`, but the config still carried the
   RouteBox-owned `experimental.v2ray_api` block, so the new binary refused to start and every

@@ -184,6 +184,10 @@ func TestCompareVersions(t *testing.T) {
 		{"0.18.0", "0.17.0", 1},
 		{"0.17.0", "0.17", 0},
 		{"1.2.10", "1.2.9", 1},
+		{"1.14.0-alpha.48-awg3-xhttp-mieru-3", "1.14.0-alpha.48-awg3-xhttp-mieru-4", -1},
+		{"1.14.0-alpha.48-awg3-xhttp-mieru-4", "1.14.0-alpha.48-awg3-xhttp-mieru-3", 1},
+		{"1.14.0-alpha.48-awg3-xhttp-mieru-4", "1.14.0-alpha.48-awg3-xhttp-mieru-4", 0},
+		{"1.14.0-alpha.48-awg3-xhttp-mieru-9", "1.14.0-alpha.48-awg3-xhttp-mieru-10", -1},
 	}
 	for _, tc := range cases {
 		if got := CompareVersions(tc.a, tc.b); got != tc.want {
