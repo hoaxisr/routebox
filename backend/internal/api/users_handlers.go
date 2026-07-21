@@ -176,6 +176,12 @@ func (h *Handler) DeleteUser(w http.ResponseWriter, r *http.Request) {
 	}
 	for _, b := range u.Bindings {
 		if err := h.removeUserFromDraft(b.InboundTag, b.Protocol, b.Credential); err != nil {
+			// The last-user-of-a-mieru-inbound guard is a client-actionable
+			// rejection (delete the inbound instead), not a server fault.
+			if errors.Is(err, ErrLastMieruUser) {
+				writeError(w, http.StatusConflict, err.Error())
+				return
+			}
 			writeError(w, http.StatusInternalServerError, err.Error())
 			return
 		}
@@ -268,6 +274,9 @@ func (h *Handler) stageUserInDraft(tag, protocol, name string) (string, error) {
 	case "hysteria2":
 		user["name"] = name
 		user["password"] = cred
+	case "mieru":
+		user["name"] = name
+		user["password"] = cred
 	default:
 		return "", fmt.Errorf("unsupported protocol %q", protocol)
 	}
@@ -287,9 +296,18 @@ func (h *Handler) stageUserInDraft(tag, protocol, name string) (string, error) {
 	return cred, nil
 }
 
+// ErrLastMieruUser is returned by removeUserFromDraft when a removal would empty
+// a mieru inbound's users list. The mieru validator (Task 1) rejects a 0-user
+// mieru inbound, so letting the draft reach that state would make EVERY later
+// ApplyConfig (including lifecycle syncs that defer on a pending draft) fail with
+// a validation error that looks unrelated. Callers surface the tag, never the
+// credential. Delete the inbound itself to remove its last user.
+var ErrLastMieruUser = errors.New("cannot remove the last user of a mieru inbound — delete the inbound instead")
+
 // removeUserFromDraft removes the user with the given credential from the
 // inbound's draft users array. The match+filter runs inside MutateInbound's
-// single write lock on a draft-private clone (active config untouched).
+// single write lock on a draft-private clone (active config untouched). A removal
+// that would empty a mieru inbound is rejected with ErrLastMieruUser (see above).
 func (h *Handler) removeUserFromDraft(tag, protocol, cred string) error {
 	field := users.CredentialKey(protocol)
 	if field == "" {
@@ -308,6 +326,13 @@ func (h *Handler) removeUserFromDraft(tag, protocol, cred string) error {
 				continue
 			}
 			kept = append(kept, u)
+		}
+		// Guard: never stage a mieru inbound into a 0-user state (unappliable).
+		// Only fires when this removal is what empties it (arr had users, kept
+		// has none) — an already-empty inbound is a harmless no-op. Named error,
+		// tags the inbound but never the credential.
+		if t, _ := inbound["type"].(string); t == "mieru" && len(arr) > 0 && len(kept) == 0 {
+			return fmt.Errorf("%w: inbound %q", ErrLastMieruUser, tag)
 		}
 		inbound["users"] = kept
 		return nil
