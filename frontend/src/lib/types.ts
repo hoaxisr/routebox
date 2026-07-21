@@ -338,7 +338,11 @@ export interface Outbound {
 	uuid?: string;
 	flow?: string;
 	packet_encoding?: string;
-	transport?: TransportConfig;
+	// vless/trojan: stream transport object; mieru: plain string "TCP"|"UDP"
+	transport?: TransportConfig | string;
+	// Mieru specific
+	multiplexing?: string;      // MULTIPLEXING_{DEFAULT,OFF,LOW,MIDDLE,HIGH}
+	traffic_pattern?: string;   // opaque base64
 	// Hysteria2 obfuscation
 	obfs?: ObfsConfig;
 	// Domain resolver (sing-box 1.12+) - DNS for resolving server domain
@@ -446,6 +450,18 @@ export interface OutboundNaive extends Outbound {
 	udp_over_tcp?: boolean;
 }
 
+export interface OutboundMieru extends Outbound {
+	type: 'mieru';
+	server: string;
+	server_port?: number;
+	server_ports?: string[]; // dash ranges only, degenerate "N-N" for singles
+	transport: 'TCP' | 'UDP';
+	username: string;
+	password: string;
+	multiplexing?: string; // MULTIPLEXING_{DEFAULT,OFF,LOW,MIDDLE,HIGH}
+	traffic_pattern?: string; // opaque base64
+}
+
 // Discriminated union for all typed outbounds
 export type OutboundTyped =
 	| OutboundDirect
@@ -458,7 +474,8 @@ export type OutboundTyped =
 	| OutboundShadowsocks
 	| OutboundShadowtls
 	| OutboundAnytls
-	| OutboundNaive;
+	| OutboundNaive
+	| OutboundMieru;
 
 export interface Endpoint {
 	type: string;

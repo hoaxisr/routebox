@@ -57,6 +57,10 @@
 	let serverPort = $state(outbound?.server_port ?? 443);
 	let domainResolver = $state(outbound?.domain_resolver ?? '');
 
+	// mieru stores `transport` as a plain string ("TCP"/"UDP"); vless/trojan use
+	// the object form. Narrow once so the object-form initializers below type-check.
+	const outboundStreamTransport = typeof outbound?.transport === 'object' ? outbound.transport : undefined;
+
 	// VLESS state
 	let vlessUuid = $state(outbound?.uuid ?? '');
 	let vlessFlow = $state(outbound?.flow ?? '');
@@ -75,14 +79,14 @@
 	// VlessForm expects transport.host as string (for input binding), not string[]
 	// We convert when building the outbound object
 	let vlessTransport = $state({
-		type: (outbound?.transport?.type ?? 'tcp') as 'tcp' | 'ws' | 'http' | 'grpc' | 'quic' | 'httpupgrade',
-		path: outbound?.transport?.path ?? '/',
+		type: (outboundStreamTransport?.type ?? 'tcp') as 'tcp' | 'ws' | 'http' | 'grpc' | 'quic' | 'httpupgrade',
+		path: outboundStreamTransport?.path ?? '/',
 		// Host matrix mirrors build side: ws→headers.Host, httpupgrade→top-level host string, http→host array.
-		host: outbound?.transport?.headers?.Host
-			?? (outbound?.transport?.type === 'httpupgrade'
-				? ((outbound?.transport as unknown as Record<string, unknown>)?.host as string ?? '')
-				: (outbound?.transport?.host?.[0] ?? '')),
-		service_name: outbound?.transport?.service_name ?? ''
+		host: outboundStreamTransport?.headers?.Host
+			?? (outboundStreamTransport?.type === 'httpupgrade'
+				? ((outboundStreamTransport as unknown as Record<string, unknown>)?.host as string ?? '')
+				: (outboundStreamTransport?.host?.[0] ?? '')),
+		service_name: outboundStreamTransport?.service_name ?? ''
 	});
 
 	// Trojan state
@@ -101,17 +105,17 @@
 	});
 	let trojanTransport = $state({
 		type: (outbound?.type === 'trojan'
-			? (outbound?.transport?.type === 'ws' || outbound?.transport?.type === 'grpc' || outbound?.transport?.type === 'httpupgrade'
-				? outbound.transport.type
+			? (outboundStreamTransport?.type === 'ws' || outboundStreamTransport?.type === 'grpc' || outboundStreamTransport?.type === 'httpupgrade'
+				? outboundStreamTransport.type
 				: 'tcp')
 			: 'tcp') as 'tcp' | 'ws' | 'grpc' | 'httpupgrade',
-		path: outbound?.transport?.path ?? '/',
+		path: outboundStreamTransport?.path ?? '/',
 		// Host matrix mirrors build side: ws→headers.Host, httpupgrade→top-level host string, http→host array.
-		host: outbound?.transport?.headers?.Host
-			?? (outbound?.transport?.type === 'httpupgrade'
-				? ((outbound?.transport as unknown as Record<string, unknown>)?.host as string ?? '')
-				: (outbound?.transport?.host?.[0] ?? '')),
-		service_name: outbound?.transport?.service_name ?? ''
+		host: outboundStreamTransport?.headers?.Host
+			?? (outboundStreamTransport?.type === 'httpupgrade'
+				? ((outboundStreamTransport as unknown as Record<string, unknown>)?.host as string ?? '')
+				: (outboundStreamTransport?.host?.[0] ?? '')),
+		service_name: outboundStreamTransport?.service_name ?? ''
 	});
 
 	// Hysteria2 state
