@@ -402,6 +402,11 @@ func main() {
 	} else {
 		awgMgr.Rehydrate(context.Background(), awgDesired())
 	}
+	// Heal leftovers of the INACTIVE backend: a switch on an older build (or a
+	// crash mid-switch) can leave awg-quick@<iface> enabled/running while the
+	// backend is singbox — a live, panel-invisible kernel tunnel — or an orphaned
+	// managed endpoint in the active config while the backend is kernel.
+	awgMgr.ReconcileBackendResidue(context.Background())
 	apiHandler.SetAWG(awgMgr)
 
 	// AWG expiry sweep — tied to AWG's lifecycle, NOT the vps-only mode gate.
