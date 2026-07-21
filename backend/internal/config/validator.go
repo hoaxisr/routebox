@@ -476,6 +476,72 @@ func validateMieruOutbound(ob map[string]interface{}, prefix string) []string {
 	return errs
 }
 
+// validateMieruInbound mirrors the fork's protocol/mieru/inbound.go runtime
+// checks (transport TCP/UDP, >=1 user, name+password non-empty, unique names)
+// PLUS RouteBox's own join-layer constraint: passwords must also be unique,
+// because reconcile keys mieru users by password (CredentialKey=="password")
+// and removeUserFromDraft filters by it — duplicate passwords would collapse
+// distinct panel users. Mieru has no TLS, no stream transport, and no
+// multiplexing; a stray tls/multiplexing block is rejected here (the raw
+// PUT /api/config path can carry them) so apply fails with a named message
+// rather than an opaque fork decode error.
+func validateMieruInbound(ib map[string]interface{}, prefix string) []string {
+	var errors []string
+
+	if lp, ok := ib["listen_port"].(float64); !ok || lp < 1 || lp > 65535 {
+		errors = append(errors, prefix+": mieru inbound requires 'listen_port' (1-65535)")
+	}
+
+	tr, _ := ib["transport"].(string)
+	if tr != "TCP" && tr != "UDP" {
+		errors = append(errors, prefix+": mieru inbound 'transport' must be \"TCP\" or \"UDP\"")
+	}
+
+	if _, ok := ib["tls"]; ok {
+		errors = append(errors, prefix+": mieru inbound must not have a 'tls' block (mieru self-encrypts)")
+	}
+	if _, ok := ib["multiplexing"]; ok {
+		errors = append(errors, prefix+": mieru inbound must not set 'multiplexing' (inbound has no such field)")
+	}
+
+	users, ok := ib["users"].([]interface{})
+	if !ok || len(users) == 0 {
+		errors = append(errors, prefix+": mieru inbound requires at least one user")
+		return errors
+	}
+	seenName := map[string]bool{}
+	seenPass := map[string]bool{}
+	for i, raw := range users {
+		u, ok := raw.(map[string]interface{})
+		if !ok {
+			errors = append(errors, fmt.Sprintf("%s: mieru user[%d] is malformed", prefix, i))
+			continue
+		}
+		name, _ := u["name"].(string)
+		pass, _ := u["password"].(string)
+		if name == "" {
+			errors = append(errors, fmt.Sprintf("%s: mieru user[%d] requires 'name'", prefix, i))
+		}
+		if pass == "" {
+			errors = append(errors, fmt.Sprintf("%s: mieru user[%d] requires 'password'", prefix, i))
+		}
+		if name != "" {
+			if seenName[name] {
+				errors = append(errors, fmt.Sprintf("%s: mieru user[%d] duplicate name %q (names must be unique within a mieru inbound)", prefix, i, name))
+			}
+			seenName[name] = true
+		}
+		if pass != "" {
+			if seenPass[pass] {
+				// Do NOT echo the password value.
+				errors = append(errors, fmt.Sprintf("%s: mieru user[%d] has a duplicate password (passwords must be unique within a mieru inbound)", prefix, i))
+			}
+			seenPass[pass] = true
+		}
+	}
+	return errors
+}
+
 // validateOutboundVisionFlow enforces the Vision-flow conflict on a vless client
 // outbound, mirroring the inbound guard validateInboundTransport. xtls-rprx-vision
 // requires raw TCP: a non-raw stream transport (ws/grpc/http/httpupgrade) present
@@ -542,7 +608,12 @@ func validateInbound(ib map[string]interface{}, index int) []string {
 		if _, ok := ib["listen_port"].(float64); !ok {
 			errors = append(errors, fmt.Sprintf("%s: %s requires 'listen_port'", prefix, ibType))
 		}
-	case "vless", "trojan", "naive", "hysteria2":
+	case "vless", "trojan", "naive", "hysteria2", "mieru":
+		// mieru has no TLS, no stream transport, and no generic dup-credential
+		// check — it validates itself and returns before any shared body runs.
+		if ibType == "mieru" {
+			return append(errors, validateMieruInbound(ib, prefix)...)
+		}
 		// All server inbounds need a listen_port.
 		if _, ok := ib["listen_port"].(float64); !ok {
 			errors = append(errors, fmt.Sprintf("%s: %s requires 'listen_port'", prefix, ibType))
@@ -584,7 +655,7 @@ func validateInbound(ib map[string]interface{}, index int) []string {
 		}
 		// Reject duplicate credentials within this inbound (uuid/username/password
 		// by protocol). This keeps the (tag, credential) registry join key unique.
-		credField := map[string]string{"vless": "uuid", "trojan": "password", "naive": "username", "hysteria2": "password"}[ibType]
+		credField := map[string]string{"vless": "uuid", "trojan": "password", "naive": "username", "hysteria2": "password", "mieru": "password"}[ibType]
 		if users, ok := ib["users"].([]interface{}); ok {
 			seen := map[string]bool{}
 			for _, u := range users {
