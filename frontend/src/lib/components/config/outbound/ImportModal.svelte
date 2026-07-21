@@ -7,16 +7,18 @@
 		parseHysteria2,
 		parseShadowsocks,
 		parseNaive,
+		parseMieruLink,
 		type ParsedVless,
 		type ParsedTrojan,
 		type ParsedHysteria2,
 		type ParsedShadowsocks,
-		type ParsedNaive
+		type ParsedNaive,
+		type ParsedMieru
 	} from '$lib/utils/parsers';
 
 	interface Props {
-		protocol: 'vless' | 'trojan' | 'hysteria2' | 'shadowsocks' | 'naive';
-		onImport: (config: ParsedVless | ParsedTrojan | ParsedHysteria2 | ParsedShadowsocks | ParsedNaive) => void;
+		protocol: 'vless' | 'trojan' | 'hysteria2' | 'shadowsocks' | 'naive' | 'mieru';
+		onImport: (config: ParsedVless | ParsedTrojan | ParsedHysteria2 | ParsedShadowsocks | ParsedNaive | ParsedMieru) => void;
 		onClose: () => void;
 	}
 
@@ -24,13 +26,15 @@
 
 	let importText = $state('');
 	let importError = $state('');
+	let mieruMixed = $state<{ uri: string; transports: ('TCP' | 'UDP')[] } | null>(null);
 
 	const protocolNames = {
 		vless: 'VLESS',
 		trojan: 'Trojan',
 		hysteria2: 'Hysteria2',
 		shadowsocks: 'Shadowsocks',
-		naive: 'NaiveProxy'
+		naive: 'NaiveProxy',
+		mieru: 'Mieru'
 	};
 
 	const placeholders = {
@@ -38,7 +42,8 @@
 		trojan: 'trojan://password@server:port?params#name',
 		hysteria2: 'hy2://password@server:port?params#name',
 		shadowsocks: 'ss://BASE64(method:password)@server:port#name',
-		naive: 'naive+https://user:password@server:port#name'
+		naive: 'naive+https://user:password@server:port#name',
+		mieru: 'mierus://user:pass@host?profile=name&port=443&protocol=TCP'
 	};
 
 	const linkPrefixes = {
@@ -46,11 +51,13 @@
 		trojan: 'trojan://',
 		hysteria2: 'hy2:// or hysteria2://',
 		shadowsocks: 'ss://',
-		naive: 'naive+https:// or naive+quic://'
+		naive: 'naive+https:// or naive+quic://',
+		mieru: 'mierus://'
 	};
 
 	function parseImportLink() {
 		importError = '';
+		mieruMixed = null;
 		const text = importText.trim();
 
 		if (!text) {
@@ -123,12 +130,43 @@
 			return;
 		}
 
+		// Try Mieru
+		if (text.startsWith('mierus://')) {
+			const result = parseMieruLink(text);
+			if (!result.success && result.mieruTransports) {
+				mieruMixed = { uri: text, transports: result.mieruTransports };
+				return;
+			}
+			if (!result.success || !result.config) {
+				importError = result.error || $t('outbounds.importParseFailed', { values: { protocol: protocolNames.mieru } });
+				return;
+			}
+			onImport(result.config as ParsedMieru);
+			notifications.success($t('outbounds.importSuccess', { values: { protocol: protocolNames.mieru } }));
+			onClose();
+			return;
+		}
+
 		importError = $t('outbounds.importUnknownFormat');
+	}
+
+	function chooseMieruTransport(tr: 'TCP' | 'UDP') {
+		if (!mieruMixed) return;
+		const result = parseMieruLink(mieruMixed.uri, tr);
+		mieruMixed = null;
+		if (!result.success || !result.config) {
+			importError = result.error || $t('outbounds.importParseFailed', { values: { protocol: protocolNames.mieru } });
+			return;
+		}
+		onImport(result.config as ParsedMieru);
+		notifications.success($t('outbounds.importSuccess', { values: { protocol: protocolNames.mieru } }));
+		onClose();
 	}
 
 	function handleClose() {
 		importText = '';
 		importError = '';
+		mieruMixed = null;
 		onClose();
 	}
 </script>
@@ -162,6 +200,23 @@
 
 		{#if importError}
 			<p class="mt-2 text-sm text-[var(--ctp-red)]">{importError}</p>
+		{/if}
+
+		{#if mieruMixed}
+			<div class="mt-3 p-3 bg-[var(--ctp-mantle)] border border-[var(--ctp-surface2)] rounded-lg">
+				<p class="text-sm text-[var(--ctp-subtext0)] mb-2">{$t('outbounds.mieruForm.mixedPrompt')}</p>
+				<div class="flex gap-2">
+					{#each mieruMixed.transports as tr}
+						<button
+							type="button"
+							onclick={() => chooseMieruTransport(tr)}
+							class="toggle-btn"
+						>
+							{tr}
+						</button>
+					{/each}
+				</div>
+			</div>
 		{/if}
 
 		<div class="flex justify-end gap-3 mt-4">

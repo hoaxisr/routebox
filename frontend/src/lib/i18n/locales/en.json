@@ -439,7 +439,7 @@
     "importSuccess": "{protocol} configuration imported",
     "importEmptyLink": "Please paste a link",
     "importParseFailed": "Failed to parse {protocol} link",
-    "importUnknownFormat": "Unknown link format. Supported: vless://, hy2://, hysteria2://, ss://, naive+https://, naive+quic://"
+    "importUnknownFormat": "Unknown link format. Supported: vless://, hy2://, hysteria2://, ss://, naive+https://, naive+quic://, mierus://"
   },
   "ruleSets": {
     "title": "Rule Sets",

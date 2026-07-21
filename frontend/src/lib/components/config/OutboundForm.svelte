@@ -878,7 +878,7 @@
 <!-- Import Modal -->
 {#if showImport}
 	<ImportModal
-		protocol={type as 'vless' | 'trojan' | 'hysteria2' | 'shadowsocks' | 'naive'}
+		protocol={type as 'vless' | 'trojan' | 'hysteria2' | 'shadowsocks' | 'naive' | 'mieru'}
 		onImport={handleImport}
 		onClose={() => showImport = false}
 	/>
