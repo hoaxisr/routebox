@@ -219,6 +219,13 @@ func (m *Manager) Rehydrate(ctx context.Context, in EnableInput) {
 	if err != nil {
 		return
 	}
+	// awg3 obfuscation (CPA/RAT + the four device-timers) is a sing-box-backend
+	// feature; the kernel awg-quick path must never restore it into m.obf, or
+	// RenderClientConf/RenderServer would emit unknown [Interface] keys that a
+	// pre-awg3 awg-quick hard-fails on. Strip them here exactly as kernel-Enable
+	// does (RehydrateSingbox deliberately KEEPS them).
+	obf.CPA, obf.RAT = "", ""
+	obf.RekeyTimeout, obf.RejectAfterTime, obf.KeepaliveTimeout, obf.MaxHandshakeAttempts = "", "", "", ""
 	mtu, _ := ValidateMTU(in.MTU) // non-critical for render; 0 -> omitted
 	dns, _ := ValidateDNS(in.DNS) // RenderClientConf falls back to 1.1.1.1 if empty
 
