@@ -1778,7 +1778,7 @@
     "rejectAfterTime": "Reject after time",
     "rejectAfterTimeHint": "Seconds before a session is dropped — \"N\" or \"lo-hi\" range.",
     "keepaliveTimeout": "Keepalive timeout",
-    "keepaliveTimeoutHint": "Seconds between keepalives — \"N\" or \"lo-hi\" range.",
+    "keepaliveTimeoutHint": "Seconds after last data before a passive keepalive is sent — \"N\" or \"lo-hi\" range.",
     "maxHandshakeAttempts": "Max handshake attempts",
     "maxHandshakeAttemptsHint": "Handshake retries before giving up — \"N\" or \"lo-hi\" count."
   },
