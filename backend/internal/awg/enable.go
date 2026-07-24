@@ -183,8 +183,7 @@ func (m *Manager) Enable(ctx context.Context, in EnableInput) error {
 	// (a pre-awg3 awg-quick hard-fails on unknown [Interface] keys). The AWG3
 	// device-timers (RekeyTimeout/RejectAfterTime/KeepaliveTimeout/MaxHandshakeAttempts)
 	// are singbox-only for the same reason — strip them alongside CPA/RAT.
-	obf.CPA, obf.RAT = "", ""
-	obf.RekeyTimeout, obf.RejectAfterTime, obf.KeepaliveTimeout, obf.MaxHandshakeAttempts = "", "", "", ""
+	obf.stripAwg3()
 	sc := ServerConf{
 		PrivateKey: priv, Address: serverIP + maskSuffix(subnet), ListenPort: port, MTU: mtu,
 		Subnet: subnet, WAN: wan, Iface: m.iface, Obf: obf,
@@ -284,9 +283,8 @@ func (m *Manager) Status(ctx context.Context) AWGStatus {
 		// Zero them on both operands before the struct compare. The singbox dirty
 		// compare (statusSingbox) deliberately KEEPS them.
 		dObf, runObf := d.Obf, obf
-		dObf.CPA, dObf.RAT, runObf.CPA, runObf.RAT = "", "", "", ""
-		dObf.RekeyTimeout, dObf.RejectAfterTime, dObf.KeepaliveTimeout, dObf.MaxHandshakeAttempts = "", "", "", ""
-		runObf.RekeyTimeout, runObf.RejectAfterTime, runObf.KeepaliveTimeout, runObf.MaxHandshakeAttempts = "", "", "", ""
+		dObf.stripAwg3()
+		runObf.stripAwg3()
 		configDirty = d.Subnet != subnet || d.ListenPort != port || d.MTU != mtu ||
 			(d.WANIface != "" && d.WANIface != wan) || dObf != runObf || d.ObfPreset != obfPreset
 	}
