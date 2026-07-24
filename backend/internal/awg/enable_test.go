@@ -309,6 +309,51 @@ func TestRehydrateWarmsManager(t *testing.T) {
 	}
 }
 
+// Regression: the kernel-Rehydrate path must strip AWG3 obf (CPA/RAT + the four
+// device-timers) exactly as kernel-Enable does. Saved settings can carry these
+// singbox-only fields; if Rehydrate restored them into m.obf, RenderClientConf /
+// RenderServer after a restart would emit unknown [Interface] keys that a pre-awg3
+// awg-quick hard-fails on. RehydrateSingbox (a different path) deliberately keeps them.
+func TestRehydrateKernelStripsAwg3Obf(t *testing.T) {
+	f := newFakeRunner()
+	m := newEnableManager(t, f)
+	if err := os.MkdirAll(filepath.Dir(m.confPath), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(m.confPath, []byte("[Interface]\nPrivateKey = AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAEs=\nListenPort = 51820\n"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	f.outputs["awg show awg-rb0"] = "interface: awg-rb0\n  listening port: 51820\n"
+	in := goodEnableInput()
+	in.Obf = Obfuscation{Jc: 4, H1: "100", H2: "200", H3: "300", H4: "400",
+		CPA: "200-400", RAT: "120",
+		RekeyTimeout: "5", RejectAfterTime: "180", KeepaliveTimeout: "25", MaxHandshakeAttempts: "18"}
+	m.Rehydrate(context.Background(), in)
+
+	// The kernel-relevant obf survives; the singbox-only AWG3 fields are zeroed.
+	if m.obf.Jc != 4 || m.obf.H1 != "100" {
+		t.Fatalf("rehydrate dropped kernel-relevant obf, got %+v", m.obf)
+	}
+	if m.obf.CPA != "" || m.obf.RAT != "" ||
+		m.obf.RekeyTimeout != "" || m.obf.RejectAfterTime != "" ||
+		m.obf.KeepaliveTimeout != "" || m.obf.MaxHandshakeAttempts != "" {
+		t.Fatalf("kernel-Rehydrate must strip AWG3 obf from m.obf, got %+v", m.obf)
+	}
+
+	// And nothing AWG3 must reach a rendered client conf.
+	m.store.Put(Peer{PublicKey: "peerpub", PrivateKey: "peerpriv", PresharedKey: "psk", Address: "10.10.0.2/32", Name: "p1"})
+	conf, err := m.RenderClientConf("peerpub", "vpn.example.com")
+	if err != nil {
+		t.Fatalf("RenderClientConf: %v", err)
+	}
+	for _, absent := range []string{"ContentPaddingAddition", "RekeyAfterTime",
+		"RekeyTimeout", "RejectAfterTime", "KeepaliveTimeout", "MaxHandshakeAttempts"} {
+		if strings.Contains(conf, absent) {
+			t.Fatalf("kernel client conf must NOT contain singbox-only awg3 field %q:\n%s", absent, conf)
+		}
+	}
+}
+
 // Regression: after a reboot RouteBox can start before awg-quick@ brings the iface
 // up (systemd ordering), so the boot-time Rehydrate snapshots enabled=false and the
 // module state stays the cold StateNotInstalled. Once the iface is live, Status must
