@@ -31,6 +31,7 @@ type Store struct {
 	byPK      map[string]*Peer
 	serverKey string       // server private key (singbox backend); persisted top-level
 	headerKey string       // AWG3 header-protection key (singbox backend); persisted top-level
+	ulaPrefix string       // IPv6-broker ULA prefix (singbox backend); persisted top-level
 	now       func() int64 // injected clock
 }
 
@@ -56,6 +57,7 @@ func (s *Store) Load() error {
 	var doc struct {
 		ServerKey string `toml:"server_key"`
 		HeaderKey string `toml:"header_key"`
+		ULAPrefix string `toml:"ula_prefix"`
 		Peers     []Peer `toml:"peers"`
 	}
 	if err := toml.Unmarshal(data, &doc); err != nil {
@@ -63,6 +65,7 @@ func (s *Store) Load() error {
 	}
 	s.serverKey = doc.ServerKey
 	s.headerKey = doc.HeaderKey
+	s.ulaPrefix = doc.ULAPrefix
 	s.byPK = make(map[string]*Peer, len(doc.Peers))
 	for i := range doc.Peers {
 		p := doc.Peers[i]
@@ -84,8 +87,9 @@ func (s *Store) saveLocked() error {
 	doc := struct {
 		ServerKey string `toml:"server_key,omitempty"`
 		HeaderKey string `toml:"header_key,omitempty"`
+		ULAPrefix string `toml:"ula_prefix,omitempty"`
 		Peers     []Peer `toml:"peers"`
-	}{ServerKey: s.serverKey, HeaderKey: s.headerKey, Peers: s.listLocked()}
+	}{ServerKey: s.serverKey, HeaderKey: s.headerKey, ULAPrefix: s.ulaPrefix, Peers: s.listLocked()}
 	// dir 0700: this directory holds client private keys, stricter than the
 	// 0755 users/store.go uses for its registry.
 	return util.WriteTOMLAtomic(s.path, 0700, doc)
@@ -118,6 +122,21 @@ func (s *Store) SetHeaderKey(k string) error {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	s.headerKey = k
+	return s.saveLocked()
+}
+
+// ULAPrefix returns the persisted IPv6-broker ULA prefix ("" if none).
+func (s *Store) ULAPrefix() string {
+	s.mu.RLock()
+	defer s.mu.RUnlock()
+	return s.ulaPrefix
+}
+
+// SetULAPrefix persists the ULA prefix alongside the peers (write-once by caller).
+func (s *Store) SetULAPrefix(p string) error {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	s.ulaPrefix = p
 	return s.saveLocked()
 }
 
