@@ -469,25 +469,38 @@ func (m *Manager) RenewPeer(ctx context.Context, pub string, expiresAt int64) er
 // the sweep ticker.
 func (m *Manager) SweepExpired(ctx context.Context) {
 	if m.backendIs("singbox") {
-		m.addMu.Lock()
-		defer m.addMu.Unlock()
 		// Re-preflight the IPv6 broker on every sweep: a v6 egress that appears or
 		// disappears between Enable/Rehydrate and now must flip v6Active so the
 		// next singboxSync (change-gated, so an unchanged spec is a no-op) picks it
 		// up without requiring an operator re-Apply.
+		//
+		// The probe is a network dial (up to ~6s when egress is down) and MUST run
+		// before addMu is taken, or it stalls concurrent AddPeer for its duration.
 		m.mu.Lock()
 		broker, ula, probe := m.ipv6Broker, m.ulaPrefix, m.probeFn
 		m.mu.Unlock()
 		// Only re-arm v6Active once a ULA prefix already exists (assigned by a
 		// prior successful Enable/Rehydrate) — never fabricate one here, that
 		// stays enableSingbox's job.
-		if broker && ula.IsValid() {
+		probeNeeded := broker && ula.IsValid()
+		var probeResult bool
+		if probeNeeded {
 			if probe == nil {
 				probe = defaultEgressProbe().ok
 			}
-			v6Active := probe()
+			probeResult = probe()
+		}
+
+		m.addMu.Lock()
+		defer m.addMu.Unlock()
+		if probeNeeded {
 			m.mu.Lock()
-			m.v6Active = v6Active
+			// Re-check under the lock (not the stale snapshot): a concurrent
+			// Disable/toggle between the probe and here must not resurrect
+			// v6Active without a currently-valid ULA prefix.
+			if m.ipv6Broker && m.ulaPrefix.IsValid() {
+				m.v6Active = probeResult
+			}
 			m.mu.Unlock()
 		}
 		// Best-effort self-heal: expired peers drop out of renderServerSpec, and a

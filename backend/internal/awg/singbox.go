@@ -357,22 +357,35 @@ func (m *Manager) enableSingbox(ctx context.Context, in EnableInput) error {
 		if probe == nil {
 			probe = defaultEgressProbe().ok
 		}
-		if probe() {
-			p := m.store.ULAPrefix()
-			if p == "" {
-				gen, err := GenerateULAPrefix()
-				if err != nil {
-					return m.enableFail(err.Error())
-				}
-				p = gen.String()
-				if err := m.store.SetULAPrefix(p); err != nil {
-					return m.enableFail(err.Error())
-				}
+		// ULA prefix is generated+persisted unconditionally whenever the broker is
+		// desired (regardless of probe result) so a v4-only VPS that later gains
+		// IPv6 egress can auto-activate via the sweep without an operator
+		// re-Apply. Harmless on a v4-only host: it's only persisted, never
+		// emitted while v6Active is false.
+		p := m.store.ULAPrefix()
+		if p == "" {
+			gen, err := GenerateULAPrefix()
+			if err != nil {
+				return m.enableFail(err.Error())
 			}
-			ula, _ = netip.ParsePrefix(p)
-			v6Active = true
+			p = gen.String()
+			if err := m.store.SetULAPrefix(p); err != nil {
+				return m.enableFail(err.Error())
+			}
+		}
+		// Parse+store the prefix regardless of probe outcome: m.ulaPrefix must be
+		// valid whenever a ULA exists so the sweep (SweepExpired) can re-arm
+		// v6Active later purely from a probe that starts passing, without
+		// re-running this generation step. v6Active itself still gates on probe.
+		if u, perr := netip.ParsePrefix(p); perr == nil {
+			ula = u
+			if probe() {
+				v6Active = true
+			} else {
+				log.Printf("awg: ipv6 broker requested but no working IPv6 egress — serving IPv4 only")
+			}
 		} else {
-			log.Printf("awg: ipv6 broker requested but no working IPv6 egress — serving IPv4 only")
+			log.Printf("awg: stored ULA prefix %q invalid: %v — serving IPv4 only", p, perr)
 		}
 	}
 
@@ -538,16 +551,22 @@ func (m *Manager) RehydrateSingbox(in EnableInput, enabled bool) {
 	broker, v6Active := in.IPv6Broker, false
 	var ula netip.Prefix
 	if in.IPv6Broker {
-		if p := m.store.ULAPrefix(); p != "" && in.MTU >= 1280 {
+		if p := m.store.ULAPrefix(); p != "" && mtu >= 1280 {
 			m.mu.Lock()
 			probe := m.probeFn
 			m.mu.Unlock()
 			if probe == nil {
 				probe = defaultEgressProbe().ok
 			}
-			if probe() {
-				ula, _ = netip.ParsePrefix(p)
-				v6Active = true
+			// Parse regardless of probe outcome (mirrors enableSingbox): m.ulaPrefix
+			// must be valid whenever a persisted ULA exists so a later sweep can
+			// re-arm v6Active purely from a probe flip, without this rehydrate
+			// path running again.
+			if u, perr := netip.ParsePrefix(p); perr == nil {
+				ula = u
+				if probe() {
+					v6Active = true
+				}
 			}
 		}
 	}
