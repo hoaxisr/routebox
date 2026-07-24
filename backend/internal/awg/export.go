@@ -9,6 +9,7 @@ type ClientEndpointSpec struct {
 	Tag        string
 	PrivateKey string
 	Address    string
+	Address6   string // "" = v4-only
 	MTU        int
 	Obf        Obfuscation
 	Mimic      cps.Set
@@ -25,12 +26,18 @@ type ClientEndpointSpec struct {
 // allowed_ips, keepalive 25. Zero/empty obf and mimic values are omitted. The peer
 // field is preshared_key (fork naming); i-fields are the generated CPS mimicry.
 func BuildClientEndpoint(s ClientEndpointSpec) map[string]interface{} {
+	address := []interface{}{s.Address}
+	allowedIPs := []interface{}{"0.0.0.0/0"}
+	if s.Address6 != "" {
+		address = append(address, s.Address6)
+		allowedIPs = append(allowedIPs, "::/0")
+	}
 	ep := map[string]interface{}{
 		"type":             "awg",
 		"tag":              s.Tag,
 		"useIntegratedTun": false,
 		"private_key":      s.PrivateKey,
-		"address":          []interface{}{s.Address},
+		"address":          address,
 	}
 	if s.MTU > 0 {
 		ep["mtu"] = s.MTU
@@ -73,7 +80,7 @@ func BuildClientEndpoint(s ClientEndpointSpec) map[string]interface{} {
 		"address":                       s.Host,
 		"port":                          s.Port,
 		"public_key":                    s.ServerPub,
-		"allowed_ips":                   []interface{}{"0.0.0.0/0"},
+		"allowed_ips":                   allowedIPs,
 		"persistent_keepalive_interval": 25,
 	}
 	if s.PSK != "" {

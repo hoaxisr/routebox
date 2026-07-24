@@ -35,6 +35,7 @@ func (o *Obfuscation) stripAwg3() {
 type ClientConf struct {
 	PrivateKey string
 	Address    string
+	Address6   string // "" = v4-only
 	DNS        []string
 	MTU        int
 	Obf        Obfuscation
@@ -58,7 +59,11 @@ func BuildClient(c ClientConf) (string, error) {
 	var b strings.Builder
 	b.WriteString("[Interface]\n")
 	fmt.Fprintf(&b, "PrivateKey = %s\n", c.PrivateKey)
-	fmt.Fprintf(&b, "Address = %s\n", c.Address)
+	if c.Address6 != "" {
+		fmt.Fprintf(&b, "Address = %s, %s\n", c.Address, c.Address6)
+	} else {
+		fmt.Fprintf(&b, "Address = %s\n", c.Address)
+	}
 	if len(c.DNS) > 0 {
 		fmt.Fprintf(&b, "DNS = %s\n", strings.Join(c.DNS, ", "))
 	}

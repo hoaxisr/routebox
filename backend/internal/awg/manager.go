@@ -344,6 +344,7 @@ func (m *Manager) RenderClientConf(pub, host string) (string, error) {
 	}
 	m.mu.Lock()
 	serverPriv, dns, mtu, obf, port, preset, headerKey := m.serverPriv, m.dns, m.mtu, m.obf, m.listenPort, m.obfPreset, m.headerKey
+	broker, ula := m.v6Active, m.ulaPrefix
 	m.mu.Unlock()
 	serverPub, err := PublicFromPrivate(serverPriv)
 	if err != nil {
@@ -352,16 +353,26 @@ func (m *Manager) RenderClientConf(pub, host string) (string, error) {
 	if len(dns) == 0 {
 		dns = []string{"1.1.1.1"}
 	}
+	addr6, allowed := "", []string{"0.0.0.0/0"}
+	if broker {
+		if a, err := netip.ParsePrefix(p.Address); err == nil {
+			if m6, err := MapV4ToV6(ula, a.Addr()); err == nil {
+				addr6 = m6.String() + "/128"
+				allowed = []string{"0.0.0.0/0", "::/0"}
+			}
+		}
+	}
 	return BuildClient(ClientConf{
 		PrivateKey:          p.PrivateKey,
 		Address:             p.Address,
+		Address6:            addr6,
 		DNS:                 dns,
 		MTU:                 mtu,
 		Obf:                 obf,
 		Mimic:               cps.Mimic(preset),
 		ServerPub:           serverPub,
 		Endpoint:            joinHostPort(host, port),
-		AllowedIPs:          []string{"0.0.0.0/0"},
+		AllowedIPs:          allowed,
 		Keepalive:           25,
 		PSK:                 p.PresharedKey,
 		HeaderProtectionKey: headerKey,
