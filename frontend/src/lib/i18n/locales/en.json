@@ -1772,7 +1772,15 @@
     "contentPadding": "Content padding (CPA)",
     "contentPaddingHint": "Extra bytes appended to data packets — \"N\" or \"lo-hi\" range.",
     "rekeyAfterTime": "Rekey interval (RAT)",
-    "rekeyAfterTimeHint": "Seconds between session rekeys — \"N\" or \"lo-hi\" range."
+    "rekeyAfterTimeHint": "Seconds between session rekeys — \"N\" or \"lo-hi\" range.",
+    "rekeyTimeout": "Rekey timeout",
+    "rekeyTimeoutHint": "Seconds before an unacked rekey is retried — \"N\" or \"lo-hi\" range.",
+    "rejectAfterTime": "Reject after time",
+    "rejectAfterTimeHint": "Seconds before a session is dropped — \"N\" or \"lo-hi\" range.",
+    "keepaliveTimeout": "Keepalive timeout",
+    "keepaliveTimeoutHint": "Seconds between keepalives — \"N\" or \"lo-hi\" range.",
+    "maxHandshakeAttempts": "Max handshake attempts",
+    "maxHandshakeAttemptsHint": "Handshake retries before giving up — \"N\" or \"lo-hi\" count."
   },
   "monitor": {
     "perUserTitle": "Per-User Traffic",

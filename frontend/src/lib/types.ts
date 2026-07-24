@@ -1039,6 +1039,11 @@ export interface AwgObf {
 	// AWG3: UintRange strings ("N" or "lo-hi"); backend sends "" when unset
 	content_padding_addition?: string;
 	rekey_after_time?: string;
+	// AWG3 device timers: UintRange strings ("N" or "lo-hi"); seconds (max_handshake_attempts = count)
+	rekey_timeout?: string;
+	reject_after_time?: string;
+	keepalive_timeout?: string;
+	max_handshake_attempts?: string;
 }
 
 export interface AwgServerSettings {
