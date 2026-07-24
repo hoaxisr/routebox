@@ -134,6 +134,32 @@ func TestBuildClientEmptyAwg3FieldsOmitted(t *testing.T) {
 	}
 }
 
+func TestBuildClientDualStack(t *testing.T) {
+	out, err := BuildClient(ClientConf{
+		PrivateKey: "k", Address: "10.10.0.5/32", Address6: "fd00:abcd::a0a:5/128",
+		ServerPub: "s", Endpoint: "vps:51820", AllowedIPs: []string{"0.0.0.0/0", "::/0"},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(out, "Address = 10.10.0.5/32, fd00:abcd::a0a:5/128") {
+		t.Fatalf("missing dual-stack Address:\n%s", out)
+	}
+	if !strings.Contains(out, "AllowedIPs = 0.0.0.0/0, ::/0") {
+		t.Fatalf("missing ::/0:\n%s", out)
+	}
+}
+
+func TestBuildClientV4OnlyUnchanged(t *testing.T) {
+	out, _ := BuildClient(ClientConf{
+		PrivateKey: "k", Address: "10.10.0.5/32", ServerPub: "s", Endpoint: "vps:51820",
+		AllowedIPs: []string{"0.0.0.0/0"},
+	})
+	if !strings.Contains(out, "Address = 10.10.0.5/32\n") {
+		t.Fatalf("v4-only Address changed:\n%s", out)
+	}
+}
+
 func TestBuildClientEmptyOmitAndNoPSKAndV6(t *testing.T) {
 	in := ClientConf{
 		PrivateKey: "P==", Address: "10.10.0.2/32", MTU: 1420,

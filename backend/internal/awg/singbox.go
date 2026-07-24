@@ -455,6 +455,7 @@ func (m *Manager) ClientEndpoint(pub, name, host string) (map[string]interface{}
 	m.mu.Lock()
 	priv, obf, mtu, port, preset := m.serverPriv, m.obf, m.mtu, m.listenPort, m.obfPreset
 	headerKey, s3fn := m.headerKey, m.supports3Fn
+	broker, ula := m.v6Active, m.ulaPrefix
 	m.mu.Unlock()
 	serverPub, err := PublicFromPrivate(priv)
 	if err != nil {
@@ -466,10 +467,19 @@ func (m *Manager) ClientEndpoint(pub, name, host string) (map[string]interface{}
 		obf.CPA, obf.RAT, headerKey = "", "", ""
 		obf.RekeyTimeout, obf.RejectAfterTime, obf.KeepaliveTimeout, obf.MaxHandshakeAttempts = "", "", "", ""
 	}
+	addr6 := ""
+	if broker {
+		if a, err := netip.ParsePrefix(p.Address); err == nil {
+			if m6, err := MapV4ToV6(ula, a.Addr()); err == nil {
+				addr6 = m6.String() + "/128"
+			}
+		}
+	}
 	return BuildClientEndpoint(ClientEndpointSpec{
 		Tag:                 "awg-" + SanitizeName(name),
 		PrivateKey:          p.PrivateKey,
 		Address:             p.Address,
+		Address6:            addr6,
 		MTU:                 mtu,
 		Obf:                 obf,
 		Mimic:               cps.Mimic(preset),
