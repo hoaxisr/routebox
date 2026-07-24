@@ -417,6 +417,7 @@ func (m *Manager) statusSingbox(ctx context.Context) AWGStatus {
 	m.mu.Lock()
 	enabled, lastErr, port, phase := m.enabled, m.lastErr, m.listenPort, m.phase
 	subnet, mtu, obf, obfPreset, hp, desired := m.subnet, m.mtu, m.obf, m.obfPreset, m.headerProtection, m.desired
+	broker, v6active := m.ipv6Broker, m.v6Active
 	m.mu.Unlock()
 	if phase == "" {
 		phase = PhaseIdle
@@ -424,13 +425,14 @@ func (m *Manager) statusSingbox(ctx context.Context) AWGStatus {
 	// ConfigDirty mirrors the kernel Status: enabled AND the saved settings differ
 	// from the running snapshot on any field that needs a re-apply — subnet, port,
 	// mtu, obf (CPA/RAT ride in the struct compare), the obf preset (client-export
-	// mimicry), and the header-protection toggle (a shared secret flip). WAN/DNS
-	// are not applicable on singbox.
+	// mimicry), the header-protection toggle (a shared secret flip), and the IPv6
+	// broker desire. WAN/DNS are not applicable on singbox.
 	configDirty := false
 	if enabled && desired != nil {
 		d := desired()
 		configDirty = d.Subnet != subnet || d.ListenPort != port || d.MTU != mtu ||
-			d.Obf != obf || d.ObfPreset != obfPreset || d.HeaderProtection != hp
+			d.Obf != obf || d.ObfPreset != obfPreset || d.HeaderProtection != hp ||
+			d.IPv6Broker != broker
 	}
 	return AWGStatus{
 		Backend:     "singbox",
@@ -441,6 +443,7 @@ func (m *Manager) statusSingbox(ctx context.Context) AWGStatus {
 		PeerCount:   len(m.store.List()),
 		Module:      StateReady, // module not applicable; report ready so UI doesn't warn
 		ConfigDirty: configDirty,
+		IPv6Active:  v6active,
 		LastError:   lastErr,
 	}
 }
@@ -529,6 +532,26 @@ func (m *Manager) RehydrateSingbox(in EnableInput, enabled bool) {
 			log.Printf("awg: rehydrate: header protection is enabled in settings but %v — dropping the header key (degraded, loadable config)", err)
 		}
 	}
+	// Re-derive the IPv6 broker state via the same preflight enableSingbox runs
+	// (MTU floor, egress probe) rather than trusting the desired bool verbatim —
+	// a restart on a host that lost v6 egress must NOT resurrect v6Active.
+	broker, v6Active := in.IPv6Broker, false
+	var ula netip.Prefix
+	if in.IPv6Broker {
+		if p := m.store.ULAPrefix(); p != "" && in.MTU >= 1280 {
+			m.mu.Lock()
+			probe := m.probeFn
+			m.mu.Unlock()
+			if probe == nil {
+				probe = defaultEgressProbe().ok
+			}
+			if probe() {
+				ula, _ = netip.ParsePrefix(p)
+				v6Active = true
+			}
+		}
+	}
+
 	m.mu.Lock()
 	m.subnet, m.serverIP, m.listenPort, m.mtu, m.obf, m.serverPriv = subnet, serverIP, port, mtu, obf, priv
 	m.obfPreset = in.ObfPreset
@@ -536,6 +559,7 @@ func (m *Manager) RehydrateSingbox(in EnableInput, enabled bool) {
 	// Snapshot the toggle from the SAME saved settings desired() reads, so a
 	// restart does not fabricate a ConfigDirty (I1).
 	m.headerProtection = in.HeaderProtection
+	m.ipv6Broker, m.v6Active, m.ulaPrefix = broker, v6Active, ula
 	m.enabled = enabled && priv != ""
 	if m.enabled {
 		m.phase = PhaseReady

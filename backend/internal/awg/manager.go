@@ -471,6 +471,25 @@ func (m *Manager) SweepExpired(ctx context.Context) {
 	if m.backendIs("singbox") {
 		m.addMu.Lock()
 		defer m.addMu.Unlock()
+		// Re-preflight the IPv6 broker on every sweep: a v6 egress that appears or
+		// disappears between Enable/Rehydrate and now must flip v6Active so the
+		// next singboxSync (change-gated, so an unchanged spec is a no-op) picks it
+		// up without requiring an operator re-Apply.
+		m.mu.Lock()
+		broker, ula, probe := m.ipv6Broker, m.ulaPrefix, m.probeFn
+		m.mu.Unlock()
+		// Only re-arm v6Active once a ULA prefix already exists (assigned by a
+		// prior successful Enable/Rehydrate) — never fabricate one here, that
+		// stays enableSingbox's job.
+		if broker && ula.IsValid() {
+			if probe == nil {
+				probe = defaultEgressProbe().ok
+			}
+			v6Active := probe()
+			m.mu.Lock()
+			m.v6Active = v6Active
+			m.mu.Unlock()
+		}
 		// Best-effort self-heal: expired peers drop out of renderServerSpec, and a
 		// disabled server renders nil (no-op). A failure here means the active
 		// config silently diverges from the store — log it, don't swallow it.
