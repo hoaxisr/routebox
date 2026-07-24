@@ -17,6 +17,8 @@ type Obfuscation struct {
 	H1, H2, H3, H4 string
 	// AWG 3.0 cookie-protection fields: UintRange strings ("N" or "lo-hi").
 	CPA, RAT string
+	// AWG3 device-timers: UintRange strings ("N" or "lo-hi"), seconds/count.
+	RekeyTimeout, RejectAfterTime, KeepaliveTimeout, MaxHandshakeAttempts string
 }
 
 // ClientConf is the fully-assembled input to BuildClient. Pure — no FS/settings
@@ -83,7 +85,7 @@ func writeObf(b *strings.Builder, o Obfuscation) {
 			fmt.Fprintf(b, "%s = %d\n", f.k, f.v)
 		}
 	}
-	str := []struct{ k, v string }{{"H1", o.H1}, {"H2", o.H2}, {"H3", o.H3}, {"H4", o.H4}, {"ContentPaddingAddition", o.CPA}, {"RekeyAfterTime", o.RAT}}
+	str := []struct{ k, v string }{{"H1", o.H1}, {"H2", o.H2}, {"H3", o.H3}, {"H4", o.H4}, {"ContentPaddingAddition", o.CPA}, {"RekeyAfterTime", o.RAT}, {"RekeyTimeout", o.RekeyTimeout}, {"RejectAfterTime", o.RejectAfterTime}, {"KeepaliveTimeout", o.KeepaliveTimeout}, {"MaxHandshakeAttempts", o.MaxHandshakeAttempts}}
 	for _, f := range str {
 		if f.v != "" {
 			fmt.Fprintf(b, "%s = %s\n", f.k, f.v)

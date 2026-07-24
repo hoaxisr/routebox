@@ -434,6 +434,26 @@ func validateObf(o Obfuscation) (Obfuscation, error) {
 		}
 		out.RAT = v
 	}
+	// AWG3 device-timers are UintRange strings too; validate + canonicalise when set.
+	for _, f := range []struct {
+		name string
+		src  string
+		dst  *string
+	}{
+		{"rekey_timeout", o.RekeyTimeout, &out.RekeyTimeout},
+		{"reject_after_time", o.RejectAfterTime, &out.RejectAfterTime},
+		{"keepalive_timeout", o.KeepaliveTimeout, &out.KeepaliveTimeout},
+		{"max_handshake_attempts", o.MaxHandshakeAttempts, &out.MaxHandshakeAttempts},
+	} {
+		if f.src == "" {
+			continue
+		}
+		v, err := ValidateUintRange(f.src)
+		if err != nil {
+			return Obfuscation{}, fmt.Errorf("%s: %w", f.name, err)
+		}
+		*f.dst = v
+	}
 	return out, nil
 }
 
