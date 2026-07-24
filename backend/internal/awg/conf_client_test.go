@@ -89,7 +89,8 @@ func TestBuildClientEmitsAwg3Fields(t *testing.T) {
 	c := ClientConf{
 		PrivateKey: "AAAA", Address: "10.10.0.2/32", ServerPub: "BBBB",
 		Endpoint: "1.2.3.4:51820", AllowedIPs: []string{"0.0.0.0/0"},
-		Obf:                 Obfuscation{Jc: 5, CPA: "200-400", RAT: "120"},
+		Obf: Obfuscation{Jc: 5, CPA: "200-400", RAT: "120",
+			RekeyTimeout: "5", RejectAfterTime: "180", KeepaliveTimeout: "25", MaxHandshakeAttempts: "18"},
 		HeaderProtectionKey: "AAAAbbbbCCCCddddEEEEffffGGGGhhhhIIIIjjjjKK==",
 	}
 	out, err := BuildClient(c)
@@ -104,6 +105,10 @@ func TestBuildClientEmitsAwg3Fields(t *testing.T) {
 	for _, want := range []string{
 		"ContentPaddingAddition = 200-400",
 		"RekeyAfterTime = 120",
+		"RekeyTimeout = 5",
+		"RejectAfterTime = 180",
+		"KeepaliveTimeout = 25",
+		"MaxHandshakeAttempts = 18",
 		"HeaderProtectionKey = AAAAbbbbCCCCddddEEEEffffGGGGhhhhIIIIjjjjKK==",
 	} {
 		if !strings.Contains(iface, want+"\n") {
@@ -121,7 +126,8 @@ func TestBuildClientEmptyAwg3FieldsOmitted(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	for _, absent := range []string{"ContentPaddingAddition", "RekeyAfterTime", "HeaderProtectionKey"} {
+	for _, absent := range []string{"ContentPaddingAddition", "RekeyAfterTime", "HeaderProtectionKey",
+		"RekeyTimeout", "RejectAfterTime", "KeepaliveTimeout", "MaxHandshakeAttempts"} {
 		if strings.Contains(out, absent) {
 			t.Fatalf("empty awg3 field %q must be omitted:\n%s", absent, out)
 		}
