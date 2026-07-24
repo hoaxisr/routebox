@@ -545,7 +545,8 @@ func TestAwgEnableInputFromSettings(t *testing.T) {
 	in := awgEnableInput(settings.AwgSettings{
 		Subnet: "10.20.0.0/24", ListenPort: 4500, MTU: 1380,
 		DNS: []string{"9.9.9.9"}, WANIface: "ens3", ObfPreset: "standard",
-		Obf: settings.AwgObf{Jc: 4, Jmin: 40, Jmax: 70, H1: "111", H2: "222", H3: "333", H4: "444"},
+		Obf: settings.AwgObf{Jc: 4, Jmin: 40, Jmax: 70, H1: "111", H2: "222", H3: "333", H4: "444",
+			RekeyTimeout: "5", RejectAfterTime: "180", KeepaliveTimeout: "25", MaxHandshakeAttempts: "18"},
 	})
 	if in.ListenPort != 4500 || in.Subnet != "10.20.0.0/24" || in.MTU != 1380 || in.WANIface != "ens3" {
 		t.Fatalf("scalar fields not mapped: %+v", in)
@@ -555,6 +556,10 @@ func TestAwgEnableInputFromSettings(t *testing.T) {
 	}
 	if in.Obf.Jc != 4 || in.Obf.Jmax != 70 || in.Obf.H1 != "111" || in.Obf.H4 != "444" {
 		t.Fatalf("obf not mapped: %+v", in.Obf)
+	}
+	if in.Obf.RekeyTimeout != "5" || in.Obf.RejectAfterTime != "180" ||
+		in.Obf.KeepaliveTimeout != "25" || in.Obf.MaxHandshakeAttempts != "18" {
+		t.Fatalf("device timers not mapped: %+v", in.Obf)
 	}
 }
 
