@@ -176,6 +176,18 @@ func (m *Manager) renderServerSpec() *config.AwgServerSpec {
 		if obf.RAT != "" {
 			obfMap["rekey_after_time"] = obf.RAT
 		}
+		if obf.RekeyTimeout != "" {
+			obfMap["rekey_timeout"] = obf.RekeyTimeout
+		}
+		if obf.RejectAfterTime != "" {
+			obfMap["reject_after_time"] = obf.RejectAfterTime
+		}
+		if obf.KeepaliveTimeout != "" {
+			obfMap["keepalive_timeout"] = obf.KeepaliveTimeout
+		}
+		if obf.MaxHandshakeAttempts != "" {
+			obfMap["max_handshake_attempts"] = obf.MaxHandshakeAttempts
+		}
 	} else {
 		headerKey = ""
 	}
@@ -400,6 +412,7 @@ func (m *Manager) ClientEndpoint(pub, name, host string) (map[string]interface{}
 	// box running a pre-awg3 binary, so strip cpa/rat/hpk when unsupported.
 	if s3fn != nil && !s3fn() {
 		obf.CPA, obf.RAT, headerKey = "", "", ""
+		obf.RekeyTimeout, obf.RejectAfterTime, obf.KeepaliveTimeout, obf.MaxHandshakeAttempts = "", "", "", ""
 	}
 	return BuildClientEndpoint(ClientEndpointSpec{
 		Tag:                 "awg-" + SanitizeName(name),

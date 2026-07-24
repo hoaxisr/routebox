@@ -25,7 +25,7 @@ type AwgServerSpec struct {
 
 // obfKeyOrder fixes the emit order so the rendered map is deterministic (a stable
 // block => the change-gate in SyncAwgEndpointActive is a true no-op when unchanged).
-var obfKeyOrder = []string{"jc", "jmin", "jmax", "s1", "s2", "s3", "s4", "h1", "h2", "h3", "h4", "content_padding_addition", "rekey_after_time"}
+var obfKeyOrder = []string{"jc", "jmin", "jmax", "s1", "s2", "s3", "s4", "h1", "h2", "h3", "h4", "content_padding_addition", "rekey_after_time", "rekey_timeout", "reject_after_time", "keepalive_timeout", "max_handshake_attempts"}
 
 // BuildAwgServerEndpoint renders the sing-box endpoints[] element for the fork's
 // AWG server: type "awg", listen_port set, peers without address/port. Zero/empty
