@@ -44,6 +44,7 @@ type AwgSettings struct {
 	Backend          string   `toml:"backend" json:"backend"`                     // "kernel"|"singbox"; "" => singbox (kernel is opt-in only, never the auto-default)
 	ServerHost       string   `toml:"server_host" json:"server_host"`             // client-facing address of the AWG server (host/IP clients connect to); falls back to Server.PublicHost; router LAN/WAN IP typically
 	HeaderProtection bool     `toml:"header_protection" json:"header_protection"` // AWG3 additional header protection toggle
+	IPv6Broker       bool     `toml:"ipv6_broker" json:"ipv6_broker"`             // dual-stack IPv6 broker; gated by egress preflight
 	Configured       bool     `toml:"configured" json:"configured"`               // sticky: set true after first successful Enable; drives wizard-vs-steady UI (never reset on Disable)
 }
 
@@ -227,7 +228,7 @@ func Default() Settings {
 		},
 		Server:  ServerSettings{Mode: "router", PublicHost: "", PublicPort: 0},
 		Updates: UpdatesSettings{AutoCheck: true},
-		Awg:     AwgSettings{Enabled: false, Interface: "awg-rb0", Subnet: "10.10.0.0/24", ListenPort: 51820, MTU: 1420, DNS: []string{"1.1.1.1"}, ObfPreset: "off"},
+		Awg:     AwgSettings{Enabled: false, Interface: "awg-rb0", Subnet: "10.10.0.0/24", ListenPort: 51820, MTU: 1420, DNS: []string{"1.1.1.1"}, ObfPreset: "off", IPv6Broker: true},
 	}
 }
 
@@ -717,6 +718,12 @@ func (m *Manager) Update(updates map[string]interface{}) error {
 				return fmt.Errorf("setting %s: value must be a boolean", key)
 			}
 			m.settings.Awg.HeaderProtection = v
+		case "awg.ipv6_broker":
+			v, ok := value.(bool)
+			if !ok {
+				return fmt.Errorf("setting %s: value must be a boolean", key)
+			}
+			m.settings.Awg.IPv6Broker = v
 		case "awg.subnet":
 			v, ok := value.(string)
 			if !ok {

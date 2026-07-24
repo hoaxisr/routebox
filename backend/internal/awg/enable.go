@@ -56,6 +56,7 @@ type EnableInput struct {
 	// HeaderProtection toggles the AWG3 header-protection key (singbox backend,
 	// awg3+ binary only). Obf carries the awg3 CPA/RAT strings.
 	HeaderProtection bool `json:"header_protection"`
+	IPv6Broker       bool `json:"ipv6_broker"`
 }
 
 // beginEnable claims the single-flight slot. Returns false if an orchestrator is
