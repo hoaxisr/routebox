@@ -1,5 +1,7 @@
 package traffic
 
+import "strings"
+
 // userSchema is applied by OpenStore alongside the connection-level schema.
 const userSchema = `
 CREATE TABLE IF NOT EXISTS user_traffic (
@@ -72,5 +74,21 @@ func (s *Store) PruneUserOlderThan(cutoffTs int64) error {
 // ResetUsers clears all per-user traffic history (schema preserved).
 func (s *Store) ResetUsers() error {
 	_, err := s.db.Exec(`DELETE FROM user_traffic`)
+	return err
+}
+
+// DeleteUsers removes all traffic history for the given user names (the Breakdown
+// series a deleted client leaves behind). No-op on an empty list.
+func (s *Store) DeleteUsers(names []string) error {
+	if len(names) == 0 {
+		return nil
+	}
+	ph := make([]string, len(names))
+	args := make([]interface{}, len(names))
+	for i, n := range names {
+		ph[i] = "?"
+		args[i] = n
+	}
+	_, err := s.db.Exec(`DELETE FROM user_traffic WHERE user IN (`+strings.Join(ph, ",")+`)`, args...)
 	return err
 }

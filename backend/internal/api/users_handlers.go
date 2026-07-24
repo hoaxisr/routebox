@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"log"
 	"net/http"
 
 	"github.com/go-chi/chi/v5"
@@ -206,6 +207,15 @@ func (h *Handler) DeleteUser(w http.ResponseWriter, r *http.Request) {
 			}
 			writeError(w, http.StatusInternalServerError, err.Error())
 			return
+		}
+	}
+	// #19: drop the deleted client's per-user Breakdown history, keyed by the same
+	// names GetUserTraffic sums over (Name + binding names). Best-effort — an orphaned
+	// series must not fail the delete. ponytail: purged on delete-intent, not on Apply;
+	// a delete-then-discard loses the stats too, which is acceptable for a deleted client.
+	if h.traffic != nil {
+		if err := h.traffic.DeleteUsers(userTrafficNames(u)); err != nil {
+			log.Printf("api: purge user traffic for %q: %v", u.Name, err)
 		}
 	}
 	writeSuccess(w, map[string]string{"message": "user removed from draft (apply to finalize)"})
