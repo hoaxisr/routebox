@@ -4,6 +4,24 @@ All notable changes to RouteBox are documented here.
 
 ## [Unreleased]
 
+## [0.28.0] - 2026-07-24
+
+### Features
+
+- **AWG3 device-timers are now configurable in the obfuscation form.** The four device-side timers
+  — `rekey_timeout`, `reject_after_time`, `keepalive_timeout`, `max_handshake_attempts` — can be set
+  per-endpoint alongside the existing AWG3 obfuscation fields. They are validated as UintRange
+  strings, mapped through the `settings → obfuscation` pipeline, written into the server AWG endpoint,
+  and included in client exports (both JSON and `.conf`).
+
+### Fixes
+
+- **The sing-box AWG server no longer sits in perpetual "config dirty".** `awgDesired` now maps all
+  four device-timers, so a running config enabled with timers compares clean against the desired
+  config instead of reporting an eternal pending change.
+- Both the kernel and sing-box paths now strip the AWG3 device-timers consistently on
+  Enable/Rehydrate, matching how the CPA/RAT obfuscation fields are handled.
+
 ## [0.27.1] - 2026-07-21
 
 ### Fixes
