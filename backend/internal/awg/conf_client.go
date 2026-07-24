@@ -21,6 +21,15 @@ type Obfuscation struct {
 	RekeyTimeout, RejectAfterTime, KeepaliveTimeout, MaxHandshakeAttempts string
 }
 
+// stripAwg3 zeroes the six sing-box-only AWG3 obfuscation fields (CPA/RAT plus the
+// four device-timers). The kernel awg-quick path must never emit these into a
+// server/client conf (a pre-awg3 awg-quick hard-fails on unknown [Interface] keys),
+// and a difference in them must not flag ConfigDirty on the kernel backend.
+func (o *Obfuscation) stripAwg3() {
+	o.CPA, o.RAT = "", ""
+	o.RekeyTimeout, o.RejectAfterTime, o.KeepaliveTimeout, o.MaxHandshakeAttempts = "", "", "", ""
+}
+
 // ClientConf is the fully-assembled input to BuildClient. Pure — no FS/settings
 // reads inside the builder; the handler assembles this.
 type ClientConf struct {

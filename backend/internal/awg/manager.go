@@ -224,8 +224,7 @@ func (m *Manager) Rehydrate(ctx context.Context, in EnableInput) {
 	// RenderClientConf/RenderServer would emit unknown [Interface] keys that a
 	// pre-awg3 awg-quick hard-fails on. Strip them here exactly as kernel-Enable
 	// does (RehydrateSingbox deliberately KEEPS them).
-	obf.CPA, obf.RAT = "", ""
-	obf.RekeyTimeout, obf.RejectAfterTime, obf.KeepaliveTimeout, obf.MaxHandshakeAttempts = "", "", "", ""
+	obf.stripAwg3()
 	mtu, _ := ValidateMTU(in.MTU) // non-critical for render; 0 -> omitted
 	dns, _ := ValidateDNS(in.DNS) // RenderClientConf falls back to 1.1.1.1 if empty
 
