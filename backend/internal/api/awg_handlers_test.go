@@ -563,6 +563,13 @@ func TestAwgEnableInputFromSettings(t *testing.T) {
 	}
 }
 
+func TestAwgEnableInputMapsIPv6Broker(t *testing.T) {
+	in := awgEnableInput(settings.AwgSettings{IPv6Broker: true})
+	if !in.IPv6Broker {
+		t.Fatal("IPv6Broker not mapped from settings")
+	}
+}
+
 // The wg-quick .conf now carries the awg3 fields (HeaderProtectionKey/CPA/RAT),
 // so a singbox backend serves it regardless of the header-protection toggle —
 // 200 in both states, no 409 gate. Kernel is unaffected (see next test).
