@@ -147,19 +147,38 @@ func (m *Manager) renderServerSpec() *config.AwgServerSpec {
 	enabled := m.enabled
 	priv, ip, subnet, port, mtu, obf := m.serverPriv, m.serverIP, m.subnet, m.listenPort, m.mtu, m.obf
 	headerKey, s3fn := m.headerKey, m.supports3Fn
+	broker, ula := m.v6Active, m.ulaPrefix
 	m.mu.Unlock()
 	if !enabled || priv == "" {
 		return nil
 	}
 	supports3 := s3fn == nil || s3fn()
+	// Server v6 CIDR: ParseAddr (not Must*) so a bad stored value degrades to
+	// no-v6 instead of a render panic.
+	serverV6CIDR := ""
+	if broker {
+		if sip, err := netip.ParseAddr(ip); err == nil {
+			if s6, err := MapV4ToV6(ula, sip); err == nil {
+				serverV6CIDR = fmt.Sprintf("%s/%d", s6, ula.Bits())
+			}
+		}
+	}
 	now := m.store.now()
 	var peers []config.AwgServerPeer
 	for _, p := range m.store.List() {
 		if p.ExpiresAt != 0 && now >= p.ExpiresAt {
 			continue
 		}
+		v6 := ""
+		if broker {
+			if a, err := netip.ParsePrefix(p.Address); err == nil {
+				if m6, err := MapV4ToV6(ula, a.Addr()); err == nil {
+					v6 = m6.String() + "/128"
+				}
+			}
+		}
 		peers = append(peers, config.AwgServerPeer{
-			PublicKey: p.PublicKey, PresharedKey: p.PresharedKey, AllowedIP: p.Address,
+			PublicKey: p.PublicKey, PresharedKey: p.PresharedKey, AllowedIP: p.Address, AllowedIP6: v6,
 		})
 	}
 	obfMap := map[string]interface{}{
@@ -194,6 +213,7 @@ func (m *Manager) renderServerSpec() *config.AwgServerSpec {
 	return &config.AwgServerSpec{
 		PrivateKey:          priv,
 		Address:             ip + maskSuffix(subnet),
+		Address6:            serverV6CIDR,
 		ListenPort:          port,
 		MTU:                 mtu,
 		HeaderProtectionKey: headerKey,
@@ -325,11 +345,43 @@ func (m *Manager) enableSingbox(ctx context.Context, in EnableInput) error {
 			return m.enableFail(err.Error())
 		}
 	}
+
+	// IPv6 broker: MTU floor, egress preflight, once-generated ULA prefix.
+	v6Active := false
+	var ula netip.Prefix
+	if in.IPv6Broker {
+		if mtu < 1280 {
+			return m.enableFail(fmt.Sprintf("ipv6 broker requires mtu >= 1280 (got %d)", mtu))
+		}
+		probe := m.probeFn
+		if probe == nil {
+			probe = defaultEgressProbe().ok
+		}
+		if probe() {
+			p := m.store.ULAPrefix()
+			if p == "" {
+				gen, err := GenerateULAPrefix()
+				if err != nil {
+					return m.enableFail(err.Error())
+				}
+				p = gen.String()
+				if err := m.store.SetULAPrefix(p); err != nil {
+					return m.enableFail(err.Error())
+				}
+			}
+			ula, _ = netip.ParsePrefix(p)
+			v6Active = true
+		} else {
+			log.Printf("awg: ipv6 broker requested but no working IPv6 egress — serving IPv4 only")
+		}
+	}
+
 	m.mu.Lock()
 	m.subnet, m.serverIP, m.listenPort, m.mtu, m.obf, m.serverPriv = subnet, serverIP, port, mtu, obf, priv
 	m.obfPreset = in.ObfPreset
 	m.headerKey = hpk // "" when header protection is off
 	m.headerProtection = in.HeaderProtection
+	m.ipv6Broker, m.v6Active, m.ulaPrefix = in.IPv6Broker, v6Active, ula
 	// renderServerSpec gates on m.enabled, so it MUST be true BEFORE the sync
 	// below or the spec renders nil and Enable writes nothing. On sync failure
 	// enableFail rolls it back to false (so a later sweep stays a no-op).

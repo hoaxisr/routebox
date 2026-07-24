@@ -87,6 +87,16 @@ type Manager struct {
 	headerKey        string
 	headerProtection bool
 
+	// IPv6-broker wiring (dual-stack NAT-free AWG): ipv6Broker is the operator's
+	// desire (from settings); v6Active is desire AND a passed egress preflight AND
+	// mtu>=1280; ulaPrefix is the persisted /64 used to derive every v6 address
+	// (zero when v6Active is false). probeFn is the injectable egress preflight;
+	// nil defaults to defaultEgressProbe().ok (tests inject a fake).
+	ipv6Broker bool
+	v6Active   bool
+	ulaPrefix  netip.Prefix
+	probeFn    func() bool
+
 	addMu sync.Mutex // serialises the whole add-peer critical section
 
 	mu       sync.Mutex  // guards enabled/lastErr/phase/inFlight (distinct from addMu)
