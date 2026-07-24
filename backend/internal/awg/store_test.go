@@ -158,3 +158,21 @@ func TestStoreRoundTripsExpiresAt(t *testing.T) {
 		t.Fatalf("ExpiresAt not round-tripped: %#v ok=%v", got, ok)
 	}
 }
+
+func TestStoreULAPrefixRoundTrip(t *testing.T) {
+	dir := t.TempDir()
+	s := NewStore(filepath.Join(dir, "peers.toml"))
+	if s.ULAPrefix() != "" {
+		t.Fatal("fresh store should have no ULA prefix")
+	}
+	if err := s.SetULAPrefix("fd00:abcd:ef01::/64"); err != nil {
+		t.Fatal(err)
+	}
+	s2 := NewStore(filepath.Join(dir, "peers.toml"))
+	if err := s2.Load(); err != nil {
+		t.Fatal(err)
+	}
+	if got := s2.ULAPrefix(); got != "fd00:abcd:ef01::/64" {
+		t.Fatalf("reloaded prefix = %q", got)
+	}
+}
