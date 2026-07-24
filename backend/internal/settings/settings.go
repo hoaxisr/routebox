@@ -64,6 +64,11 @@ type AwgObf struct {
 	// AWG3 params: string form (digits or "lo-hi" range), validated by the awg package.
 	ContentPaddingAddition string `toml:"content_padding_addition" json:"content_padding_addition"`
 	RekeyAfterTime         string `toml:"rekey_after_time" json:"rekey_after_time"`
+	// AWG3 device-таймеры: строка (число или "lo-hi"-диапазон), валидируется awg-пакетом.
+	RekeyTimeout         string `toml:"rekey_timeout" json:"rekey_timeout"`
+	RejectAfterTime      string `toml:"reject_after_time" json:"reject_after_time"`
+	KeepaliveTimeout     string `toml:"keepalive_timeout" json:"keepalive_timeout"`
+	MaxHandshakeAttempts string `toml:"max_handshake_attempts" json:"max_handshake_attempts"`
 }
 
 // UpdatesSettings configures binary update checks
