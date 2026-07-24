@@ -13,7 +13,8 @@ import (
 func awg3EnableInput() EnableInput {
 	in := singboxEnableInput()
 	in.HeaderProtection = true
-	in.Obf = Obfuscation{S1: 12, S2: 12, S3: 12, S4: 12, CPA: "10-20", RAT: "120"}
+	in.Obf = Obfuscation{S1: 12, S2: 12, S3: 12, S4: 12, CPA: "10-20", RAT: "120",
+		RekeyTimeout: "5", RejectAfterTime: "180", KeepaliveTimeout: "25", MaxHandshakeAttempts: "18"}
 	return in
 }
 
@@ -38,6 +39,13 @@ func TestSingbox_AWG3_EmitsHPKWhenEnabled(t *testing.T) {
 	}
 	if got := fs.lastSpec.Obf["rekey_after_time"]; got != "120" {
 		t.Fatalf("rekey_after_time = %v, want 120", got)
+	}
+	for k, want := range map[string]string{
+		"rekey_timeout": "5", "reject_after_time": "180", "keepalive_timeout": "25", "max_handshake_attempts": "18",
+	} {
+		if got := fs.lastSpec.Obf[k]; got != want {
+			t.Fatalf("%s = %v, want %s", k, got, want)
+		}
 	}
 }
 
@@ -79,18 +87,19 @@ func TestSingbox_AWG3_FieldsOmittedWhenUnsupported(t *testing.T) {
 	m.SetSupportsAWG3(func() bool { return false })
 
 	in := singboxEnableInput() // header protection OFF, but CPA/RAT configured
-	in.Obf = Obfuscation{S1: 8, S2: 8, S3: 8, S4: 8, CPA: "10-20", RAT: "120"}
+	in.Obf = Obfuscation{S1: 8, S2: 8, S3: 8, S4: 8, CPA: "10-20", RAT: "120",
+		RekeyTimeout: "5", RejectAfterTime: "180", KeepaliveTimeout: "25", MaxHandshakeAttempts: "18"}
 	if err := m.Enable(context.Background(), in); err != nil {
 		t.Fatal(err)
 	}
 	if fs.lastSpec == nil {
 		t.Fatal("enable must sync a non-nil server spec")
 	}
-	if _, ok := fs.lastSpec.Obf["content_padding_addition"]; ok {
-		t.Fatal("content_padding_addition must be omitted on a pre-awg3 binary")
-	}
-	if _, ok := fs.lastSpec.Obf["rekey_after_time"]; ok {
-		t.Fatal("rekey_after_time must be omitted on a pre-awg3 binary")
+	for _, k := range []string{"content_padding_addition", "rekey_after_time",
+		"rekey_timeout", "reject_after_time", "keepalive_timeout", "max_handshake_attempts"} {
+		if _, ok := fs.lastSpec.Obf[k]; ok {
+			t.Fatalf("%s must be omitted on a pre-awg3 binary", k)
+		}
 	}
 	if fs.lastSpec.HeaderProtectionKey != "" {
 		t.Fatal("header_protection_key must be omitted on a pre-awg3 binary")
@@ -125,6 +134,13 @@ func TestSingbox_HPK_ExportMatchesServer(t *testing.T) {
 	if got := ep["rekey_after_time"]; got != "120" {
 		t.Fatalf("client export rekey_after_time = %v, want 120", got)
 	}
+	for k, want := range map[string]string{
+		"rekey_timeout": "5", "reject_after_time": "180", "keepalive_timeout": "25", "max_handshake_attempts": "18",
+	} {
+		if got := ep[k]; got != want {
+			t.Fatalf("client export %s = %v, want %s", k, got, want)
+		}
+	}
 }
 
 // ClientEndpoint on a pre-awg3 binary must strip all three fields too (the
@@ -133,7 +149,8 @@ func TestSingbox_ClientEndpointOmitsAWG3WhenUnsupported(t *testing.T) {
 	m, _, _ := newSingboxMgr(t)
 	m.SetSupportsAWG3(func() bool { return false })
 	in := singboxEnableInput()
-	in.Obf = Obfuscation{S1: 8, S2: 8, S3: 8, S4: 8, CPA: "10-20", RAT: "120"}
+	in.Obf = Obfuscation{S1: 8, S2: 8, S3: 8, S4: 8, CPA: "10-20", RAT: "120",
+		RekeyTimeout: "5", RejectAfterTime: "180", KeepaliveTimeout: "25", MaxHandshakeAttempts: "18"}
 	if err := m.Enable(context.Background(), in); err != nil {
 		t.Fatal(err)
 	}
@@ -145,7 +162,8 @@ func TestSingbox_ClientEndpointOmitsAWG3WhenUnsupported(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	for _, k := range []string{"header_protection_key", "content_padding_addition", "rekey_after_time"} {
+	for _, k := range []string{"header_protection_key", "content_padding_addition", "rekey_after_time",
+		"rekey_timeout", "reject_after_time", "keepalive_timeout", "max_handshake_attempts"} {
 		if _, ok := ep[k]; ok {
 			t.Fatalf("client export must omit %q on a pre-awg3 binary", k)
 		}
