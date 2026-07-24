@@ -222,12 +222,41 @@ func TestConfigDirtyKernelIgnoresSingboxObf(t *testing.T) {
 	}
 	desired.Obf.CPA = "10-20" // singbox-only fields changed in saved settings
 	desired.Obf.RAT = "120"
+	// AWG3 device-timers are singbox-only too (never rendered into the awg-quick
+	// conf); a difference there must NOT flag ConfigDirty on the kernel path.
+	desired.Obf.RekeyTimeout = "5"
+	desired.Obf.RejectAfterTime = "180"
+	desired.Obf.KeepaliveTimeout = "25"
+	desired.Obf.MaxHandshakeAttempts = "18"
 	if m.Status(context.Background()).ConfigDirty {
-		t.Fatal("kernel ConfigDirty must ignore CPA/RAT (never rendered into awg-quick conf)")
+		t.Fatal("kernel ConfigDirty must ignore CPA/RAT and AWG3 device-timers (never rendered into awg-quick conf)")
 	}
 	desired.Obf.H1 = "12345" // a kernel-relevant obf field still flags dirty
 	if !m.Status(context.Background()).ConfigDirty {
 		t.Fatal("kernel-relevant obf change must still flag ConfigDirty")
+	}
+}
+
+// The kernel awg-quick path must NEVER emit AWG3 obf into the rendered server
+// conf: CPA/RAT and the four device-timers are singbox-only. A pre-awg3 awg-quick
+// hard-fails on unknown [Interface] keys, so Enable must strip them before render.
+func TestEnableKernelStripsAwg3Obf(t *testing.T) {
+	f := newFakeRunner()
+	m := newEnableManager(t, f)
+	f.outputs["awg show awg-rb0"] = "interface: awg-rb0\n  listening port: 51820\n"
+	f.outputs["iptables -t nat -S"] = "-N RBOX-AWG-NAT\n"
+	in := goodEnableInput()
+	in.Obf = Obfuscation{CPA: "200-400", RAT: "120",
+		RekeyTimeout: "5", RejectAfterTime: "180", KeepaliveTimeout: "25", MaxHandshakeAttempts: "18"}
+	if err := m.Enable(context.Background(), in); err != nil {
+		t.Fatalf("Enable: %v", err)
+	}
+	data, _ := os.ReadFile(m.confPath)
+	for _, absent := range []string{"ContentPaddingAddition", "RekeyAfterTime",
+		"RekeyTimeout", "RejectAfterTime", "KeepaliveTimeout", "MaxHandshakeAttempts"} {
+		if strings.Contains(string(data), absent) {
+			t.Fatalf("kernel server conf must NOT contain singbox-only awg3 field %q:\n%s", absent, data)
+		}
 	}
 }
 
