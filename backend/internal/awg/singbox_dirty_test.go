@@ -60,6 +60,40 @@ func TestStatusSingbox_ConfigDirtyOnCPAChange(t *testing.T) {
 	}
 }
 
+// The 4 AWG3 device-timers (RekeyTimeout/RejectAfterTime/KeepaliveTimeout/
+// MaxHandshakeAttempts) ride in the Obf struct compare exactly like CPA/RAT. If
+// the desired() mapper carries them, the SAME saved settings stay clean; if a
+// mapper drops them (the awgDesired bug), the running m.obf keeps them while
+// desired().Obf zeroes them → the Obf compare mismatches and ConfigDirty is
+// eternally true. This guards both halves.
+func TestStatusSingbox_ConfigDirtyDeviceTimers(t *testing.T) {
+	m, _, _ := newSingboxMgr(t)
+	desired := singboxEnableInput()
+	// Canonical UintRange strings so validateObf leaves them unchanged (raw == running).
+	desired.Obf.RekeyTimeout = "5"
+	desired.Obf.RejectAfterTime = "180"
+	desired.Obf.KeepaliveTimeout = "25"
+	desired.Obf.MaxHandshakeAttempts = "18"
+	m.SetDesired(func() EnableInput { return desired })
+	if err := m.Enable(context.Background(), desired); err != nil {
+		t.Fatal(err)
+	}
+	// desired() carries the SAME timers the running config was enabled with:
+	// no eternal-dirty (the fixed awgDesired behaviour).
+	if m.Status(context.Background()).ConfigDirty {
+		t.Fatal("timers present on both running and desired must read clean, not eternal-dirty")
+	}
+	// Simulate a desired-mapper that DROPS the timers (the awgDesired bug): the
+	// Obf compare must now flag dirty — proving the timers participate in it.
+	stale := desired
+	stale.Obf.RekeyTimeout, stale.Obf.RejectAfterTime = "", ""
+	stale.Obf.KeepaliveTimeout, stale.Obf.MaxHandshakeAttempts = "", ""
+	m.SetDesired(func() EnableInput { return stale })
+	if !m.Status(context.Background()).ConfigDirty {
+		t.Fatal("a desired-mapper dropping device-timers must read dirty — timers ride in the Obf compare")
+	}
+}
+
 // A restart (RehydrateSingbox from the SAME saved settings desired() returns)
 // must come up clean — including when header protection is on. A false-dirty
 // here would show a phantom Apply banner after every RouteBox restart.
