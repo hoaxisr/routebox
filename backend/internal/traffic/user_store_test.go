@@ -15,6 +15,35 @@ func openTestStore(t *testing.T) *Store {
 	return s
 }
 
+func TestUserStore_DeleteUsers(t *testing.T) {
+	s := openTestStore(t)
+	for _, u := range []string{"alice", "alice-sub", "bob"} {
+		if err := s.UpsertUser(60, u, 100, 200); err != nil {
+			t.Fatal(err)
+		}
+	}
+	// Delete alice under both her names; bob must survive.
+	if err := s.DeleteUsers([]string{"alice", "alice-sub"}); err != nil {
+		t.Fatal(err)
+	}
+	for _, gone := range []string{"alice", "alice-sub"} {
+		up, dn, err := s.QueryUserTotals(0, 1<<62, gone)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if up != 0 || dn != 0 {
+			t.Errorf("%s not purged: up=%d dn=%d", gone, up, dn)
+		}
+	}
+	if up, _, _ := s.QueryUserTotals(0, 1<<62, "bob"); up != 100 {
+		t.Errorf("bob wrongly purged: up=%d", up)
+	}
+	// Empty list is a no-op, not an error.
+	if err := s.DeleteUsers(nil); err != nil {
+		t.Fatalf("empty DeleteUsers should be a no-op: %v", err)
+	}
+}
+
 func TestUserStore_TotalsAndHistory(t *testing.T) {
 	s := openTestStore(t)
 	if err := s.UpsertUser(60, "alice", 100, 200); err != nil {
