@@ -6,7 +6,6 @@ import (
 	"net/http"
 	"os"
 	"runtime"
-	"strconv"
 	"strings"
 	"sync"
 	"time"
@@ -147,36 +146,4 @@ func (c *Checker) fetch(t Target) (ReleaseInfo, error) {
 func NormalizeVersion(v string) string {
 	v = strings.TrimSpace(strings.TrimPrefix(v, "v"))
 	return strings.TrimSuffix(v, "-awg2.0")
-}
-
-// CompareVersions compares two semver-ish versions after normalization.
-// Returns -1, 0 or 1. Missing segments count as 0 ("0.17" == "0.17.0").
-func CompareVersions(a, b string) int {
-	sep := func(r rune) bool { return r == '.' || r == '-' }
-	as := strings.FieldsFunc(NormalizeVersion(a), sep)
-	bs := strings.FieldsFunc(NormalizeVersion(b), sep)
-	for i := 0; i < len(as) || i < len(bs); i++ {
-		ai, bi := segmentNum(as, i), segmentNum(bs, i)
-		if ai < bi {
-			return -1
-		}
-		if ai > bi {
-			return 1
-		}
-	}
-	return 0
-}
-
-// segmentNum returns the leading numeric value of segment i ("9-beta" → 9).
-func segmentNum(parts []string, i int) int {
-	if i >= len(parts) {
-		return 0
-	}
-	s := parts[i]
-	j := 0
-	for j < len(s) && s[j] >= '0' && s[j] <= '9' {
-		j++
-	}
-	n, _ := strconv.Atoi(s[:j])
-	return n
 }

@@ -74,8 +74,11 @@ func (h *Handler) buildTargetStatus(t updates.Target) targetStatus {
 			pa := cached.Release.PublishedAt
 			ts.PublishedAt = &pa
 		}
-		ts.UpdateAvailable = ts.Current != "" &&
-			updates.CompareVersions(cached.Release.Version, ts.Current) > 0
+		// GitHub /releases/latest is authoritative for "newest"; the fork's
+		// tags (alpha.48-awg3-xhttp-mieru-4 vs beta.1-awgm.1) aren't
+		// numerically orderable, so compare identity, not magnitude.
+		ts.UpdateAvailable = ts.Current != "" && ts.Latest != "" &&
+			updates.NormalizeVersion(ts.Current) != updates.NormalizeVersion(ts.Latest)
 	}
 	return ts
 }
@@ -152,7 +155,7 @@ func (h *Handler) ApplyUpdate(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusInternalServerError, fmt.Sprintf("Cannot determine current version: %v", err))
 		return
 	}
-	if updates.CompareVersions(rel.Version, current) <= 0 {
+	if updates.NormalizeVersion(rel.Version) == updates.NormalizeVersion(current) {
 		writeError(w, http.StatusBadRequest, fmt.Sprintf("%s is already up to date (%s)", target.Name, current))
 		return
 	}
