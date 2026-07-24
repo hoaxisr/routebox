@@ -18,9 +18,12 @@
 		i3: string;
 		i4: string;
 		i5: string;
+		/** Lock the server-matched params (J/S/H) read-only; only I1–I5 stay editable. */
+		serverLocked?: boolean;
 	}
 
 	let {
+		serverLocked = false,
 		jc = $bindable(),
 		jmin = $bindable(),
 		jmax = $bindable(),
@@ -80,46 +83,46 @@
 
 	<!-- Init Packet Params (S1-S4) -->
 	<div class="bg-[var(--ctp-surface0)] rounded-lg p-4">
-		<h3 class="text-sm font-medium text-[var(--ctp-subtext1)] mb-3">{$t('endpoints.obfuscation.initPacketParams')}</h3>
+		<h3 class="text-sm font-medium text-[var(--ctp-subtext1)] mb-3 flex items-center gap-2">{$t('endpoints.obfuscation.initPacketParams')}{#if serverLocked}<span class="lock-badge">🔒 {$t('endpoints.obfuscation.readonly')}</span>{/if}</h3>
 		<div class="grid grid-cols-4 gap-4">
 			<div>
 				<label for="s1" class="block text-xs text-[var(--ctp-overlay0)] mb-1">S1</label>
-				<input id="s1" type="number" bind:value={s1} min="0" class="w-full px-3 py-2 bg-[var(--ctp-mantle)] border border-[var(--ctp-surface2)] rounded-lg text-[var(--ctp-text)] focus:outline-none focus:ring-2 focus:ring-[var(--ctp-primary)]" />
+				<input id="s1" type="number" bind:value={s1} min="0" readonly={serverLocked} class="w-full px-3 py-2 bg-[var(--ctp-mantle)] border border-[var(--ctp-surface2)] rounded-lg text-[var(--ctp-text)] focus:outline-none focus:ring-2 focus:ring-[var(--ctp-primary)] read-only:opacity-70 read-only:cursor-not-allowed" />
 			</div>
 			<div>
 				<label for="s2" class="block text-xs text-[var(--ctp-overlay0)] mb-1">S2</label>
-				<input id="s2" type="number" bind:value={s2} min="0" class="w-full px-3 py-2 bg-[var(--ctp-mantle)] border border-[var(--ctp-surface2)] rounded-lg text-[var(--ctp-text)] focus:outline-none focus:ring-2 focus:ring-[var(--ctp-primary)]" />
+				<input id="s2" type="number" bind:value={s2} min="0" readonly={serverLocked} class="w-full px-3 py-2 bg-[var(--ctp-mantle)] border border-[var(--ctp-surface2)] rounded-lg text-[var(--ctp-text)] focus:outline-none focus:ring-2 focus:ring-[var(--ctp-primary)] read-only:opacity-70 read-only:cursor-not-allowed" />
 			</div>
 			<div>
 				<label for="s3" class="block text-xs text-[var(--ctp-overlay0)] mb-1">S3</label>
-				<input id="s3" type="number" bind:value={s3} min="0" class="w-full px-3 py-2 bg-[var(--ctp-mantle)] border border-[var(--ctp-surface2)] rounded-lg text-[var(--ctp-text)] focus:outline-none focus:ring-2 focus:ring-[var(--ctp-primary)]" />
+				<input id="s3" type="number" bind:value={s3} min="0" readonly={serverLocked} class="w-full px-3 py-2 bg-[var(--ctp-mantle)] border border-[var(--ctp-surface2)] rounded-lg text-[var(--ctp-text)] focus:outline-none focus:ring-2 focus:ring-[var(--ctp-primary)] read-only:opacity-70 read-only:cursor-not-allowed" />
 			</div>
 			<div>
 				<label for="s4" class="block text-xs text-[var(--ctp-overlay0)] mb-1">S4</label>
-				<input id="s4" type="number" bind:value={s4} min="0" class="w-full px-3 py-2 bg-[var(--ctp-mantle)] border border-[var(--ctp-surface2)] rounded-lg text-[var(--ctp-text)] focus:outline-none focus:ring-2 focus:ring-[var(--ctp-primary)]" />
+				<input id="s4" type="number" bind:value={s4} min="0" readonly={serverLocked} class="w-full px-3 py-2 bg-[var(--ctp-mantle)] border border-[var(--ctp-surface2)] rounded-lg text-[var(--ctp-text)] focus:outline-none focus:ring-2 focus:ring-[var(--ctp-primary)] read-only:opacity-70 read-only:cursor-not-allowed" />
 			</div>
 		</div>
 	</div>
 
 	<!-- Header Params (H1-H4) -->
 	<div class="bg-[var(--ctp-surface0)] rounded-lg p-4">
-		<h3 class="text-sm font-medium text-[var(--ctp-subtext1)] mb-3">{$t('endpoints.obfuscation.headerParams')}</h3>
+		<h3 class="text-sm font-medium text-[var(--ctp-subtext1)] mb-3 flex items-center gap-2">{$t('endpoints.obfuscation.headerParams')}{#if serverLocked}<span class="lock-badge">🔒 {$t('endpoints.obfuscation.readonly')}</span>{/if}</h3>
 		<div class="grid grid-cols-4 gap-4">
 			<div>
 				<label for="h1" class="block text-xs text-[var(--ctp-overlay0)] mb-1">H1</label>
-				<input id="h1" type="text" bind:value={h1} placeholder="0" class="w-full px-3 py-2 bg-[var(--ctp-mantle)] border border-[var(--ctp-surface2)] rounded-lg text-[var(--ctp-text)] placeholder-[var(--ctp-overlay0)] focus:outline-none focus:ring-2 focus:ring-[var(--ctp-primary)] font-mono text-sm" />
+				<input id="h1" type="text" bind:value={h1} placeholder="0" readonly={serverLocked} class="w-full px-3 py-2 bg-[var(--ctp-mantle)] border border-[var(--ctp-surface2)] rounded-lg text-[var(--ctp-text)] placeholder-[var(--ctp-overlay0)] focus:outline-none focus:ring-2 focus:ring-[var(--ctp-primary)] font-mono text-sm read-only:opacity-70 read-only:cursor-not-allowed" />
 			</div>
 			<div>
 				<label for="h2" class="block text-xs text-[var(--ctp-overlay0)] mb-1">H2</label>
-				<input id="h2" type="text" bind:value={h2} placeholder="0" class="w-full px-3 py-2 bg-[var(--ctp-mantle)] border border-[var(--ctp-surface2)] rounded-lg text-[var(--ctp-text)] placeholder-[var(--ctp-overlay0)] focus:outline-none focus:ring-2 focus:ring-[var(--ctp-primary)] font-mono text-sm" />
+				<input id="h2" type="text" bind:value={h2} placeholder="0" readonly={serverLocked} class="w-full px-3 py-2 bg-[var(--ctp-mantle)] border border-[var(--ctp-surface2)] rounded-lg text-[var(--ctp-text)] placeholder-[var(--ctp-overlay0)] focus:outline-none focus:ring-2 focus:ring-[var(--ctp-primary)] font-mono text-sm read-only:opacity-70 read-only:cursor-not-allowed" />
 			</div>
 			<div>
 				<label for="h3" class="block text-xs text-[var(--ctp-overlay0)] mb-1">H3</label>
-				<input id="h3" type="text" bind:value={h3} placeholder="0" class="w-full px-3 py-2 bg-[var(--ctp-mantle)] border border-[var(--ctp-surface2)] rounded-lg text-[var(--ctp-text)] placeholder-[var(--ctp-overlay0)] focus:outline-none focus:ring-2 focus:ring-[var(--ctp-primary)] font-mono text-sm" />
+				<input id="h3" type="text" bind:value={h3} placeholder="0" readonly={serverLocked} class="w-full px-3 py-2 bg-[var(--ctp-mantle)] border border-[var(--ctp-surface2)] rounded-lg text-[var(--ctp-text)] placeholder-[var(--ctp-overlay0)] focus:outline-none focus:ring-2 focus:ring-[var(--ctp-primary)] font-mono text-sm read-only:opacity-70 read-only:cursor-not-allowed" />
 			</div>
 			<div>
 				<label for="h4" class="block text-xs text-[var(--ctp-overlay0)] mb-1">H4</label>
-				<input id="h4" type="text" bind:value={h4} placeholder="0" class="w-full px-3 py-2 bg-[var(--ctp-mantle)] border border-[var(--ctp-surface2)] rounded-lg text-[var(--ctp-text)] placeholder-[var(--ctp-overlay0)] focus:outline-none focus:ring-2 focus:ring-[var(--ctp-primary)] font-mono text-sm" />
+				<input id="h4" type="text" bind:value={h4} placeholder="0" readonly={serverLocked} class="w-full px-3 py-2 bg-[var(--ctp-mantle)] border border-[var(--ctp-surface2)] rounded-lg text-[var(--ctp-text)] placeholder-[var(--ctp-overlay0)] focus:outline-none focus:ring-2 focus:ring-[var(--ctp-primary)] font-mono text-sm read-only:opacity-70 read-only:cursor-not-allowed" />
 			</div>
 		</div>
 	</div>
@@ -152,6 +155,19 @@
 	</div>
 
 	<p class="text-sm text-[var(--ctp-overlay0)]">
-		{$t('endpoints.obfuscation.hint')}
+		{serverLocked ? $t('endpoints.obfuscation.serverLocked') : $t('endpoints.obfuscation.hint')}
 	</p>
 </div>
+
+<style>
+	.lock-badge {
+		font-size: 0.65rem;
+		font-weight: 500;
+		color: var(--ctp-overlay0);
+		background: var(--ctp-surface1);
+		border-radius: 0.3rem;
+		padding: 0.05rem 0.4rem;
+		text-transform: none;
+		letter-spacing: 0;
+	}
+</style>

@@ -20,6 +20,8 @@
 	let settingsOpen = $state(false);
 
 	const mode = $derived(settings?.configured ? 'steady' : 'wizard');
+	// Form differs from saved settings — drives the Save button state + unsaved marker.
+	const formDirty = $derived(!!form && !!settings && JSON.stringify(form) !== JSON.stringify(settings));
 	const isSingbox = $derived((status?.backend ?? settings?.backend) === 'singbox');
 	const backendValue = $derived<'kernel' | 'singbox'>(isSingbox ? 'singbox' : 'kernel');
 
@@ -95,6 +97,14 @@
 
 	async function onSaveClick() {
 		if (await save()) notifications.success($t('awg.settingsSaved'));
+	}
+
+	// One action for the settings form: while the server runs, saving must also apply
+	// (re-render + restart) or the change stays inert until the drift banner is noticed.
+	// Stopped server → plain save; the Turn-on/Enable step brings it up (enable() saves first).
+	async function saveOrApply() {
+		if (status?.enabled) await apply();
+		else await onSaveClick();
 	}
 
 	function onResetClick() {
@@ -277,7 +287,7 @@
 			</button>
 			{#if settingsOpen}
 				<div class="disclosure-body">
-					<ServerSettingsForm bind:form saving={saving || enabling} {isSingbox} onSave={onSaveClick} onReset={onResetClick} />
+					<ServerSettingsForm bind:form saving={saving || enabling} {isSingbox} applied={status.enabled} dirty={formDirty} onSave={saveOrApply} onReset={onResetClick} />
 				</div>
 			{/if}
 		</div>
@@ -348,7 +358,7 @@
 						</div>
 					</div>
 					<p class="step-desc">{$t('awg.stepConfigureDesc')}</p>
-					<ServerSettingsForm bind:form saving={saving || enabling} {isSingbox} onSave={onSaveClick} onReset={onResetClick} />
+					<ServerSettingsForm bind:form saving={saving || enabling} {isSingbox} applied={status.enabled} dirty={formDirty} onSave={saveOrApply} onReset={onResetClick} />
 				</div>
 			</section>
 

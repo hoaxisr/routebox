@@ -16,17 +16,8 @@
 	let advOpen = $state(false);
 
 	function pick(name: string) {
-		// Presets don't carry the awg3 fields — preserve them across preset switches.
-		const prev = obf;
-		obf = {
-			...PRESETS[name](),
-			content_padding_addition: prev.content_padding_addition,
-			rekey_after_time: prev.rekey_after_time,
-			rekey_timeout: prev.rekey_timeout,
-			reject_after_time: prev.reject_after_time,
-			keepalive_timeout: prev.keepalive_timeout,
-			max_handshake_attempts: prev.max_handshake_attempts
-		};
+		// Presets now carry the awg3 fields too (off clears them), so apply verbatim.
+		obf = PRESETS[name]();
 		preset = name;
 	}
 
@@ -270,6 +261,7 @@
 		display: flex;
 		flex-direction: column;
 		gap: 0.25rem;
+		min-width: 0; /* let the grid track shrink; else long mono values overflow-clip */
 	}
 	.mini-field label {
 		font-size: 0.6875rem;
@@ -279,6 +271,9 @@
 		letter-spacing: 0.04em;
 	}
 	.mini-field input {
+		width: 100%;
+		min-width: 0;
+		box-sizing: border-box;
 		background: var(--ctp-mantle);
 		border: 1px solid var(--ctp-surface2);
 		border-radius: 0.375rem;
@@ -294,6 +289,12 @@
 	@media (max-width: 720px) {
 		.adv-grid {
 			grid-template-columns: repeat(2, 1fr);
+		}
+	}
+	/* Narrow phones: the CPA/RAT/timer grid carries long hints — stack it. */
+	@media (max-width: 480px) {
+		.adv-grid.two {
+			grid-template-columns: 1fr;
 		}
 	}
 </style>

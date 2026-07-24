@@ -513,6 +513,11 @@ export interface Endpoint {
 	header_protection_key?: string;
 	content_padding_addition?: string; // UintRange: "N" or "lo-hi"
 	rekey_after_time?: string;         // UintRange: "N" or "lo-hi" (seconds)
+	// AWG3 device timers: UintRange strings ("N" or "lo-hi"); seconds (max_handshake_attempts = count)
+	rekey_timeout?: string;
+	reject_after_time?: string;
+	keepalive_timeout?: string;
+	max_handshake_attempts?: string;
 	// Dialer options
 	detour?: string;
 	bind_interface?: string;

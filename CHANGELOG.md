@@ -4,6 +4,30 @@ All notable changes to RouteBox are documented here.
 
 ## [Unreleased]
 
+## [0.28.2] - 2026-07-24
+
+### Frontend
+
+- **Obfuscation presets now fill the AWG3 parameters too.** The `dns`/`web`/`stealth` presets
+  previously set only the classic J/S/H fields, leaving CPA, RAT and the four device-timers empty —
+  so a client created under a preset carried no AWG3 obfuscation. Presets now emit all six AWG3
+  fields as safe randomized ranges centred on the amneziawg-go defaults (`rekey_after < reject_after`
+  invariant guaranteed); `off` clears them.
+- **The active obfuscation preset is now visibly highlighted.** `.preset-btn.selected` had no style,
+  so every preset button looked identical and you couldn't tell which was chosen.
+- **Client endpoint form gained the missing AWG3 device-timers.** `rekey_timeout`,
+  `reject_after_time`, `keepalive_timeout` and `max_handshake_attempts` are now shown, saved, and
+  parsed on `.conf` import (round-trip with the server export is fixed).
+- **Server-matched AWG parameters are read-only in the client endpoint form.** S1–S4, H1–H4, the
+  header-protection key, content padding and the AWG3 timers must match the server, so they are now
+  imported and locked; only the client-side junk packets (Jc/Jmin/Jmax) and signatures (I1–I5) stay
+  editable.
+- **AWG server settings collapse Save/Apply into one action.** A single state-aware button —
+  *Save* when stopped, *Save & apply* when running — plus an unsaved-changes indicator, replaces the
+  disconnected bottom-Save / top-Apply pair.
+- **Fixed the AWG obfuscation advanced grid clipping on mobile.** Long monospace range values no
+  longer overflow their grid tracks; the CPA/RAT/timer grid stacks to one column on narrow screens.
+
 ## [0.28.1] - 2026-07-24
 
 ### Fixed

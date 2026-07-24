@@ -293,7 +293,9 @@
       "headerParams": "Header Parameters (H1-H4)",
       "initParams": "Init Parameters (I1-I5)",
       "awg3Params": "AWG 3.0 Parameters",
-      "hint": "These parameters should match your AmneziaWG server configuration. Leave at 0 or empty to disable obfuscation features."
+      "hint": "These parameters should match your AmneziaWG server configuration. Leave at 0 or empty to disable obfuscation features.",
+      "serverLocked": "S1–S4 and H1–H4 must match the server, so they are imported and read-only. Junk packets (Jc/Jmin/Jmax) and I1–I5 are client-side — edit those freely. Use Import to change the locked fields.",
+      "readonly": "read-only"
     },
     "placeholders": {
       "privateKey": "Base64-encoded private key",
@@ -1698,6 +1700,9 @@
     "initSizes": "Init packet junk sizes (S1–S4)",
     "magicHeaders": "Magic headers (H1–H4)",
     "save": "Save settings",
+    "saveAndApply": "Save & apply",
+    "unsavedChanges": "Unsaved changes",
+    "upToDate": "All changes saved",
     "saveExpiry": "Save",
     "neverExpiry": "Never",
     "settingsSaved": "Settings saved",
