@@ -21,7 +21,11 @@
 		obf = {
 			...PRESETS[name](),
 			content_padding_addition: prev.content_padding_addition,
-			rekey_after_time: prev.rekey_after_time
+			rekey_after_time: prev.rekey_after_time,
+			rekey_timeout: prev.rekey_timeout,
+			reject_after_time: prev.reject_after_time,
+			keepalive_timeout: prev.keepalive_timeout,
+			max_handshake_attempts: prev.max_handshake_attempts
 		};
 		preset = name;
 	}
@@ -116,6 +120,62 @@
 						}}
 					/>
 					<span class="mini-hint">{$t('awg.rekeyAfterTimeHint')}</span>
+				</div>
+				<div class="mini-field">
+					<label for="obf-rkt">{$t('awg.rekeyTimeout')}</label>
+					<input
+						id="obf-rkt"
+						type="text"
+						placeholder="5"
+						value={obf.rekey_timeout ?? ''}
+						oninput={(e) => {
+							obf.rekey_timeout = e.currentTarget.value;
+							markCustom();
+						}}
+					/>
+					<span class="mini-hint">{$t('awg.rekeyTimeoutHint')}</span>
+				</div>
+				<div class="mini-field">
+					<label for="obf-rjt">{$t('awg.rejectAfterTime')}</label>
+					<input
+						id="obf-rjt"
+						type="text"
+						placeholder="180"
+						value={obf.reject_after_time ?? ''}
+						oninput={(e) => {
+							obf.reject_after_time = e.currentTarget.value;
+							markCustom();
+						}}
+					/>
+					<span class="mini-hint">{$t('awg.rejectAfterTimeHint')}</span>
+				</div>
+				<div class="mini-field">
+					<label for="obf-kat">{$t('awg.keepaliveTimeout')}</label>
+					<input
+						id="obf-kat"
+						type="text"
+						placeholder="25"
+						value={obf.keepalive_timeout ?? ''}
+						oninput={(e) => {
+							obf.keepalive_timeout = e.currentTarget.value;
+							markCustom();
+						}}
+					/>
+					<span class="mini-hint">{$t('awg.keepaliveTimeoutHint')}</span>
+				</div>
+				<div class="mini-field">
+					<label for="obf-mha">{$t('awg.maxHandshakeAttempts')}</label>
+					<input
+						id="obf-mha"
+						type="text"
+						placeholder="18"
+						value={obf.max_handshake_attempts ?? ''}
+						oninput={(e) => {
+							obf.max_handshake_attempts = e.currentTarget.value;
+							markCustom();
+						}}
+					/>
+					<span class="mini-hint">{$t('awg.maxHandshakeAttemptsHint')}</span>
 				</div>
 			</div>
 			{/if}
