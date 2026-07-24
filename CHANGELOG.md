@@ -4,6 +4,37 @@ All notable changes to RouteBox are documented here.
 
 ## [Unreleased]
 
+## [0.29.0] - 2026-07-24
+
+### Features
+
+- **AWG IPv6 broker (6-in-4 via sing-box).** AWG peers on the sing-box backend can now reach IPv6
+  destinations through the VPS even when the client's own network has no IPv6 — dual-stack, with
+  egress from the VPS's own IPv6 via sing-box's proxied endpoint (no NAT66 required). A new
+  **IPv6 broker** toggle on the AWG server settings (default on, gated by an egress preflight)
+  controls it. Each peer receives a ULA `/128` derived from its IPv4 (full 32-bit embed,
+  collision-free for any subnet) plus `::/0`; the ULA prefix is generated once and persisted in
+  `peers.toml`. Requires working IPv6 egress on the server and MTU ≥ 1280. When egress is
+  unavailable it falls back to IPv4-only (no black-holed `::/0`), surfaced as an "IPv4-only" badge;
+  the preflight is re-evaluated on the sweep ticker so a VPS that gains IPv6 later auto-activates.
+  **Existing clients must re-import their config to gain IPv6.**
+
+### Backend
+
+- New `awg.ipv6_broker` setting plumbed through settings → `EnableInput`.
+- ULA prefix generation + `MapV4ToV6` mapping (`ula.go`); persisted in the peer store.
+- IPv6 egress preflight (`preflight.go`): local global-address capability + dual-target TCP probe,
+  injectable for tests, run outside all locks.
+- `renderServerSpec` and both client exports (`.conf`/QR and sing-box endpoint JSON) emit the
+  optional IPv6 address + `::/0` only when the broker is active — inactive output is byte-identical
+  to before (no config churn on upgrade).
+- Broker state wired into `ConfigDirty`, `RehydrateSingbox`, and the sweep-ticker re-preflight;
+  `AWGStatus.ipv6_active` exposes the live desire-vs-active signal.
+
+### Frontend
+
+- IPv6 broker toggle + live "IPv4-only" badge in the AWG server settings.
+
 ## [0.28.2] - 2026-07-24
 
 ### Frontend
