@@ -288,7 +288,7 @@ func (m *Manager) enableSingbox(ctx context.Context, in EnableInput) error {
 	// a bare read here races a runtime re-wire) and invoke after unlock, exactly
 	// as renderServerSpec does.
 	m.mu.Lock()
-	supportsFn, supports3Fn := m.supportsFn, m.supports3Fn
+	supportsFn, supports3Fn, probeFn := m.supportsFn, m.supports3Fn, m.probeFn
 	m.mu.Unlock()
 	if supportsFn != nil && !supportsFn() {
 		return m.enableFail("binary too old: AWG server needs amnezia-box awg2.1+")
@@ -353,7 +353,7 @@ func (m *Manager) enableSingbox(ctx context.Context, in EnableInput) error {
 		if mtu < 1280 {
 			return m.enableFail(fmt.Sprintf("ipv6 broker requires mtu >= 1280 (got %d)", mtu))
 		}
-		probe := m.probeFn
+		probe := probeFn
 		if probe == nil {
 			probe = defaultEgressProbe().ok
 		}
