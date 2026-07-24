@@ -47,3 +47,25 @@ func TestValidateObfCPARAT(t *testing.T) {
 		t.Fatalf("empty CPA/RAT must pass untouched: %v", err)
 	}
 }
+
+func TestValidateObfDeviceTimers(t *testing.T) {
+	out, err := validateObf(Obfuscation{
+		RekeyTimeout: "5", RejectAfterTime: "180", KeepaliveTimeout: "25-30", MaxHandshakeAttempts: "18",
+	})
+	if err != nil {
+		t.Fatalf("valid device timers rejected: %v", err)
+	}
+	if out.RekeyTimeout != "5" || out.RejectAfterTime != "180" || out.KeepaliveTimeout != "25-30" || out.MaxHandshakeAttempts != "18" {
+		t.Fatalf("device timers not carried through: %+v", out)
+	}
+	if _, err := validateObf(Obfuscation{RekeyTimeout: "abc"}); err == nil {
+		t.Fatal("bad rekey_timeout must fail")
+	}
+	if _, err := validateObf(Obfuscation{KeepaliveTimeout: "9-3"}); err == nil {
+		t.Fatal("inverted keepalive_timeout range must fail")
+	}
+	if out, err := validateObf(Obfuscation{}); err != nil ||
+		out.RekeyTimeout != "" || out.RejectAfterTime != "" || out.KeepaliveTimeout != "" || out.MaxHandshakeAttempts != "" {
+		t.Fatalf("empty device timers must pass untouched: %v", err)
+	}
+}
