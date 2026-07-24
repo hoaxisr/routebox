@@ -41,6 +41,7 @@ type AWGStatus struct {
 	WANIface    string      `json:"wan_iface"`
 	NATOrphan   bool        `json:"nat_orphan"`
 	ConfigDirty bool        `json:"config_dirty"` // enabled & saved settings differ from running -> needs Apply
+	IPv6Active  bool        `json:"ipv6_active"` // broker desired AND egress preflight passed
 	LastError   string      `json:"last_error,omitempty"`
 }
 

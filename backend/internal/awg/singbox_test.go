@@ -365,3 +365,36 @@ func TestRenderClientConfV4OnlyNoV6(t *testing.T) {
 		}
 	}
 }
+
+// TestStatusDirtyOnBrokerToggle: a desired IPv6Broker flip must flag ConfigDirty
+// like any other re-appliable field (Task 8).
+func TestStatusDirtyOnBrokerToggle(t *testing.T) {
+	m, _, _ := newSingboxMgr(t)
+	m.probeFn = func() bool { return true }
+	in := singboxEnableInput()
+	in.IPv6Broker = true
+	_ = m.enableSingbox(context.Background(), in)
+	// desired() now returns IPv6Broker=false -> dirty
+	m.SetDesired(func() EnableInput { d := in; d.IPv6Broker = false; return d })
+	if !m.statusSingbox(context.Background()).ConfigDirty {
+		t.Fatal("broker desire change should flag config dirty")
+	}
+}
+
+// TestRehydrateRestoresBrokerState: a restart must re-derive v6Active via the
+// same preflight (MTU floor, ULA prefix, egress probe), not just copy the
+// desired bool (Task 8).
+func TestRehydrateRestoresBrokerState(t *testing.T) {
+	m, _, _ := newSingboxMgr(t)
+	_ = m.store.SetULAPrefix("fd00:abcd::/64")
+	m.probeFn = func() bool { return true }
+	in := singboxEnableInput()
+	in.IPv6Broker = true
+	m.RehydrateSingbox(in, true)
+	if !m.v6Active || m.ulaPrefix.Bits() != 64 {
+		t.Fatalf("rehydrate did not restore broker state: active=%v pfx=%v", m.v6Active, m.ulaPrefix)
+	}
+	if !m.statusSingbox(context.Background()).IPv6Active {
+		t.Fatal("status IPv6Active should reflect restored v6Active")
+	}
+}
