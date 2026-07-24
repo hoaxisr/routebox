@@ -4,6 +4,16 @@ All notable changes to RouteBox are documented here.
 
 ## [Unreleased]
 
+## [0.29.1] - 2026-07-24
+
+### Fixed
+
+- **AWG server settings: the Server address field now sits above Listen port** — more natural
+  ordering (#20).
+- **Deleting a client now purges its per-user traffic history from the Breakdown view** (#19).
+  Previously the deleted client's series lingered in Breakdown; `DeleteUser` now drops the user's
+  `user_traffic` rows (keyed by the same names the per-user view sums over).
+
 ## [0.29.0] - 2026-07-24
 
 ### Features
