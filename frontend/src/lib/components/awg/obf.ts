@@ -30,21 +30,45 @@ export const OBF_S = ['s1', 's2', 's3', 's4'] as const;
 export const OBF_NUM = [...OBF_J, ...OBF_S] as const;
 export const OBF_STR = ['h1', 'h2', 'h3', 'h4'] as const;
 
+// AWG3 device params. Ranges centred on amneziawg-go stock (rekey_after=120,
+// reject_after=180, rekey_timeout=5, keepalive=10, max_handshake=18); the fork
+// picks a per-session value inside each range so the timing is not the stock
+// WireGuard fingerprint. cpaHi = upper content-padding bound (scales per preset).
+// ponytail: bounds chosen so rekey_after (<=160) is always < reject_after (>=180)
+// — the session must rekey before it is rejected; keep that invariant if you widen.
+function awg3(cpaHi: number): Partial<AwgObf> {
+	const ratLo = r(110, 125);
+	return {
+		content_padding_addition: `0-${cpaHi}`,
+		rekey_after_time: `${ratLo}-${ratLo + r(20, 35)}`, // <=160
+		rekey_timeout: '5',
+		reject_after_time: `${r(180, 195)}-${r(200, 220)}`, // >160
+		keepalive_timeout: `${r(10, 15)}-${r(20, 30)}`,
+		max_handshake_attempts: '18'
+	};
+}
+
+// off clears every AWG3 field so switching to it turns obfuscation fully off.
+const AWG3_OFF: Partial<AwgObf> = {
+	content_padding_addition: '', rekey_after_time: '', rekey_timeout: '',
+	reject_after_time: '', keepalive_timeout: '', max_handshake_attempts: ''
+};
+
 export const PRESETS: Record<string, () => AwgObf> = {
-	off: () => ({ jc: 0, jmin: 0, jmax: 0, s1: 0, s2: 0, s3: 0, s4: 0, h1: '', h2: '', h3: '', h4: '' }),
+	off: () => ({ jc: 0, jmin: 0, jmax: 0, s1: 0, s2: 0, s3: 0, s4: 0, h1: '', h2: '', h3: '', h4: '', ...AWG3_OFF }),
 	dns: () => {
 		const [h1, h2, h3, h4] = randH();
 		const [s1, s2] = sPair(97, 107, 17, 27);
-		return { jc: r(3, 5), jmin: r(5, 15), jmax: r(45, 55), s1, s2, s3: r(16, 26), s4: r(4, 10), h1, h2, h3, h4 };
+		return { jc: r(3, 5), jmin: r(5, 15), jmax: r(45, 55), s1, s2, s3: r(16, 26), s4: r(4, 10), h1, h2, h3, h4, ...awg3(48) };
 	},
 	web: () => {
 		const [h1, h2, h3, h4] = randH();
 		const [s1, s2] = sPair(30, 80, 30, 80);
-		return { jc: r(5, 8), jmin: r(30, 80), jmax: r(100, 250), s1, s2, s3: r(15, 32), s4: r(10, 20), h1, h2, h3, h4 };
+		return { jc: r(5, 8), jmin: r(30, 80), jmax: r(100, 250), s1, s2, s3: r(15, 32), s4: r(10, 20), h1, h2, h3, h4, ...awg3(64) };
 	},
 	stealth: () => {
 		const [h1, h2, h3, h4] = randH();
 		const [s1, s2] = sPair(15, 150, 15, 150);
-		return { jc: r(4, 16), jmin: r(50, 256), jmax: r(300, 1000), s1, s2, s3: r(8, 64), s4: r(6, 31), h1, h2, h3, h4 };
+		return { jc: r(4, 16), jmin: r(50, 256), jmax: r(300, 1000), s1, s2, s3: r(8, 64), s4: r(6, 31), h1, h2, h3, h4, ...awg3(80) };
 	}
 };

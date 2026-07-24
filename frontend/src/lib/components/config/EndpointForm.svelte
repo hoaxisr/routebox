@@ -61,6 +61,10 @@
 	let headerProtectionKey = $state(endpoint?.header_protection_key ?? '');
 	let contentPaddingAddition = $state(endpoint?.content_padding_addition ?? '');
 	let rekeyAfterTime = $state(endpoint?.rekey_after_time ?? '');
+	let rekeyTimeout = $state(endpoint?.rekey_timeout ?? '');
+	let rejectAfterTime = $state(endpoint?.reject_after_time ?? '');
+	let keepaliveTimeout = $state(endpoint?.keepalive_timeout ?? '');
+	let maxHandshakeAttempts = $state(endpoint?.max_handshake_attempts ?? '');
 
 	let peers = $state<AWGPeer[]>(endpoint?.peers ?? [
 		{ address: '', port: 51820, public_key: '', allowed_ips: ['0.0.0.0/0', '::/0'] }
@@ -113,6 +117,10 @@
 		headerProtectionKey = ep.header_protection_key ?? '';
 		contentPaddingAddition = ep.content_padding_addition ?? '';
 		rekeyAfterTime = ep.rekey_after_time ?? '';
+		rekeyTimeout = ep.rekey_timeout ?? '';
+		rejectAfterTime = ep.reject_after_time ?? '';
+		keepaliveTimeout = ep.keepalive_timeout ?? '';
+		maxHandshakeAttempts = ep.max_handshake_attempts ?? '';
 
 		if (ep.peers && ep.peers.length > 0) {
 			peers = ep.peers.map((p) => ({
@@ -195,6 +203,14 @@
 		if (config['i3']) i3 = config['i3'];
 		if (config['i4']) i4 = config['i4'];
 		if (config['i5']) i5 = config['i5'];
+		// AWG3 (keys are lowercased by the parser)
+		if (config['headerprotectionkey']) headerProtectionKey = config['headerprotectionkey'];
+		if (config['contentpaddingaddition']) contentPaddingAddition = config['contentpaddingaddition'];
+		if (config['rekeyaftertime']) rekeyAfterTime = config['rekeyaftertime'];
+		if (config['rekeytimeout']) rekeyTimeout = config['rekeytimeout'];
+		if (config['rejectaftertime']) rejectAfterTime = config['rejectaftertime'];
+		if (config['keepalivetimeout']) keepaliveTimeout = config['keepalivetimeout'];
+		if (config['maxhandshakeattempts']) maxHandshakeAttempts = config['maxhandshakeattempts'];
 
 		// Parse peers
 		if (peerConfigs.length > 0) {
@@ -302,6 +318,10 @@
 		if (headerProtectionKey.trim()) ep.header_protection_key = headerProtectionKey.trim();
 		if (contentPaddingAddition.trim()) ep.content_padding_addition = contentPaddingAddition.trim();
 		if (rekeyAfterTime.trim()) ep.rekey_after_time = rekeyAfterTime.trim();
+		if (rekeyTimeout.trim()) ep.rekey_timeout = rekeyTimeout.trim();
+		if (rejectAfterTime.trim()) ep.reject_after_time = rejectAfterTime.trim();
+		if (keepaliveTimeout.trim()) ep.keepalive_timeout = keepaliveTimeout.trim();
+		if (maxHandshakeAttempts.trim()) ep.max_handshake_attempts = maxHandshakeAttempts.trim();
 
 		// Advanced options
 		if (systemInterface) ep.system = true;
@@ -434,6 +454,7 @@
 	{#if activeTab === 'obfuscation'}
 		<div class="space-y-4">
 			<ObfuscationFields
+				serverLocked
 				bind:jc bind:jmin bind:jmax
 				bind:s1 bind:s2 bind:s3 bind:s4
 				bind:h1 bind:h2 bind:h3 bind:h4
@@ -442,15 +463,16 @@
 
 			<!-- AWG3 (header protection + padding/rekey) -->
 			<div class="bg-[var(--ctp-surface0)] rounded-lg p-4 space-y-4">
-				<h3 class="text-sm font-medium text-[var(--ctp-subtext1)]">{$t('endpoints.obfuscation.awg3Params')}</h3>
+				<h3 class="text-sm font-medium text-[var(--ctp-subtext1)] flex items-center gap-2">{$t('endpoints.obfuscation.awg3Params')}<span class="text-[0.65rem] font-normal text-[var(--ctp-overlay0)] bg-[var(--ctp-surface1)] rounded px-1.5 py-0.5">🔒 {$t('endpoints.obfuscation.readonly')}</span></h3>
 				<div>
 					<label for="headerProtectionKey" class="block text-xs text-[var(--ctp-overlay0)] mb-1">{$t('endpoints.headerProtectionKey')}</label>
 					<input
 						id="headerProtectionKey"
 						type="text"
 						bind:value={headerProtectionKey}
+						readonly
 						placeholder={$t('endpoints.placeholders.headerProtectionKey')}
-						class="w-full px-3 py-2 bg-[var(--ctp-mantle)] border border-[var(--ctp-surface2)] rounded-lg text-[var(--ctp-text)] placeholder-[var(--ctp-overlay0)] focus:outline-none focus:ring-2 focus:ring-[var(--ctp-primary)] font-mono text-sm"
+						class="w-full px-3 py-2 bg-[var(--ctp-mantle)] border border-[var(--ctp-surface2)] rounded-lg text-[var(--ctp-text)] placeholder-[var(--ctp-overlay0)] focus:outline-none focus:ring-2 focus:ring-[var(--ctp-primary)] font-mono text-sm read-only:opacity-70 read-only:cursor-not-allowed"
 					/>
 					<p class="mt-1 text-xs text-[var(--ctp-overlay0)]">{$t('endpoints.headerProtectionKeyHint')}</p>
 				</div>
@@ -461,8 +483,9 @@
 							id="contentPaddingAddition"
 							type="text"
 							bind:value={contentPaddingAddition}
+							readonly
 							placeholder="0-64"
-							class="w-full px-3 py-2 bg-[var(--ctp-mantle)] border border-[var(--ctp-surface2)] rounded-lg text-[var(--ctp-text)] placeholder-[var(--ctp-overlay0)] focus:outline-none focus:ring-2 focus:ring-[var(--ctp-primary)] font-mono text-sm"
+							class="w-full px-3 py-2 bg-[var(--ctp-mantle)] border border-[var(--ctp-surface2)] rounded-lg text-[var(--ctp-text)] placeholder-[var(--ctp-overlay0)] focus:outline-none focus:ring-2 focus:ring-[var(--ctp-primary)] font-mono text-sm read-only:opacity-70 read-only:cursor-not-allowed"
 						/>
 						<p class="mt-1 text-xs text-[var(--ctp-overlay0)]">{$t('awg.contentPaddingHint')}</p>
 					</div>
@@ -472,10 +495,59 @@
 							id="rekeyAfterTime"
 							type="text"
 							bind:value={rekeyAfterTime}
+							readonly
 							placeholder="120-180"
-							class="w-full px-3 py-2 bg-[var(--ctp-mantle)] border border-[var(--ctp-surface2)] rounded-lg text-[var(--ctp-text)] placeholder-[var(--ctp-overlay0)] focus:outline-none focus:ring-2 focus:ring-[var(--ctp-primary)] font-mono text-sm"
+							class="w-full px-3 py-2 bg-[var(--ctp-mantle)] border border-[var(--ctp-surface2)] rounded-lg text-[var(--ctp-text)] placeholder-[var(--ctp-overlay0)] focus:outline-none focus:ring-2 focus:ring-[var(--ctp-primary)] font-mono text-sm read-only:opacity-70 read-only:cursor-not-allowed"
 						/>
 						<p class="mt-1 text-xs text-[var(--ctp-overlay0)]">{$t('awg.rekeyAfterTimeHint')}</p>
+					</div>
+					<div>
+						<label for="rekeyTimeout" class="block text-xs text-[var(--ctp-overlay0)] mb-1">{$t('awg.rekeyTimeout')}</label>
+						<input
+							id="rekeyTimeout"
+							type="text"
+							bind:value={rekeyTimeout}
+							readonly
+							placeholder="5"
+							class="w-full px-3 py-2 bg-[var(--ctp-mantle)] border border-[var(--ctp-surface2)] rounded-lg text-[var(--ctp-text)] placeholder-[var(--ctp-overlay0)] focus:outline-none focus:ring-2 focus:ring-[var(--ctp-primary)] font-mono text-sm read-only:opacity-70 read-only:cursor-not-allowed"
+						/>
+						<p class="mt-1 text-xs text-[var(--ctp-overlay0)]">{$t('awg.rekeyTimeoutHint')}</p>
+					</div>
+					<div>
+						<label for="rejectAfterTime" class="block text-xs text-[var(--ctp-overlay0)] mb-1">{$t('awg.rejectAfterTime')}</label>
+						<input
+							id="rejectAfterTime"
+							type="text"
+							bind:value={rejectAfterTime}
+							readonly
+							placeholder="180"
+							class="w-full px-3 py-2 bg-[var(--ctp-mantle)] border border-[var(--ctp-surface2)] rounded-lg text-[var(--ctp-text)] placeholder-[var(--ctp-overlay0)] focus:outline-none focus:ring-2 focus:ring-[var(--ctp-primary)] font-mono text-sm read-only:opacity-70 read-only:cursor-not-allowed"
+						/>
+						<p class="mt-1 text-xs text-[var(--ctp-overlay0)]">{$t('awg.rejectAfterTimeHint')}</p>
+					</div>
+					<div>
+						<label for="keepaliveTimeout" class="block text-xs text-[var(--ctp-overlay0)] mb-1">{$t('awg.keepaliveTimeout')}</label>
+						<input
+							id="keepaliveTimeout"
+							type="text"
+							bind:value={keepaliveTimeout}
+							readonly
+							placeholder="25"
+							class="w-full px-3 py-2 bg-[var(--ctp-mantle)] border border-[var(--ctp-surface2)] rounded-lg text-[var(--ctp-text)] placeholder-[var(--ctp-overlay0)] focus:outline-none focus:ring-2 focus:ring-[var(--ctp-primary)] font-mono text-sm read-only:opacity-70 read-only:cursor-not-allowed"
+						/>
+						<p class="mt-1 text-xs text-[var(--ctp-overlay0)]">{$t('awg.keepaliveTimeoutHint')}</p>
+					</div>
+					<div>
+						<label for="maxHandshakeAttempts" class="block text-xs text-[var(--ctp-overlay0)] mb-1">{$t('awg.maxHandshakeAttempts')}</label>
+						<input
+							id="maxHandshakeAttempts"
+							type="text"
+							bind:value={maxHandshakeAttempts}
+							readonly
+							placeholder="18"
+							class="w-full px-3 py-2 bg-[var(--ctp-mantle)] border border-[var(--ctp-surface2)] rounded-lg text-[var(--ctp-text)] placeholder-[var(--ctp-overlay0)] focus:outline-none focus:ring-2 focus:ring-[var(--ctp-primary)] font-mono text-sm read-only:opacity-70 read-only:cursor-not-allowed"
+						/>
+						<p class="mt-1 text-xs text-[var(--ctp-overlay0)]">{$t('awg.maxHandshakeAttemptsHint')}</p>
 					</div>
 				</div>
 			</div>

@@ -9,11 +9,15 @@
 		saving?: boolean;
 		/** Active backend is sing-box: shows awg3-only controls (header protection, CPA/RAT). */
 		isSingbox?: boolean;
+		/** Server is running: the primary button saves AND applies (restarts the interface). */
+		applied?: boolean;
+		/** Form differs from the saved settings — enables the buttons and shows the marker. */
+		dirty?: boolean;
 		onSave: () => void;
 		onReset: () => void;
 	}
 
-	let { form = $bindable(), pubkey = '', saving = false, isSingbox = false, onSave, onReset }: Props = $props();
+	let { form = $bindable(), pubkey = '', saving = false, isSingbox = false, applied = false, dirty = true, onSave, onReset }: Props = $props();
 
 	// DNS is stored as string[]; edit it as a comma-separated field and write back.
 	let dnsText = $state((form.dns ?? []).join(', '));
@@ -84,9 +88,16 @@
 {/if}
 
 <div class="save-row">
-	<button type="button" class="btn-ghost-sm" onclick={onReset}>{$t('awg.reset')}</button>
-	<button type="button" class="btn-save" onclick={onSave} disabled={saving}>
-		{saving ? $t('common.saving') : $t('awg.save')}
+	<span class="save-status" class:dirty>
+		{#if dirty}
+			<span class="dot"></span>{$t('awg.unsavedChanges')}
+		{:else}
+			{$t('awg.upToDate')}
+		{/if}
+	</span>
+	<button type="button" class="btn-ghost-sm" onclick={onReset} disabled={saving || !dirty}>{$t('awg.reset')}</button>
+	<button type="button" class="btn-save" onclick={onSave} disabled={saving || !dirty}>
+		{saving ? $t('common.saving') : applied ? $t('awg.saveAndApply') : $t('awg.save')}
 	</button>
 </div>
 
@@ -149,11 +160,34 @@
 	}
 	.save-row {
 		display: flex;
+		align-items: center;
 		justify-content: flex-end;
 		gap: 0.5rem;
 		margin-top: 1.5rem;
 		padding-top: 1.25rem;
 		border-top: 1px solid var(--ctp-surface0);
+	}
+	.save-status {
+		margin-right: auto;
+		display: inline-flex;
+		align-items: center;
+		gap: 0.4rem;
+		font-size: 0.78rem;
+		color: var(--ctp-overlay0);
+	}
+	.save-status.dirty {
+		color: var(--ctp-primary);
+		font-weight: 500;
+	}
+	.save-status .dot {
+		width: 7px;
+		height: 7px;
+		border-radius: 50%;
+		background: var(--ctp-primary);
+	}
+	.btn-ghost-sm:disabled {
+		opacity: 0.4;
+		cursor: default;
 	}
 	.btn-save {
 		padding: 0.5rem 1.25rem;

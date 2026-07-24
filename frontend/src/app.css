@@ -327,6 +327,17 @@ code, pre, .font-mono {
 	background-color: color-mix(in srgb, var(--ctp-primary) 20%, transparent);
 }
 
+/* Active preset: filled, so it's obvious which one is selected. */
+.preset-btn.selected {
+	background-color: var(--ctp-primary);
+	color: var(--ctp-base);
+	font-weight: 600;
+}
+
+.preset-btn.selected:hover {
+	background-color: var(--ctp-primary);
+}
+
 .preset-btn:disabled {
 	border-color: var(--ctp-surface2);
 	background-color: var(--ctp-surface0);
