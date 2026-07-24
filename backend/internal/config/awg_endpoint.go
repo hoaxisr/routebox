@@ -8,6 +8,7 @@ type AwgServerPeer struct {
 	PublicKey    string
 	PresharedKey string
 	AllowedIP    string // "<ip>/32"
+	AllowedIP6   string // "<v6>/128", "" when broker off
 }
 
 // AwgServerSpec is the fully-resolved input for the managed awg-server endpoint.
@@ -16,6 +17,7 @@ type AwgServerPeer struct {
 type AwgServerSpec struct {
 	PrivateKey          string
 	Address             string
+	Address6            string // server v6 CIDR, "" when broker off
 	ListenPort          int
 	MTU                 int
 	HeaderProtectionKey string
@@ -32,12 +34,16 @@ var obfKeyOrder = []string{"jc", "jmin", "jmax", "s1", "s2", "s3", "s4", "h1", "
 // obf values are omitted. PURE. The fork peer field is preshared_key (NOT
 // pre_shared_key) and the endpoint flag is camelCase useIntegratedTun.
 func BuildAwgServerEndpoint(tag string, spec AwgServerSpec) map[string]interface{} {
+	addr := []interface{}{spec.Address}
+	if spec.Address6 != "" {
+		addr = append(addr, spec.Address6)
+	}
 	ep := map[string]interface{}{
 		"type":             "awg",
 		"tag":              tag,
 		"useIntegratedTun": false,
 		"private_key":      spec.PrivateKey,
-		"address":          []interface{}{spec.Address},
+		"address":          addr,
 		"listen_port":      spec.ListenPort,
 		"mtu":              spec.MTU,
 	}
@@ -63,10 +69,14 @@ func BuildAwgServerEndpoint(tag string, spec AwgServerSpec) map[string]interface
 	if len(spec.Peers) > 0 {
 		peers := make([]interface{}, 0, len(spec.Peers))
 		for _, p := range spec.Peers {
+			aip := []interface{}{p.AllowedIP}
+			if p.AllowedIP6 != "" {
+				aip = append(aip, p.AllowedIP6)
+			}
 			peers = append(peers, map[string]interface{}{
 				"public_key":    p.PublicKey,
 				"preshared_key": p.PresharedKey,
-				"allowed_ips":   []interface{}{p.AllowedIP},
+				"allowed_ips":   aip,
 			})
 		}
 		ep["peers"] = peers
