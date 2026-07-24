@@ -381,6 +381,84 @@ func TestStatusDirtyOnBrokerToggle(t *testing.T) {
 	}
 }
 
+// TestServerClientV6Agreement: proves the server-side spec (renderServerSpec,
+// observed via fs.lastSpec) and the client export (RenderClientConf) agree on
+// the SAME peer v6 address — a wiring bug in either path would desync them.
+func TestServerClientV6Agreement(t *testing.T) {
+	m, fs, _ := newSingboxMgr(t)
+	m.probeFn = func() bool { return true }
+	in := singboxEnableInput()
+	in.IPv6Broker = true
+	if err := m.enableSingbox(context.Background(), in); err != nil {
+		t.Fatal(err)
+	}
+	sum, err := m.AddPeer(context.Background(), "alice")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if fs.lastSpec == nil || len(fs.lastSpec.Peers) != 1 || fs.lastSpec.Peers[0].AllowedIP6 == "" {
+		t.Fatalf("expected server spec with 1 peer carrying AllowedIP6: %#v", fs.lastSpec)
+	}
+	serverV6 := strings.TrimSuffix(fs.lastSpec.Peers[0].AllowedIP6, "/128")
+
+	conf, err := m.RenderClientConf(sum.PublicKey, "vps.example")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(conf, serverV6) {
+		t.Fatalf("client conf v6 address disagrees with server spec: server=%q conf=%s", serverV6, conf)
+	}
+}
+
+// TestULAPrefixNotRegeneratedOnSecondEnable: enableSingbox must reuse the
+// stored ULA prefix on subsequent enables (Fix 1: generate-once, not
+// generate-if-probe-was-true-last-time).
+func TestULAPrefixNotRegeneratedOnSecondEnable(t *testing.T) {
+	m, _, _ := newSingboxMgr(t)
+	m.probeFn = func() bool { return true }
+	in := singboxEnableInput()
+	in.IPv6Broker = true
+	if err := m.enableSingbox(context.Background(), in); err != nil {
+		t.Fatal(err)
+	}
+	first := m.store.ULAPrefix()
+	if first == "" {
+		t.Fatal("expected a persisted ULA prefix after first enable")
+	}
+	if err := m.enableSingbox(context.Background(), in); err != nil {
+		t.Fatal(err)
+	}
+	second := m.store.ULAPrefix()
+	if second != first {
+		t.Fatalf("ULA prefix regenerated on second enable: first=%q second=%q", first, second)
+	}
+}
+
+// TestSweepActivatesWhenEgressAppears: Fix 1 generates the ULA prefix even
+// when the probe fails, so a later sweep (Fix 3) can auto-activate v6 once
+// egress appears — without an operator re-Apply.
+func TestSweepActivatesWhenEgressAppears(t *testing.T) {
+	m, _, _ := newSingboxMgr(t)
+	m.probeFn = func() bool { return false } // egress down at enable time
+	in := singboxEnableInput()
+	in.IPv6Broker = true
+	if err := m.enableSingbox(context.Background(), in); err != nil {
+		t.Fatal(err)
+	}
+	if m.v6Active {
+		t.Fatal("v6Active must be false when the probe fails at enable time")
+	}
+	if m.store.ULAPrefix() == "" {
+		t.Fatal("ULA prefix must be generated+persisted even when the probe fails (Fix 1)")
+	}
+
+	m.probeFn = func() bool { return true } // egress appears
+	m.SweepExpired(context.Background())
+	if !m.v6Active {
+		t.Fatal("sweep must activate v6Active once egress appears (Fix 3)")
+	}
+}
+
 // TestRehydrateRestoresBrokerState: a restart must re-derive v6Active via the
 // same preflight (MTU floor, ULA prefix, egress probe), not just copy the
 // desired bool (Task 8).
