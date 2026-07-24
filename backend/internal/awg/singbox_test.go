@@ -42,6 +42,7 @@ func newSingboxMgr(t *testing.T) (*Manager, *fakeSync, *int) {
 		enabled:    true, // renderServerSpec gates on enabled (Bug C1); harness = enabled server
 		phase:      PhaseReady,
 	}
+	m.probeFn = func() bool { return false } // hermetic default: no test hits the real network
 	fs := &fakeSync{changed: true}
 	applyCount := 0
 	m.SetBackend("singbox")
@@ -215,5 +216,51 @@ func TestSingbox_ExpiredPeerOmittedFromSpec(t *testing.T) {
 	m.RenewPeer(context.Background(), pk, 1) // unix ts 1 = long past
 	if len(fs.lastSpec.Peers) != 0 {
 		t.Fatalf("expired peer must be omitted from spec, got %d", len(fs.lastSpec.Peers))
+	}
+}
+
+func TestEnableSingboxIPv6BrokerActivates(t *testing.T) {
+	m, fs, _ := newSingboxMgr(t)
+	m.probeFn = func() bool { return true }
+	in := singboxEnableInput()
+	in.IPv6Broker = true
+	if err := m.enableSingbox(context.Background(), in); err != nil {
+		t.Fatal(err)
+	}
+	if !m.v6Active {
+		t.Fatal("v6Active should be true when broker desired + probe ok")
+	}
+	if m.store.ULAPrefix() == "" {
+		t.Fatal("ULA prefix should be generated + persisted")
+	}
+	if fs.lastSpec == nil || fs.lastSpec.Address6 == "" {
+		t.Fatalf("server spec missing IPv6 address: %#v", fs.lastSpec)
+	}
+}
+
+func TestEnableSingboxIPv6BrokerFallsBackNoEgress(t *testing.T) {
+	m, fs, _ := newSingboxMgr(t)
+	m.probeFn = func() bool { return false }
+	in := singboxEnableInput()
+	in.IPv6Broker = true
+	if err := m.enableSingbox(context.Background(), in); err != nil {
+		t.Fatal(err) // server still enables
+	}
+	if m.v6Active {
+		t.Fatal("v6Active must be false when probe fails")
+	}
+	if fs.lastSpec != nil && fs.lastSpec.Address6 != "" {
+		t.Fatal("no IPv6 must be emitted on fallback")
+	}
+}
+
+func TestEnableSingboxIPv6BrokerRejectsLowMTU(t *testing.T) {
+	m, _, _ := newSingboxMgr(t)
+	m.probeFn = func() bool { return true }
+	in := singboxEnableInput()
+	in.IPv6Broker = true
+	in.MTU = 1200
+	if err := m.enableSingbox(context.Background(), in); err == nil {
+		t.Fatal("MTU<1280 with broker must fail")
 	}
 }
