@@ -4,6 +4,17 @@ All notable changes to RouteBox are documented here.
 
 ## [Unreleased]
 
+## [0.28.1] - 2026-07-24
+
+### Fixed
+
+- **Update check no longer reports "Up to date" when a newer amnezia-box release exists.** The
+  version comparison tried to numerically order the fork's non-monotonic prerelease tags
+  (`1.14.0-alpha.48-awg3-xhttp-mieru-4` vs `1.14.0-beta.1-awgm.1`) and misjudged the installed
+  build as newer. Update availability now compares identity against GitHub's `/releases/latest`
+  (the authoritative "newest") instead of semver magnitude, so a differing latest release always
+  surfaces the update button.
+
 ## [0.28.0] - 2026-07-24
 
 ### Features

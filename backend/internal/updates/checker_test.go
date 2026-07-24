@@ -171,27 +171,15 @@ func TestCheck403RateLimit(t *testing.T) {
 	}
 }
 
-func TestCompareVersions(t *testing.T) {
-	cases := []struct {
-		a, b string
-		want int
-	}{
-		{"1.12.9", "1.12.8", 1},
-		{"1.12.8", "1.12.9", -1},
-		{"1.12.9", "1.12.9", 0},
-		{"v1.12.9-awg2.0", "1.12.9", 0},
-		{"v1.13.0-awg2.0", "v1.12.9-awg2.0", 1},
-		{"0.18.0", "0.17.0", 1},
-		{"0.17.0", "0.17", 0},
-		{"1.2.10", "1.2.9", 1},
-		{"1.14.0-alpha.48-awg3-xhttp-mieru-3", "1.14.0-alpha.48-awg3-xhttp-mieru-4", -1},
-		{"1.14.0-alpha.48-awg3-xhttp-mieru-4", "1.14.0-alpha.48-awg3-xhttp-mieru-3", 1},
-		{"1.14.0-alpha.48-awg3-xhttp-mieru-4", "1.14.0-alpha.48-awg3-xhttp-mieru-4", 0},
-		{"1.14.0-alpha.48-awg3-xhttp-mieru-9", "1.14.0-alpha.48-awg3-xhttp-mieru-10", -1},
+func TestNormalizeVersion(t *testing.T) {
+	cases := []struct{ in, want string }{
+		{"v1.12.9-awg2.0", "1.12.9"},
+		{"1.12.9", "1.12.9"},
+		{"1.14.0-alpha.48-awg3-xhttp-mieru-4", "1.14.0-alpha.48-awg3-xhttp-mieru-4"},
 	}
 	for _, tc := range cases {
-		if got := CompareVersions(tc.a, tc.b); got != tc.want {
-			t.Errorf("CompareVersions(%q, %q) = %d, want %d", tc.a, tc.b, got, tc.want)
+		if got := NormalizeVersion(tc.in); got != tc.want {
+			t.Errorf("NormalizeVersion(%q) = %q, want %q", tc.in, got, tc.want)
 		}
 	}
 }
