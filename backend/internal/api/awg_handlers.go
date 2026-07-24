@@ -71,19 +71,7 @@ func (h *Handler) EnableAWG(w http.ResponseWriter, r *http.Request) {
 // awgEnableInput maps persisted settings to the awg orchestrator input. This is
 // the settings<->awg package boundary (settings stays awg-agnostic).
 func awgEnableInput(s settings.AwgSettings) awg.EnableInput {
-	return awg.EnableInput{
-		Subnet: s.Subnet, ListenPort: s.ListenPort, MTU: s.MTU,
-		DNS: s.DNS, WANIface: s.WANIface, ObfPreset: s.ObfPreset,
-		HeaderProtection: s.HeaderProtection,
-		Obf: awg.Obfuscation{
-			Jc: s.Obf.Jc, Jmin: s.Obf.Jmin, Jmax: s.Obf.Jmax,
-			S1: s.Obf.S1, S2: s.Obf.S2, S3: s.Obf.S3, S4: s.Obf.S4,
-			H1: s.Obf.H1, H2: s.Obf.H2, H3: s.Obf.H3, H4: s.Obf.H4,
-			CPA: s.Obf.ContentPaddingAddition, RAT: s.Obf.RekeyAfterTime,
-			RekeyTimeout: s.Obf.RekeyTimeout, RejectAfterTime: s.Obf.RejectAfterTime,
-			KeepaliveTimeout: s.Obf.KeepaliveTimeout, MaxHandshakeAttempts: s.Obf.MaxHandshakeAttempts,
-		},
-	}
+	return awg.EnableInputFromSettings(s)
 }
 
 // awgSingboxDraftBlocked reports whether an enable/disable/peer op must be
