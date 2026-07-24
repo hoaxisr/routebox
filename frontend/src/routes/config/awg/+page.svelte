@@ -82,7 +82,8 @@
 				'awg.wan_iface': form.wan_iface,
 				'awg.obf': form.obf,
 				'awg.obf_preset': form.obf_preset,
-				'awg.header_protection': form.header_protection
+				'awg.header_protection': form.header_protection,
+				'awg.ipv6_broker': form.ipv6_broker
 			});
 			settings = cloneSettings(form);
 			await refreshStatus();
@@ -287,7 +288,7 @@
 			</button>
 			{#if settingsOpen}
 				<div class="disclosure-body">
-					<ServerSettingsForm bind:form saving={saving || enabling} {isSingbox} applied={status.enabled} dirty={formDirty} onSave={saveOrApply} onReset={onResetClick} />
+					<ServerSettingsForm bind:form saving={saving || enabling} {isSingbox} applied={status.enabled} dirty={formDirty} ipv6Active={status.ipv6_active} onSave={saveOrApply} onReset={onResetClick} />
 				</div>
 			{/if}
 		</div>
@@ -358,7 +359,7 @@
 						</div>
 					</div>
 					<p class="step-desc">{$t('awg.stepConfigureDesc')}</p>
-					<ServerSettingsForm bind:form saving={saving || enabling} {isSingbox} applied={status.enabled} dirty={formDirty} onSave={saveOrApply} onReset={onResetClick} />
+					<ServerSettingsForm bind:form saving={saving || enabling} {isSingbox} applied={status.enabled} dirty={formDirty} ipv6Active={status.ipv6_active} onSave={saveOrApply} onReset={onResetClick} />
 				</div>
 			</section>
 

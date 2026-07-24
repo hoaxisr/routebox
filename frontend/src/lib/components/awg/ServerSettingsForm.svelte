@@ -13,11 +13,13 @@
 		applied?: boolean;
 		/** Form differs from the saved settings — enables the buttons and shows the marker. */
 		dirty?: boolean;
+		/** Live signal: broker desired AND egress preflight passed (from AwgStatus.ipv6_active). */
+		ipv6Active?: boolean;
 		onSave: () => void;
 		onReset: () => void;
 	}
 
-	let { form = $bindable(), pubkey = '', saving = false, isSingbox = false, applied = false, dirty = true, onSave, onReset }: Props = $props();
+	let { form = $bindable(), pubkey = '', saving = false, isSingbox = false, applied = false, dirty = true, ipv6Active = false, onSave, onReset }: Props = $props();
 
 	// DNS is stored as string[]; edit it as a comma-separated field and write back.
 	let dnsText = $state((form.dns ?? []).join(', '));
@@ -84,6 +86,20 @@
 			{$t('awg.headerProtection')}
 		</button>
 		<span class="hint">{$t('awg.headerProtectionHint')}</span>
+	</div>
+	<div class="hp-row">
+		<button
+			type="button"
+			class="toggle-btn"
+			class:selected={form.ipv6_broker}
+			onclick={() => (form.ipv6_broker = !form.ipv6_broker)}
+		>
+			{$t('awg.ipv6Broker')}
+		</button>
+		<span class="hint">{$t('awg.ipv6BrokerHint')}</span>
+		{#if form.ipv6_broker && !ipv6Active}
+			<span class="status-badge info">{$t('awg.ipv6BrokerInactive')}</span>
+		{/if}
 	</div>
 {/if}
 

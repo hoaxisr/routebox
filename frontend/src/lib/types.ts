@@ -1015,6 +1015,7 @@ export interface AwgStatus {
 	config_dirty: boolean;
 	backend: string; // "kernel" | "singbox" — authoritative (always set by the backend)
 	last_error?: string;
+	ipv6_active?: boolean; // broker desired AND egress preflight passed
 }
 
 export interface AwgPeer {
@@ -1062,6 +1063,7 @@ export interface AwgServerSettings {
 	obf: AwgObf;
 	obf_preset: string;
 	header_protection: boolean;
+	ipv6_broker: boolean;
 	configured: boolean;
 	backend: string; // may be "" on fresh deploy; status.backend is authoritative
 	server_host: string; // client-facing AWG address; falls back to server.public_host when empty
