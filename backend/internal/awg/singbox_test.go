@@ -4,6 +4,7 @@ import (
 	"context"
 	"crypto/rand"
 	"fmt"
+	"strings"
 	"testing"
 
 	"routebox/backend/internal/config"
@@ -262,5 +263,105 @@ func TestEnableSingboxIPv6BrokerRejectsLowMTU(t *testing.T) {
 	in.MTU = 1200
 	if err := m.enableSingbox(context.Background(), in); err == nil {
 		t.Fatal("MTU<1280 with broker must fail")
+	}
+}
+
+// TestRenderClientConfDualStack: manager-level coverage that RenderClientConf
+// actually wires m.v6Active/m.ulaPrefix through to the rendered .conf (a pure
+// BuildClient test can't catch a wrong field/lock/prefix-arg wiring bug).
+func TestRenderClientConfDualStack(t *testing.T) {
+	m, _, _ := newSingboxMgr(t)
+	m.probeFn = func() bool { return true }
+	in := singboxEnableInput()
+	in.IPv6Broker = true
+	if err := m.enableSingbox(context.Background(), in); err != nil {
+		t.Fatal(err)
+	}
+	sum, err := m.AddPeer(context.Background(), "alice")
+	if err != nil {
+		t.Fatal(err)
+	}
+	conf, err := m.RenderClientConf(sum.PublicKey, "vps.example")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(conf, sum.Address) {
+		t.Fatalf("client conf missing v4 address %q:\n%s", sum.Address, conf)
+	}
+	if !strings.Contains(conf, "/128") {
+		t.Fatalf("client conf missing IPv6 /128 address:\n%s", conf)
+	}
+	if !strings.Contains(conf, "::/0") {
+		t.Fatalf("client conf missing ::/0 in AllowedIPs:\n%s", conf)
+	}
+}
+
+// TestClientEndpointDualStack: same as above but for the sing-box JSON endpoint
+// export (ClientEndpoint).
+func TestClientEndpointDualStack(t *testing.T) {
+	m, _, _ := newSingboxMgr(t)
+	m.probeFn = func() bool { return true }
+	in := singboxEnableInput()
+	in.IPv6Broker = true
+	if err := m.enableSingbox(context.Background(), in); err != nil {
+		t.Fatal(err)
+	}
+	sum, err := m.AddPeer(context.Background(), "alice")
+	if err != nil {
+		t.Fatal(err)
+	}
+	ep, err := m.ClientEndpoint(sum.PublicKey, "alice", "vps.example")
+	if err != nil {
+		t.Fatal(err)
+	}
+	addr, ok := ep["address"].([]interface{})
+	if !ok || len(addr) != 2 {
+		t.Fatalf("expected 2-element dual-stack address, got %#v", ep["address"])
+	}
+	if !strings.Contains(fmt.Sprint(addr[1]), "/128") {
+		t.Fatalf("second address element must be the /128 IPv6: %#v", addr)
+	}
+	peers, ok := ep["peers"].([]interface{})
+	if !ok || len(peers) != 1 {
+		t.Fatalf("expected 1 peer, got %#v", ep["peers"])
+	}
+	peer := peers[0].(map[string]interface{})
+	allowed, ok := peer["allowed_ips"].([]interface{})
+	if !ok {
+		t.Fatalf("allowed_ips wrong type: %#v", peer["allowed_ips"])
+	}
+	found := false
+	for _, a := range allowed {
+		if a == "::/0" {
+			found = true
+		}
+	}
+	if !found {
+		t.Fatalf("allowed_ips missing ::/0: %#v", allowed)
+	}
+}
+
+// TestRenderClientConfV4OnlyNoV6: additivity through the manager — with the
+// broker never activated, RenderClientConf must emit nothing IPv6-shaped.
+func TestRenderClientConfV4OnlyNoV6(t *testing.T) {
+	m, _, _ := newSingboxMgr(t) // m.probeFn already defaults to false (hermetic)
+	if err := m.enableSingbox(context.Background(), singboxEnableInput()); err != nil {
+		t.Fatal(err)
+	}
+	sum, err := m.AddPeer(context.Background(), "alice")
+	if err != nil {
+		t.Fatal(err)
+	}
+	conf, err := m.RenderClientConf(sum.PublicKey, "vps.example")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if strings.Contains(conf, "/128") || strings.Contains(conf, "::/0") {
+		t.Fatalf("v4-only conf must have no IPv6 traces:\n%s", conf)
+	}
+	for _, line := range strings.Split(conf, "\n") {
+		if strings.HasPrefix(line, "Address = ") && strings.Contains(line, ",") {
+			t.Fatalf("v4-only Address line must not be comma-joined: %q", line)
+		}
 	}
 }
