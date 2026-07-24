@@ -34,14 +34,14 @@
 
 <div class="field-grid">
 	<div class="field">
-		<label for="awg-port">{$t('awg.listenPort')}</label>
-		<input id="awg-port" type="number" bind:value={form.listen_port} />
-		<span class="hint">{$t('awg.listenPortHint')}</span>
-	</div>
-	<div class="field">
 		<label for="awg-host">{$t('awg.serverHost')}</label>
 		<input id="awg-host" type="text" bind:value={form.server_host} />
 		<span class="hint">{$t('awg.serverHostHint')}</span>
+	</div>
+	<div class="field">
+		<label for="awg-port">{$t('awg.listenPort')}</label>
+		<input id="awg-port" type="number" bind:value={form.listen_port} />
+		<span class="hint">{$t('awg.listenPortHint')}</span>
 	</div>
 	<div class="field">
 		<label for="awg-subnet">{$t('awg.subnet')}</label>
