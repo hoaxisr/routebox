@@ -135,6 +135,12 @@ func parseVless(uri string) (map[string]interface{}, string, error) {
 			tr["host"] = h
 		}
 		ob["transport"] = tr
+	case "xhttp":
+		tr := map[string]interface{}{"type": "xhttp", "path": orElse(params.Get("path"), "/")}
+		if h := params.Get("host"); h != "" {
+			tr["host"] = h
+		}
+		ob["transport"] = tr
 	}
 	return ob, name, nil
 }
@@ -186,6 +192,12 @@ func parseTrojan(uri string) (map[string]interface{}, string, error) {
 		ob["transport"] = map[string]interface{}{"type": "grpc", "service_name": params.Get("serviceName")}
 	case "httpupgrade":
 		tr := map[string]interface{}{"type": "httpupgrade", "path": orElse(params.Get("path"), "/")}
+		if h := params.Get("host"); h != "" {
+			tr["host"] = h
+		}
+		ob["transport"] = tr
+	case "xhttp":
+		tr := map[string]interface{}{"type": "xhttp", "path": orElse(params.Get("path"), "/")}
 		if h := params.Get("host"); h != "" {
 			tr["host"] = h
 		}

@@ -444,6 +444,11 @@ func TestTransportParams(t *testing.T) {
 			map[string]string{"type": "httpupgrade", "path": "/up", "host": "h.example.com"}, nil,
 		},
 		{
+			"xhttp emits type+path+host (top-level host string source)",
+			map[string]interface{}{"transport": map[string]interface{}{"type": "xhttp", "path": "/dl", "host": "cdn.example.com"}},
+			map[string]string{"type": "xhttp", "path": "/dl", "host": "cdn.example.com"}, nil,
+		},
+		{
 			"grpc emits type+serviceName, no host/path",
 			map[string]interface{}{"transport": map[string]interface{}{"type": "grpc", "service_name": "gsvc"}},
 			map[string]string{"type": "grpc", "serviceName": "gsvc"}, []string{"host", "path"},

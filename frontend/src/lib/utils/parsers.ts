@@ -15,7 +15,7 @@ export interface ParsedVless {
 	fingerprint?: string;
 	alpn?: string[];
 	// Transport
-	transport?: 'tcp' | 'ws' | 'grpc' | 'http' | 'httpupgrade';
+	transport?: 'tcp' | 'ws' | 'grpc' | 'http' | 'httpupgrade' | 'xhttp';
 	path?: string;
 	host?: string;
 	serviceName?: string;
@@ -36,7 +36,7 @@ export interface ParsedTrojan {
 	fingerprint?: string;
 	alpn?: string[];
 	// Transport
-	transport?: 'tcp' | 'ws' | 'grpc' | 'http' | 'httpupgrade';
+	transport?: 'tcp' | 'ws' | 'grpc' | 'http' | 'httpupgrade' | 'xhttp';
 	path?: string;
 	host?: string;
 	serviceName?: string;
@@ -853,6 +853,12 @@ export function toSingboxConfig(parsed: ParsedConfig): { endpoint?: Endpoint; ou
 			} else if (parsed.transport === 'httpupgrade') {
 				outbound.transport = {
 					type: 'httpupgrade',
+					path: parsed.path || '/',
+					host: parsed.host || undefined,
+				};
+			} else if (parsed.transport === 'xhttp') {
+				outbound.transport = {
+					type: 'xhttp',
 					path: parsed.path || '/',
 					host: parsed.host || undefined,
 				};
