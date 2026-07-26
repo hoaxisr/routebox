@@ -310,6 +310,8 @@
     "title": "Outbounds",
     "description": "Manage outbound proxy groups and connections",
     "addOutbound": "Add Outbound",
+    "pickerProtocols": "Protocols",
+    "pickerGroups": "Groups & basic",
     "editOutbound": "Edit Outbound",
     "deleteOutbound": "Delete Outbound",
     "confirmDelete": "Are you sure you want to delete outbound \"{name}\"?",
