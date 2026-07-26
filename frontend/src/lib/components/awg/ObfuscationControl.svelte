@@ -279,7 +279,7 @@
 		border-radius: 0.375rem;
 		padding: 0.4rem 0.5rem;
 		color: var(--ctp-text);
-		font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+		font-family: inherit;
 		font-size: 0.8125rem;
 	}
 	.mini-field input:focus {

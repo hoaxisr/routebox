@@ -155,7 +155,7 @@
 	}
 	.mono-readonly {
 		color: var(--ctp-overlay1);
-		font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+		font-family: inherit;
 	}
 	.settings-divider {
 		height: 1px;
