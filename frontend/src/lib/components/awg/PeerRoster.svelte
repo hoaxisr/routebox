@@ -23,6 +23,14 @@
 	let renewing = $state<string | null>(null); // public_key of the peer whose renew row is open
 	let renewDate = $state(''); // YYYY-MM-DD bound to the date input (empty = never)
 	let savingExpiry = $state(false);
+	let dateEl = $state<HTMLInputElement | null>(null); // only one renew-row is open at a time
+
+	// Open the native date picker on click. showPicker() needs a user gesture (we have one);
+	// fall back to focus for the odd browser without it. ponytail: native picker, no lib.
+	function openDatePicker() {
+		if (dateEl?.showPicker) dateEl.showPicker();
+		else dateEl?.focus();
+	}
 
 	function nowSec(): number {
 		return Math.floor(Date.now() / 1000);
@@ -240,13 +248,13 @@
 							<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" width="15" height="15"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4" /><polyline points="7 10 12 15 17 10" /><line x1="12" y1="15" x2="12" y2="3" /></svg>
 							{$t('awg.conf')}
 						</button>
-						<button type="button" class="peer-btn" onclick={() => copyJson(p)}>
+						<button type="button" class="peer-btn" title={$t('awg.exportJson')} aria-label={$t('awg.exportJson')} onclick={() => copyJson(p)}>
 							<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" width="15" height="15"><rect x="9" y="9" width="13" height="13" rx="2" /><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1" /></svg>
-							{$t('awg.exportJson')}
+							JSON
 						</button>
-						<button type="button" class="peer-btn" onclick={() => downloadJson(p)}>
+						<button type="button" class="peer-btn" title={$t('awg.downloadJson')} aria-label={$t('awg.downloadJson')} onclick={() => downloadJson(p)}>
 							<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" width="15" height="15"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4" /><polyline points="7 10 12 15 17 10" /><line x1="12" y1="15" x2="12" y2="3" /></svg>
-							{$t('awg.downloadJson')}
+							JSON
 						</button>
 					{:else}
 						<button type="button" class="peer-btn primary" onclick={() => showQR(p)}>
@@ -265,9 +273,13 @@
 			</div>
 			{#if renewing === p.public_key}
 				<div class="renew-row">
-					<input type="date" bind:value={renewDate} class="renew-date" />
-					<button type="button" class="renew-preset" onclick={() => applyPreset(30)}>+30d</button>
-					<button type="button" class="renew-preset" onclick={() => applyPreset(90)}>+90d</button>
+					<input type="date" bind:value={renewDate} bind:this={dateEl} class="renew-date-native" tabindex="-1" aria-hidden="true" />
+					<button type="button" class="renew-date-btn" onclick={openDatePicker}>
+						<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" width="14" height="14"><rect x="3" y="4" width="18" height="18" rx="2" /><line x1="16" y1="2" x2="16" y2="6" /><line x1="8" y1="2" x2="8" y2="6" /><line x1="3" y1="10" x2="21" y2="10" /></svg>
+						{renewDate || $t('awg.setDate')}
+					</button>
+					<button type="button" class="renew-preset" onclick={() => applyPreset(30)}>+30 days</button>
+					<button type="button" class="renew-preset" onclick={() => applyPreset(90)}>+90 days</button>
 					<button type="button" class="renew-preset" onclick={() => (renewDate = '')}>{$t('awg.neverExpiry')}</button>
 					<span class="renew-spacer"></span>
 					<button type="button" class="peer-btn primary" disabled={savingExpiry} onclick={() => saveExpiry(p)}>{$t('awg.saveExpiry')}</button>
@@ -435,6 +447,7 @@
 		color: var(--ctp-overlay1);
 	}
 	.renew-row {
+		position: relative;
 		display: flex;
 		align-items: center;
 		gap: 0.4rem;
@@ -443,13 +456,28 @@
 		background: var(--ctp-base);
 		flex-wrap: wrap;
 	}
-	.renew-date {
+	/* Native date input kept for its picker only; visually collapsed. */
+	.renew-date-native {
+		position: absolute;
+		width: 1px;
+		height: 1px;
+		opacity: 0;
+		pointer-events: none;
+	}
+	.renew-date-btn {
+		display: inline-flex;
+		align-items: center;
+		gap: 0.35rem;
 		background: var(--ctp-mantle);
 		border: 1px solid var(--ctp-surface2);
 		border-radius: 0.375rem;
-		padding: 0.35rem 0.5rem;
+		padding: 0.35rem 0.6rem;
 		color: var(--ctp-text);
 		font-size: 0.85rem;
+		cursor: pointer;
+	}
+	.renew-date-btn:hover {
+		border-color: var(--ctp-primary);
 	}
 	.renew-preset {
 		padding: 0.35rem 0.6rem;

@@ -546,7 +546,7 @@
 					<h3 class="text-sm sm:text-base font-semibold text-[var(--ctp-text)] group-hover:text-[var(--ctp-primary)] transition-colors">
 						Outbounds
 					</h3>
-					<p class="text-xs text-[var(--ctp-overlay1)] truncate">VLESS, Hysteria2</p>
+					<p class="text-xs text-[var(--ctp-overlay1)] truncate">VLESS, Hysteria2, NaiveProxy, Mieru</p>
 				</div>
 			</div>
 		</a>

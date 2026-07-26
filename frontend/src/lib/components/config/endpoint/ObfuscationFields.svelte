@@ -83,7 +83,7 @@
 
 	<!-- Init Packet Params (S1-S4) -->
 	<div class="bg-[var(--ctp-surface0)] rounded-lg p-4">
-		<h3 class="text-sm font-medium text-[var(--ctp-subtext1)] mb-3 flex items-center gap-2">{$t('endpoints.obfuscation.initPacketParams')}{#if serverLocked}<span class="lock-badge">🔒 {$t('endpoints.obfuscation.readonly')}</span>{/if}</h3>
+		<h3 class="text-sm font-medium text-[var(--ctp-subtext1)] mb-3 flex items-center gap-2">{$t('endpoints.obfuscation.initPacketParams')}{#if serverLocked}<span class="lock-badge">{$t('endpoints.obfuscation.readonly')}</span>{/if}</h3>
 		<div class="grid grid-cols-4 gap-4">
 			<div>
 				<label for="s1" class="block text-xs text-[var(--ctp-overlay0)] mb-1">S1</label>
@@ -106,7 +106,7 @@
 
 	<!-- Header Params (H1-H4) -->
 	<div class="bg-[var(--ctp-surface0)] rounded-lg p-4">
-		<h3 class="text-sm font-medium text-[var(--ctp-subtext1)] mb-3 flex items-center gap-2">{$t('endpoints.obfuscation.headerParams')}{#if serverLocked}<span class="lock-badge">🔒 {$t('endpoints.obfuscation.readonly')}</span>{/if}</h3>
+		<h3 class="text-sm font-medium text-[var(--ctp-subtext1)] mb-3 flex items-center gap-2">{$t('endpoints.obfuscation.headerParams')}{#if serverLocked}<span class="lock-badge">{$t('endpoints.obfuscation.readonly')}</span>{/if}</h3>
 		<div class="grid grid-cols-4 gap-4">
 			<div>
 				<label for="h1" class="block text-xs text-[var(--ctp-overlay0)] mb-1">H1</label>
