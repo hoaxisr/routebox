@@ -173,6 +173,7 @@ func tlsParams(tls map[string]interface{}, host string) (url.Values, error) {
 //
 //	ws          → type=ws&path=&host=   (host source: transport.headers.Host)
 //	httpupgrade → type=httpupgrade&path=&host=  (host source: top-level transport.host)
+//	xhttp       → type=xhttp&path=&host=  (host source: top-level transport.host)
 //	grpc        → type=grpc&serviceName=
 func transportParams(inbound map[string]interface{}) url.Values {
 	q := url.Values{}
@@ -191,6 +192,14 @@ func transportParams(inbound map[string]interface{}) url.Values {
 		}
 	case "httpupgrade":
 		q.Set("type", "httpupgrade")
+		if p, _ := tr["path"].(string); p != "" {
+			q.Set("path", p)
+		}
+		if h, _ := tr["host"].(string); h != "" {
+			q.Set("host", h)
+		}
+	case "xhttp":
+		q.Set("type", "xhttp")
 		if p, _ := tr["path"].(string); p != "" {
 			q.Set("path", p)
 		}
