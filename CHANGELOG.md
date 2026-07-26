@@ -37,6 +37,9 @@ All notable changes to RouteBox are documented here.
 - **Removed the redundant standalone "Route Options" rule action** — its override/UDP/TLS-fragment
   fields remain available in the collapsible Route Options block under the Route action; existing
   `route-options` rules still load and save (#33).
+- **Mieru client: server-determined params (transport, traffic pattern) are now shown read-only with
+  a "Server only" badge**, mirroring the AWG3 treatment — they must match the server and are set via
+  import; the client-side multiplexing knob stays editable.
 
 ### Backend
 
