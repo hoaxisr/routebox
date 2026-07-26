@@ -271,19 +271,9 @@
 		<ResolveOptions bind:server={resolveServer} bind:strategy={resolveStrategy} {dnsServers} />
 	{/if}
 
-	{#if action === 'route-options'}
-		<RouteOptions
-			bind:overrideAddress
-			bind:overridePort
-			bind:udpConnect
-			bind:udpTimeout
-			bind:udpDisableDomainUnmapping
-			bind:tlsFragment
-			bind:tlsFragmentFallbackDelay
-			bind:tlsRecordFragment
-			showDescription
-		/>
-	{/if}
+	<!-- The standalone 'route-options' action was removed (#33): its override/UDP/TLS
+	     fields live in the collapsible Route Options block under the Route action below.
+	     Legacy rules already using action 'route-options' still load, save, and display. -->
 
 	{#if action === 'sniff'}
 		<SniffOptions bind:timeout={sniffTimeout} />
