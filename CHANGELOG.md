@@ -4,6 +4,15 @@ All notable changes to RouteBox are documented here.
 
 ## [Unreleased]
 
+## [0.31.1] - 2026-07-26
+
+### Fixed
+
+- **Monospace restored in the config.json view and setup command snippets.** A regression from the
+  v0.30.0 `.font-mono → inherit` sweep: a `<pre>`/`<code>` that also carried the `.font-mono` class
+  lost its monospace, because the class selector outranks the `code, pre` element rule. The config
+  JSON tab and the dashboard command blocks rendered in the normal font; they are monospace again.
+
 ## [0.31.0] - 2026-07-26
 
 ### Features
