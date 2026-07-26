@@ -5,7 +5,7 @@ export type ServerInboundType = 'vless' | 'trojan' | 'naive' | 'hysteria2' | 'mi
 
 export const PANEL_CERT_PATH = '/etc/routebox/panel-cert/fullchain.pem';
 export const PANEL_KEY_PATH = '/etc/routebox/panel-cert/key.pem';
-export type TransportType = 'raw' | 'ws' | 'grpc' | 'httpupgrade';
+export type TransportType = 'raw' | 'ws' | 'grpc' | 'httpupgrade' | 'xhttp';
 
 export interface ServerTransportState {
 	type: TransportType;
@@ -106,6 +106,11 @@ export function buildServerInbound(s: ServerFormState): Inbound {
 			const hu: Record<string, unknown> = { type: 'httpupgrade', path: tr.path?.trim() || '/' };
 			if (tr.host?.trim()) hu.host = tr.host.trim();
 			ib.transport = hu as unknown as Inbound['transport'];
+		} else if (tr.type === 'xhttp') {
+			// xHTTP (awg3-xhttp fork): top-level host string like httpupgrade; mode defaults to auto.
+			const xh: Record<string, unknown> = { type: 'xhttp', path: tr.path?.trim() || '/' };
+			if (tr.host?.trim()) xh.host = tr.host.trim();
+			ib.transport = xh as unknown as Inbound['transport'];
 		} else if (tr.type === 'grpc') {
 			ib.transport = { type: 'grpc', service_name: tr.service_name?.trim() || '' } as unknown as Inbound['transport'];
 		}
@@ -196,6 +201,8 @@ export function parseServerInbound(ib: Inbound): ServerFormState {
 		transport = { type: 'ws', path: (rawTr!.path as string) ?? '/', host: headers?.Host ?? '' };
 	} else if (trType === 'httpupgrade') {
 		transport = { type: 'httpupgrade', path: (rawTr!.path as string) ?? '/', host: (rawTr!.host as string) ?? '' };
+	} else if (trType === 'xhttp') {
+		transport = { type: 'xhttp', path: (rawTr!.path as string) ?? '/', host: (rawTr!.host as string) ?? '' };
 	} else if (trType === 'grpc') {
 		transport = { type: 'grpc', service_name: (rawTr!.service_name as string) ?? '' };
 	}

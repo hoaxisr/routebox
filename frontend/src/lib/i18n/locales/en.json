@@ -870,7 +870,7 @@
       "obfsType": "Obfuscation",
       "obfsPassword": "Obfs Password",
       "transport": "Transport",
-      "transports": { "raw": "Raw (TCP)", "ws": "WebSocket", "grpc": "gRPC", "httpupgrade": "HTTPUpgrade" },
+      "transports": { "raw": "Raw (TCP)", "ws": "WebSocket", "grpc": "gRPC", "httpupgrade": "HTTPUpgrade", "xhttp": "xHTTP" },
       "transportPath": "Path",
       "transportHost": "Host",
       "transportServiceName": "Service Name",

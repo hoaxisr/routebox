@@ -7,7 +7,7 @@
 
 	// Local transport interface with host as string for form binding
 	interface VlessTransport {
-		type: 'tcp' | 'ws' | 'http' | 'grpc' | 'quic' | 'httpupgrade';
+		type: 'tcp' | 'ws' | 'http' | 'grpc' | 'quic' | 'httpupgrade' | 'xhttp';
 		path?: string;
 		host?: string;
 		service_name?: string;
@@ -42,7 +42,7 @@
 	}: Props = $props();
 
 	const flows = ['', 'xtls-rprx-vision'];
-	const transports: VlessTransport['type'][] = ['tcp', 'ws', 'grpc', 'http', 'httpupgrade'];
+	const transports: VlessTransport['type'][] = ['tcp', 'ws', 'grpc', 'http', 'httpupgrade', 'xhttp'];
 </script>
 
 <div class="space-y-4">
@@ -126,7 +126,7 @@
 			{/each}
 		</div>
 
-		{#if transport.type === 'ws' || transport.type === 'httpupgrade'}
+		{#if transport.type === 'ws' || transport.type === 'httpupgrade' || transport.type === 'xhttp'}
 			<div class="grid grid-cols-1 sm:grid-cols-2 gap-4">
 				<div>
 					<label for="ws-path" class="block text-sm font-medium text-[var(--ctp-subtext1)] mb-1">

@@ -276,7 +276,7 @@ export interface MultiplexConfig {
 
 // Transport configuration for VLESS/VMess
 export interface TransportConfig {
-	type: 'tcp' | 'ws' | 'http' | 'grpc' | 'quic' | 'httpupgrade';
+	type: 'tcp' | 'ws' | 'http' | 'grpc' | 'quic' | 'httpupgrade' | 'xhttp';
 	path?: string;
 	headers?: Record<string, string>;
 	host?: string[];
