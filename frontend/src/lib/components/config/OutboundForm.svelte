@@ -641,19 +641,21 @@
 		onSave(ob);
 	}
 
-	const outboundTypes = [
-		{ value: 'direct', labelKey: 'outbounds.types.direct', descKey: 'outbounds.directDesc' },
-		{ value: 'block', labelKey: 'outbounds.types.block', descKey: 'outbounds.blockDesc' },
-		{ value: 'selector', labelKey: 'outbounds.types.selector', descKey: 'outbounds.selectorDesc' },
-		{ value: 'urltest', labelKey: 'outbounds.types.urltest', descKey: 'outbounds.urltestDesc' },
+	// Proxy protocols (2x2 block). Trojan/Shadowsocks/ShadowTLS/AnyTLS are deprecated in
+	// RouteBox and removed from the picker (#22); their forms/parsers/validators stay so
+	// existing configs still load and edit.
+	const protocolTypes = [
 		{ value: 'vless', labelKey: 'outbounds.vless', descKey: 'outbounds.vlessDesc' },
-		{ value: 'trojan', labelKey: 'outbounds.trojan', descKey: 'outbounds.trojanDesc' },
 		{ value: 'hysteria2', labelKey: 'outbounds.hysteria2', descKey: 'outbounds.hysteria2Desc' },
-		{ value: 'shadowsocks', labelKey: 'outbounds.shadowsocks', descKey: 'outbounds.shadowsocksDesc' },
-		{ value: 'shadowtls', labelKey: 'outbounds.shadowtls', descKey: 'outbounds.shadowtlsDesc' },
-		{ value: 'anytls', labelKey: 'outbounds.anytls', descKey: 'outbounds.anytlsDesc' },
 		{ value: 'naive', labelKey: 'outbounds.naive', descKey: 'outbounds.naiveDesc' },
 		{ value: 'mieru', labelKey: 'outbounds.mieru', descKey: 'outbounds.mieruDesc' }
+	];
+	// Groups (selector/urltest) and built-in outbounds (direct/block).
+	const groupTypes = [
+		{ value: 'selector', labelKey: 'outbounds.types.selector', descKey: 'outbounds.selectorDesc' },
+		{ value: 'urltest', labelKey: 'outbounds.types.urltest', descKey: 'outbounds.urltestDesc' },
+		{ value: 'direct', labelKey: 'outbounds.types.direct', descKey: 'outbounds.directDesc' },
+		{ value: 'block', labelKey: 'outbounds.types.block', descKey: 'outbounds.blockDesc' }
 	];
 </script>
 
@@ -674,19 +676,29 @@
 	</div>
 
 	<!-- Type -->
-	<div>
-		<label class="block text-sm font-medium text-[var(--ctp-subtext1)] mb-2">{$t('common.type')}</label>
-		<div class="grid grid-cols-3 gap-2">
-			{#each outboundTypes as ot}
-				<button
-					type="button"
-					onclick={() => type = ot.value}
-					class="type-btn {type === ot.value ? 'selected' : ''}"
-				>
-					<div class="type-label">{$t(ot.labelKey)}</div>
-					<div class="type-desc">{$t(ot.descKey)}</div>
-				</button>
-			{/each}
+	{#snippet typeButton(ot: { value: string; labelKey: string; descKey: string })}
+		<button
+			type="button"
+			onclick={() => type = ot.value}
+			class="type-btn {type === ot.value ? 'selected' : ''}"
+		>
+			<div class="type-label">{$t(ot.labelKey)}</div>
+			<div class="type-desc">{$t(ot.descKey)}</div>
+		</button>
+	{/snippet}
+	<div class="space-y-4">
+		<label class="block text-sm font-medium text-[var(--ctp-subtext1)]">{$t('common.type')}</label>
+		<div>
+			<div class="text-xs font-medium text-[var(--ctp-overlay0)] uppercase tracking-wide mb-2">{$t('outbounds.pickerProtocols')}</div>
+			<div class="grid grid-cols-2 gap-2">
+				{#each protocolTypes as ot}{@render typeButton(ot)}{/each}
+			</div>
+		</div>
+		<div>
+			<div class="text-xs font-medium text-[var(--ctp-overlay0)] uppercase tracking-wide mb-2">{$t('outbounds.pickerGroups')}</div>
+			<div class="grid grid-cols-2 sm:grid-cols-4 gap-2">
+				{#each groupTypes as ot}{@render typeButton(ot)}{/each}
+			</div>
 		</div>
 	</div>
 

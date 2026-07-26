@@ -84,7 +84,9 @@ export function isPathAllowed(path: string, mode: Mode): boolean {
 // protocols. This filters ONLY the add-new chooser. Each call returns a fresh
 // array so callers can never mutate shared state.
 const ROUTER_INBOUND_TYPES = ['tun', 'mixed', 'socks', 'http'] as const;
-const VPS_INBOUND_TYPES = ['vless', 'trojan', 'naive', 'hysteria2', 'mieru'] as const;
+// Trojan is deprecated in RouteBox and removed from the picker; visibleInboundTypes still
+// re-adds it as currentType so existing Trojan inbounds stay editable.
+const VPS_INBOUND_TYPES = ['vless', 'naive', 'hysteria2', 'mieru'] as const;
 
 export function inboundTypesFor(mode: Mode): string[] {
 	return mode === 'vps' ? [...VPS_INBOUND_TYPES] : [...ROUTER_INBOUND_TYPES];
