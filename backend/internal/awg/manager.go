@@ -421,22 +421,28 @@ func (m *Manager) suspend(ctx context.Context, pub string) error {
 }
 
 // RemovePeer removes a peer live and from the on-disk .conf + secret store.
-func (m *Manager) RemovePeer(ctx context.Context, pub string) error {
+// RemovePeer live-removes the peer and returns its tunnel Address (e.g. "10.10.64.2/32",
+// empty if the peer was unknown) so the caller can purge its per-source traffic history.
+func (m *Manager) RemovePeer(ctx context.Context, pub string) (string, error) {
 	if _, err := ValidatePublicKey(pub); err != nil {
-		return err
+		return "", err
 	}
 	m.addMu.Lock()
 	defer m.addMu.Unlock()
+	addr := ""
+	if p, ok := m.store.Get(pub); ok {
+		addr = p.Address
+	}
 	if m.backendIs("singbox") {
 		if err := m.store.Delete(pub); err != nil {
-			return err
+			return "", err
 		}
-		return m.singboxSync()
+		return addr, m.singboxSync()
 	}
 	if err := m.suspend(ctx, pub); err != nil {
-		return err
+		return "", err
 	}
-	return m.store.Delete(pub)
+	return addr, m.store.Delete(pub)
 }
 
 // RenewPeer sets a peer's ExpiresAt and ensures it is admitted to the live

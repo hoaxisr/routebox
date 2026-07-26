@@ -52,6 +52,46 @@ func TestStore_UpsertAndQuery(t *testing.T) {
 	}
 }
 
+func TestStore_DeleteSource(t *testing.T) {
+	tmp := t.TempDir()
+	s, err := OpenStore(filepath.Join(tmp, "t.db"))
+	if err != nil {
+		t.Fatalf("OpenStore: %v", err)
+	}
+	defer s.Close()
+
+	// Two sources; one is a deleted client's tunnel IP.
+	s.Upsert(60, "10.10.64.2", "a.com", "direct", 100, 200)
+	s.Upsert(60, "10.10.64.2", "b.com", "direct", 10, 20)
+	s.Upsert(60, "192.168.1.5", "a.com", "direct", 5, 5)
+
+	if err := s.DeleteSource("10.10.64.2"); err != nil {
+		t.Fatalf("DeleteSource: %v", err)
+	}
+
+	rows, _ := s.QueryAggregate(0, 9999999999, "", "", "")
+	// Only the surviving source's traffic remains (subtracted from the total).
+	total := int64(0)
+	for _, r := range rows {
+		if r.Source == "10.10.64.2" {
+			t.Fatalf("deleted source still present: %+v", r)
+		}
+		total += r.Upload + r.Download
+	}
+	if total != 10 {
+		t.Errorf("remaining total = %d, want 10 (only 192.168.1.5)", total)
+	}
+
+	// Empty source is a no-op, not a wipe.
+	if err := s.DeleteSource(""); err != nil {
+		t.Fatalf("DeleteSource(\"\"): %v", err)
+	}
+	rows, _ = s.QueryAggregate(0, 9999999999, "", "", "")
+	if len(rows) == 0 {
+		t.Error("DeleteSource(\"\") wiped the table")
+	}
+}
+
 func TestStore_QueryWithFilter(t *testing.T) {
 	tmp := t.TempDir()
 	s, _ := OpenStore(filepath.Join(tmp, "t.db"))

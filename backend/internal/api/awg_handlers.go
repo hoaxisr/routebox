@@ -3,7 +3,9 @@ package api
 import (
 	"encoding/json"
 	"errors"
+	"log"
 	"net/http"
+	"net/netip"
 	"net/url"
 	"time"
 
@@ -162,9 +164,22 @@ func (h *Handler) DeleteAWGPeer(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusBadRequest, "invalid public key")
 		return
 	}
-	if err := h.awg.RemovePeer(r.Context(), pub); err != nil {
+	addr, err := h.awg.RemovePeer(r.Context(), pub)
+	if err != nil {
 		writeError(w, http.StatusInternalServerError, "failed to remove peer")
 		return
+	}
+	// Purge the removed peer's per-source Breakdown history (#19). The peer's tunnel
+	// IP (e.g. 10.10.64.2) is the `source` key in traffic_minute; strip the /32 mask.
+	// Best-effort: a purge failure must not fail the delete.
+	if h.traffic != nil && addr != "" {
+		src := addr
+		if pfx, perr := netip.ParsePrefix(addr); perr == nil {
+			src = pfx.Addr().String()
+		}
+		if derr := h.traffic.DeleteSource(src); derr != nil {
+			log.Printf("api: purge traffic for removed peer source %q: %v", src, derr)
+		}
 	}
 	w.WriteHeader(http.StatusNoContent)
 }

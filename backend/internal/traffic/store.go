@@ -63,6 +63,17 @@ func (s *Store) Close() error {
 	return s.db.Close()
 }
 
+// DeleteSource removes all traffic_minute rows for a source (LAN/tunnel IP). Used to
+// purge a deleted client's per-source Breakdown history — and subtract it from any
+// aggregate that sums traffic_minute — when the client is removed (#19).
+func (s *Store) DeleteSource(source string) error {
+	if source == "" {
+		return nil
+	}
+	_, err := s.db.Exec(`DELETE FROM traffic_minute WHERE source = ?`, source)
+	return err
+}
+
 // Upsert adds upload/download counts to the row at (bucket_ts, source, domain, chain).
 func (s *Store) Upsert(bucketTs int64, source, domain, chain string, upload, download int64) error {
 	_, err := s.db.Exec(`
