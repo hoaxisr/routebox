@@ -339,7 +339,7 @@
 					<span class="text-xs text-[var(--ctp-overlay0)]">{currentConfig.split('\n').length} lines</span>
 				</div>
 				<div class="p-4 overflow-auto max-h-[calc(100vh-280px)] json-viewer">
-					<pre class="text-sm font-mono leading-relaxed">{@html highlightJson(currentConfig)}</pre>
+					<pre class="text-sm leading-relaxed">{@html highlightJson(currentConfig)}</pre>
 				</div>
 			</div>
 		{/if}

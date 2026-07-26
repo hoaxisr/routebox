@@ -267,7 +267,7 @@
 						{#if !status.system_checks.is_root}
 							<div class="p-3 bg-white/10 rounded-lg">
 								<p class="text-white font-medium mb-2">Run routebox with sudo:</p>
-								<code class="block text-white/90 font-mono text-sm">
+								<code class="block text-white/90 text-sm">
 									sudo ./routebox --config /path/to/config.json
 								</code>
 							</div>
@@ -275,7 +275,7 @@
 						{#if !status.system_checks.ipv4_forward}
 							<div class="p-3 bg-white/10 rounded-lg">
 								<p class="text-white font-medium mb-2">Enable IP forwarding:</p>
-								<code class="block text-white/90 font-mono text-sm">
+								<code class="block text-white/90 text-sm">
 									echo "net.ipv4.ip_forward=1" >> /etc/sysctl.conf && sysctl -p
 								</code>
 							</div>
