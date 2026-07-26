@@ -4,6 +4,23 @@ All notable changes to RouteBox are documented here.
 
 ## [Unreleased]
 
+### Features
+
+- **Redesigned per-user usage view (`/monitor/users`)** (#32). Replaces the flat table with a
+  usage-ranked view: clients sorted by volume, each a horizontal bar split into upload (coral) and
+  download (grey), with a 24h/7d/30d range toggle and a running total. Clicking a client expands a
+  drilldown with an area chart of their traffic over the selected range, an upload/download split,
+  and the peak hour. A green dot marks clients that transferred in the last two minutes ("active" —
+  an activity signal, since sing-box exposes no handshake). Data comes from the existing per-user
+  traffic API (no backend change).
+
+### Fixed
+
+- **Deleting an AWG client now purges its per-source Breakdown history** (#19). v0.29.1 purged the
+  per-user (`user_traffic`) view, but the Breakdown *source* panel reads `traffic_minute` keyed by
+  source IP, and AWG peer removal never purged it — so a deleted tunnel client (e.g. `10.10.64.2`)
+  lingered. `RemovePeer` now returns the peer's address and its `traffic_minute` rows are dropped.
+
 ## [0.30.0] - 2026-07-26
 
 ### Features

@@ -1797,7 +1797,11 @@
   "monitor": {
     "perUserTitle": "Per-User Traffic",
     "usersEmpty": "No panel users yet.",
-    "usersLoadFailed": "Failed to load user traffic"
+    "usersLoadFailed": "Failed to load user traffic",
+    "usageSummary": "{count} clients · {total} transferred · sorted by usage",
+    "usageActive": "active now",
+    "usagePeak": "Peak around {time}",
+    "usageNoData": "No traffic in this range"
   },
   "subscriptions": {
     "title": "Subscriptions",
