@@ -158,17 +158,24 @@
 
 	/**
 	 * Determines AWG obfuscation version based on configured parameters.
-	 * Returns 'AWG 2.0', 'AWG 1.5', 'AWG 1.0', or 'WG'
+	 * Returns 'AWG 3.0', 'AWG 2.0', 'AWG 1.5', 'AWG 1.0', or 'WG'
 	 */
 	function getAWGVersion(ep: Endpoint): string {
 		// Check which parameter groups are configured
 		const hasI = !!(ep.i1 || ep.i2 || ep.i3 || ep.i4 || ep.i5);
 		const hasS3S4 = !!(ep.s3 || ep.s4);
 		const hasJunk = !!(ep.jc || ep.jmin || ep.jmax);
+		// AWG3 signature: header protection, content padding, or rekey-after-time.
+		const hasAwg3 = !!(ep.header_protection_key || ep.content_padding_addition || ep.rekey_after_time);
 
 		// Check if h1-h4 contain ranges (contain '-' character)
 		const isRange = (val: string | undefined) => val && val.includes('-');
 		const hasHRanges = isRange(ep.h1) || isRange(ep.h2) || isRange(ep.h3) || isRange(ep.h4);
+
+		// AWG 3.0: awg3-only params present (also carries s/h, so check before 2.0)
+		if (hasAwg3) {
+			return 'AWG 3.0';
+		}
 
 		// AWG 2.0: s3-s4 configured (with or without i1-i5) OR h1-h4 as ranges
 		if (hasS3S4 || hasHRanges) {
@@ -294,6 +301,7 @@
 							<div class="flex items-center gap-2">
 								<span class="text-xs text-[var(--ctp-overlay0)]">Obfuscation:</span>
 								<span class="status-badge {
+									awgVersion === 'AWG 3.0' ? 'awg3' :
 									awgVersion === 'AWG 2.0' ? 'success' :
 									awgVersion === 'WG' ? 'info' : ''
 								}">
