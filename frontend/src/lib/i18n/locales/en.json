@@ -210,7 +210,7 @@
     "publicHostUnset": "Not set",
     "editSettings": "Edit settings",
     "serverInbounds": "Server Inbounds",
-    "serverInboundsHint": "VLESS / NaiveProxy / Hysteria2 / Trojan",
+    "serverInboundsHint": "VLESS, NaiveProxy, Hysteria2, Mieru",
     "manageInbounds": "Manage inbounds"
   },
   "overview": {
@@ -295,7 +295,7 @@
       "awg3Params": "AWG 3.0 Parameters",
       "hint": "These parameters should match your AmneziaWG server configuration. Leave at 0 or empty to disable obfuscation features.",
       "serverLocked": "S1–S4 and H1–H4 must match the server, so they are imported and read-only. Junk packets (Jc/Jmin/Jmax) and I1–I5 are client-side — edit those freely. Use Import to change the locked fields.",
-      "readonly": "read-only"
+      "readonly": "Server only"
     },
     "placeholders": {
       "privateKey": "Base64-encoded private key",
@@ -1705,6 +1705,7 @@
     "upToDate": "All changes saved",
     "saveExpiry": "Save",
     "neverExpiry": "Never",
+    "setDate": "Set date",
     "settingsSaved": "Settings saved",
     "saveFailed": "Failed to save settings",
     "apply": "Apply & restart",

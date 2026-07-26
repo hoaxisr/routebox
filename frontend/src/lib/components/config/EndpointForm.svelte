@@ -463,7 +463,7 @@
 
 			<!-- AWG3 (header protection + padding/rekey) -->
 			<div class="bg-[var(--ctp-surface0)] rounded-lg p-4 space-y-4">
-				<h3 class="text-sm font-medium text-[var(--ctp-subtext1)] flex items-center gap-2">{$t('endpoints.obfuscation.awg3Params')}<span class="text-[0.65rem] font-normal text-[var(--ctp-overlay0)] bg-[var(--ctp-surface1)] rounded px-1.5 py-0.5">🔒 {$t('endpoints.obfuscation.readonly')}</span></h3>
+				<h3 class="text-sm font-medium text-[var(--ctp-subtext1)] flex items-center gap-2">{$t('endpoints.obfuscation.awg3Params')}<span class="text-[0.65rem] font-normal text-[var(--ctp-overlay0)] bg-[var(--ctp-surface1)] rounded px-1.5 py-0.5">{$t('endpoints.obfuscation.readonly')}</span></h3>
 				<div>
 					<label for="headerProtectionKey" class="block text-xs text-[var(--ctp-overlay0)] mb-1">{$t('endpoints.headerProtectionKey')}</label>
 					<input
