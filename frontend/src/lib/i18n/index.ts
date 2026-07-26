@@ -3,6 +3,7 @@ import { init, register, locale } from 'svelte-i18n';
 
 // Register locales
 register('en', () => import('./locales/en.json'));
+register('ru', () => import('./locales/ru.json'));
 
 // Initialize i18n
 export function initI18n(initialLocale?: string) {
@@ -14,11 +15,11 @@ export function initI18n(initialLocale?: string) {
 
 // Set locale and persist to localStorage
 export function setLocale(newLocale: string) {
-	if (newLocale === 'en') {
-		locale.set(newLocale);
-		if (browser) {
-			localStorage.setItem('routebox-language', newLocale);
-		}
+	const allowed = ['en', 'ru'];
+	const l = allowed.includes(newLocale) ? newLocale : 'en';
+	locale.set(l);
+	if (browser) {
+		localStorage.setItem('routebox-language', l);
 	}
 }
 

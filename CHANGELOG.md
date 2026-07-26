@@ -6,6 +6,11 @@ All notable changes to RouteBox are documented here.
 
 ### Features
 
+- **Russian (ru) UI locale** (#21). The full interface (~1690 strings) is translated to Russian.
+  English stays the default; Russian is opt-in via the language selector on the App Settings page
+  and persists across sessions. Translated layout-first — tight controls (nav, badges, buttons,
+  table headers) stay short, with an English fallback for terms that have no short Russian form
+  (Multiplex, Live, Sniff) and proper nouns/acronyms kept as-is (VLESS, MTU, DNS, Reality, …).
 - **AWG server clients show a live activity LED on the sing-box backend.** sing-box exposes no
   per-peer handshake, so a client's dot now lights green while its tunnel IP has a live connection
   in the Clash connections stream (an activity signal, not a tunnel-up one), and greys out when

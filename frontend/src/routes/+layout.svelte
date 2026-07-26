@@ -1,6 +1,7 @@
 <script lang="ts">
 	import '../app.css';
 	import { onMount, onDestroy, type Snippet } from 'svelte';
+	import { browser } from '$app/environment';
 	import { page } from '$app/stores';
 	import { theme, notifications, loadVersion, speedUnit, loadClientNames, routerMode, panelMode, loadMode, serverMode } from '$lib/stores';
 	import { api } from '$lib/api/client';
@@ -10,8 +11,8 @@
 	import { isPathAllowed } from '$lib/mode/routeModes';
 	import { goto } from '$app/navigation';
 
-	// Initialize i18n
-	initI18n();
+	// Initialize i18n — restore the saved language on boot (default en).
+	initI18n((browser ? localStorage.getItem('routebox-language') : null) || 'en');
 
 	interface Props {
 		children: Snippet;
