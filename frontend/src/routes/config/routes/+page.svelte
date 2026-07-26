@@ -21,10 +21,12 @@
 	let inbounds = $state<Inbound[]>([]);
 	let settings = $state<RouteSettings>({ final: 'direct' });
 
-	// Combined list: outbounds + endpoints (endpoints can be used directly as routing targets)
+	// Combined list: outbounds + endpoints (endpoints can be used directly as routing targets).
+	// The managed 'awg-server' endpoint is a server inbound, not an egress — exclude it as a
+	// routing target (it stays valid as a source below).
 	let allOutbounds = $derived([
 		...outbounds,
-		...endpoints.map(e => ({ tag: e.tag, type: e.type } as Outbound))
+		...endpoints.filter(e => e.tag !== 'awg-server').map(e => ({ tag: e.tag, type: e.type } as Outbound))
 	]);
 	// Source options: inbounds + server-capable endpoints (listen_port set).
 	// amnezia-box tags AWG/WG server traffic with the endpoint tag as inbound,
