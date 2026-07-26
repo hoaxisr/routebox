@@ -4,6 +4,8 @@ All notable changes to RouteBox are documented here.
 
 ## [Unreleased]
 
+## [0.31.0] - 2026-07-26
+
 ### Features
 
 - **Russian (ru) UI locale** (#21). The full interface (~1690 strings) is translated to Russian.
