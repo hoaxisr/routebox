@@ -374,7 +374,6 @@
 	.peer-info {
 		flex: 1 1 14rem;
 		min-width: 0;
-		overflow: hidden;
 	}
 	.peer-name {
 		font-weight: 600;
@@ -412,6 +411,10 @@
 		margin-top: 2px;
 		color: var(--ctp-overlay1);
 		font-size: 0.8125rem;
+		/* Clip the address/expiry line here (not on .peer-info) so the LED's glow,
+		   which sits at the left edge of .peer-name, is never cut off (#34). */
+		min-width: 0;
+		overflow: hidden;
 	}
 	.peer-meta .addr {
 		font-family: inherit;
