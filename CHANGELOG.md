@@ -16,6 +16,9 @@ All notable changes to RouteBox are documented here.
 
 ### Fixed
 
+- **AWG client action buttons no longer overlap the client info on tablet-width screens**
+  (e.g. Samsung Fold7 unfolded). The peer row now wraps its action buttons onto their own line
+  whenever they don't fit, instead of only below 720px.
 - **Deleting an AWG client now purges its per-source Breakdown history** (#19). v0.29.1 purged the
   per-user (`user_traffic`) view, but the Breakdown *source* panel reads `traffic_minute` keyed by
   source IP, and AWG peer removal never purged it — so a deleted tunnel client (e.g. `10.10.64.2`)
