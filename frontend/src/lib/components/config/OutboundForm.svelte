@@ -194,7 +194,8 @@
 	// Available outbounds for selector
 	let availableForSelection = $derived.by(() => {
 		if (type === 'selector' || type === 'urltest') {
-			const endpointTags = endpoints.map((e) => e.tag);
+			// Exclude the managed 'awg-server' endpoint — it's a server inbound, not a routable member.
+			const endpointTags = endpoints.filter((e) => e.tag !== 'awg-server').map((e) => e.tag);
 			const otherOutbounds = outbounds.filter((o) => o.tag !== outbound?.tag).map((o) => o.tag);
 			return [...endpointTags, ...otherOutbounds];
 		}
