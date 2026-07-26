@@ -21,6 +21,11 @@ All notable changes to RouteBox are documented here.
 
 ### Fixed
 
+- **Remaining monospace font removed from the AWG server settings and client list** (#25 follow-up).
+  The v0.30.0 sweep neutralized the `.font-mono` utility, but the obfuscation-parameter inputs and
+  the server public-key field (under the Server settings spoiler) plus the client address/transfer
+  cells used a component-scoped `font-family`, so they stayed monospace. Now they use the normal UI
+  font; only the JSON config editor and config diffs keep monospace.
 - **AWG client action buttons no longer overlap the client info on tablet-width screens**
   (e.g. Samsung Fold7 unfolded). The peer row now wraps its action buttons onto their own line
   whenever they don't fit, instead of only below 720px.

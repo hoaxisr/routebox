@@ -401,7 +401,7 @@
 		color: var(--ctp-overlay1);
 	}
 	.peer-meta .xfer {
-		font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+		font-family: inherit;
 		color: var(--ctp-overlay1);
 		font-size: 0.78rem;
 	}
@@ -414,7 +414,7 @@
 		font-size: 0.8125rem;
 	}
 	.peer-meta .addr {
-		font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+		font-family: inherit;
 		color: var(--ctp-subtext0);
 	}
 	.susp-badge {
