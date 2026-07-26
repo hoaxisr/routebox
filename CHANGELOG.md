@@ -4,6 +4,45 @@ All notable changes to RouteBox are documented here.
 
 ## [Unreleased]
 
+## [0.30.0] - 2026-07-26
+
+### Features
+
+- **VLESS xHTTP transport.** VLESS inbound and outbound can now use the `xhttp` stream transport
+  (the amnezia-box `awg3-xhttp` fork), alongside ws/gRPC/HTTPUpgrade. Path + host are configured
+  the same way as HTTPUpgrade (top-level host string); vision-flow conflict rules apply. Server
+  share-links, QR codes, and subscription exports carry the `type=xhttp&path=&host=` params so
+  clients import it correctly; external `vless://…type=xhttp…` links import as well.
+- **Outbound protocol set trimmed to VLESS / Hysteria2 / NaiveProxy / Mieru.** Trojan, Shadowsocks,
+  ShadowTLS, and AnyTLS are deprecated and removed from the outbound picker; Trojan is also removed
+  from the inbound picker (#22). Existing configs using these protocols still load, display, and
+  save — only new-creation is gated. The outbound type picker is now split into two blocks:
+  **Protocols** (2×2) and **Groups & basic** (selector/urltest/direct/block).
+
+### Fixed
+
+- **AWG obfuscation params determined by the server now show a "Server only" badge** instead of a
+  lock emoji (#23).
+- **Dashboard protocol lists** are comma-separated and current: inbounds show Mieru, outbounds add
+  NaiveProxy and Mieru (#24, #31).
+- **Monospace font removed from UI data cells, inputs, IPs, URLs, and byte counts** — the normal UI
+  font is used everywhere except genuine code/config blocks (JSON editor, config diffs, paste
+  textareas). Numeric columns keep alignment via `tabular-nums` (#25, #26).
+- **The managed `awg-server` endpoint no longer appears in the Proxies monitor** (#27).
+- **AWG .conf expiry controls**: the empty date field is replaced by a "Set date" button that opens
+  the native picker; quick buttons read "+30 days / +90 days"; JSON export buttons are icon-only
+  (#28, #30).
+- **Importing an AWG 3.0 endpoint now shows an "AWG 3.0" badge** (distinct solid-coral colour)
+  instead of mis-detecting it as AWG 2.0 (#29).
+- **Removed the redundant standalone "Route Options" rule action** — its override/UDP/TLS-fragment
+  fields remain available in the collapsible Route Options block under the Route action; existing
+  `route-options` rules still load and save (#33).
+
+### Backend
+
+- Inbound transport validator accepts `xhttp`; server share-link/QR/subscription builder and the
+  subscription link importer emit/parse `xhttp` (top-level host string).
+
 ## [0.29.1] - 2026-07-24
 
 ### Fixed
