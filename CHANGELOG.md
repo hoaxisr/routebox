@@ -4,6 +4,20 @@ All notable changes to RouteBox are documented here.
 
 ## [Unreleased]
 
+## [0.31.2] - 2026-07-26
+
+### Fixed
+
+- **The managed `awg-server` endpoint no longer appears as an outbound target** in the rule-set /
+  route outbound pickers or the selector/urltest member picker (#34). It's a server inbound, not an
+  egress; it remains valid as a routing *source*.
+- **AWG peer status LED is no longer clipped on the left** (#34). The Fold7 overflow clip moved off
+  the peer info container (which cut the dot's glow) onto the address/expiry line.
+- **Mieru multiplexing dropdown shows friendly labels** (Low / Middle / High / Off) instead of the
+  raw `MULTIPLEXING_LOW` enum values (#34); the stored value is unchanged.
+- **`user` / `password` field placeholders now use consistent lowercase** across the Mieru, Naive,
+  AnyTLS, and ShadowTLS forms (#34).
+
 ## [0.31.1] - 2026-07-26
 
 ### Fixed
