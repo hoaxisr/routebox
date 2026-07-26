@@ -83,6 +83,18 @@ describe('buildServerInbound', () => {
 		expect(state.tls.reality.private_key).toBe('PRIV');
 		expect(state.users[0].uuid).toBe('U1');
 	});
+
+	it('builds and round-trips a vless xhttp transport (top-level host, flow stripped)', () => {
+		const ib = buildServerInbound({
+			...base,
+			transport: { type: 'xhttp', path: '/dl', host: 'cdn.example.com' }
+		});
+		expect(ib.transport).toEqual({ type: 'xhttp', path: '/dl', host: 'cdn.example.com' });
+		// non-raw transport strips xtls-rprx-vision flow from users
+		expect(ib.users?.[0]).toEqual({ name: 'phone', uuid: 'U1' });
+		const state = parseServerInbound(ib);
+		expect(state.transport).toEqual({ type: 'xhttp', path: '/dl', host: 'cdn.example.com' });
+	});
 });
 
 describe('parseServerInbound', () => {

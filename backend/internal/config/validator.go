@@ -703,9 +703,9 @@ func validateInboundTransport(ib map[string]interface{}, prefix string) []string
 	if trType == "" || trType == "raw" {
 		return errors
 	}
-	valid := map[string]bool{"ws": true, "grpc": true, "httpupgrade": true}
+	valid := map[string]bool{"ws": true, "grpc": true, "httpupgrade": true, "xhttp": true}
 	if !valid[trType] {
-		errors = append(errors, fmt.Sprintf("%s: invalid transport type %q (must be ws, grpc, or httpupgrade; omit transport for raw TCP)", prefix, trType))
+		errors = append(errors, fmt.Sprintf("%s: invalid transport type %q (must be ws, grpc, httpupgrade, or xhttp; omit transport for raw TCP)", prefix, trType))
 		return errors
 	}
 	// Vision conflict (vless only — trojan has no flow). A non-raw transport

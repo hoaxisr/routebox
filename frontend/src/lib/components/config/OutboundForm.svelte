@@ -80,11 +80,11 @@
 	// VlessForm expects transport.host as string (for input binding), not string[]
 	// We convert when building the outbound object
 	let vlessTransport = $state({
-		type: (outboundStreamTransport?.type ?? 'tcp') as 'tcp' | 'ws' | 'http' | 'grpc' | 'quic' | 'httpupgrade',
+		type: (outboundStreamTransport?.type ?? 'tcp') as 'tcp' | 'ws' | 'http' | 'grpc' | 'quic' | 'httpupgrade' | 'xhttp',
 		path: outboundStreamTransport?.path ?? '/',
-		// Host matrix mirrors build side: ws→headers.Host, httpupgrade→top-level host string, http→host array.
+		// Host matrix mirrors build side: ws→headers.Host, httpupgrade/xhttp→top-level host string, http→host array.
 		host: outboundStreamTransport?.headers?.Host
-			?? (outboundStreamTransport?.type === 'httpupgrade'
+			?? (outboundStreamTransport?.type === 'httpupgrade' || outboundStreamTransport?.type === 'xhttp'
 				? ((outboundStreamTransport as unknown as Record<string, unknown>)?.host as string ?? '')
 				: (outboundStreamTransport?.host?.[0] ?? '')),
 		service_name: outboundStreamTransport?.service_name ?? ''
@@ -238,7 +238,7 @@
 			}
 		};
 		vlessTransport = {
-			type: (config.transport || 'tcp') as 'tcp' | 'ws' | 'http' | 'grpc' | 'quic' | 'httpupgrade',
+			type: (config.transport || 'tcp') as 'tcp' | 'ws' | 'http' | 'grpc' | 'quic' | 'httpupgrade' | 'xhttp',
 			path: config.path || '/',
 			host: config.host || '',
 			service_name: config.serviceName || ''
@@ -485,6 +485,12 @@
 					}
 				} else if (vlessTransport.type === 'httpupgrade') {
 					ob.transport = { type: 'httpupgrade', path: vlessTransport.path || '/' };
+					if (vlessTransport.host) {
+						(ob.transport as unknown as Record<string, unknown>).host = vlessTransport.host;
+					}
+				} else if (vlessTransport.type === 'xhttp') {
+					// xHTTP (sing-box awg3-xhttp fork): top-level host string like httpupgrade; mode defaults to auto.
+					ob.transport = { type: 'xhttp', path: vlessTransport.path || '/' };
 					if (vlessTransport.host) {
 						(ob.transport as unknown as Record<string, unknown>).host = vlessTransport.host;
 					}

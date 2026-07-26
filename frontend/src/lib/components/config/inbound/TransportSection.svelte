@@ -7,7 +7,7 @@
 	}
 	let { transport = $bindable() }: Props = $props();
 
-	const types: TransportType[] = ['raw', 'ws', 'grpc', 'httpupgrade'];
+	const types: TransportType[] = ['raw', 'ws', 'grpc', 'httpupgrade', 'xhttp'];
 </script>
 
 <div class="bg-[var(--ctp-surface0)] rounded-lg p-4 space-y-4">
@@ -22,7 +22,7 @@
 		{/each}
 	</div>
 
-	{#if transport.type === 'ws' || transport.type === 'httpupgrade'}
+	{#if transport.type === 'ws' || transport.type === 'httpupgrade' || transport.type === 'xhttp'}
 		<div class="grid grid-cols-1 sm:grid-cols-2 gap-4">
 			<div>
 				<label class="block text-sm font-medium text-[var(--ctp-subtext1)] mb-1">{$t('inbounds.server.transportPath')}</label>

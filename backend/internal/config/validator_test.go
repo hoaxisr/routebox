@@ -231,6 +231,24 @@ func TestValidateInboundTransportBadType(t *testing.T) {
 	}
 }
 
+func TestValidateInboundTransportXHTTPAccepted(t *testing.T) {
+	m := &Manager{}
+	cfg := map[string]interface{}{
+		"inbounds": []interface{}{
+			map[string]interface{}{
+				"type": "vless", "tag": "v", "listen_port": float64(443),
+				"tls":       map[string]interface{}{"reality": map[string]interface{}{"enabled": true}},
+				"transport": map[string]interface{}{"type": "xhttp", "path": "/x", "host": "cdn.ex.com"},
+				"users":     []interface{}{map[string]interface{}{"uuid": "u1"}},
+			},
+		},
+		"outbounds": []interface{}{},
+	}
+	if errs := m.Validate(cfg); hasErrContaining(errs, "transport type") {
+		t.Fatalf("xhttp transport should be accepted, got: %v", errs)
+	}
+}
+
 func TestValidateTrojanInboundReality(t *testing.T) {
 	m := &Manager{}
 	cfg := map[string]interface{}{
