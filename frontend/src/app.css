@@ -227,8 +227,19 @@ input[type="checkbox"]:focus-visible {
 	outline-offset: 2px;
 }
 
-/* Monospace */
-code, pre, .font-mono {
+/* Monospace kept only for real code/config blocks (JSON editor, <pre>). */
+code, pre {
+	font-family: ui-monospace, SFMono-Regular, 'SF Mono', Menlo, Consolas, 'Liberation Mono', monospace;
+}
+/* .font-mono is used across the UI on data cells, inputs, IPs, URLs, byte counts.
+   Per #25/#26 the monospaced look is unwanted there — inherit the normal UI font.
+   tabular-nums (kept on numeric cells) preserves column alignment without a mono face. */
+.font-mono {
+	font-family: inherit;
+}
+/* Opt back into monospace for genuine code/config text (raw-config diffs & paste
+   textareas) where column alignment is functional, not decorative. */
+.font-code {
 	font-family: ui-monospace, SFMono-Regular, 'SF Mono', Menlo, Consolas, 'Liberation Mono', monospace;
 }
 

@@ -72,7 +72,7 @@
 	</div>
 
 	<!-- Diff content -->
-	<div class="overflow-auto font-mono text-xs leading-5" style="max-height: {maxHeight}">
+	<div class="overflow-auto font-code text-xs leading-5" style="max-height: {maxHeight}">
 		{#each lines as line}
 			{#if line.type === 'same'}
 				<div class="grid grid-cols-2">

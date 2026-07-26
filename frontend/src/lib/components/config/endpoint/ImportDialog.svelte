@@ -95,7 +95,7 @@ Jmax = 1000
 PublicKey = ...
 Endpoint = vpn.example.com:51820
 AllowedIPs = 0.0.0.0/0, ::/0"
-				class="w-full h-48 px-3 py-2 bg-[var(--ctp-surface0)] border border-[var(--ctp-surface2)] rounded-lg text-[var(--ctp-text)] placeholder-[var(--ctp-overlay0)] focus:outline-none focus:ring-2 focus:ring-[var(--ctp-primary)] font-mono text-sm resize-none"
+				class="w-full h-48 px-3 py-2 bg-[var(--ctp-surface0)] border border-[var(--ctp-surface2)] rounded-lg text-[var(--ctp-text)] placeholder-[var(--ctp-overlay0)] focus:outline-none focus:ring-2 focus:ring-[var(--ctp-primary)] font-code text-sm resize-none"
 			></textarea>
 		</div>
 
