@@ -22,10 +22,6 @@
 			class="toggle-btn-danger {action === 'reject' ? 'selected' : ''}">
 			{$t('routes.actionReject')}
 		</button>
-		<button type="button" onclick={() => action = 'route-options'}
-			class="toggle-btn {action === 'route-options' ? 'selected' : ''}">
-			{$t('routes.actionRouteOptions')}
-		</button>
 		<button type="button" onclick={() => action = 'resolve'}
 			class="toggle-btn {action === 'resolve' ? 'selected' : ''}">
 			{$t('routes.actionResolve')}
