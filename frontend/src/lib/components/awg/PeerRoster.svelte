@@ -12,10 +12,18 @@
 		peers: AwgPeer[];
 		subnet?: string;
 		singbox?: boolean;
+		/** Live source IPs from the connections stream — lights the LED for singbox peers. */
+		activeSources?: Set<string>;
 		onChange: () => void | Promise<void>;
 	}
 
-	let { peers, subnet = '', singbox = false, onChange }: Props = $props();
+	let { peers, subnet = '', singbox = false, activeSources = new Set(), onChange }: Props = $props();
+
+	// bare tunnel IP of a peer ("10.30.0.2/32" → "10.30.0.2").
+	const bareIP = (addr: string) => (addr || '').split('/')[0];
+	// A peer is "live" when its tunnel IP currently has a connection in the stream
+	// (singbox), or — on the kernel backend — has a recent handshake (p.online).
+	const isLive = (p: AwgPeer) => (singbox ? activeSources.has(bareIP(p.address)) : p.online);
 
 	let newName = $state('');
 	let adding = $state(false);
@@ -34,16 +42,6 @@
 
 	function nowSec(): number {
 		return Math.floor(Date.now() / 1000);
-	}
-
-	// Expiry-health level for the singbox per-client dot (sing-box exposes no
-	// connectivity data, so the dot reflects expiry instead).
-	type ExpiryDot = 'ok' | 'soon' | 'expired';
-	function expiryDot(expires: number, now: number): ExpiryDot {
-		if (!expires || expires === 0) return 'ok';
-		if (expires <= now) return 'expired';
-		if (expires - now < 7 * 86400) return 'soon';
-		return 'ok';
 	}
 
 	// Short relative expiry phrase: "30d" when >=1 day out, else "5h".
@@ -195,18 +193,8 @@
 					<div class="peer-name">
 						<span
 							class="conn-dot"
-							class:on={singbox ? expiryDot(p.expires_at, nowSec()) === 'ok' : p.online}
-							class:exp-soon={singbox && expiryDot(p.expires_at, nowSec()) === 'soon'}
-							class:exp-expired={singbox && expiryDot(p.expires_at, nowSec()) === 'expired'}
-							title={singbox
-								? !p.expires_at
-									? $t('awg.noExpiry')
-									: expiryDot(p.expires_at, nowSec()) === 'expired'
-										? $t('awg.expiredLabel')
-										: $t('awg.expiresIn', { values: { rel: relExpiry(p.expires_at, nowSec()) } })
-								: p.online
-									? $t('awg.online')
-									: $t('awg.offline')}
+							class:on={isLive(p)}
+							title={isLive(p) ? $t('awg.online') : $t('awg.offline')}
 						></span>
 						{p.name || '(unnamed)'}
 						{#if expiryStatus(p.expires_at, nowSec()) === 'suspended'}
@@ -405,14 +393,6 @@
 	.conn-dot.on {
 		background: var(--ctp-green);
 		box-shadow: 0 0 0 3px color-mix(in srgb, var(--ctp-green) 25%, transparent);
-	}
-	.conn-dot.exp-soon {
-		background: var(--ctp-primary);
-		box-shadow: 0 0 0 3px color-mix(in srgb, var(--ctp-primary) 25%, transparent);
-	}
-	.conn-dot.exp-expired {
-		background: var(--ctp-red);
-		box-shadow: 0 0 0 3px color-mix(in srgb, var(--ctp-red) 25%, transparent);
 	}
 	.peer-meta .dot-sep {
 		color: var(--ctp-overlay0);

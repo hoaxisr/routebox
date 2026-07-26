@@ -6,6 +6,11 @@ All notable changes to RouteBox are documented here.
 
 ### Features
 
+- **AWG server clients show a live activity LED on the sing-box backend.** sing-box exposes no
+  per-peer handshake, so a client's dot now lights green while its tunnel IP has a live connection
+  in the Clash connections stream (an activity signal, not a tunnel-up one), and greys out when
+  idle. The kernel backend keeps its handshake-based online dot. Expiry moved out of the dot into
+  the row text/dimming. (Addresses the sing-box side of #16.)
 - **Redesigned per-user usage view (`/monitor/users`)** (#32). Replaces the flat table with a
   usage-ranked view: clients sorted by volume, each a horizontal bar split into upload (coral) and
   download (grey), with a 24h/7d/30d range toggle and a running total. Clicking a client expands a

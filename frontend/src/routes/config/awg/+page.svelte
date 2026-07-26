@@ -1,7 +1,7 @@
 <script lang="ts">
 	import { onMount } from 'svelte';
 	import { t } from 'svelte-i18n';
-	import { api } from '$lib/api/client';
+	import { api, createConnectionsStream } from '$lib/api/client';
 	import { notifications, routerMode } from '$lib/stores';
 	import { formatBytes } from '$lib/stores/settings';
 	import type { AwgStatus, AwgPeer, AwgServerSettings } from '$lib/types';
@@ -24,6 +24,27 @@
 	const formDirty = $derived(!!form && !!settings && JSON.stringify(form) !== JSON.stringify(settings));
 	const isSingbox = $derived((status?.backend ?? settings?.backend) === 'singbox');
 	const backendValue = $derived<'kernel' | 'singbox'>(isSingbox ? 'singbox' : 'kernel');
+
+	// Live "traffic flowing" LED for singbox peers: the kernel backend has real
+	// handshakes, but sing-box exposes none — so we light a peer green when the Clash
+	// connections stream shows a live connection from its tunnel IP. Set of active
+	// source IPs, refreshed from the stream while a singbox server is enabled.
+	let activeSources = $state<Set<string>>(new Set());
+	const streamOn = $derived(isSingbox && !!status?.enabled);
+	$effect(() => {
+		if (!streamOn) {
+			activeSources = new Set();
+			return;
+		}
+		const handle = createConnectionsStream((data) => {
+			const next = new Set<string>();
+			for (const c of data.connections ?? []) {
+				if (c.metadata?.sourceIP) next.add(c.metadata.sourceIP);
+			}
+			activeSources = next;
+		});
+		return () => handle.close();
+	});
 
 	async function changeBackend(b: 'kernel' | 'singbox') {
 		try {
@@ -270,7 +291,7 @@
 			</div>
 			<div class="clients-body">
 				{#if status.enabled}
-					<PeerRoster {peers} subnet={form.subnet} singbox={isSingbox} onChange={async () => { await refreshStatus(); await refreshPeers(); }} />
+					<PeerRoster {peers} {activeSources} subnet={form.subnet} singbox={isSingbox} onChange={async () => { await refreshStatus(); await refreshPeers(); }} />
 				{:else}
 					<div class="locked-note">{$t('awg.shareLocked')}</div>
 				{/if}
@@ -430,7 +451,7 @@
 					<p class="step-desc">{$t('awg.stepShareDesc')}</p>
 
 					{#if status.enabled}
-						<PeerRoster {peers} subnet={form.subnet} singbox={isSingbox} onChange={async () => { await refreshStatus(); await refreshPeers(); }} />
+						<PeerRoster {peers} {activeSources} subnet={form.subnet} singbox={isSingbox} onChange={async () => { await refreshStatus(); await refreshPeers(); }} />
 					{:else}
 						<div class="locked-note">{$t('awg.shareLocked')}</div>
 					{/if}
