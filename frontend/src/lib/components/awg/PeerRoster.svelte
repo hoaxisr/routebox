@@ -367,8 +367,9 @@
 	}
 	.peer-row {
 		display: flex;
+		flex-wrap: wrap;
 		align-items: center;
-		gap: 1rem;
+		gap: 0.55rem 1rem;
 		padding: 0.85rem 1rem;
 		border-top: 1px solid var(--ctp-surface0);
 		transition: background 0.12s ease;
@@ -383,8 +384,9 @@
 		opacity: 0.6;
 	}
 	.peer-info {
-		flex: 1;
+		flex: 1 1 14rem;
 		min-width: 0;
+		overflow: hidden;
 	}
 	.peer-name {
 		font-weight: 600;
@@ -497,9 +499,10 @@
 	}
 	.peer-actions {
 		display: flex;
+		flex-wrap: wrap;
 		align-items: center;
 		gap: 0.375rem;
-		flex-shrink: 0;
+		margin-left: auto;
 	}
 	.peer-btn {
 		padding: 0.4rem 0.7rem;
@@ -590,14 +593,12 @@
 	.btn-ghost-sm:hover {
 		background: var(--ctp-surface2);
 	}
+	/* Phones: force the action buttons onto their own full-width line, left-aligned.
+	   Above this the row wraps intrinsically (actions drop below only when they don't fit). */
 	@media (max-width: 720px) {
-		.peer-row {
-			flex-wrap: wrap;
-		}
 		.peer-actions {
 			flex-basis: 100%;
-			flex-wrap: wrap;
-			justify-content: flex-start;
+			margin-left: 0;
 		}
 	}
 </style>
