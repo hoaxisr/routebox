@@ -23,9 +23,11 @@
 	async function fetchProxies() {
 		try {
 			const data = await api.getProxies();
-			// Convert from object to array
+			// Convert from object to array. The managed 'awg-server' endpoint (AWG server
+			// inbound) surfaces in the Clash API as a proxy, but it isn't a selectable
+			// outbound — hide it here as we do on the Endpoints page (#27).
 			proxies = Object.values(data.proxies || {}).filter(
-				(p): p is ClashProxy => p && typeof p === 'object' && 'name' in p
+				(p): p is ClashProxy => p && typeof p === 'object' && 'name' in p && p.name !== 'awg-server'
 			);
 		} catch (err) {
 			notifications.error(`${$t('errors.loadFailed')}: ${err}`);
