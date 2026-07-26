@@ -15,6 +15,8 @@
 		domainResolver: string;
 		dnsServers: DnsServer[];
 		hasDefaultResolver: boolean;
+		/** Mark server-determined params (transport, traffic pattern) read-only on the client. */
+		serverLocked?: boolean;
 		errors?: Record<string, string>;
 		onImport?: () => void;
 	}
@@ -31,6 +33,7 @@
 		domainResolver = $bindable(''),
 		dnsServers = [],
 		hasDefaultResolver = false,
+		serverLocked = false,
 		errors = {},
 		onImport
 	}: Props = $props();
@@ -128,15 +131,17 @@
 
 	<!-- Transport (buttons, not radio) -->
 	<div>
-		<label class="block text-sm font-medium text-[var(--ctp-subtext1)] mb-2">
+		<label class="block text-sm font-medium text-[var(--ctp-subtext1)] mb-2 flex items-center gap-2">
 			{$t('outbounds.mieruForm.transport')} *
+			{#if serverLocked}<span class="text-[0.65rem] font-normal text-[var(--ctp-overlay0)] bg-[var(--ctp-surface1)] rounded px-1.5 py-0.5">{$t('common.serverOnly')}</span>{/if}
 		</label>
 		<div class="flex flex-wrap gap-2">
 			{#each transports as tr}
 				<button
 					type="button"
+					disabled={serverLocked}
 					onclick={() => (transport = tr)}
-					class="toggle-btn {transport === tr ? 'selected' : ''}"
+					class="toggle-btn {transport === tr ? 'selected' : ''} {serverLocked ? 'opacity-70 cursor-not-allowed' : ''}"
 				>
 					{tr}
 				</button>
@@ -200,15 +205,17 @@
 		</div>
 
 		<div>
-			<label for="mieru-traffic-pattern" class="block text-xs text-[var(--ctp-overlay0)] mb-1">
+			<label for="mieru-traffic-pattern" class="block text-xs text-[var(--ctp-overlay0)] mb-1 flex items-center gap-2">
 				{$t('outbounds.mieruForm.trafficPattern')}
+				{#if serverLocked}<span class="text-[0.65rem] font-normal text-[var(--ctp-overlay0)] bg-[var(--ctp-surface1)] rounded px-1.5 py-0.5">{$t('common.serverOnly')}</span>{/if}
 			</label>
 			<textarea
 				id="mieru-traffic-pattern"
 				bind:value={trafficPattern}
 				rows="2"
 				placeholder="base64"
-				class="w-full px-3 py-2 bg-[var(--ctp-mantle)] border border-[var(--ctp-surface2)] rounded-lg text-[var(--ctp-text)] placeholder-[var(--ctp-overlay0)] focus:outline-none focus:ring-2 focus:ring-[var(--ctp-primary)] font-mono text-xs resize-y"
+				readonly={serverLocked}
+				class="w-full px-3 py-2 bg-[var(--ctp-mantle)] border border-[var(--ctp-surface2)] rounded-lg text-[var(--ctp-text)] placeholder-[var(--ctp-overlay0)] focus:outline-none focus:ring-2 focus:ring-[var(--ctp-primary)] font-code text-xs resize-y read-only:opacity-70 read-only:cursor-not-allowed"
 			></textarea>
 			<p class="mt-1 text-xs text-[var(--ctp-overlay0)]">{$t('outbounds.mieruForm.trafficPatternHint')}</p>
 		</div>

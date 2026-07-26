@@ -860,6 +860,7 @@
 			bind:domainResolver
 			{dnsServers}
 			{hasDefaultResolver}
+			serverLocked
 			{errors}
 			onImport={() => showImport = true}
 		/>

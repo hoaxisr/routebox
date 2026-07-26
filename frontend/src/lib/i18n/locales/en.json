@@ -90,6 +90,7 @@
     "restarting": "Restarting...",
     "confirm": "Confirm",
     "optional": "Optional",
+    "serverOnly": "Server only",
     "required": "Required",
     "description": "Description",
     "details": "Details",
