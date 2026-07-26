@@ -40,7 +40,8 @@
 
 	const transports: ('TCP' | 'UDP')[] = ['TCP', 'UDP'];
 
-	// '' = unset; the MULTIPLEXING_* labels are intentionally raw enum identifiers.
+	// Values are the raw MULTIPLEXING_* enum (what mieru expects); the dropdown shows a
+	// friendly label — "MULTIPLEXING_LOW" → "Low" (#34).
 	const muxOptions = [
 		'',
 		'MULTIPLEXING_DEFAULT',
@@ -49,6 +50,11 @@
 		'MULTIPLEXING_MIDDLE',
 		'MULTIPLEXING_HIGH'
 	];
+	function muxLabel(opt: string): string {
+		if (!opt) return $t('outbounds.mieruForm.multiplexingDefault');
+		const s = opt.replace(/^MULTIPLEXING_/, '').toLowerCase();
+		return s.charAt(0).toUpperCase() + s.slice(1);
+	}
 </script>
 
 <div class="space-y-4">
@@ -199,7 +205,7 @@
 				class="w-full px-3 py-2 bg-[var(--ctp-mantle)] border border-[var(--ctp-surface2)] rounded-lg text-[var(--ctp-text)] focus:outline-none focus:ring-2 focus:ring-[var(--ctp-primary)] text-sm"
 			>
 				{#each muxOptions as opt}
-					<option value={opt}>{opt || $t('outbounds.mieruForm.multiplexingDefault')}</option>
+					<option value={opt}>{muxLabel(opt)}</option>
 				{/each}
 			</select>
 		</div>
