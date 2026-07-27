@@ -1,199 +1,238 @@
 # RouteBox
 
-Веб-интерфейс для превращения вашего Linux-устройства в VPN-роутер.
+[![Release](https://img.shields.io/github/v/release/hoaxisr/routebox)](https://github.com/hoaxisr/routebox/releases/latest)
+[![License](https://img.shields.io/badge/license-MIT-blue)](#лицензия)
+![Platform](https://img.shields.io/badge/platform-linux%20amd64%20%7C%20arm64-lightgrey)
 
-RouteBox управляет [amnezia-box](https://github.com/amnezia-vpn/amnezia-box) — позволяет настроить VPN-подключение и маршрутизировать через него трафик всей домашней сети.
+Веб-панель для [amnezia-box](https://github.com/hoaxisr/amnezia-box) (форк sing-box). Один бинарник со встроенным интерфейсом, два сценария: VPN-роутер для домашней сети и панель управления прокси-сервером на VPS.
+
+![Дашборд: статус amnezia-box, скорость и объём трафика, топ-соединения](assets/01-dashboard.png)
+
+## Два режима
+
+| | Роутер дома | Панель на VPS |
+|---|---|---|
+| Что делает | Направляет трафик домашней сети через VPN: целиком или только выбранные сайты | Управляет VPN-сервером: протоколы, пользователи, подписки |
+| Установка | [`install.sh`](https://github.com/hoaxisr/routebox/blob/main/install.sh) | [`vps-install.sh`](https://github.com/hoaxisr/routebox/blob/main/vps-install.sh) |
+| Доступ | `http://IP-роутера:8080` | `https://домен:8443`, TLS-сертификат Let's Encrypt выпускается автоматически |
+| Авторизация | Опциональна | Обязательна, пароль администратора генерируется при установке |
+| Что подключается | AmneziaWG / WireGuard, VLESS, Hysteria2, NaiveProxy, Mieru — по ссылке или файлу | Клиенты пользователей — по ссылке-подписке, QR-коду или файлу конфигурации |
+
+Режим задаётся ключом `mode` в настройках; интерфейс показывает только разделы своего режима.
 
 ## Возможности
 
-- **Простая настройка** — мастер быстрой настройки за 2 минуты
-- **Поддержка протоколов** — AmneziaWG, VLESS, Hysteria2
-- **Гибкая маршрутизация** — весь трафик через VPN или только выбранные сайты
-- **Готовые списки** — Antizapret и другие rule sets из коробки
-- **Мониторинг** — трафик, соединения, логи в реальном времени
-- **GeoIP** — флаги стран и информация о провайдерах для соединений
-- **Веб-интерфейс** — управление с любого устройства в сети
+**Маршрутизация**
+- Готовые списки: Antizapret, geosite/geoip rule-sets; свои списки доменов
+- Приоритет правил перетаскиванием, продвинутые правила по домену, IP, порту, процессу
+- Настройка DNS-серверов и DNS-правил
+- Route Inspector: проверка, каким правилом и куда уйдёт запрос
 
-## Требования
+**Подключения (клиентская сторона)**
+- Эндпоинты AmneziaWG (включая обфускацию AWG 1.0/2.0/3.0) и WireGuard — импорт из `.conf`
+- Аутбаунды VLESS, Hysteria2, NaiveProxy, Mieru — импорт по ссылкам `vless://`, `hy2://`, `naive+https://`, `mierus://`
+- Группы selector и urltest, подписки с автообновлением
 
-- Linux (amd64/arm64) — Debian, Ubuntu, Arch и др.
-- Права root (для TUN-интерфейса)
-- Установленный [amnezia-box](https://github.com/amnezia-vpn/amnezia-box)
+**Сервер (режим VPS)**
+- Инбаунды VLESS (в том числе Reality), Hysteria2, NaiveProxy, Mieru; транспорты raw / ws / grpc / httpupgrade / xhttp
+- Сервер AmneziaWG (включая версию AWG 3.0) без модуля ядра, с обфускацией и профилями маскировки; выдача клиентам QR-кода, `.conf` и sing-box JSON
+- Пользователи: ссылки-подписки, сроки действия, включение и отключение, учёт трафика
 
-## Быстрый старт
+**Мониторинг**
+- Трафик в реальном времени с историей, разбивка по исходящим узлам
+- Активные соединения с флагами стран (GeoIP), цепочкой узлов и объёмами
+- Логи amnezia-box и журнал systemd
 
-RouteBox работает в двух режимах: **роутер** (домашний шлюз — установка ниже) и **панель на VPS** (VPN-сервер с веб-панелью, см. раздел «Установка на VPS»).
+**Обслуживание**
+- Проверка и установка обновлений RouteBox и amnezia-box из панели
+- Валидация конфигурации перед применением, черновики и откат изменений
 
-### Автоматическая установка (рекомендуется)
+## Быстрый старт: роутер дома
+
+Требования: Linux (amd64 или arm64) с systemd, права root.
 
 ```bash
 curl -fsSL https://raw.githubusercontent.com/hoaxisr/routebox/main/install.sh | sudo bash
 ```
 
-Скрипт:
-- Скачает и установит RouteBox в `/usr/local/bin/`
-- Создаст файл настроек `/etc/routebox/routebox.toml`
-- Создаст systemd сервис
-- Включит IP-forwarding
+Скрипт скачивает последние релизы RouteBox и amnezia-box, кладёт настройки в `/etc/routebox/`, скачивает базу GeoIP, включает IP-forwarding и создаёт systemd-сервисы `routebox` и `amnezia-box`.
 
-### Ручная установка
+Дальше:
 
 ```bash
-# Скачать
-curl -L -o routebox https://raw.githubusercontent.com/hoaxisr/routebox/main/releases/routebox-linux-amd64
-chmod +x routebox
-
-# Запустить
-sudo ./routebox
+sudo systemctl start routebox
 ```
 
-### 2. Откройте в браузере
+1. Откройте `http://IP-устройства:8080`.
+2. Добавьте подключение: вставьте ссылку или файл конфигурации вашего VPN в разделе Endpoints или Outbounds.
+3. В разделе Routes выберите, что маршрутизировать через VPN — весь трафик или списки сайтов.
+4. На устройствах домашней сети укажите IP роутера как шлюз (или раздайте его по DHCP).
 
-```
-http://IP-АДРЕС-УСТРОЙСТВА:8080
-```
+![Маршрутизация: rule-sets с действиями proxy, block, direct и приоритетом перетаскиванием](assets/02-routes.png)
 
-### 3. Пройдите мастер настройки
+![Активные соединения: страна, цепочка через выбранный узел, объём и время жизни](assets/03-connections.png)
 
-1. Вставьте конфигурацию VPN (ссылка или файл .conf)
-2. Выберите списки сайтов для маршрутизации
-3. Нажмите "Применить"
+![Монитор трафика: история за 60 секунд и разбивка по исходящим узлам](assets/04-traffic.png)
 
-Готово! Теперь направьте трафик других устройств через этот роутер.
+## Быстрый старт: панель на VPS
 
-### Установка на VPS (режим панели)
+Требования:
 
-RouteBox на VPS — это **VPN-сервер с веб-панелью**: выдача доступов пользователям, AmneziaWG-сервер, мониторинг. Панель работает по HTTPS с авто-сертификатом Let's Encrypt.
-
-**Требования:**
-- VPS на Debian/Ubuntu, root.
+- VPS на Linux (amd64 или arm64) с systemd, права root.
 - **Домен с A/AAAA-записью на IP сервера** — обязателен: по нему встроенный ACME выпускает TLS-сертификат панели. По «голому» IP панель не откроется (TLS-сертификату нужен SNI домена).
-- Порты `8443/tcp` (панель) и `80/tcp` (HTTP-01 проверка Let's Encrypt). Установщик откроет их в ufw, если он активен.
+- Порты `8443/tcp` (панель) и `80/tcp` (HTTP-01 проверка Let's Encrypt; должен оставаться открытым — продления идут по нему же). Установщик откроет их в ufw, если он активен. Порты 443 и 22 скрипт не трогает.
 
-**Установка:**
+Первый запуск лучше делать с флагом `--staging` — он использует тестовый каталог Let's Encrypt и не расходует лимит выпуска сертификатов:
+
+```bash
+curl -fsSL https://raw.githubusercontent.com/hoaxisr/routebox/main/vps-install.sh \
+  | sudo bash -s -- --domain panel.example.com --email you@example.com --staging
+```
+
+Когда всё работает, повторный запуск без `--staging` переключает панель на боевой сертификат:
 
 ```bash
 curl -fsSL https://raw.githubusercontent.com/hoaxisr/routebox/main/vps-install.sh \
   | sudo bash -s -- --domain panel.example.com --email you@example.com
 ```
 
-- `--domain` — домен панели (A-запись должна указывать на этот сервер);
+Флаги:
+
+- `--domain` — домен панели (без него установщик спросит интерактивно);
 - `--email` — контакт для Let's Encrypt;
 - `--port <n>` — порт панели (по умолчанию `8443`);
-- `--staging` — тестовый CA Let's Encrypt (для отладки).
+- `--staging` — тестовый CA Let's Encrypt.
 
-Без `--domain` установщик спросит домен интерактивно.
+Скрипт проверяет DNS, ставит оба бинарника с проверкой sha256, настраивает systemd и firewall. Сертификат RouteBox выпускает и продлевает сам — nginx и certbot не нужны.
 
-**Вход в панель:**
+Панель доступна на `https://panel.example.com:8443` — открывайте по домену, не по IP. Логин `admin`, пароль генерируется при первом старте и сохраняется в `/etc/routebox/routebox-initial-password` (также виден в `journalctl -u routebox`). Смените его после входа в разделе App Settings → Security.
 
-По завершении скрипт печатает адрес и учётные данные:
+![Сервер AmneziaWG: клиенты, выдача QR-кода, .conf и JSON, сроки действия](assets/05-awg.png)
 
-```
-Panel URL:      https://panel.example.com:8443
-Admin password: <сгенерированный пароль>  (username: admin)
-```
+![Пользователи панели: состояние, срок действия, ссылка-подписка и учёт трафика](assets/06-users.png)
 
-Логин — `admin`; пароль генерируется при установке и сохраняется в `/etc/routebox/routebox-initial-password`. Открывайте панель **по домену** (не по IP) и сразу смените пароль в настройках (раздел **Security**, `/config/app`).
+## Обновление
 
-**Обновление / удаление:**
+В обоих режимах: раздел Updates в панели проверяет и ставит новые версии RouteBox и amnezia-box. Список изменений — в [CHANGELOG.md](CHANGELOG.md).
+
+Из консоли:
 
 ```bash
-sudo bash vps-install.sh --update      # обновить бинарь (конфиг и сертификаты сохранятся)
-sudo bash vps-install.sh --uninstall   # удалить (с --purge — снести и конфиги)
+# Роутер: повторный запуск установщика обновляет бинарники, настройки не трогает
+curl -fsSL https://raw.githubusercontent.com/hoaxisr/routebox/main/install.sh | sudo bash
+
+# VPS: конфигурация и сертификат сохраняются
+sudo bash vps-install.sh --update
 ```
 
 ## Удаление
 
 ```bash
+# Роутер (каталоги настроек остаются)
 curl -fsSL https://raw.githubusercontent.com/hoaxisr/routebox/main/install.sh | sudo bash -s -- --uninstall
+
+# VPS; --purge дополнительно удаляет /etc/routebox и /etc/amnezia-box
+sudo bash vps-install.sh --uninstall
 ```
 
-## Конфигурация
+<details>
+<summary><b>Конфигурация: routebox.toml и GeoIP</b></summary>
 
-RouteBox использует TOML-файл для настроек приложения:
-
-```
-/etc/routebox/routebox.toml
-```
-
-### Основные секции
+Настройки приложения хранятся в `/etc/routebox/routebox.toml` ([пример с комментариями](https://github.com/hoaxisr/routebox/blob/main/routebox.toml)). Большинство параметров также доступно в панели в разделе App Settings.
 
 | Секция | Описание |
 |--------|----------|
-| `[geoip]` | Путь к MMDB базе, включение GeoIP |
-| `[ui]` | Тема, язык, формат отображения |
-| `[monitoring]` | Настройки мониторинга соединений |
-| `[network]` | Адрес и порт веб-интерфейса |
-| `[singbox]` | Пути к конфигу amnezia-box |
+| `[geoip]` | Путь к MMDB-базе, включение GeoIP |
+| `[ui]` | Тема, язык (en/ru), единицы скорости, формат времени |
+| `[monitoring]` | GeoIP-обогащение соединений, история закрытых соединений, интервалы опроса |
+| `[security]` | Авторизация панели, CORS, таймаут сессии |
+| `[network]` | Адрес и порт панели, таймауты, сжатие, TLS (свой сертификат или встроенный ACME/Let's Encrypt) |
+| `[server]` | Режим (`router`/`vps`), публичный хост и порт для ссылок-подписок |
+| `[singbox]` | Путь к конфигу amnezia-box, адрес Clash API, имя systemd-сервиса, адрес v2ray-статистики. Путь к бинарнику не настраивается: он ищется в `/usr/local/bin`, `/usr/bin`, `/opt/amnezia-box` и `PATH` |
+| `[updates]` | Ежедневная автопроверка обновлений |
+| `[awg]` | Сервер AmneziaWG: интерфейс, подсеть, порт, DNS, бэкенд, обфускация |
+| `[advanced]` | Интервалы WebSocket-пинга |
 
-### Пример настройки GeoIP
+### GeoIP
 
-```toml
-[geoip]
-path = "/etc/routebox/ipinfo.mmdb"
-enabled = true
-```
-
-## GeoIP (флаги стран)
-
-RouteBox показывает флаги стран для активных соединений. База данных [IPLocate.io](https://iplocate.io) скачивается автоматически при установке.
-
-**Что включено:**
-- Флаги стран рядом с IP-адресами
-- Название страны при наведении
-- Фильтрация по стране
-
-GeoIP работает из коробки — никаких дополнительных действий не требуется.
-
-### Обновление базы
-
-База обновляется ежедневно. Для ручного обновления:
+Установщик скачивает базу [IPLocate ip-to-country](https://github.com/iplocate/ip-address-databases) в `/etc/routebox/geoip.mmdb` — флаги стран в мониторе соединений работают сразу. Ручное обновление базы:
 
 ```bash
-curl -fsSL -o /etc/routebox/geoip.mmdb \
+sudo curl -fsSL -o /etc/routebox/geoip.mmdb \
   https://github.com/iplocate/ip-address-databases/raw/main/ip-to-country/ip-to-country.mmdb
 sudo systemctl restart routebox
 ```
 
-### Альтернативные базы
+Обновление можно повесить на cron (с перезапуском сервиса). Подходит любая MMDB-база (IPInfo, MaxMind GeoLite2) — укажите путь в `path`.
 
-Можно использовать другие MMDB базы (IPInfo, MaxMind):
+</details>
 
-```toml
-[geoip]
-path = "/etc/routebox/custom-geoip.mmdb"
-```
-
-## Параметры запуска
+<details>
+<summary><b>Параметры запуска и приоритет настроек</b></summary>
 
 ```
+routebox [флаги]
+routebox version      # версия
+
 --settings PATH   Путь к routebox.toml (по умолчанию: авто-поиск)
 --config PATH     Путь к конфигу amnezia-box (переопределяет settings)
 --listen ADDR     Адрес веб-интерфейса (переопределяет settings)
 --geoip PATH      Путь к GeoIP MMDB (переопределяет settings)
---clash ADDR      Адрес Clash API (определяется автоматически)
+--clash ADDR      Адрес Clash API (по умолчанию берётся из конфига amnezia-box)
+--mode MODE       Режим панели: router (по умолчанию) или vps
 ```
 
-### Приоритет настроек
+Приоритет: флаги командной строки → `routebox.toml` → авто-определение → значения по умолчанию.
 
-1. Флаги командной строки (высший приоритет)
-2. Файл `routebox.toml`
-3. Авто-определение
-4. Значения по умолчанию
+RouteBox требует запуска от root — он создаёт TUN-интерфейсы и управляет системными сервисами.
 
-## Установка как сервис (ручная)
+</details>
+
+<details>
+<summary><b>REST API</b></summary>
+
+Все эндпоинты, кроме `/api/health` и `/api/auth/*`, требуют сессию, если авторизация включена. Основные:
+
+| Endpoint | Описание |
+|----------|----------|
+| `GET /api/status` | Статус процесса amnezia-box |
+| `GET` / `PUT /api/config` | Полный конфиг sing-box |
+| `POST /api/config/apply` | Применить изменения (reload/restart) |
+| CRUD `/api/endpoints`, `/api/outbounds`, `/api/inbounds` | Подключения |
+| CRUD `/api/route/rules`, `/api/route/rule-sets` | Маршрутизация |
+| CRUD `/api/dns/servers`, `/api/dns/rules` | DNS |
+| CRUD `/api/users` | Пользователи панели (режим vps) |
+| `/api/awg/*` | Сервер AmneziaWG: статус, пиры, конфиги |
+| `GET` / `PUT /api/settings` | Настройки RouteBox |
+| `GET /api/clash/*` | Прокси к Clash API |
+| WS `/api/clash/traffic`, `/api/clash/connections`, `/api/clash/logs` | Данные в реальном времени |
+| `GET /sub/{token}` | Публичная ссылка-подписка пользователя |
+
+</details>
+
+<details>
+<summary><b>Ручная установка и systemd</b></summary>
+
+Бинарники публикуются в [GitHub Releases](https://github.com/hoaxisr/routebox/releases):
 
 ```bash
-# Скопировать в /usr/local/bin
+# amd64; для arm64 замените суффикс
+curl -fsSL -o routebox \
+  https://github.com/hoaxisr/routebox/releases/latest/download/routebox-linux-amd64
+curl -fsSL -O \
+  https://github.com/hoaxisr/routebox/releases/latest/download/routebox-linux-amd64.sha256
+sha256sum -c routebox-linux-amd64.sha256 --ignore-missing || echo "checksum mismatch"
+chmod +x routebox
+
 sudo cp routebox /usr/local/bin/
-
-# Создать директории
 sudo mkdir -p /etc/routebox /etc/amnezia-box
+```
 
-# Скопировать настройки
-sudo cp routebox.toml /etc/routebox/
+Также понадобится бинарник amnezia-box из [релизов форка](https://github.com/hoaxisr/amnezia-box/releases) в `/usr/local/bin/amnezia-box`.
 
-# Создать systemd сервис
+Systemd-сервис:
+
+```bash
 sudo tee /etc/systemd/system/routebox.service << 'EOF'
 [Unit]
 Description=RouteBox - VPN Router Web UI
@@ -202,76 +241,48 @@ After=network.target
 [Service]
 Type=simple
 ExecStart=/usr/local/bin/routebox --settings /etc/routebox/routebox.toml
-Restart=on-failure
-RestartSec=5
+Restart=always
+RestartSec=2
 
 [Install]
 WantedBy=multi-user.target
 EOF
 
-# Включить и запустить
 sudo systemctl daemon-reload
 sudo systemctl enable --now routebox
 ```
 
-## Подготовка системы
-
-Для работы роутера включите IP-forwarding:
+Для работы в режиме роутера включите IP-forwarding:
 
 ```bash
-# Временно (до перезагрузки)
 sudo sysctl -w net.ipv4.ip_forward=1
-
-# Постоянно
 echo "net.ipv4.ip_forward=1" | sudo tee -a /etc/sysctl.conf
-sudo sysctl -p
 ```
 
-## API
+</details>
 
-RouteBox предоставляет REST API для интеграции:
+<details>
+<summary><b>Сборка из исходников</b></summary>
 
-| Endpoint | Описание |
-|----------|----------|
-| `GET /api/status` | Статус amnezia-box |
-| `GET /api/settings` | Настройки RouteBox |
-| `PUT /api/settings` | Обновить настройки |
-| `GET /api/clash/connections` | Активные соединения |
-| `GET /api/clash/proxies` | Статус прокси |
-
-Полная документация API: [docs/API.md](docs/API.md)
-
-## Поддерживаемые форматы конфигурации
-
-- **AmneziaWG** — `.conf` файл или текст конфига
-- **VLESS** — ссылка `vless://...`
-- **Hysteria2** — ссылка `hy2://...`
-
-## Структура проекта
-
-```
-routebox/
-├── backend/           # Go backend
-│   ├── cmd/routebox/  # Main
-│   └── internal/      # Packages
-├── frontend/          # SvelteKit SPA
-├── routebox.toml      # Пример настроек
-├── install.sh         # Установщик
-└── Makefile           # Сборка
-```
-
-## Сборка из исходников
+Понадобятся Go 1.21+ и Node.js с npm.
 
 ```bash
-# Установить зависимости
-make deps
+git clone https://github.com/hoaxisr/routebox
+cd routebox
 
-# Собрать
-make build
+# Фронтенд (SvelteKit -> статика, встраивается в бинарник)
+cd frontend && npm install && npm run build && cd ..
+rm -rf backend/internal/embedded/dist/*
+cp -r frontend/build/* backend/internal/embedded/dist/
 
-# Запустить
+# Бэкенд
+go build -ldflags "-X main.Version=$(sed -n 's/.*"version": "\(.*\)".*/\1/p' frontend/package.json)" \
+  -o routebox ./backend/cmd/routebox
+
 sudo ./routebox
 ```
+
+</details>
 
 ## Лицензия
 
