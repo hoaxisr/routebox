@@ -88,15 +88,16 @@ func SanitizeName(name string) string {
 const peerNameMaxRunes = 64
 
 // ErrInvalidName is returned by ValidatePeerName (and therefore AddPeer) for a
-// name the user must fix: empty, over-long, or carrying a control character.
-// The API layer maps it to 400 rather than silently rewriting the name.
+// name the user must fix: empty, over-long, or carrying a control/format
+// character. The API layer maps it to 400 rather than silently rewriting the name.
 var ErrInvalidName = fmt.Errorf("invalid peer name")
 
 // ValidatePeerName accepts a peer display name AS THE USER TYPED IT — Cyrillic,
 // emoji, CJK, spaces and punctuation all survive verbatim — and only rejects what
 // is unsafe or useless: invalid UTF-8, control characters (a newline in a name
-// would forge a directive line in awg-rb0.conf and split an HTTP header), an
-// empty/whitespace-only name, or one longer than peerNameMaxRunes.
+// would forge a directive line in awg-rb0.conf and split an HTTP header), invisible
+// format characters, an empty/whitespace-only name, or one longer than
+// peerNameMaxRunes.
 //
 // Reduction to a safe ASCII token happens at the point of use (PeerTag,
 // Content-Disposition), never at the point of storage.
@@ -109,10 +110,17 @@ func ValidatePeerName(raw string) (string, error) {
 		return "", ErrInvalidName
 	}
 	for _, r := range name {
-		// Unicode separators other than a plain space (line/paragraph separator)
-		// are control-ish for our purposes; IsControl covers C0/C1, IsSpace+!=' '
-		// covers the rest of the exotic whitespace.
-		if unicode.IsControl(r) || (unicode.IsSpace(r) && r != ' ') {
+		// IsControl covers C0/C1. IsSpace+!=' ' covers the exotic whitespace
+		// (line/paragraph separators, NBSP-alikes). Cf (format) covers the
+		// INVISIBLE runes: U+202E RTL-override flips how the name renders in the
+		// UI and in a save dialog, U+200B ZWSP makes two names that look
+		// identical to a human two different entries. Neither can inject
+		// anything downstream — every consumer below neutralises them — but a
+		// name nobody can read for what it is has no legitimate use.
+		//
+		// Cost: emoji ZWJ sequences (family/profession emoji glue their parts
+		// with U+200D, which is Cf) are rejected. Single-codepoint emoji are fine.
+		if unicode.IsControl(r) || (unicode.IsSpace(r) && r != ' ') || unicode.Is(unicode.Cf, r) {
 			return "", ErrInvalidName
 		}
 	}
