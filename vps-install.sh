@@ -193,15 +193,18 @@ install_binaries() {
 		"/tmp/${BINARY_NAME}"
 	install -m 0755 "/tmp/${BINARY_NAME}" "${INSTALL_DIR}/${BINARY_NAME}"; rm -f "/tmp/${BINARY_NAME}"
 
-	local ab_json ab_url
+	local ab_json ab_url ab_re
 	ab_json="$(curl -fsSL "https://api.github.com/repos/${AMNEZIABOX_REPO}/releases/latest" 2>/dev/null || true)"
-	ab_url="$(echo "$ab_json" | grep -o "https://[^\"]*linux-${arch}\"" | tr -d '"' | head -1)"
+	# The fork ships aarch64 builds as singbox-<ver>-aarch64-<kernel>, not linux-arm64.
+	ab_re="linux-${arch}"
+	if [ "$arch" = "arm64" ]; then ab_re="linux-arm64|aarch64"; fi
+	ab_url="$(echo "$ab_json" | grep -oE "https://[^\"]*(${ab_re})[^\"]*" | grep -v '\.sha256$' | head -1 || true)"
 	if [ -n "$ab_url" ]; then
 		info "Downloading amnezia-box..."
 		download_verified "$ab_url" "/tmp/${AMNEZIABOX_BINARY}"
 		install -m 0755 "/tmp/${AMNEZIABOX_BINARY}" "${INSTALL_DIR}/${AMNEZIABOX_BINARY}"; rm -f "/tmp/${AMNEZIABOX_BINARY}"
 	else
-		warn "Could not find amnezia-box release for linux-${arch}; install it manually."
+		warn "Could not find amnezia-box release for ${arch}; install it manually."
 	fi
 }
 

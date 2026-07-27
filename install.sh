@@ -66,6 +66,16 @@ get_latest_version() {
     echo "${tag#v}"
 }
 
+# Asset URL of the amnezia-box binary for arch $1 (amd64|arm64), empty if absent.
+# The fork ships aarch64 builds as singbox-<ver>-aarch64-<kernel>, not linux-arm64.
+# ponytail: head -1 picks the first aarch64 asset; if the fork ever ships several
+# kernel variants, match the wanted one here.
+amneziabox_asset_url() {
+    local re="linux-$1"
+    if [ "$1" = "arm64" ]; then re="linux-arm64|aarch64"; fi
+    echo "$AMNEZIABOX_RELEASE_JSON" | grep -oE "https://[^\"]*(${re})[^\"]*" | grep -v '\.sha256$' | head -1 || true
+}
+
 # Returns true if $1 < $2 (version comparison via sort -V)
 version_lt() {
     [ "$1" != "$2" ] && [ "$(printf '%s\n%s' "$1" "$2" | sort -V | head -1)" = "$1" ]
@@ -239,10 +249,10 @@ fi
 
 if [ "$SKIP_AMNEZIABOX" = false ]; then
     fetch_release_json
-    AMNEZIABOX_URL=$(echo "$AMNEZIABOX_RELEASE_JSON" | grep -o "https://[^\"]*linux-${ARCH}\"" | tr -d '"' | head -1)
+    AMNEZIABOX_URL=$(amneziabox_asset_url "${ARCH}")
 
     if [ -z "${AMNEZIABOX_URL}" ]; then
-        echo -e "${YELLOW}Warning: Could not find amnezia-box release for linux-${ARCH}${NC}"
+        echo -e "${YELLOW}Warning: Could not find amnezia-box release for ${ARCH}${NC}"
         echo -e "${YELLOW}You can install amnezia-box manually to ${INSTALL_DIR}/${AMNEZIABOX_BINARY}${NC}"
     else
         echo "Downloading amnezia-box..."
