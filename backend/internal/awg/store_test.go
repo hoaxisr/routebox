@@ -31,6 +31,14 @@ func TestStoreRoundTripAndPerm0600(t *testing.T) {
 	if di, _ := os.Stat(filepath.Dir(s.path)); di.Mode().Perm() != 0700 {
 		t.Fatalf("dir perm = %o, want 0700", di.Mode().Perm())
 	}
+	// A non-ASCII display name must survive the TOML write+read verbatim: names
+	// are stored as the user typed them, so the disk round-trip is part of the
+	// contract (the in-memory map alone would not catch an encoding regression).
+	const unicodeName = "Ноутбук Ани 🏠"
+	if err := s.Put(Peer{PublicKey: "PUB2==", PrivateKey: "PRIV2==", Address: "10.10.0.3/32", Name: unicodeName}); err != nil {
+		t.Fatalf("Put unicode name: %v", err)
+	}
+
 	s2 := NewStore(s.path)
 	if err := s2.Load(); err != nil {
 		t.Fatalf("reload: %v", err)
@@ -38,6 +46,10 @@ func TestStoreRoundTripAndPerm0600(t *testing.T) {
 	got, ok := s2.Get("PUB==")
 	if !ok || got.PrivateKey != "PRIV==" {
 		t.Fatalf("reload mismatch: %#v ok=%v", got, ok)
+	}
+	got2, ok := s2.Get("PUB2==")
+	if !ok || got2.Name != unicodeName {
+		t.Fatalf("unicode name did not survive the disk round-trip: %q (ok=%v)", got2.Name, ok)
 	}
 }
 
