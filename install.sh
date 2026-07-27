@@ -61,7 +61,8 @@ fetch_release_json() {
 get_latest_version() {
     fetch_release_json
     local tag=""
-    tag=$(echo "$AMNEZIABOX_RELEASE_JSON" | grep -o '"tag_name":"[^"]*"' | cut -d'"' -f4)
+    # GitHub pretty-prints its JSON: "tag_name": "1.14.0-..." — the space is mandatory here
+    tag=$(echo "$AMNEZIABOX_RELEASE_JSON" | grep -o '"tag_name":[[:space:]]*"[^"]*"' | cut -d'"' -f4)
     echo "${tag#v}"
 }
 
