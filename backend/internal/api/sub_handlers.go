@@ -1,8 +1,11 @@
 package api
 
 import (
+	"fmt"
 	"net/http"
+	"strings"
 	"time"
+	"unicode/utf8"
 
 	"github.com/go-chi/chi/v5"
 
@@ -101,4 +104,36 @@ func (h *Handler) GetSubscription(w http.ResponseWriter, r *http.Request) {
 // lives in util so the awg package can reuse it without an import cycle.
 func sanitizeFilename(name string) string {
 	return util.SanitizeName(name, "subscription")
+}
+
+// contentDispositionAttachment builds an RFC 6266 attachment header for a file
+// named after a user-supplied display name. It always emits the ASCII `filename=`
+// form (header values are bytes; a raw "Ноутбук" there is undefined behaviour and
+// several clients mangle it), and adds the `filename*=UTF-8''…` form whenever the
+// ASCII reduction lost something — every modern browser prefers filename* and
+// saves the name the user actually typed. ext is appended to both forms.
+func contentDispositionAttachment(name, fallback, ext string) string {
+	ascii := util.SanitizeName(name, fallback) + ext
+	cd := `attachment; filename="` + ascii + `"`
+	if full := name + ext; full != ascii && utf8.ValidString(full) {
+		cd += `; filename*=UTF-8''` + rfc5987Encode(full)
+	}
+	return cd
+}
+
+// rfc5987Encode percent-encodes every byte outside RFC 5987 attr-char, so the
+// result is safe as the value part of `filename*=UTF-8''<value>`.
+func rfc5987Encode(s string) string {
+	const attrExtra = "!#$&+-.^_`|~"
+	var b strings.Builder
+	for i := 0; i < len(s); i++ {
+		c := s[i]
+		if c >= 'a' && c <= 'z' || c >= 'A' && c <= 'Z' || c >= '0' && c <= '9' ||
+			strings.IndexByte(attrExtra, c) >= 0 {
+			b.WriteByte(c)
+			continue
+		}
+		fmt.Fprintf(&b, "%%%02X", c)
+	}
+	return b.String()
 }
