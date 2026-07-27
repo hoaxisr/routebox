@@ -128,19 +128,30 @@ func ValidatePeerName(raw string) (string, error) {
 }
 
 // PeerTag builds the sing-box endpoint tag for an exported client config:
-// "awg-" + a safe ASCII token derived from the peer name.
+// "awg-" + a safe ASCII token derived from the peer name. It is a pure function
+// of (name, pub) — deliberately NOT of the rest of the store, so a peer's tag
+// never changes because some other peer was added or renamed.
 //
 // Two properties matter and pull against each other:
 //
 //   - STABILITY. A name that is already a safe token ("alice", "phone-2") passes
 //     through untouched and keeps the exact tag it has always had. That covers
 //     every peer whose name survived the old store-time sanitisation unchanged.
-//   - UNIQUENESS. Once the reduction loses information it stops being injective:
-//     "Ноутбук" and "Телефон" both reduce to nothing, "Laptop Ани" and "Laptop
-//     Пети" both reduce to "Laptop", and the receiving sing-box would see two
-//     endpoints with one tag. So a lossy reduction gets a short suffix derived
-//     from the peer's public key — unique per peer, and stable for the life of
-//     the peer because the key never changes.
+//   - NO COLLISION FROM THE REDUCTION ITSELF. Once the reduction loses
+//     information it stops being injective: "Ноутбук" and "Телефон" both reduce
+//     to nothing, "Laptop Ани" and "Laptop Пети" both reduce to "Laptop", and the
+//     receiving sing-box would see two endpoints with one tag. So a lossy
+//     reduction gets a short suffix derived from the peer's public key — unique
+//     per peer, and stable for the life of the peer because the key never changes.
+//
+// SCOPE OF THE GUARANTEE — read this before claiming tags are unique. The suffix
+// removes collisions that the reduction CREATES. It does not remove collisions
+// the user creates: two peers both named "alice" are both already safe tokens, so
+// both take the stable branch and both get "awg-alice". That is intentional —
+// duplicate names are allowed (the store keys on the public key, not the name),
+// suffixing every tag would renumber existing exports, and suffixing only when a
+// duplicate exists would make one peer's tag depend on another peer's existence.
+// A user who exports two identically-named peers into the same box renames one.
 func PeerTag(name, pub string) string {
 	token := util.SanitizeName(name, "")
 	if token == name && token != "" {
