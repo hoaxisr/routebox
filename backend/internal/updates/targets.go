@@ -3,7 +3,9 @@ package updates
 import "os"
 
 // AmneziaTarget builds the amnezia-box (sing-box AWG fork) update target.
-// Release assets: sing-box-<ver>-awg2.0-{linux-amd64|entware-mipsel|entware-aarch64}.
+// Release assets are named singbox-<ver>-<arch>, where <arch> comes verbatim
+// from the fork's .github/workflows/release-entware.yml matrix — keep the
+// suffixes below in sync with it (see TestAmneziaTargetMatchesReleaseAssets).
 // preflight (may be nil) validates the existing config against the NEW binary
 // before the swap — see Target.Preflight.
 func AmneziaTarget(binaryPath func() string, currentVersion func() (string, error), restart func() error, preflight func(newBinaryPath string) error) Target {
@@ -16,9 +18,9 @@ func AmneziaTarget(binaryPath func() string, currentVersion func() (string, erro
 			case "amd64":
 				return "linux-amd64", true
 			case "mipsle":
-				return "entware-mipsel", true
+				return "mipsel-3.4", true
 			case "arm64":
-				return "entware-aarch64", true
+				return "aarch64-3.10", true
 			}
 			return "", false
 		},
