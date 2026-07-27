@@ -4,6 +4,22 @@ All notable changes to RouteBox are documented here.
 
 ## [Unreleased]
 
+## [0.31.3] - 2026-07-27
+
+### Fixed
+
+- **In-panel amnezia-box update works again on arm64 and mipsel routers.** The updater looked for
+  release assets ending in `entware-aarch64` / `entware-mipsel`, but the fork publishes them as
+  `aarch64-3.10` / `mipsel-3.4`, so the check failed with "release has no asset matching". Only
+  amd64 was unaffected. A test now pins the suffixes to the real asset names.
+- **`install.sh` upgrades amnezia-box again.** The latest-version lookup matched `"tag_name":"…"`
+  without a space, but the GitHub API returns pretty-printed JSON — so the version came back empty
+  and every re-run reported "could not determine latest version, skipping". Fresh installs were
+  unaffected.
+- **`install.sh` / `vps-install.sh` find the amnezia-box binary on arm64.** They matched only
+  `linux-arm64` assets, which the fork does not publish (aarch64 builds ship as `aarch64-<kernel>`);
+  ARM installs silently skipped amnezia-box with a warning.
+
 ## [0.31.2] - 2026-07-26
 
 ### Fixed
