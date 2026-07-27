@@ -4,6 +4,21 @@ All notable changes to RouteBox are documented here.
 
 ## [Unreleased]
 
+### Fixed
+
+- **AWG peer names in Cyrillic (or any non-Latin script) are kept as typed.** A peer added as
+  «Ноутбук» was stored as `name`, so three Russian-named devices became three peers called `name`.
+  The name was run through the safe-token sanitiser at *save* time; it is now stored and shown
+  verbatim, and reduced to a safe token only where one is actually required — the exported sing-box
+  endpoint tag and the `# comment` line in `awg-rb0.conf`. Existing peers keep their current names
+  and their current export tags.
+- **Unusable peer names are rejected instead of silently rewritten.** Empty/whitespace-only names,
+  names over 64 characters, and names containing control characters or line breaks (which could
+  forge a directive line in `awg-rb0.conf`) now return `400` with an explanation.
+- **The peer `.conf` download keeps the peer's real name.** `Content-Disposition` now carries both
+  the ASCII fallback and the RFC 6266 `filename*=UTF-8''…` form, so browsers save `Ноутбук.conf`
+  instead of `subscription.conf`.
+
 ## [0.31.3] - 2026-07-27
 
 ### Fixed
