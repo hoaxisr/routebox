@@ -257,9 +257,17 @@ func (m *Manager) Rehydrate(ctx context.Context, in EnableInput) {
 // AddPeer validates the name, allocates a /32 (from the on-disk .conf under the
 // mutex), applies the peer live, appends the [Peer] block, and persists the
 // secret. Rolls back the live add if persistence fails. Returns a secret-free
-// summary. Subnet exhausted -> ErrSubnetExhausted.
+// summary. Subnet exhausted -> ErrSubnetExhausted; unusable name -> ErrInvalidName.
+//
+// The name is STORED AS TYPED (ValidatePeerName only trims and rejects) — running
+// it through SanitizeName here is what used to turn every peer named "Ноутбук"
+// into a peer named "name". Safe-token reduction happens where a token is
+// actually required: PeerTag, the .conf comment, the download filename.
 func (m *Manager) AddPeer(ctx context.Context, rawName string) (PeerSummary, error) {
-	name := SanitizeName(rawName)
+	name, err := ValidatePeerName(rawName)
+	if err != nil {
+		return PeerSummary{}, err
+	}
 	m.addMu.Lock()
 	defer m.addMu.Unlock()
 

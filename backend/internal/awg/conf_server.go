@@ -19,7 +19,8 @@ type ServerConf struct {
 	Iface      string // "awg-rb0"
 }
 
-// PeerLine is one [Peer] block's renderable fields (name already sanitized).
+// PeerLine is one [Peer] block's renderable fields. Name is the display name as
+// the user typed it; renderPeerBlock reduces it for the comment line.
 type PeerLine struct {
 	Name      string
 	PublicKey string
@@ -48,14 +49,37 @@ func RenderServer(s ServerConf, peers []PeerLine) string {
 	return b.String()
 }
 
+// confComment reduces a peer display name to something safe to put after a
+// leading "# " in awg-rb0.conf: a single line, no control characters, bounded
+// length. Non-ASCII is KEPT — wg/awg ignores comment lines entirely, so "Ноутбук"
+// is as harmless as "laptop", and mangling it here is what made the file useless
+// for a human reading it. Names are already validated on the way in
+// (ValidatePeerName); this is the belt-and-braces pass for a legacy or
+// hand-edited peers.toml.
+func confComment(name string) string {
+	var b strings.Builder
+	n := 0
+	for _, r := range name {
+		if n >= peerNameMaxRunes {
+			break
+		}
+		if r < 0x20 || r == 0x7f || (r >= 0x80 && r <= 0x9f) {
+			r = '_'
+		}
+		b.WriteRune(r)
+		n++
+	}
+	return b.String()
+}
+
 // renderPeerBlock renders one [Peer] stanza. It is the single [Peer] renderer,
 // shared by RenderServer (full-file render) and Manager.appendPeerToConf (live
-// append) so the two paths can never drift. The name is pre-sanitised
-// (SanitizeName) so the leading `# comment` cannot inject .conf directives.
+// append) so the two paths can never drift. The name goes through confComment so
+// the leading `# comment` cannot inject .conf directives.
 func renderPeerBlock(p PeerLine) string {
 	var b strings.Builder
 	b.WriteString("\n[Peer]\n")
-	fmt.Fprintf(&b, "# %s\n", p.Name)
+	fmt.Fprintf(&b, "# %s\n", confComment(p.Name))
 	fmt.Fprintf(&b, "PublicKey = %s\n", p.PublicKey)
 	if p.PSK != "" {
 		fmt.Fprintf(&b, "PresharedKey = %s\n", p.PSK)
