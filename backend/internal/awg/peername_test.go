@@ -67,11 +67,68 @@ func TestAddPeerRejectsHostileName(t *testing.T) {
 		"empty":      "",
 		"whitespace": "   ",
 		"too long":   strings.Repeat("я", peerNameMaxRunes+1),
+		// Cf (invisible format runes): no injection risk, but pure visual spoofing.
+		"rtl override":   "\u202Efnoc.exe",                                   // renders reversed in the UI / save dialog
+		"zero width":     "\u041d\u043e\u0443\u0442\u200b\u0431\u0443\u043a", // looks identical to "Ноутбук"
+		"soft hyphen":    "\u041d\u043e\u0443\u0442\u00ad\u0431\u0443\u043a", // also invisible
+		"line separator": "a\u2028b",                                         // IsSpace, not IsControl
 	}
 	for label, name := range bad {
 		if _, err := m.AddPeer(context.Background(), name); err != ErrInvalidName {
 			t.Errorf("AddPeer(%s=%q) err = %v; want ErrInvalidName", label, name, err)
 		}
+	}
+}
+
+// TestValidatePeerNameAcceptsBoundaryAndEmoji pins the accepting side: the length
+// limit is inclusive, and a name that is just an emoji is a legitimate name.
+func TestValidatePeerNameAcceptsBoundaryAndEmoji(t *testing.T) {
+	exact := strings.Repeat("я", peerNameMaxRunes) // 64 runes, 128 bytes
+	got, err := ValidatePeerName(exact)
+	if err != nil {
+		t.Errorf("ValidatePeerName(%d runes) = %v; want accepted (the limit is inclusive)",
+			peerNameMaxRunes, err)
+	}
+	if got != exact {
+		t.Errorf("boundary name was altered")
+	}
+	for _, name := range []string{"🏠 Дача", "📱", "Ноутбук №2 (работа)", "工作电脑"} {
+		got, err := ValidatePeerName(name)
+		if err != nil {
+			t.Errorf("ValidatePeerName(%q) = %v; want accepted", name, err)
+		}
+		if got != name {
+			t.Errorf("ValidatePeerName(%q) = %q; want it verbatim", name, got)
+		}
+	}
+}
+
+// TestAddPeerAllowsDuplicateNames: the store keys on the public key, so naming
+// two devices alike is legal and always was — it must stay two separate peers
+// with two separate /32s. (It is also the case that makes PeerTag hand out one
+// tag for both; see TestPeerTagStableAndCollisionScope.)
+func TestAddPeerAllowsDuplicateNames(t *testing.T) {
+	f := newFakeRunner()
+	m := newTestManager(t, f)
+	os.MkdirAll(filepath.Dir(m.confPath), 0700)
+	os.WriteFile(m.confPath, []byte("[Interface]\nListenPort = 51820\n"), 0600)
+
+	a, err := m.AddPeer(context.Background(), "laptop")
+	if err != nil {
+		t.Fatalf("first AddPeer: %v", err)
+	}
+	b, err := m.AddPeer(context.Background(), "laptop")
+	if err != nil {
+		t.Fatalf("second AddPeer with the same name: %v", err)
+	}
+	if a.PublicKey == b.PublicKey || a.Address == b.Address {
+		t.Fatalf("duplicate names collapsed into one peer: %#v / %#v", a, b)
+	}
+	if a.Name != "laptop" || b.Name != "laptop" {
+		t.Fatalf("names rewritten: %q / %q", a.Name, b.Name)
+	}
+	if n := len(m.store.List()); n != 2 {
+		t.Fatalf("store holds %d peers; want 2", n)
 	}
 }
 
@@ -87,12 +144,14 @@ func TestValidatePeerNameTrims(t *testing.T) {
 	}
 }
 
-// TestPeerTagStableAndUnique pins the sing-box export tag contract:
+// TestPeerTagStableAndCollisionScope pins the sing-box export tag contract:
 //   - an already-safe ASCII name keeps the historical "awg-<name>" tag, so
 //     upgrading an existing install does not renumber anybody's endpoint tag;
 //   - names that reduce lossily (Cyrillic, spaces, punctuation) get a short
-//     public-key-derived suffix, so two peers can never share a tag.
-func TestPeerTagStableAndUnique(t *testing.T) {
+//     public-key-derived suffix, so the REDUCTION can never merge two peers;
+//   - two peers the user deliberately named alike still share a tag — the
+//     documented limit of the guarantee.
+func TestPeerTagStableAndCollisionScope(t *testing.T) {
 	const pubA = "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaA="
 	const pubB = "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbB="
 
@@ -120,9 +179,18 @@ func TestPeerTagStableAndUnique(t *testing.T) {
 			}
 		}
 	}
-	// Same name, different peers -> different tags (no collision on the wire).
+	// Same LOSSY name on two peers -> still distinct tags: the collision the
+	// reduction would have created is removed by the public-key suffix.
 	if PeerTag("Ноутбук", pubA) == PeerTag("Ноутбук", pubB) {
-		t.Error("same name on two peers must still yield distinct tags")
+		t.Error("same lossy name on two peers must still yield distinct tags")
+	}
+	// Same ALREADY-SAFE name on two peers -> the SAME tag, by design. Pinning it
+	// so the docstring's scope stays honest: PeerTag removes collisions its own
+	// reduction creates, not collisions the user creates by naming two peers
+	// alike. Suffixing here would renumber every existing export; suffixing only
+	// on duplicates would make one peer's tag depend on another peer existing.
+	if PeerTag("alice", pubA) != PeerTag("alice", pubB) {
+		t.Error("duplicate safe names are expected to share a tag (stability over the store-dependent alternative)")
 	}
 }
 
