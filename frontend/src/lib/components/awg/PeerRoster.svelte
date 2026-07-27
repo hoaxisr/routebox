@@ -168,6 +168,7 @@
 	<input
 		bind:value={newName}
 		type="text"
+		maxlength="64"
 		placeholder={$t('awg.newClientPlaceholder')}
 		onkeydown={(e) => e.key === 'Enter' && addPeer()}
 	/>

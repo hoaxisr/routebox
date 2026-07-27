@@ -141,6 +141,12 @@ func (h *Handler) CreateAWGPeer(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusConflict, "subnet exhausted")
 		return
 	}
+	// The name is stored as typed (any script, any alphabet), so an unusable one
+	// is reported instead of being silently rewritten.
+	if err == awg.ErrInvalidName {
+		writeError(w, http.StatusBadRequest, "invalid name: 1-64 characters, no line breaks or control characters")
+		return
+	}
 	if err != nil {
 		writeError(w, http.StatusInternalServerError, "failed to add peer")
 		return
@@ -220,7 +226,7 @@ func (h *Handler) GetAWGPeerConfig(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	w.Header().Set("Content-Type", "text/plain; charset=utf-8")
-	w.Header().Set("Content-Disposition", "attachment; filename=\""+sanitizeFilename(name)+".conf\"")
+	w.Header().Set("Content-Disposition", contentDispositionAttachment(name, "peer", ".conf"))
 	w.Header().Set("Cache-Control", "no-store")
 	w.WriteHeader(http.StatusOK)
 	_, _ = w.Write([]byte(body))
