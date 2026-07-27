@@ -492,7 +492,7 @@ func (m *Manager) ClientEndpoint(pub, name, host string) (map[string]interface{}
 		}
 	}
 	return BuildClientEndpoint(ClientEndpointSpec{
-		Tag:                 "awg-" + SanitizeName(name),
+		Tag:                 PeerTag(name, pub),
 		PrivateKey:          p.PrivateKey,
 		Address:             p.Address,
 		Address6:            addr6,
