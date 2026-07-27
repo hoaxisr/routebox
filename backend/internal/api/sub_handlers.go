@@ -109,7 +109,7 @@ func sanitizeFilename(name string) string {
 // contentDispositionAttachment builds an RFC 6266 attachment header for a file
 // named after a user-supplied display name. It always emits the ASCII `filename=`
 // form (header values are bytes; a raw "Ноутбук" there is undefined behaviour and
-// several clients mangle it), and adds the `filename*=UTF-8''…` form whenever the
+// several clients mangle it), and adds the RFC 5987 `filename*` (UTF-8) form whenever the
 // ASCII reduction lost something — every modern browser prefers filename* and
 // saves the name the user actually typed. ext is appended to both forms.
 func contentDispositionAttachment(name, fallback, ext string) string {
@@ -122,7 +122,7 @@ func contentDispositionAttachment(name, fallback, ext string) string {
 }
 
 // rfc5987Encode percent-encodes every byte outside RFC 5987 attr-char, so the
-// result is safe as the value part of `filename*=UTF-8''<value>`.
+// result is safe as the value part of an RFC 5987 filename* parameter.
 func rfc5987Encode(s string) string {
 	const attrExtra = "!#$&+-.^_`|~"
 	var b strings.Builder
