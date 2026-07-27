@@ -13,8 +13,10 @@ All notable changes to RouteBox are documented here.
   endpoint tag and the `# comment` line in `awg-rb0.conf`. Existing peers keep their current names
   and their current export tags.
 - **Unusable peer names are rejected instead of silently rewritten.** Empty/whitespace-only names,
-  names over 64 characters, and names containing control characters or line breaks (which could
-  forge a directive line in `awg-rb0.conf`) now return `400` with an explanation.
+  names over 64 characters, names containing control characters or line breaks (which could forge a
+  directive line in `awg-rb0.conf`), and names carrying invisible format characters such as a
+  right-to-left override or a zero-width space (which let two peers look identical in the list) now
+  return `400` with an explanation.
 - **The peer `.conf` download keeps the peer's real name.** `Content-Disposition` now carries both
   the ASCII fallback and the RFC 6266 `filename*=UTF-8''…` form, so browsers save `Ноутбук.conf`
   instead of `subscription.conf`.
