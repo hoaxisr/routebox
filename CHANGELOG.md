@@ -2,6 +2,20 @@
 
 All notable changes to RouteBox are documented here.
 
+## [Unreleased]
+
+### Fixed
+
+- **Routing rules are one ordered list again, so an advanced rule can be given priority over a
+  rule-set one.** The page drew rule-set mappings and full rules as two sections, each numbered
+  from 1 and each draggable only within itself — but both kinds live in the same `route.rules`
+  array, and only their order across the whole array decides what matches first. The split made
+  that order both invisible (two rules could each show as "#1") and unsettable: there was no way
+  to put an advanced rule above a rule-set one. Now a single list shows the real order, every row
+  drags anywhere in it, and rule-set rows keep their one-click outbound picker. Rule-sets with no
+  route yet sit apart, since they have no rule to order; choosing a destination appends one at the
+  lowest priority, from where it can be dragged.
+
 ## [0.32.1] - 2026-07-28
 
 ### Features

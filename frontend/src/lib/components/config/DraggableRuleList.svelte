@@ -1,6 +1,7 @@
 <script lang="ts">
 	import { t } from 'svelte-i18n';
-	import type { RouteRule } from '$lib/types';
+	import type { RouteRule, RuleSet, Outbound } from '$lib/types';
+	import { simpleRuleSetTag, mappingOutboundValue } from '$lib/utils/routeRules';
 
 	interface Props {
 		rules: RouteRule[];
@@ -8,9 +9,33 @@
 		onEdit: (index: number) => void;
 		onDelete: (index: number) => void;
 		onAdd?: () => void;
+		/** Known rule-sets: a rule that plainly maps one gets a rule-set row. */
+		ruleSets?: RuleSet[];
+		/** Targets offered by the inline picker on those rows. */
+		outbounds?: Outbound[];
+		/** Inline outbound switch; without it rule-set rows stay read-only. */
+		onOutboundChange?: (index: number, outbound: string) => void;
 	}
 
-	let { rules, onReorder, onEdit, onDelete, onAdd }: Props = $props();
+	let {
+		rules,
+		onReorder,
+		onEdit,
+		onDelete,
+		onAdd,
+		ruleSets = [],
+		outbounds = [],
+		onOutboundChange
+	}: Props = $props();
+
+	// Rule-set rows are only offered where the tag is actually known and the page
+	// wired up a change handler; otherwise the rule renders as an ordinary one.
+	let knownRuleSets = $derived(new Map(ruleSets.map((rs) => [rs.tag, rs])));
+	function ruleSetRowFor(rule: RouteRule): RuleSet | null {
+		if (!onOutboundChange) return null;
+		const tag = simpleRuleSetTag(rule);
+		return tag ? (knownRuleSets.get(tag) ?? null) : null;
+	}
 
 	let draggedIndex = $state<number | null>(null);
 	let dropTargetIndex = $state<number | null>(null);
@@ -190,6 +215,7 @@
 		{@const desc = getRuleDescriptionParts(rule)}
 		{@const target = getTargetInfo(rule)}
 		{@const condTypes = getConditionTypes(rule)}
+		{@const ruleSetRow = ruleSetRowFor(rule)}
 		<div
 			draggable="true"
 			ondragstart={(e) => handleDragStart(e, index)}
@@ -262,12 +288,21 @@
 
 			<!-- Rule info -->
 			<div class="flex-1 min-w-0">
-				<div class="flex flex-col">
-					<span class="text-sm font-medium text-[var(--ctp-text)] truncate">{desc.main}</span>
-					{#if desc.details.length > 0}
-						<span class="text-xs text-[var(--ctp-overlay1)] truncate">{desc.details.join(' · ')}</span>
-					{/if}
-				</div>
+				{#if ruleSetRow}
+					<div class="flex items-center gap-2 min-w-0">
+						<span class="px-2 py-0.5 text-xs rounded bg-[var(--ctp-surface2)] text-[var(--ctp-overlay1)] flex-shrink-0">
+							{ruleSetRow.type}
+						</span>
+						<span class="text-sm font-medium text-[var(--ctp-text)] truncate">{ruleSetRow.tag}</span>
+					</div>
+				{:else}
+					<div class="flex flex-col">
+						<span class="text-sm font-medium text-[var(--ctp-text)] truncate">{desc.main}</span>
+						{#if desc.details.length > 0}
+							<span class="text-xs text-[var(--ctp-overlay1)] truncate">{desc.details.join(' · ')}</span>
+						{/if}
+					</div>
+				{/if}
 			</div>
 
 			<!-- Arrow and Outbound/Action -->
@@ -275,9 +310,27 @@
 				<svg class="w-4 h-4 text-[var(--ctp-overlay0)]" fill="none" stroke="currentColor" viewBox="0 0 24 24">
 					<path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M17 8l4 4m0 0l-4 4m4-4H3" />
 				</svg>
-				<span class="status-badge {target.type === 'reject' ? 'error' : ''} {target.type === 'action' ? 'info' : ''}">
-					{target.label}
-				</span>
+				{#if ruleSetRow}
+					<!-- Plain mapping: switching the target is one click, no rule form. -->
+					<select
+						value={mappingOutboundValue(rule)}
+						onclick={(e) => e.stopPropagation()}
+						onchange={(e) => {
+							const val = (e.target as HTMLSelectElement).value;
+							if (val) onOutboundChange?.(index, val);
+						}}
+						class="px-2 py-1 text-xs rounded bg-[var(--ctp-base)] border border-[var(--ctp-surface2)] text-[var(--ctp-text)] focus:outline-none focus:ring-1 focus:ring-[var(--ctp-primary)] cursor-pointer"
+					>
+						{#each outbounds as ob}
+							<option value={ob.tag}>{ob.tag}</option>
+						{/each}
+						<option value="__reject__">⛔ REJECT</option>
+					</select>
+				{:else}
+					<span class="status-badge {target.type === 'reject' ? 'error' : ''} {target.type === 'action' ? 'info' : ''}">
+						{target.label}
+					</span>
+				{/if}
 			</div>
 
 			<!-- Actions -->
