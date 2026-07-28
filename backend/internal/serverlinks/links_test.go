@@ -734,3 +734,62 @@ func TestBuildMieruTransportDefault(t *testing.T) {
 		t.Fatalf("absent transport must default to protocol=TCP, got %q (%s)", got, link)
 	}
 }
+
+// Issue #37: a mieru server may bind port ranges (listen_ports) as well as, or
+// instead of, a single port. The share link has to carry them or the client
+// never learns about the extra ports — the mierus:// parser already accepts
+// repeated port= values and broadcasts one protocol= across them.
+func TestBuildShareLinkMieruListenPorts(t *testing.T) {
+	user := map[string]interface{}{"name": "alice", "password": "pw"}
+
+	t.Run("single port plus ranges", func(t *testing.T) {
+		ib := map[string]interface{}{
+			"type": "mieru", "tag": "m-in", "listen_port": float64(2020), "transport": "UDP",
+			"listen_ports": []interface{}{"25010-25012", "26000-26100"},
+		}
+		link, err := BuildShareLink(ib, user, "vpn.example.com")
+		if err != nil {
+			t.Fatalf("BuildShareLink: %v", err)
+		}
+		u, err := url.Parse(link)
+		if err != nil {
+			t.Fatalf("parse: %v", err)
+		}
+		ports := u.Query()["port"]
+		want := []string{"2020", "25010-25012", "26000-26100"}
+		if len(ports) != len(want) {
+			t.Fatalf("port params = %v, want %v", ports, want)
+		}
+		for i := range want {
+			if ports[i] != want[i] {
+				t.Fatalf("port params = %v, want %v", ports, want)
+			}
+		}
+		// One protocol for all of them: the client broadcasts it.
+		if got := u.Query()["protocol"]; len(got) != 1 || got[0] != "UDP" {
+			t.Fatalf("protocol params = %v, want [UDP]", got)
+		}
+	})
+
+	t.Run("ranges only, no single port", func(t *testing.T) {
+		ib := map[string]interface{}{
+			"type": "mieru", "tag": "m-in", "transport": "TCP",
+			"listen_ports": []interface{}{"25010-25012"},
+		}
+		link, err := BuildShareLink(ib, user, "vpn.example.com")
+		if err != nil {
+			t.Fatalf("BuildShareLink with ranges only: %v", err)
+		}
+		u, _ := url.Parse(link)
+		if got := u.Query()["port"]; len(got) != 1 || got[0] != "25010-25012" {
+			t.Fatalf("port params = %v, want [25010-25012]", got)
+		}
+	})
+
+	t.Run("no ports at all is still an error", func(t *testing.T) {
+		ib := map[string]interface{}{"type": "mieru", "tag": "m-in", "transport": "TCP"}
+		if _, err := BuildShareLink(ib, user, "vpn.example.com"); err == nil {
+			t.Fatal("expected an error when the inbound exposes no port at all")
+		}
+	})
+}

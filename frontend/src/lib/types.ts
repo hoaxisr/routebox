@@ -227,6 +227,9 @@ export interface Inbound {
 	transport?: TransportConfig | string; // vless/trojan stream transport object; mieru emits a "TCP"/"UDP" string
 	traffic_pattern?: string;           // mieru
 	user_hint_is_mandatory?: boolean;   // mieru
+	// mieru: extra "lo-hi" ranges the server binds on top of listen_port. Either
+	// may be omitted as long as one is set.
+	listen_ports?: string[];
 }
 
 export interface ServerInboundUser {

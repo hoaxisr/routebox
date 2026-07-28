@@ -22,7 +22,10 @@ func BuildShareLink(inbound, user map[string]interface{}, host string) (string, 
 	}
 	typ, _ := inbound["type"].(string)
 	port := portOf(inbound)
-	if port == 0 {
+	// mieru may bind ONLY ranges (listen_ports) and no single port, so for it an
+	// absent listen_port is not automatically a broken inbound (#37).
+	mieruRanges := typ == "mieru" && len(listOfStrings(inbound["listen_ports"])) > 0
+	if port == 0 && !mieruRanges {
 		return "", fmt.Errorf("inbound has no listen_port")
 	}
 	switch typ {
@@ -288,6 +291,21 @@ func buildNaive(inbound, user map[string]interface{}, host string, port int) (st
 // port lives in the query (?port=), NOT the authority — the fork's mierus://
 // grammar. IPv6 hosts are bracketed manually (no JoinHostPort, which would add
 // a port). No multiplexing (inbound has none); traffic-pattern only if set.
+// listOfStrings returns the non-empty string elements of a JSON array value.
+func listOfStrings(v interface{}) []string {
+	arr, ok := v.([]interface{})
+	if !ok {
+		return nil
+	}
+	out := make([]string, 0, len(arr))
+	for _, raw := range arr {
+		if s, ok := raw.(string); ok && s != "" {
+			out = append(out, s)
+		}
+	}
+	return out
+}
+
 func buildMieru(inbound, user map[string]interface{}, host string, port int) (string, error) {
 	name, _ := user["name"].(string)
 	password, _ := user["password"].(string)
@@ -312,7 +330,16 @@ func buildMieru(inbound, user map[string]interface{}, host string, port int) (st
 
 	q := url.Values{}
 	q.Set("profile", remarkOf(inbound, user, "Mieru"))
-	q.Set("port", strconv.Itoa(port))
+	// Ports: the single listen_port (when set) followed by every listen_ports
+	// range. The client accepts repeated port= values and broadcasts a single
+	// protocol= across them, so a server bound to a range hands the whole range
+	// over — that is the point of ranges (#37).
+	if port > 0 {
+		q.Add("port", strconv.Itoa(port))
+	}
+	for _, raw := range listOfStrings(inbound["listen_ports"]) {
+		q.Add("port", raw)
+	}
 	q.Set("protocol", transport)
 	if tp, _ := inbound["traffic_pattern"].(string); tp != "" {
 		q.Set("traffic-pattern", tp)
