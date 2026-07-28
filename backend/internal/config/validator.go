@@ -300,6 +300,12 @@ func validateOutbound(ob map[string]interface{}, index int) []string {
 		errors = append(errors, fmt.Sprintf("%s: missing or empty 'type'", prefix))
 	}
 
+	// Stream transport, when present, is validated for every outbound type that
+	// can carry one — the fork's xhttp padding check is type-agnostic.
+	if tr, ok := ob["transport"].(map[string]interface{}); ok {
+		errors = append(errors, validateXHTTPPadding(tr, prefix+".transport")...)
+	}
+
 	// Type-specific validation
 	switch obType {
 	case "selector", "urltest":
@@ -590,6 +596,75 @@ func validateMieruInbound(ib map[string]interface{}, prefix string) []string {
 
 // validateOutboundVisionFlow enforces the Vision-flow conflict on a vless client
 // outbound, mirroring the inbound guard validateInboundTransport. xtls-rprx-vision
+// XHTTPDefaultPadding is what the panel writes into every xhttp transport it
+// builds: the fork's own default range, spelled explicitly.
+//
+// The field is NOT optional despite looking like it. option.V2RayXHTTPBaseOptions
+// declares `x_padding_bytes` without omitempty as a plain Range, so an absent
+// field decodes to {0,0}, and checkV2RayXHTTPBaseOptions then rejects
+// From<=0||To<=0 with "x_padding_bytes cannot be disabled". The fork also has
+// GetNormalizedXPaddingBytes, which defaults exactly this range — but it runs
+// after the check, so it never gets the chance.
+const XHTTPDefaultPadding = "100-1000"
+
+// validateXHTTPPadding rejects an xhttp transport whose padding the fork will
+// refuse to decode. Without it the config passes every panel check and then
+// fails at APPLY with an opaque FATAL naming a file the operator never edited.
+func validateXHTTPPadding(tr map[string]interface{}, prefix string) []string {
+	if t, _ := tr["type"].(string); t != "xhttp" {
+		return nil
+	}
+	bad := func() []string {
+		return []string{fmt.Sprintf(
+			"%s: xhttp transport requires 'x_padding_bytes' above zero (e.g. %q); the fork refuses to load a config without it",
+			prefix, XHTTPDefaultPadding)}
+	}
+	raw, ok := tr["x_padding_bytes"]
+	if !ok {
+		return bad()
+	}
+	// Same three spellings Range.UnmarshalJSON accepts: "lo-hi" or "n", a bare
+	// number, or {from,to}. Anything that yields a zero bound is "disabled".
+	switch v := raw.(type) {
+	case string:
+		lo, hi, ok := parseRangeString(v)
+		if !ok || lo <= 0 || hi <= 0 {
+			return bad()
+		}
+	case float64:
+		if v <= 0 {
+			return bad()
+		}
+	case map[string]interface{}:
+		from, fok := v["from"].(float64)
+		to, tok := v["to"].(float64)
+		if !fok || !tok || from <= 0 || to <= 0 {
+			return bad()
+		}
+	default:
+		return bad()
+	}
+	return nil
+}
+
+// parseRangeString reads "lo-hi" or a bare "n" (which means n-n).
+func parseRangeString(s string) (lo, hi int, ok bool) {
+	s = strings.TrimSpace(s)
+	if dash := strings.IndexByte(s, '-'); dash >= 0 {
+		l, err1 := strconv.Atoi(s[:dash])
+		h, err2 := strconv.Atoi(s[dash+1:])
+		if err1 != nil || err2 != nil {
+			return 0, 0, false
+		}
+		return l, h, true
+	}
+	n, err := strconv.Atoi(s)
+	if err != nil {
+		return 0, 0, false
+	}
+	return n, n, true
+}
+
 // requires raw TCP: a non-raw stream transport (ws/grpc/http/httpupgrade) present
 // together with that flow is invalid. This is the ONLY config-time guard — same
 // as the inbound case, amnezia-box `check` PASSES this config and only fails
@@ -744,9 +819,18 @@ func validateInboundTransport(ib map[string]interface{}, prefix string) []string
 	if trType == "" || trType == "raw" {
 		return errors
 	}
-	valid := map[string]bool{"ws": true, "grpc": true, "httpupgrade": true, "xhttp": true}
+	// xhttp is CLIENT-ONLY in the fork: transport/v2rayxhttp ships a client and no
+	// server, and v2ray.NewServerTransport has no xhttp case, so an inbound using
+	// it dies at startup with "create server transport: xhttp: unknown transport
+	// type". Named separately from the generic list below, because "invalid
+	// transport type" would be a lie — it is a perfectly good OUTBOUND transport.
+	if trType == "xhttp" {
+		errors = append(errors, fmt.Sprintf("%s: xhttp cannot be used on an inbound — amnezia-box implements it for outbounds only (use ws, grpc or httpupgrade to serve)", prefix))
+		return errors
+	}
+	valid := map[string]bool{"ws": true, "grpc": true, "httpupgrade": true}
 	if !valid[trType] {
-		errors = append(errors, fmt.Sprintf("%s: invalid transport type %q (must be ws, grpc, httpupgrade, or xhttp; omit transport for raw TCP)", prefix, trType))
+		errors = append(errors, fmt.Sprintf("%s: invalid transport type %q (must be ws, grpc, or httpupgrade; omit transport for raw TCP)", prefix, trType))
 		return errors
 	}
 	// Vision conflict (vless only — trojan has no flow). A non-raw transport
