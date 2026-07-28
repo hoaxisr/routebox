@@ -10,7 +10,7 @@ import (
 
 // TestAddPeerKeepsUnicodeName is the regression test for the bug where a peer
 // named "Ноутбук" was stored (and shown) as "name": AddPeer ran the display name
-// through SanitizeName, which reduces every non-[A-Za-z0-9._-] rune to '_' and
+// through util.SanitizeName, which reduces every non-[A-Za-z0-9._-] rune to '_' and
 // falls back to "name" when nothing survives. Three Cyrillic-named peers all
 // collapsed into three peers called "name".
 func TestAddPeerKeepsUnicodeName(t *testing.T) {

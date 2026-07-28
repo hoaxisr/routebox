@@ -3,6 +3,7 @@ package awg
 import (
 	"context"
 	"crypto/rand"
+	"errors"
 	"fmt"
 	"log"
 	"net"
@@ -15,6 +16,8 @@ import (
 	"time"
 
 	"routebox/backend/internal/awg/cps"
+	"routebox/backend/internal/config"
+	"routebox/backend/internal/util"
 )
 
 // PeerSummary is the secret-free API/UI view of a peer.
@@ -97,7 +100,28 @@ type Manager struct {
 	ulaPrefix  netip.Prefix
 	probeFn    func() bool
 
-	addMu sync.Mutex // serialises the whole add-peer critical section
+	// addMu serialises every operation that writes what is served: the peer ops,
+	// both Enable branches, and the sweep. Holders keep it across the apply that
+	// follows the write, and the price of that is worth stating plainly, because
+	// it is paid by an unrelated request.
+	//
+	// applyAwgReload asks the process manager to Reload and, if the reload fails,
+	// Restarts the service — `systemctl restart` plus a 500ms verify sleep. So a
+	// peer add arriving during an Enable can wait seconds on this mutex, and it
+	// waits without regard to its request's context: a client that has already
+	// given up still gets a late answer instead of an early error.
+	//
+	// Making the wait ctx-aware means a cap-1 channel semaphore in place of the
+	// mutex, and it was not done, for two reasons. The waiting itself is correct
+	// — a peer add landing mid-restart would write into a config being reloaded
+	// and trigger a second reload of its own, and serialising that is what the
+	// lock is for — so the fix would only shorten the wait for requests nobody is
+	// listening to any more. And it would give every peer op a new early-exit
+	// path that returns before doing anything, in a package whose entire failure
+	// history is partial states. If the wait ever needs to be interruptible, the
+	// semaphore wants a sync.Once-guarded lazy init: a nil channel in a
+	// zero-value Manager blocks forever, and there are &Manager{} literals about.
+	addMu sync.Mutex
 
 	mu       sync.Mutex  // guards enabled/lastErr/phase/inFlight (distinct from addMu)
 	enabled  bool        // last successful Enable left the tunnel up
@@ -105,6 +129,62 @@ type Manager struct {
 	phase    EnablePhase // current orchestrator phase (phased Status)
 	inFlight bool        // single-flight: an Enable orchestrator is running
 }
+
+// ---- Manager state: the commit rule every operation has to follow ----
+//
+// Read this before adding an operation that writes any field of the Manager
+// above (the render parameters, enabled, or the store).
+//
+// NOTHING is committed to memory before the write it describes has succeeded,
+// and when a write fails the WHOLE pre-operation snapshot goes back — not the
+// fields that look most relevant to the failure.
+//
+// "The write" is the durable artefact the operation exists to produce: the
+// server .conf on the kernel backend, the managed endpoint in the sing-box
+// config on the singbox one, peers.toml for a secret. If the operation must
+// publish state BEFORE it writes (renderServerSpec gates on enabled, so
+// enableSingbox has to set it first), then snapshot everything you are about to
+// overwrite (renderStateLocked), commit, write, and on failure put the snapshot
+// back whole (restoreRenderStateLocked). Record the failure in lastErr/phase and
+// nothing else: those two are the report, and they are the one thing a rollback
+// must NOT undo.
+//
+// Which is also the rule for enabled specifically, since it is the field people
+// reach for when an operation fails. Only an operation that CHANGED what is
+// served may write it on a failure path: teardownFail, because it brought the
+// interface down; markDisabled, because the endpoint is out of the config; a
+// snapshot restore, because it is putting back a value the operation itself had
+// published. enableFail and enableFailCause deliberately do not touch it — a
+// failed attempt to change what is served is not a statement about what is
+// being served.
+//
+// It holds for the background paths too, not just the operator-triggered ones.
+// The 30s sweep re-probes IPv6 egress and commits the result before it writes,
+// so it snapshots and restores like everything else; "the next tick will fix it"
+// is not a licence, because the readers of that flag (RenderClientConf,
+// ClientEndpoint) are gated on nothing and will hand out a wrong client config
+// for the whole interval.
+//
+// Piecemeal rollbacks are what this rule exists to stop, because the fields have
+// different readers with different gates. renderServerSpec and peerLines gate on
+// enabled; RenderClientConf and ClientEndpoint gate on nothing at all. Put one
+// field back and leave another and the panel starts describing a server that
+// does not exist — a .conf naming a port nobody listens on, an expiry the
+// endpoint never got, a client that the store says is live and sing-box has
+// never heard of.
+//
+// It matters more here than in a plain UI cache because a 30s sweep
+// (SweepExpired) re-derives the served config from exactly this state. A field
+// left committed after a failed write is not a stale display value: it is an
+// instruction, and the sweep will carry it out.
+//
+// Worked examples, each one a bug that reached a release: a failed re-Enable
+// clearing enabled and having the sweep tear down a live endpoint; a failed
+// Enable keeping the new port so every .conf and QR named a port nobody served;
+// a renewal recorded in the store that the endpoint never accepted, leaving a
+// peer the panel calls active and the server drops; a disable that removed the
+// endpoint but stayed enabled because only the reload failed, so the sweep put
+// the server back.
 
 // ErrSubnetExhausted is returned by AddPeer when no /32 host remains free.
 var ErrSubnetExhausted = fmt.Errorf("subnet exhausted")
@@ -260,7 +340,7 @@ func (m *Manager) Rehydrate(ctx context.Context, in EnableInput) {
 // summary. Subnet exhausted -> ErrSubnetExhausted; unusable name -> ErrInvalidName.
 //
 // The name is STORED AS TYPED (ValidatePeerName only trims and rejects) — running
-// it through SanitizeName here is what used to turn every peer named "Ноутбук"
+// it through util.SanitizeName here is what used to turn every peer named "Ноутбук"
 // into a peer named "name". Safe-token reduction happens where a token is
 // actually required: PeerTag, the .conf comment, the download filename.
 func (m *Manager) AddPeer(ctx context.Context, rawName string) (PeerSummary, error) {
@@ -275,16 +355,22 @@ func (m *Manager) AddPeer(ctx context.Context, rawName string) (PeerSummary, err
 		return m.addPeerSingbox(ctx, name)
 	}
 
+	// Snapshot under m.mu, as addPeerSingbox does: Enable/Rehydrate write
+	// serverIP/subnet under m.mu, and addMu (held here) does not order against
+	// Rehydrate at all.
+	m.mu.Lock()
+	serverIP, subnet := m.serverIP, m.subnet
+	m.mu.Unlock()
 	used, err := m.usedFromConf()
 	if err != nil {
 		return PeerSummary{}, err
 	}
 	used = append(used, m.usedFromStore()...) // also reserve suspended peers' IPs (NextFree dedupes)
-	server, err := netip.ParseAddr(m.serverIP)
+	server, err := netip.ParseAddr(serverIP)
 	if err != nil {
 		return PeerSummary{}, err
 	}
-	ip, err := NextFree(m.subnet, used, server)
+	ip, err := NextFree(subnet, used, server)
 	if err != nil {
 		if strings.Contains(err.Error(), "exhausted") {
 			return PeerSummary{}, ErrSubnetExhausted
@@ -307,7 +393,14 @@ func (m *Manager) AddPeer(ctx context.Context, rawName string) (PeerSummary, err
 		return PeerSummary{}, err
 	}
 	if err := m.store.Put(peer); err != nil {
-		_ = m.suspend(ctx, pub) // roll the live+conf add back
+		// Roll the live+conf add back. If that fails too the peer is live with no
+		// secret anywhere — invisible to the panel, undeletable through it, and
+		// not foreign to the sweep only until the next Enable re-renders the conf
+		// without it. The singbox branch logs the same case; discarding it here
+		// left no trace at all.
+		if serr := m.suspend(ctx, pub); serr != nil {
+			log.Printf("awg: peer %s could not be persisted and could not be rolled back off %s: %v (store: %v)", pub, m.iface, serr, err)
+		}
 		return PeerSummary{}, err
 	}
 	return PeerSummary{Name: name, PublicKey: pub, Address: allowedIP}, nil
@@ -400,7 +493,10 @@ func joinHostPort(host string, port int) string {
 // Caller holds m.addMu.
 func (m *Manager) admit(ctx context.Context, p Peer) error {
 	pskFile := filepath.Join(m.pskTmpDir, strconv.FormatInt(time.Now().UnixNano(), 10)+".psk")
-	if err := os.WriteFile(pskFile, []byte(p.PresharedKey+"\n"), 0600); err != nil {
+	// Classified like every other write: the PSK goes through a file because
+	// `awg set` will not take a key on the command line, and a temp directory
+	// that cannot be written is the same kind of problem as a config that cannot.
+	if err := util.ClassifyWriteErr(pskFile, os.WriteFile(pskFile, []byte(p.PresharedKey+"\n"), 0600)); err != nil {
 		return err
 	}
 	defer os.Remove(pskFile)
@@ -437,20 +533,58 @@ func (m *Manager) RemovePeer(ctx context.Context, pub string) (string, error) {
 	}
 	m.addMu.Lock()
 	defer m.addMu.Unlock()
+	prev, existed := m.store.Get(pub)
 	addr := ""
-	if p, ok := m.store.Get(pub); ok {
-		addr = p.Address
+	if existed {
+		addr = prev.Address
 	}
 	if m.backendIs("singbox") {
 		if err := m.store.Delete(pub); err != nil {
 			return "", err
 		}
-		return addr, m.singboxSync()
+		if err := m.singboxSync(); err != nil {
+			// Compensation, mirroring addPeerSingbox: the endpoint still carries
+			// this peer, so dropping its secret would strand a live client the
+			// panel can no longer see or delete.
+			if existed {
+				if perr := m.store.Put(prev); perr != nil {
+					// Both writes failed: the peer is live in sing-box and its
+					// secret is gone from the store. Nothing left to do but say so.
+					log.Printf("awg: peer %s removed from the store but its endpoint could not be rewritten, and restoring it failed: %v (sync: %v)", pub, perr, err)
+				}
+			}
+			return "", err
+		}
+		return addr, nil
 	}
 	if err := m.suspend(ctx, pub); err != nil {
 		return "", err
 	}
-	return addr, m.store.Delete(pub)
+	if err := m.store.Delete(pub); err != nil {
+		// Mirror of the singbox branch, other way round: here the interface and
+		// the .conf are the write that succeeded and the store is the one that
+		// failed, so the peer is off everything that serves it while the store —
+		// and the panel — still calls it an active client. Nothing heals that: it
+		// has not expired, and the store owning it is exactly what makes it OURS
+		// to the foreign-peer sweep. admit is idempotent, so putting it back is
+		// the whole compensation.
+		//
+		// Except for a SUSPENDED peer, which lived in the store alone: peerLines
+		// keeps it out of the conf and the sweep took it off the interface, so
+		// re-admitting it would restore more than there was and put an expired
+		// key back into service until the next tick noticed. Its store entry is
+		// already back — Delete rolls its own save failure back — and that is the
+		// whole of what it had.
+		now := m.store.now()
+		suspended := prev.ExpiresAt != 0 && now >= prev.ExpiresAt
+		if existed && !suspended {
+			if aerr := m.admit(ctx, prev); aerr != nil {
+				log.Printf("awg: peer %s could not be deleted from the store, and re-admitting it failed: %v (store: %v)", pub, aerr, err)
+			}
+		}
+		return "", err
+	}
+	return addr, nil
 }
 
 // RenewPeer sets a peer's ExpiresAt and ensures it is admitted to the live
@@ -467,20 +601,44 @@ func (m *Manager) RenewPeer(ctx context.Context, pub string, expiresAt int64) er
 	if !ok {
 		return ErrPeerNotFound
 	}
+	prev := p
 	p.ExpiresAt = expiresAt
 	if err := m.store.Put(p); err != nil {
 		return err
 	}
 	if m.backendIs("singbox") {
-		return m.singboxSync()
+		if err := m.singboxSync(); err != nil {
+			// The endpoint kept the old expiry, so the store must too — otherwise
+			// the panel shows a renewal that never reached sing-box.
+			if perr := m.store.Put(prev); perr != nil {
+				log.Printf("awg: peer %s expiry could not be synced, and restoring the old value failed: %v (sync: %v)", pub, perr, err)
+			}
+			return err
+		}
+		return nil
 	}
-	return m.admit(ctx, p)
+	if err := m.admit(ctx, p); err != nil {
+		// Mirror of the singbox branch above. admit rolls its own changes back,
+		// so the interface and the .conf still carry the old expiry — and the
+		// store must too, or the panel shows a renewal the peer never got. The
+		// sweep cannot heal this: it only suspends peers whose expiry has passed.
+		if perr := m.store.Put(prev); perr != nil {
+			log.Printf("awg: peer %s could not be re-admitted, and restoring its old expiry failed: %v (admit: %v)", pub, perr, err)
+		}
+		return err
+	}
+	return nil
 }
 
-// SweepExpired suspends every peer whose ExpiresAt has passed and that is still on
-// the live interface, keeping its store secret for later renewal. Idempotent and a
-// cheap no-op when the interface is down (iface_ShowPeers errors → return). Run by
-// the sweep ticker.
+// SweepExpired reconciles the live interface with the store, in both directions:
+// it suspends every peer whose ExpiresAt has passed (keeping its store secret for
+// later renewal) and strips every peer that is ours nowhere. Idempotent, and a
+// no-op when the interface is down (iface_ShowPeers errors → return). Run by the
+// sweep ticker.
+//
+// It costs one `awg show` per tick even when nothing is expired — the earlier
+// early-out on an empty expiry set is what left the foreign-peer pass running
+// only after an Enable, i.e. never on a box that works.
 func (m *Manager) SweepExpired(ctx context.Context) {
 	if m.backendIs("singbox") {
 		// Re-preflight the IPv6 broker on every sweep: a v6 egress that appears or
@@ -507,12 +665,21 @@ func (m *Manager) SweepExpired(ctx context.Context) {
 
 		m.addMu.Lock()
 		defer m.addMu.Unlock()
+		// The probe result is a state commit ahead of a write, so it follows the
+		// same rule as the rest of the package: snapshot, commit, and put the
+		// snapshot back if the write does not land (see the commit rule above).
+		// The sweep being its own retry loop is not licence to skip it —
+		// RenderClientConf and ClientEndpoint read v6Active without gating on
+		// anything, so a flip the endpoint never accepted has every .conf and QR
+		// issued in the next 30 seconds promise addresses the server does not route.
+		prevV6, v6Committed := false, false
 		if probeNeeded {
 			m.mu.Lock()
 			// Re-check under the lock (not the stale snapshot): a concurrent
 			// Disable/toggle between the probe and here must not resurrect
 			// v6Active without a currently-valid ULA prefix.
 			if m.ipv6Broker && m.ulaPrefix.IsValid() {
+				prevV6, v6Committed = m.v6Active, true
 				m.v6Active = probeResult
 			}
 			m.mu.Unlock()
@@ -520,10 +687,36 @@ func (m *Manager) SweepExpired(ctx context.Context) {
 		// Best-effort self-heal: expired peers drop out of renderServerSpec, and a
 		// disabled server renders nil (no-op). A failure here means the active
 		// config silently diverges from the store — log it, don't swallow it.
+		//
+		// Except a read-only config: that is a standing, known condition already
+		// reported at startup, in GET /api/status and on every interactive
+		// attempt (409). Repeating it every 30s would bury the failures that
+		// actually need reading — and on a router it is flash wear for a line
+		// nobody can act on differently. A config that turns unwritable AFTER
+		// startup still logs here: the verdict is stale, so the write fails with
+		// a raw permission error, not with ErrReadOnly.
 		if err := m.singboxSync(); err != nil {
-			log.Printf("awg: singbox sweep sync: %v", err)
+			if v6Committed {
+				m.mu.Lock()
+				m.v6Active = prevV6
+				m.mu.Unlock()
+			}
+			if !errors.Is(err, config.ErrReadOnly) {
+				log.Printf("awg: singbox sweep sync: %v", err)
+			}
 		}
 		return
+	}
+	m.addMu.Lock()
+	defer m.addMu.Unlock()
+	// The listing is taken UNDER addMu and reused for both passes below. AddPeer
+	// admits a peer to the interface and only then does store.Put, so a listing
+	// taken before the lock could show a peer no store knows yet — which the
+	// foreign pass would read as foreign and strip off, leaving a client that can
+	// never connect while the panel reports it fine.
+	live, err := m.iface_ShowPeers(ctx)
+	if err != nil {
+		return // interface down / not enabled — nothing to enforce now
 	}
 	now := m.store.now()
 	expired := map[string]bool{}
@@ -532,30 +725,25 @@ func (m *Manager) SweepExpired(ctx context.Context) {
 			expired[p.PublicKey] = true
 		}
 	}
-	if len(expired) == 0 {
-		return
-	}
-	live, err := m.iface_ShowPeers(ctx)
-	if err != nil {
-		return // interface down / not enabled — nothing to enforce now
-	}
-	m.addMu.Lock()
-	defer m.addMu.Unlock()
-	now = m.store.now() // re-read under the lock; a RenewPeer may have landed since the snapshot
+	// The expiry map is built from a store snapshot taken under addMu, and every
+	// writer of ExpiresAt (AddPeer/RemovePeer/RenewPeer) holds addMu too, so no
+	// peer can be renewed out from under this loop and be suspended anyway —
+	// off the interface with the store calling it active, which nothing heals.
 	for _, pub := range live {
 		if !expired[pub] {
-			continue
-		}
-		// Re-validate under the lock: a concurrent RenewPeer could have extended this
-		// peer's expiry after the snapshot. Suspending it now would strand it (off the
-		// interface, store says active, no self-heal), so skip it if it's no longer expired.
-		if p, ok := m.store.Get(pub); !ok || p.ExpiresAt == 0 || now < p.ExpiresAt {
 			continue
 		}
 		if err := m.suspend(ctx, pub); err != nil {
 			log.Printf("awg: suspend expired peer %s: %v", pub, err)
 		}
 	}
+	// Same pass, other direction: peers on the interface that are ours nowhere.
+	// This used to run only off the tail of a successful Enable, so on a box that
+	// works — nobody re-Applies a working server — a leftover of a crash or of a
+	// manual `awg set` stayed live indefinitely. The suspensions above only make
+	// that worse: `live` still names them, but they are ours (the store keeps
+	// their secrets), so the foreign pass leaves them alone.
+	m.sweepForeignLivePeersLocked(ctx, live)
 }
 
 // usedFromStore returns the /32 host addresses of ALL stored peers (including
@@ -620,7 +808,16 @@ func (m *Manager) rewriteConfWithout(pub string) error {
 }
 
 // writeConfAtomic writes the server .conf via a 0600 temp file + rename (dir 0700).
+//
+// The failure is classified: the .conf shares its directory with peers.toml, so
+// the same read-only mount takes both — and the kernel peer operations write the
+// .conf BEFORE the store, so without this the store's guard never gets a say and
+// the user got a 500 naming nothing while the badge was already up.
 func (m *Manager) writeConfAtomic(content string) error {
+	return util.ClassifyWriteErr(m.confPath, m.writeConf(content))
+}
+
+func (m *Manager) writeConf(content string) error {
 	dir := filepath.Dir(m.confPath)
 	if err := os.MkdirAll(dir, 0700); err != nil {
 		return err

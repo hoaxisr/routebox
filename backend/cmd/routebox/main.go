@@ -8,6 +8,7 @@ import (
 	"errors"
 	"flag"
 	"fmt"
+	"io"
 	"log"
 	"net"
 	"net/http"
@@ -38,6 +39,7 @@ import (
 	"routebox/backend/internal/traffic"
 	"routebox/backend/internal/updates"
 	"routebox/backend/internal/users"
+	"routebox/backend/internal/util"
 	"routebox/backend/internal/v2stats"
 )
 
@@ -140,6 +142,16 @@ func main() {
 		}
 	}
 
+	// Сверка с systemd-юнитом: если он стартует amnezia-box с другим конфигом,
+	// всякая правка уходит в файл, который процесс не читает. Ничего не чиним
+	// автоматически — фиксируем расхождение, панель предложит лечение.
+	// Сравнение (с нормализацией путей) живёт в SetConfigPaths — здесь только
+	// сообщаем о результате, чтобы условие не разъехалось между двумя местами.
+	procMgr.SetConfigPaths(resolvedConfigPath, procMgr.UnitConfigPath())
+	if ours, unit, mismatched := procMgr.ConfigMismatch(); mismatched {
+		log.Printf("WARNING: config path mismatch — RouteBox edits %s, systemd unit starts amnezia-box with %s. Start/Restart/Reload are blocked until this is resolved in the panel.", ours, unit)
+	}
+
 	// Ensure config directory exists
 	configDir := filepath.Dir(resolvedConfigPath)
 	if err := os.MkdirAll(configDir, 0755); err != nil {
@@ -197,6 +209,12 @@ func main() {
 	// Clash API secret for in-process clients (discovery loop, traffic sampler).
 	// Resolved once at startup, like the address: changing it requires a restart.
 	resolvedClashSecret := resolveClashSecretFromConfig(cfgMgr)
+	if resolvedClashAddr == "" {
+		// Said once, here, rather than left to the samplers: they would report it
+		// as a failed request to an empty URL, once a minute, in terms that say
+		// nothing about what is unset or where to set it.
+		log.Printf("Clash API address is not set (singbox.clash_api, or experimental.clash_api in the amnezia-box config): live connections and traffic history are off. It is read at startup, so restart RouteBox after setting it.")
+	}
 
 	// Resolve GeoIP path: CLI flag > settings
 	resolvedGeoipPath := *geoipPath
@@ -488,6 +506,11 @@ func main() {
 			r.Post("/config/validate", apiHandler.ValidateConfig)
 			r.Post("/config/diff", apiHandler.GetConfigDiff)
 			r.Post("/config/apply", apiHandler.ApplyConfig)
+			r.Post("/config/fix-unit", apiHandler.FixUnitConfigPath)
+			// Обратная операция к fix-unit: снять drop-in, которым мы
+			// перенацелили юнит. Без неё единственная запись RouteBox вне
+			// своих файлов была односторонней.
+			r.Delete("/config/unit-dropin", apiHandler.RemoveUnitConfigDropIn)
 			r.Get("/config/export", apiHandler.ExportConfig)
 			r.Post("/config/import", apiHandler.ImportConfig)
 
@@ -670,9 +693,11 @@ func main() {
 			r.Post("/control/restart", apiHandler.Restart)
 			r.Post("/control/reload", apiHandler.Reload)
 
-			// Config detection (kept for compatibility)
-			r.Get("/config/detected", apiHandler.GetDetectedConfig)
-			r.Post("/config/use-detected", apiHandler.UseDetectedConfig)
+			// Расхождение путей конфига целиком живёт в config_paths статуса,
+			// поэтому отдельного «а какой путь обнаружен» больше нет — узнать
+			// одно и то же двумя способами было ровно тем, из-за чего панель
+			// показывала два разных предупреждения об одном и том же.
+			r.Post("/config/adopt-unit-path", apiHandler.AdoptUnitConfigPath)
 
 			// Systemd logs
 			r.Get("/logs/journal", apiHandler.GetJournalLogs)
@@ -709,34 +734,8 @@ func main() {
 
 	// VPS-mode bootstrap (force-auth) + router-mode warning
 	if effectiveMode == "vps" {
-		sec := settingsMgr.Get().Security
-		if !sec.AuthEnabled || sec.AuthPasswordHash == "" {
-			pw, err := generatePassword()
-			if err != nil {
-				log.Fatalf("generate bootstrap password: %v", err)
-			}
-			if err := settingsMgr.Update(map[string]interface{}{
-				"security.auth_enabled":  true,
-				"security.auth_username": orDefault(sec.AuthUsername, "admin"),
-				"security.auth_password": pw,
-			}); err != nil {
-				log.Fatalf("enable auth: %v", err)
-			}
-			if err := settingsMgr.Save(); err != nil {
-				log.Fatalf("persist auth: %v", err)
-			}
-			pwFile := filepath.Join(filepath.Dir(settingsMgr.GetPath()), "routebox-initial-password")
-			writeErr := os.WriteFile(pwFile, []byte(pw+"\n"), 0600)
-			fmt.Println("==================================================================")
-			fmt.Println(" VPS MODE: panel auth was OFF — generated admin credentials")
-			fmt.Printf("   username: %s\n", orDefault(sec.AuthUsername, "admin"))
-			fmt.Printf("   password: %s\n", pw)
-			if writeErr == nil {
-				fmt.Printf("   (also written to %s)\n", pwFile)
-			} else {
-				fmt.Printf("   (WARNING: could not write password file: %v)\n", writeErr)
-			}
-			fmt.Println("==================================================================")
+		if err := bootstrapVPSAuth(settingsMgr, os.Stdout); err != nil {
+			log.Fatalf("%v", err)
 		}
 	} else if isNonLoopback(resolvedListenAddr) && !settingsMgr.Get().Security.AuthEnabled {
 		log.Printf("WARNING: RouteBox is listening on a non-loopback address (%s) with auth DISABLED — the panel is open to the network. Enable security.auth_enabled or run with --mode=vps.", resolvedListenAddr)
@@ -879,6 +878,11 @@ func main() {
 	if trafficStore != nil {
 		trafficStore.Close()
 	}
+	if geoipDB != nil {
+		if err := geoipDB.Close(); err != nil {
+			log.Printf("geoip close: %v", err)
+		}
+	}
 }
 
 // generatePassword returns a 24-character URL-safe random password.
@@ -935,6 +939,90 @@ func amneziaPreflight(cfg *config.Manager, sm *settings.Manager) func(string) er
 		}
 		return nil
 	}
+}
+
+// initialPasswordFile is the file the generated admin password is left in, next
+// to routebox.toml — the place someone bringing a panel up looks, as opposed to
+// the journal.
+const initialPasswordFile = "routebox-initial-password"
+
+// bootstrapVPSAuth turns panel auth on in vps mode when it is off, generating
+// admin credentials and announcing them on out. A no-op when a password is
+// already configured.
+//
+// Two things are written to the settings directory: the settings themselves and
+// the password file. Neither is allowed to abort startup.
+//
+// Falling over would be the wrong trade: RouteBox supports a read-only
+// installation as an operating mode — the panel still shows what is running and
+// says what to make writable — and a VPS panel that refuses to boot because it
+// could not write a file is strictly worse than one that boots with credentials
+// it announces but cannot keep. Auth is still switched ON in memory: the mode
+// exists because the panel is reachable from the internet, so failing open is
+// not on the table.
+//
+// Silence would be the other wrong trade, and it is the one that used to happen
+// for the password file: a bare errno in the middle of the banner. Both writes
+// now go through the same classification the rest of RouteBox uses
+// (util.ClassifyWriteErr), so an unwritable path is named as read-only with the
+// path in it, and each failure is printed with its consequence — the password
+// file failing means "this is the only copy", the settings failing means "this
+// login lasts until the next start".
+func bootstrapVPSAuth(sm *settings.Manager, out io.Writer) error {
+	sec := sm.Get().Security
+	if sec.AuthEnabled && sec.AuthPasswordHash != "" {
+		return nil
+	}
+
+	pw, err := generatePassword()
+	if err != nil {
+		return fmt.Errorf("generate bootstrap password: %w", err)
+	}
+	user := orDefault(sec.AuthUsername, "admin")
+	// In-memory failures stay fatal: they mean the panel would come up
+	// unauthenticated on a public address, which is the one outcome vps mode
+	// exists to prevent.
+	if err := sm.Update(map[string]interface{}{
+		"security.auth_enabled":  true,
+		"security.auth_username": user,
+		"security.auth_password": pw,
+	}); err != nil {
+		return fmt.Errorf("enable auth: %w", err)
+	}
+
+	saveErr := sm.Save()
+
+	// The password file is rewritten on every bootstrap, so it can never hold a
+	// password that is no longer the current one: if the settings did not
+	// persist, the next start generates a new password and overwrites the file
+	// with it.
+	pwFile := ""
+	var writeErr error
+	if settingsPath := sm.GetPath(); settingsPath != "" {
+		pwFile = filepath.Join(filepath.Dir(settingsPath), initialPasswordFile)
+		writeErr = util.ClassifyWriteErr(pwFile, os.WriteFile(pwFile, []byte(pw+"\n"), 0600))
+	}
+
+	fmt.Fprintln(out, "==================================================================")
+	fmt.Fprintln(out, " VPS MODE: panel auth was OFF — generated admin credentials")
+	fmt.Fprintf(out, "   username: %s\n", user)
+	fmt.Fprintf(out, "   password: %s\n", pw)
+	switch {
+	case pwFile == "":
+		fmt.Fprintln(out, "   WARNING: there is no settings file, so the password is not stored anywhere.")
+		fmt.Fprintln(out, "            copy it now — it is not printed again.")
+	case writeErr != nil:
+		fmt.Fprintf(out, "   WARNING: %s could not be written: %v\n", pwFile, writeErr)
+		fmt.Fprintln(out, "            copy the password now — this line is the only copy.")
+	default:
+		fmt.Fprintf(out, "   (also written to %s)\n", pwFile)
+	}
+	if saveErr != nil {
+		fmt.Fprintf(out, "   WARNING: the credentials could not be saved to %s: %v\n", sm.GetPath(), saveErr)
+		fmt.Fprintln(out, "            auth is ON for this run only; the next start generates a new password.")
+	}
+	fmt.Fprintln(out, "==================================================================")
+	return nil
 }
 
 func generatePassword() (string, error) {

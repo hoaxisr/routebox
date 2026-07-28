@@ -11,6 +11,7 @@ import (
 	"time"
 
 	"routebox/backend/internal/config"
+	"routebox/backend/internal/process"
 	"routebox/backend/internal/users"
 )
 
@@ -37,7 +38,7 @@ func (h *Handler) SaveConfig(w http.ResponseWriter, r *http.Request) {
 
 	// Replace draft with new config
 	if err := h.config.SetDraft(newConfig); err != nil {
-		writeError(w, http.StatusInternalServerError, fmt.Sprintf("Failed to save draft: %v", err))
+		writeConfigError(w, http.StatusInternalServerError, err)
 		return
 	}
 
@@ -143,7 +144,7 @@ func (h *Handler) ApplyConfig(w http.ResponseWriter, r *http.Request) {
 			writeError(w, http.StatusConflict, "Draft changed since validation — re-check and retry")
 			return
 		}
-		writeError(w, http.StatusInternalServerError, fmt.Sprintf("Failed to save: %v", err))
+		writeConfigError(w, http.StatusInternalServerError, err)
 		return
 	}
 
@@ -258,8 +259,11 @@ func (h *Handler) GetConfigStatus(w http.ResponseWriter, r *http.Request) {
 
 // DiscardConfig discards all draft changes and reverts to active config
 func (h *Handler) DiscardConfig(w http.ResponseWriter, r *http.Request) {
+	// DiscardDraft drops the draft from memory and only logs a file it could not
+	// remove, so there is nothing here that a read-only config can turn into a
+	// 409: Discard stays available exactly when everything else is blocked.
 	if err := h.config.DiscardDraft(); err != nil {
-		writeError(w, http.StatusInternalServerError, fmt.Sprintf("Failed to discard: %v", err))
+		writeError(w, http.StatusInternalServerError, err.Error())
 		return
 	}
 
@@ -293,7 +297,7 @@ func (h *Handler) SaveConfigDraft(w http.ResponseWriter, r *http.Request) {
 	}
 
 	if err := h.config.ApplyDraft(); err != nil {
-		writeError(w, http.StatusInternalServerError, fmt.Sprintf("Failed to save: %v", err))
+		writeConfigError(w, http.StatusInternalServerError, err)
 		return
 	}
 
@@ -327,4 +331,55 @@ func (h *Handler) CheckConfig(w http.ResponseWriter, r *http.Request) {
 func (h *Handler) GetActiveConfig(w http.ResponseWriter, r *http.Request) {
 	cfg := h.config.GetActive()
 	writeSuccess(w, cfg)
+}
+
+// FixUnitConfigPath перенацеливает systemd-юнит на путь конфига, которым
+// управляет RouteBox. Вызывается только по кнопке пользователя: это
+// единственное место, где RouteBox пишет за пределами своих файлов, поэтому
+// без зафиксированного расхождения ничего не пишем вовсе.
+func (h *Handler) FixUnitConfigPath(w http.ResponseWriter, r *http.Request) {
+	ours, _, ok := h.process.ConfigMismatch()
+	if !ok {
+		writeError(w, http.StatusConflict, "no config path mismatch to fix")
+		return
+	}
+	if err := h.process.WriteConfigDropIn(ours); err != nil {
+		writeError(w, http.StatusInternalServerError, err.Error())
+		return
+	}
+	writeSuccess(w, map[string]string{"message": "systemd unit now uses " + ours})
+}
+
+// RemoveUnitConfigDropIn снимает drop-in, которым RouteBox перенацелил юнит, —
+// обратная операция к FixUnitConfigPath. Без неё единственная запись RouteBox за
+// пределами своих файлов была односторонней: снять её можно было только руками
+// (rm + daemon-reload), зная и имя файла, и то, что его вообще ставили.
+//
+// Ни режим только-чтения конфига, ни состояние конфига здесь ни при чём:
+// правится systemd-юнит, а не файлы RouteBox. Нечитаемый на запись конфиг — как
+// раз повод перенацелить юнит или откатить это, а не запрет.
+func (h *Handler) RemoveUnitConfigDropIn(w http.ResponseWriter, r *http.Request) {
+	res, err := h.process.RemoveConfigDropIn()
+	switch {
+	case errors.Is(err, process.ErrNoConfigDropIn):
+		// Не поломка, а состояние: снимать нечего.
+		writeError(w, http.StatusConflict, "RouteBox has no systemd drop-in installed here, so there is nothing to remove")
+		return
+	case err != nil:
+		writeError(w, http.StatusInternalServerError, err.Error())
+		return
+	}
+
+	// unit_path отдаётся отдельно от текста: панель говорит о вернувшемся
+	// расхождении на языке пользователя, а факт «юнит теперь на этом пути» —
+	// наш. Пустая строка означает «прочитать юнит не вышло», и об этом же
+	// говорит warning.
+	resp := map[string]interface{}{
+		"message":   "The RouteBox drop-in is removed",
+		"unit_path": res.UnitConfigPath,
+	}
+	if res.Warning != "" {
+		resp["warning"] = res.Warning
+	}
+	writeSuccess(w, resp)
 }

@@ -1,7 +1,7 @@
 <script lang="ts">
 	import { onMount } from 'svelte';
 	import { api } from '$lib/api/client';
-	import { notifications, unsavedChanges } from '$lib/stores';
+	import { notifications, unsavedChanges, configReadOnly } from '$lib/stores';
 	import { t } from 'svelte-i18n';
 	import type { DomainSetInfo, RuleSetSource } from '$lib/types';
 
@@ -308,8 +308,9 @@
 							/>
 							<button
 								onclick={addDomain}
-								disabled={addingDomain || !inputValue.trim()}
-								class="px-4 py-2 text-sm rounded-lg bg-[var(--ctp-primary)] text-white hover:opacity-90 transition-opacity disabled:opacity-50"
+								disabled={addingDomain || !inputValue.trim() || $configReadOnly}
+								title={$configReadOnly ? $t('readOnly.saveBlocked') : ''}
+								class="px-4 py-2 text-sm rounded-lg bg-[var(--ctp-primary)] text-white hover:opacity-90 transition-opacity disabled:opacity-50 disabled:cursor-not-allowed"
 							>
 								{$t('common.add')}
 							</button>
@@ -372,8 +373,9 @@
 						<div class="px-4 py-3 border-t border-[var(--ctp-surface1)] flex items-center justify-end">
 							<button
 								onclick={saveJson}
-								disabled={savingJson}
-								class="px-4 py-2 text-sm rounded-lg bg-[var(--ctp-primary)] text-white hover:opacity-90 transition-opacity disabled:opacity-50"
+								disabled={savingJson || $configReadOnly}
+								title={$configReadOnly ? $t('readOnly.saveBlocked') : ''}
+								class="px-4 py-2 text-sm rounded-lg bg-[var(--ctp-primary)] text-white hover:opacity-90 transition-opacity disabled:opacity-50 disabled:cursor-not-allowed"
 							>
 								{savingJson ? $t('common.saving') : $t('common.save')}
 							</button>
@@ -414,8 +416,9 @@
 				</button>
 				<button
 					onclick={createSet}
-					disabled={creating || !newTag.trim()}
-					class="px-4 py-2 text-sm rounded-lg bg-[var(--ctp-primary)] text-white hover:opacity-90 transition-opacity disabled:opacity-50"
+					disabled={creating || !newTag.trim() || $configReadOnly}
+					title={$configReadOnly ? $t('readOnly.saveBlocked') : ''}
+					class="px-4 py-2 text-sm rounded-lg bg-[var(--ctp-primary)] text-white hover:opacity-90 transition-opacity disabled:opacity-50 disabled:cursor-not-allowed"
 				>
 					{creating ? $t('common.saving') : $t('common.create')}
 				</button>
@@ -452,8 +455,9 @@
 				</button>
 				<button
 					onclick={importDomains}
-					disabled={importing || !importText.trim()}
-					class="px-4 py-2 text-sm rounded-lg bg-[var(--ctp-primary)] text-white hover:opacity-90 transition-opacity disabled:opacity-50"
+					disabled={importing || !importText.trim() || $configReadOnly}
+					title={$configReadOnly ? $t('readOnly.saveBlocked') : ''}
+					class="px-4 py-2 text-sm rounded-lg bg-[var(--ctp-primary)] text-white hover:opacity-90 transition-opacity disabled:opacity-50 disabled:cursor-not-allowed"
 				>
 					{importing ? $t('common.saving') : $t('common.import')}
 				</button>

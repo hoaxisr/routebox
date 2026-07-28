@@ -26,7 +26,7 @@ func (h *Handler) CreateDnsServer(w http.ResponseWriter, r *http.Request) {
 	}
 
 	if err := h.config.CreateDnsServer(server); err != nil {
-		writeError(w, http.StatusBadRequest, err.Error())
+		writeConfigError(w, http.StatusBadRequest, err)
 		return
 	}
 
@@ -45,9 +45,9 @@ func (h *Handler) UpdateDnsServer(w http.ResponseWriter, r *http.Request) {
 
 	if err := h.config.UpdateDnsServer(tag, server); err != nil {
 		if strings.Contains(err.Error(), "not found") {
-			writeError(w, http.StatusNotFound, err.Error())
+			writeConfigError(w, http.StatusNotFound, err)
 		} else {
-			writeError(w, http.StatusBadRequest, err.Error())
+			writeConfigError(w, http.StatusBadRequest, err)
 		}
 		return
 	}
@@ -61,9 +61,9 @@ func (h *Handler) DeleteDnsServer(w http.ResponseWriter, r *http.Request) {
 
 	if err := h.config.DeleteDnsServer(tag); err != nil {
 		if strings.Contains(err.Error(), "not found") {
-			writeError(w, http.StatusNotFound, err.Error())
+			writeConfigError(w, http.StatusNotFound, err)
 		} else {
-			writeError(w, http.StatusBadRequest, err.Error())
+			writeConfigError(w, http.StatusBadRequest, err)
 		}
 		return
 	}
@@ -88,7 +88,7 @@ func (h *Handler) CreateDnsRule(w http.ResponseWriter, r *http.Request) {
 	}
 
 	if err := h.config.CreateDnsRule(rule); err != nil {
-		writeError(w, http.StatusBadRequest, err.Error())
+		writeConfigError(w, http.StatusBadRequest, err)
 		return
 	}
 
@@ -111,7 +111,7 @@ func (h *Handler) UpdateDnsRule(w http.ResponseWriter, r *http.Request) {
 	}
 
 	if err := h.config.UpdateDnsRule(index, rule); err != nil {
-		writeError(w, http.StatusBadRequest, err.Error())
+		writeConfigError(w, http.StatusBadRequest, err)
 		return
 	}
 
@@ -128,7 +128,7 @@ func (h *Handler) DeleteDnsRule(w http.ResponseWriter, r *http.Request) {
 	}
 
 	if err := h.config.DeleteDnsRule(index); err != nil {
-		writeError(w, http.StatusBadRequest, err.Error())
+		writeConfigError(w, http.StatusBadRequest, err)
 		return
 	}
 
@@ -147,7 +147,7 @@ func (h *Handler) ReorderDnsRules(w http.ResponseWriter, r *http.Request) {
 	}
 
 	if err := h.config.ReorderDnsRules(payload.From, payload.To); err != nil {
-		writeError(w, http.StatusBadRequest, err.Error())
+		writeConfigError(w, http.StatusBadRequest, err)
 		return
 	}
 
@@ -171,7 +171,7 @@ func (h *Handler) UpdateDnsSettings(w http.ResponseWriter, r *http.Request) {
 	}
 
 	if err := h.config.UpdateDnsSettings(settings); err != nil {
-		writeError(w, http.StatusBadRequest, err.Error())
+		writeConfigError(w, http.StatusBadRequest, err)
 		return
 	}
 

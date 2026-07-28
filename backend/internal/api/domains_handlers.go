@@ -126,7 +126,7 @@ func (h *Handler) CreateDomainSet(w http.ResponseWriter, r *http.Request) {
 		"rules": []interface{}{},
 	}
 	if err := h.config.CreateRuleSet(rs); err != nil {
-		writeError(w, http.StatusBadRequest, err.Error())
+		writeConfigError(w, http.StatusBadRequest, err)
 		return
 	}
 
@@ -173,7 +173,7 @@ func (h *Handler) SaveDomainSet(w http.ResponseWriter, r *http.Request) {
 	}
 	updated["rules"] = rulesAny
 	if err := h.config.UpdateRuleSet(tag, updated); err != nil {
-		writeError(w, http.StatusBadRequest, err.Error())
+		writeConfigError(w, http.StatusBadRequest, err)
 		return
 	}
 	writeSuccess(w, map[string]string{"message": fmt.Sprintf("inline rule-set '%s' saved", tag)})
@@ -194,7 +194,7 @@ func (h *Handler) DeleteDomainSet(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 	if err := h.config.DeleteRuleSet(tag); err != nil {
-		writeError(w, http.StatusInternalServerError, err.Error())
+		writeConfigError(w, http.StatusInternalServerError, err)
 		return
 	}
 	writeSuccess(w, map[string]string{"message": fmt.Sprintf("inline rule-set '%s' deleted", tag)})
@@ -243,7 +243,7 @@ func (h *Handler) AddDomain(w http.ResponseWriter, r *http.Request) {
 	}
 	updated["rules"] = rules
 	if err := h.config.UpdateRuleSet(tag, updated); err != nil {
-		writeError(w, http.StatusBadRequest, err.Error())
+		writeConfigError(w, http.StatusBadRequest, err)
 		return
 	}
 	writeSuccess(w, map[string]string{"message": fmt.Sprintf("domain added to '%s'", tag)})
@@ -284,7 +284,7 @@ func (h *Handler) RemoveDomain(w http.ResponseWriter, r *http.Request) {
 	}
 	updated["rules"] = newRules
 	if err := h.config.UpdateRuleSet(tag, updated); err != nil {
-		writeError(w, http.StatusBadRequest, err.Error())
+		writeConfigError(w, http.StatusBadRequest, err)
 		return
 	}
 	writeSuccess(w, map[string]string{"message": fmt.Sprintf("domain removed from '%s'", tag)})
@@ -342,7 +342,7 @@ func (h *Handler) ImportDomains(w http.ResponseWriter, r *http.Request) {
 	}
 	updated["rules"] = rules
 	if err := h.config.UpdateRuleSet(tag, updated); err != nil {
-		writeError(w, http.StatusBadRequest, err.Error())
+		writeConfigError(w, http.StatusBadRequest, err)
 		return
 	}
 	writeSuccess(w, map[string]interface{}{

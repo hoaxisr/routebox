@@ -69,19 +69,6 @@ func ValidateMTU(m int) (int, error) {
 	return m, nil
 }
 
-// SanitizeName mirrors api.sanitizeFilename via the shared util helper: keeps
-// [A-Za-z0-9._-], replaces every other rune with '_', trims leading/trailing
-// '_', falls back to "name". It NEVER errors, so a hostile name is neutralised,
-// not rejected.
-//
-// It is a TOKEN builder, not a name normaliser: never store its output as the
-// peer's display name (that is what turned every Cyrillic-named peer into a peer
-// called "name"). Use ValidatePeerName for what the user sees, and PeerTag for a
-// safe sing-box tag.
-func SanitizeName(name string) string {
-	return util.SanitizeName(name, "name")
-}
-
 // peerNameMaxRunes bounds a peer display name. Generous enough for "Ноутбук
 // Анастасии (работа)", small enough that the name can never bloat peers.toml,
 // a .conf comment line or an HTTP header.
@@ -173,19 +160,6 @@ func ValidateDNS(entries []string) ([]string, error) {
 			return nil, fmt.Errorf("invalid dns %q: %w", e, err)
 		}
 		out = append(out, a.String())
-	}
-	return out, nil
-}
-
-// ValidateAllowedIPs parses each as a netip.Prefix and re-emits canonically.
-func ValidateAllowedIPs(entries []string) ([]string, error) {
-	out := make([]string, 0, len(entries))
-	for _, e := range entries {
-		p, err := netip.ParsePrefix(strings.TrimSpace(e))
-		if err != nil {
-			return nil, fmt.Errorf("invalid allowed_ips %q: %w", e, err)
-		}
-		out = append(out, p.Masked().String()) // network form: drop host bits
 	}
 	return out, nil
 }

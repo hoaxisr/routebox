@@ -50,7 +50,14 @@ func newApplyHandler(t *testing.T, names ...string) (*Handler, string) {
 		t.Fatal(err)
 	}
 
-	h := &Handler{config: m, settings: sm, process: process.NewManager()}
+	// The process manager MUST be the cut-off one. process.NewManager() adopts
+	// this machine's systemd unit and finds this machine's running amnezia-box,
+	// and ApplyConfig calls Reload() (SIGHUP) with Restart() as its fallback when
+	// the status says running — so on a host that actually runs amnezia-box this
+	// helper reaches the real process. Today a config-path mismatch happens to
+	// refuse both calls, but that guard is accidental: it disappears the moment
+	// this manager is given a config path.
+	h := &Handler{config: m, settings: sm, process: process.NewManagerForTest("", dir)}
 	// Force the additivity guard to report "supported" so these tests exercise
 	// the sync logic on machines that have no amnezia-box binary installed (the
 	// real SupportsV2RayAPI fail-closes to false there). The unsupported branch

@@ -2,7 +2,7 @@
 	import { onMount, onDestroy } from 'svelte';
 	import { t } from 'svelte-i18n';
 	import { api } from '$lib/api/client';
-	import { notifications, unsavedChanges } from '$lib/stores';
+	import { notifications, unsavedChanges, configReadOnly } from '$lib/stores';
 	import type { SingboxConfig } from '$lib/types';
 	import SideBySideDiff from '$lib/components/shared/SideBySideDiff.svelte';
 	import StatsGrid from '$lib/components/config/overview/StatsGrid.svelte';
@@ -363,7 +363,13 @@
 						<button type="button" onclick={stopEditing} class="px-3 py-1.5 text-sm bg-[var(--ctp-surface0)] text-[var(--ctp-text)] rounded-lg hover:bg-[var(--ctp-surface2)] transition-colors">
 							{$t('common.cancel')}
 						</button>
-						<button type="button" onclick={handleSave} disabled={saving} class="px-4 py-1.5 text-sm bg-[var(--ctp-primary)] text-white rounded-lg hover:opacity-90 transition-opacity disabled:opacity-50">
+						<button
+							type="button"
+							onclick={handleSave}
+							disabled={saving || $configReadOnly}
+							title={$configReadOnly ? $t('readOnly.saveBlocked') : ''}
+							class="px-4 py-1.5 text-sm bg-[var(--ctp-primary)] text-white rounded-lg hover:opacity-90 transition-opacity disabled:opacity-50 disabled:cursor-not-allowed"
+						>
 							{saving ? $t('common.saving') + '...' : $t('jsonEditor.saveToDraft')}
 						</button>
 					</div>

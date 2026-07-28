@@ -47,12 +47,13 @@ func (h *Handler) UpdateClient(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusBadRequest, err.Error())
 		return
 	}
+	// SetName only touches memory — Save below is the write that can be refused.
 	if err := h.clients.SetName(ip, body.Name, body.Note); err != nil {
 		writeError(w, http.StatusBadRequest, err.Error())
 		return
 	}
 	if err := h.clients.Save(); err != nil {
-		writeError(w, http.StatusInternalServerError, err.Error())
+		writeConfigError(w, http.StatusInternalServerError, err)
 		return
 	}
 	e, _ := h.clients.Get(ip)
@@ -68,7 +69,7 @@ func (h *Handler) DeleteClient(w http.ResponseWriter, r *http.Request) {
 	ip := chi.URLParam(r, "ip")
 	h.clients.Forget(ip)
 	if err := h.clients.Save(); err != nil {
-		writeError(w, http.StatusInternalServerError, err.Error())
+		writeConfigError(w, http.StatusInternalServerError, err)
 		return
 	}
 	w.WriteHeader(http.StatusNoContent)

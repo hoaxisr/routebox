@@ -1,6 +1,34 @@
-import type { ApiResponse, ProcessStatus, DetectedConfig, SingboxConfig, Endpoint, Outbound, Inbound, RuleSet, RuleSetUsage, RouteRule, RouteSettings, DnsServer, DnsRule, DnsSettings, LogSettings, ExperimentalSettings, ConnectionsResponse, ProxiesResponse, ClashProxy, TestRouteResponse, ConnectTestResponse, SettingsResponse, RouteBoxSettings, SingBoxVersion, DomainSetInfo, RuleSetSource, ClientEntry, TrafficHistoryResponse, TrafficRange, UpdatesStatus, UpdateProgress, UpdateTargetName, Subscription, SubscriptionInput, PanelUser, UserTrafficResponse, AwgStatus, AwgPeer } from '$lib/types';
+import type { ApiResponse, ProcessStatus, SingboxConfig, Endpoint, Outbound, Inbound, RuleSet, RuleSetUsage, RouteRule, RouteSettings, DnsServer, DnsRule, DnsSettings, LogSettings, ExperimentalSettings, ConnectionsResponse, ProxiesResponse, ClashProxy, TestRouteResponse, ConnectTestResponse, SettingsResponse, RouteBoxSettings, SingBoxVersion, DomainSetInfo, RuleSetSource, ClientEntry, TrafficHistoryResponse, TrafficRange, UpdatesStatus, UpdateProgress, UpdateTargetName, Subscription, SubscriptionInput, PanelUser, UserTrafficResponse, AwgStatus, AwgPeer } from '$lib/types';
 
 const API_BASE = '/api';
+
+// A write refused with 409 is the backend telling us the config turned
+// read-only. Re-read the status so the badge lights up and the save buttons
+// go dead, instead of waiting for the next Dashboard poll or a page reload:
+// outside the Dashboard the status is only seeded once, on layout mount, so
+// without this the very next form would let the user fill it in and fail again.
+//
+// Any 409 triggers it, not just the read-only one. The backend also answers
+// 409 for duplicate tags and pending changes, so this over-polls slightly —
+// deliberately. The alternative is matching the backend's English error text,
+// and paying one deduped GET on a request that already failed is cheaper than
+// a UI that silently stops noticing when that wording changes.
+//
+// Imported lazily because stores/status.ts imports this module — a static
+// import would close the cycle. Fire-and-forget: this runs on the error path
+// of someone else's request, and a failed refresh must not replace the real
+// error with its own.
+let refreshingStatus = false;
+function noteWriteRefused(): void {
+	if (refreshingStatus) return; // one refresh per burst of refusals
+	refreshingStatus = true;
+	import('$lib/stores/status')
+		.then((m) => m.refreshStatus())
+		.catch(() => {})
+		.finally(() => {
+			refreshingStatus = false;
+		});
+}
 
 async function request<T>(path: string, options: RequestInit = {}): Promise<T> {
 	const url = `${API_BASE}${path}`;
@@ -16,6 +44,9 @@ async function request<T>(path: string, options: RequestInit = {}): Promise<T> {
 	if (!response.ok) {
 		if (response.status === 401 && typeof window !== 'undefined' && !window.location.pathname.startsWith('/login')) {
 			window.location.href = '/login';
+		}
+		if (response.status === 409) {
+			noteWriteRefused();
 		}
 		let errorMessage = `HTTP ${response.status}`;
 		try {
@@ -408,12 +439,32 @@ export const api = {
 			method: 'POST'
 		}),
 
-	// Config detection
-	getDetectedConfig: () => request<DetectedConfig>('/config/detected'),
-
-	useDetectedConfig: () =>
-		request<{ message: string; path: string }>('/config/use-detected', {
+	// Moves RouteBox onto the config path from the unit's ExecStart (409 when
+	// there is no unit, or its ExecStart names no config). Which file each side
+	// points at comes from `config_paths` in /api/status — there is no separate
+	// "detected config" endpoint to disagree with it.
+	// `warning` is set when the path is in use but could not be written to the
+	// settings file — the switch then does not survive a RouteBox restart.
+	adoptUnitConfigPath: () =>
+		request<{ message: string; path: string; warning?: string }>('/config/adopt-unit-path', {
 			method: 'POST'
+		}),
+
+	// Repoints the systemd unit at the config path RouteBox manages (409 when
+	// there is no mismatch to fix).
+	fixUnitConfigPath: () =>
+		request<{ message: string }>('/config/fix-unit', {
+			method: 'POST'
+		}),
+
+	// Takes that drop-in back off: deletes the file, reloads systemd and reports
+	// the config path the unit fell back to (409 when nothing is installed).
+	// `warning` is set when the file is gone but the removal is not fully in
+	// effect — daemon-reload failed, or the unit could not be re-read — in which
+	// case `unit_path` is empty because it is genuinely unknown.
+	removeUnitConfigDropIn: () =>
+		request<{ message: string; unit_path: string; warning?: string }>('/config/unit-dropin', {
+			method: 'DELETE'
 		}),
 
 	// Systemd journal logs

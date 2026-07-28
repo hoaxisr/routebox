@@ -92,24 +92,6 @@ func TestAddPeerConcurrentDistinctIPs(t *testing.T) {
 	}
 }
 
-func TestSyncConfUsesTempFileNotProcessSubstitution(t *testing.T) {
-	f := newFakeRunner()
-	f.outputs["awg-quick strip awg-rb0"] = "[Interface]\n"
-	m := newTestManager(t, f)
-	if err := m.iface_SyncConf(context.Background()); err != nil {
-		t.Fatalf("SyncConf: %v", err)
-	}
-	for _, c := range f.calls {
-		joined := strings.Join(c, " ")
-		if strings.Contains(joined, "<(") || c[0] == "sh" || c[0] == "bash" {
-			t.Fatalf("SyncConf must not use process-substitution/shell: %v", c)
-		}
-	}
-	if !f.sawContains("awg syncconf awg-rb0") {
-		t.Fatalf("expected awg syncconf with a temp file; calls=%v", f.calls)
-	}
-}
-
 func TestPeerLinesExcludesExpired(t *testing.T) {
 	f := newFakeRunner()
 	m := newTestManager(t, f)
@@ -228,20 +210,24 @@ func TestSweepExpiredSkipsRenewedPeer(t *testing.T) {
 	_ = m.store.Put(Peer{PublicKey: "old", PresharedKey: "p", Address: "10.10.0.2/32", ExpiresAt: 1000})
 	f.outputs["awg show awg-rb0"] = "peer: old\n"
 	m.appendPeerToConf(PeerLine{Name: "x", PublicKey: "old", PSK: "p", AllowedIP: "10.10.0.2/32"})
-	// side-effecting clock: the 2nd now() call is the under-lock re-read; simulate a
-	// concurrent RenewPeer landing right then by extending the peer's expiry to the future.
-	calls := 0
-	m.store.now = func() int64 {
-		calls++
-		if calls == 2 {
-			p, _ := m.store.Get("old")
-			p.ExpiresAt = 999999
-			_ = m.store.Put(p)
-		}
-		return 2000
-	}
+	m.store.now = func() int64 { return 2000 }
 
-	m.SweepExpired(context.Background())
+	// A renewal that lands just before the sweep looks must be honoured, or the
+	// peer ends up off the interface with the store calling it active — a state
+	// nothing heals. RenewPeer writes the new expiry under addMu, so holding the
+	// lock here reproduces the ordering the real thing is forced into: the sweep
+	// cannot read the store until the renewal is in it.
+	m.addMu.Lock()
+	done := make(chan struct{})
+	go func() { defer close(done); m.SweepExpired(context.Background()) }()
+	p, _ := m.store.Get("old")
+	p.ExpiresAt = 999999
+	if err := m.store.Put(p); err != nil {
+		m.addMu.Unlock()
+		t.Fatal(err)
+	}
+	m.addMu.Unlock()
+	<-done
 
 	// the renewed peer must NOT be suspended: no live remove, conf block intact
 	if f.sawContains("awg set awg-rb0 peer old remove") {

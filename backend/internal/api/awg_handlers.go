@@ -51,23 +51,36 @@ func (h *Handler) EnableAWG(w http.ResponseWriter, r *http.Request) {
 	in := awgEnableInput(h.settings.Get().Awg)
 	if err := h.awg.Enable(r.Context(), in); err != nil {
 		// Enable already validated every field; a validation error is a 400.
-		writeError(w, http.StatusBadRequest, err.Error())
+		writeConfigError(w, http.StatusBadRequest, err)
 		return
 	}
 	// Sticky "configured" flag: after the first successful Enable the panel shows the
 	// steady-state view instead of the setup wizard. Never reset on Disable. Best-effort
 	// — a persist failure must not fail an otherwise-successful enable.
 	if !h.settings.Get().Awg.Configured {
-		if err := h.settings.Update(map[string]interface{}{"awg.configured": true}); err == nil {
-			_ = h.settings.Save()
-		}
+		h.persistAwgSetting("awg.configured", true)
 	}
 	// Persist enabled=true so a RouteBox restart rehydrates the server as enabled
 	// (RehydrateSingbox reads settings.Awg.Enabled — Bug C1). Best-effort too.
-	if err := h.settings.Update(map[string]interface{}{"awg.enabled": true}); err == nil {
-		_ = h.settings.Save()
-	}
+	h.persistAwgSetting("awg.enabled", true)
 	writeSuccess(w, h.awg.Status(r.Context()))
+}
+
+// persistAwgSetting writes one awg settings key to disk. Best-effort by design —
+// a persist failure must not fail an enable/disable that already took effect —
+// but never silent: when the flag does not reach /etc/routebox, a RouteBox
+// restart rehydrates the OPPOSITE state, and the 30s sweep then removes a
+// working endpoint (or serves one the operator switched off). "Do not fail the
+// request" is not the same as "tell nobody", and the log is the only place left
+// where this can be noticed.
+func (h *Handler) persistAwgSetting(key string, value interface{}) {
+	if err := h.settings.Update(map[string]interface{}{key: value}); err != nil {
+		log.Printf("awg: could not stage %s=%v: %v — this will not survive a RouteBox restart", key, value, err)
+		return
+	}
+	if err := h.settings.Save(); err != nil {
+		log.Printf("awg: could not persist %s=%v: %v — this will not survive a RouteBox restart", key, value, err)
+	}
 }
 
 // awgEnableInput maps persisted settings to the awg orchestrator input. This is
@@ -99,14 +112,12 @@ func (h *Handler) DisableAWG(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	if err := h.awg.Disable(r.Context()); err != nil {
-		writeError(w, http.StatusInternalServerError, "failed to disable")
+		writeOpError(w, http.StatusInternalServerError, "failed to disable", err)
 		return
 	}
 	// Persist enabled=false so Disable survives a RouteBox restart (Bug C1).
 	// Best-effort — a persist failure must not fail an otherwise-successful disable.
-	if err := h.settings.Update(map[string]interface{}{"awg.enabled": false}); err == nil {
-		_ = h.settings.Save()
-	}
+	h.persistAwgSetting("awg.enabled", false)
 	writeSuccess(w, h.awg.Status(r.Context()))
 }
 
@@ -148,7 +159,7 @@ func (h *Handler) CreateAWGPeer(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	if err != nil {
-		writeError(w, http.StatusInternalServerError, "failed to add peer")
+		writeOpError(w, http.StatusInternalServerError, "failed to add peer", err)
 		return
 	}
 	writeSuccess(w, sum)
@@ -172,7 +183,7 @@ func (h *Handler) DeleteAWGPeer(w http.ResponseWriter, r *http.Request) {
 	}
 	addr, err := h.awg.RemovePeer(r.Context(), pub)
 	if err != nil {
-		writeError(w, http.StatusInternalServerError, "failed to remove peer")
+		writeOpError(w, http.StatusInternalServerError, "failed to remove peer", err)
 		return
 	}
 	// Purge the removed peer's per-source Breakdown history (#19). The peer's tunnel
@@ -307,7 +318,7 @@ func (h *Handler) SetAWGPeerExpiry(w http.ResponseWriter, r *http.Request) {
 			writeError(w, http.StatusNotFound, "peer not found")
 			return
 		}
-		writeError(w, http.StatusInternalServerError, "failed to set expiry")
+		writeOpError(w, http.StatusInternalServerError, "failed to set expiry", err)
 		return
 	}
 	writeSuccess(w, h.awg.Status(r.Context()))

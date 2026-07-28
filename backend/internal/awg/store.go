@@ -33,12 +33,21 @@ type Store struct {
 	headerKey string       // AWG3 header-protection key (singbox backend); persisted top-level
 	ulaPrefix string       // IPv6-broker ULA prefix (singbox backend); persisted top-level
 	now       func() int64 // injected clock
+	guard     *util.WriteGuard
 }
 
 // NewStore constructs a Store. Empty path disables persistence (tests).
 func NewStore(path string) *Store {
-	return &Store{path: path, byPK: map[string]*Peer{}, now: func() int64 { return time.Now().Unix() }}
+	return &Store{path: path, byPK: map[string]*Peer{}, now: func() int64 { return time.Now().Unix() }, guard: util.NewWriteGuard(path)}
 }
+
+// GetPath returns the file this store persists to ("" when persistence is off).
+func (s *Store) GetPath() string { return s.path }
+
+// IsReadOnly reports whether peers.toml cannot be written. It lives in its own
+// directory, so it can be read-only while the sing-box config is not — the panel
+// shows one read-only state covering both.
+func (s *Store) IsReadOnly() bool { return s.guard.IsReadOnly() }
 
 // Load reads peers.toml if present (missing file is not an error).
 func (s *Store) Load() error {
@@ -92,7 +101,7 @@ func (s *Store) saveLocked() error {
 	}{ServerKey: s.serverKey, HeaderKey: s.headerKey, ULAPrefix: s.ulaPrefix, Peers: s.listLocked()}
 	// dir 0700: this directory holds client private keys, stricter than the
 	// 0755 users/store.go uses for its registry.
-	return util.WriteTOMLAtomic(s.path, 0700, doc)
+	return s.guard.Note(util.WriteTOMLAtomic(s.path, 0700, doc))
 }
 
 // ServerKey returns the persisted server private key ("" if none).
@@ -207,40 +216,37 @@ func (s *Store) listLocked() []Peer {
 	return out
 }
 
-// SUSPENSION SAFETY: Reconcile deletes any stored peer whose pubkey is absent from
-// confPubs. A suspended (expired) peer is intentionally absent from the conf, so if
-// this is ever wired to run on Apply/Enable it would DESTROY suspended peers. It has
-// zero production callers today (only tests), which is the only reason suspension is
-// safe. Before wiring it, union the store's own pubkeys into confPubs (or feed it
-// store-derived pubkeys) so suspended peers are never dropped.
+// Reconcile reports which peers of the LIVE interface are not ours. "Ours" is
+// the store, whole: a suspended (expired) peer is intentionally absent from the
+// conf (peerLines skips it so Enable/Apply cannot resurrect it) yet stays in the
+// store, and its secrets MUST survive reconcile — otherwise RenewPeer becomes
+// impossible for every expired client.
 //
-// Reconcile drops secrets whose PublicKey is absent from confPubs (the source of
-// truth), and returns the live-device pubkeys absent from confPubs (the caller
-// removes those from the kernel). livePubs is produced by parseShowPeers — the
-// store stays Runner-free. Returns changed=true if any secret was dropped.
-func (s *Store) Reconcile(confPubs, livePubs []string) (changed bool, removeLive []string, err error) {
-	s.mu.Lock()
-	defer s.mu.Unlock()
-	confSet := map[string]bool{}
-	for _, c := range confPubs {
-		confSet[c] = true
-	}
+// It used to take the conf's pubkeys as well and treat "ours" as the union. That
+// was never a second source: the conf is RENDERED from the store
+// (RenderServer(sc, peerLines())), and the caller fed peerLines() straight back
+// in, so the argument was always a subset of the keys below. Its only effect was
+// to suggest that a hand-edited .conf could vouch for a peer the store has never
+// heard of — which cost one reviewer's afternoon and a corrected test comment.
+// A conf-only peer cannot survive an Enable anyway; if one ever needs to be
+// tolerated, that is a decision to make deliberately, not to inherit from a
+// parameter nobody was passing.
+//
+// The store is never mutated: reconcile only tells the caller what to remove from
+// the interface (leftovers of a crash or of manual `awg set` edits). livePubs is
+// produced by parseShowPeers — the store stays Runner-free.
+func (s *Store) Reconcile(livePubs []string) (removeLive []string) {
+	s.mu.RLock()
+	defer s.mu.RUnlock()
+	ours := make(map[string]bool, len(s.byPK))
 	for pk := range s.byPK {
-		if !confSet[pk] {
-			delete(s.byPK, pk)
-			changed = true
-		}
+		ours[pk] = true
 	}
 	for _, lp := range livePubs {
-		if !confSet[lp] {
+		if !ours[lp] {
 			removeLive = append(removeLive, lp)
 		}
 	}
-	sort.Strings(removeLive)
-	if changed {
-		if err := s.saveLocked(); err != nil {
-			return changed, removeLive, err
-		}
-	}
-	return changed, removeLive, nil
+	sort.Strings(removeLive) // deterministic order for the caller's removal log
+	return removeLive
 }

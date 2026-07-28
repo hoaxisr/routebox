@@ -3,11 +3,8 @@ package awg
 import (
 	"context"
 	"fmt"
-	"os"
-	"path/filepath"
 	"strconv"
 	"strings"
-	"time"
 )
 
 // iface_Up (re)applies the CURRENT conf to the running interface. `enable` (no
@@ -94,22 +91,6 @@ func (m *Manager) cleanupNATChains(ctx context.Context) {
 		_, _, _ = m.run.Run(ctx, "iptables", flush...)
 		_, _, _ = m.run.Run(ctx, "iptables", del...)
 	}
-}
-
-// iface_SyncConf reloads peers live: `awg-quick strip` -> 0600 temp file ->
-// `awg syncconf <iface> <tempfile>`. NEVER process-substitution / sh -c.
-func (m *Manager) iface_SyncConf(ctx context.Context) error {
-	stripped, _, err := m.run.Run(ctx, "awg-quick", "strip", m.iface)
-	if err != nil {
-		return fmt.Errorf("awg-quick strip: %w", err)
-	}
-	tmp := filepath.Join(m.pskTmpDir, "sync-"+strconv.FormatInt(time.Now().UnixNano(), 10)+".conf")
-	if err := os.WriteFile(tmp, []byte(stripped), 0600); err != nil {
-		return err
-	}
-	defer os.Remove(tmp)
-	_, _, err = m.run.Run(ctx, "awg", "syncconf", m.iface, tmp)
-	return err
 }
 
 // iface_SetPeer adds/updates a peer live; PSK is passed by FILE (awg convention).

@@ -51,6 +51,22 @@ func newSingboxMgr(t *testing.T) (*Manager, *fakeSync, *int) {
 	return m, fs, &applyCount
 }
 
+// newSingboxMgrDisabled is the harness for the Enable orchestrator itself: a
+// server that has never come up. newSingboxMgr starts enabled so the peer-op
+// tests can render a spec without running Enable first — but "a failed Enable
+// leaves the server off" only says anything about a server that WAS off. From an
+// enabled one the rollback deliberately keeps it enabled (a failed re-configure
+// is not a shutdown), so an Enable-failure test that starts enabled asserts the
+// opposite of what it reads.
+func newSingboxMgrDisabled(t *testing.T) (*Manager, *fakeSync, *int) {
+	t.Helper()
+	m, fs, applies := newSingboxMgr(t)
+	m.mu.Lock()
+	m.enabled, m.phase = false, PhaseIdle
+	m.mu.Unlock()
+	return m, fs, applies
+}
+
 func TestSingbox_AddPeer_SyncsAndApplies(t *testing.T) {
 	m, fs, applyCount := newSingboxMgr(t)
 	sum, err := m.AddPeer(context.Background(), "alice")
@@ -166,7 +182,7 @@ func TestSingbox_RehydratePersistedDisabled(t *testing.T) {
 // Enable ordering: renderServerSpec now gates on m.enabled, so enableSingbox must
 // flip it BEFORE syncing — and roll it back when the sync fails.
 func TestSingbox_EnableSyncFailureRollsBackEnabled(t *testing.T) {
-	m, fs, _ := newSingboxMgr(t)
+	m, fs, _ := newSingboxMgrDisabled(t)
 	fs.err = fmt.Errorf("boom")
 	if err := m.Enable(context.Background(), singboxEnableInput()); err == nil {
 		t.Fatal("enable must fail when the config sync fails")
@@ -457,6 +473,53 @@ func TestSweepActivatesWhenEgressAppears(t *testing.T) {
 	if !m.v6Active {
 		t.Fatal("sweep must activate v6Active once egress appears (Fix 3)")
 	}
+}
+
+// The sweep's re-preflight is a state commit like any other, and it publishes
+// BEFORE the write: RenderClientConf and ClientEndpoint read v6Active without
+// gating on anything, so a flip that the endpoint never accepted has every
+// client .conf and QR issued afterwards promising addresses the server does not
+// route. The next tick heals it, but "wrong for up to 30 seconds" is not the
+// rule the rest of the package follows.
+func TestSweepRollsBackV6ActivationWhenTheSyncFails(t *testing.T) {
+	m, fs, _ := newSingboxMgr(t)
+	m.probeFn = func() bool { return false } // egress down at enable time
+	in := singboxEnableInput()
+	in.IPv6Broker = true
+	if err := m.enableSingbox(context.Background(), in); err != nil {
+		t.Fatal(err)
+	}
+
+	m.probeFn = func() bool { return true } // egress appears...
+	fs.err = errRO()                        // ...but the config cannot be written
+	m.SweepExpired(context.Background())
+
+	m.mu.Lock()
+	active := m.v6Active
+	m.mu.Unlock()
+	if active {
+		t.Fatal("v6 was activated in memory while the endpoint that must route it was never written")
+	}
+	conf, err := m.RenderClientConf(mustAddSweptPeer(t, m), "vpn.example.com")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if strings.Contains(conf, "::/0") {
+		t.Fatalf("client .conf promises IPv6 the server does not serve:\n%s", conf)
+	}
+}
+
+// mustAddSweptPeer stores one peer directly (no sync) and returns its pubkey.
+func mustAddSweptPeer(t *testing.T, m *Manager) string {
+	t.Helper()
+	priv, pub, err := Generate(rand.Reader)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := m.store.Put(Peer{PublicKey: pub, PrivateKey: priv, Address: "10.10.0.2/32", Name: "p"}); err != nil {
+		t.Fatal(err)
+	}
+	return pub
 }
 
 // TestRehydrateRestoresBrokerState: a restart must re-derive v6Active via the

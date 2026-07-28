@@ -88,10 +88,13 @@ func BuildAwgServerEndpoint(tag string, spec AwgServerSpec) map[string]interface
 // (identified by tag) in the ACTIVE config. spec==nil removes it. It is the twin
 // of SyncV2RayAPI: deep-COPY active, mutate the copy, saveLocked (assigns
 // m.activeConfig ONLY on success). Returns (false,nil) — a deferral — when the
-// manager is read-only/unconfigured, or a draft is pending (never write active
-// mid-edit; the pending Apply re-renders). Change-gated so an unchanged spec is a
-// true no-op (no reload => no dropped tunnels). RouteBox OWNS only this tag;
-// sibling endpoints[] entries are never touched.
+// manager is unconfigured or a draft is pending (never write active mid-edit;
+// the pending Apply re-renders), and (false, ErrReadOnly) when the config cannot
+// be written at all: unlike its background siblings, this sync serves
+// interactive operations that would otherwise report success (see the comment on
+// the guard below). Change-gated so an unchanged spec is a true no-op (no reload
+// => no dropped tunnels). RouteBox OWNS only this tag; sibling endpoints[]
+// entries are never touched.
 func (m *Manager) SyncAwgEndpointActive(tag string, spec *AwgServerSpec) (changed bool, err error) {
 	var want map[string]interface{}
 	if spec != nil {
@@ -101,7 +104,16 @@ func (m *Manager) SyncAwgEndpointActive(tag string, spec *AwgServerSpec) (change
 	m.mu.Lock()
 	defer m.mu.Unlock()
 
-	if m.readOnly || m.path == "" {
+	// Deliberately louder than its siblings SyncRejectRuleActive / SyncV2RayAPI:
+	// those are background reconciliations where a silent no-op is right, while
+	// this one is called by interactive operations (Enable AWG, add peer) whose
+	// caller reads changed==false as "nothing to do" and reports success. On a
+	// read-only config that would store the peer's secrets and show a client
+	// that never reaches sing-box.
+	if err := m.blockedByReadOnly(); err != nil {
+		return false, err
+	}
+	if m.path == "" {
 		return false, nil
 	}
 	if m.hasDraft {

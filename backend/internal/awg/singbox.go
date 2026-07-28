@@ -63,7 +63,14 @@ func (m *Manager) PrepareBackendSwitch(ctx context.Context, target string) error
 		// singbox -> kernel: drop the managed endpoint from the active config so a
 		// disable that failed mid-way (or hand-edited settings) can't leave the
 		// fork serving AWG alongside the kernel iface.
-		return m.decommissionSingbox()
+		removed, err := m.decommissionSingbox()
+		if removed {
+			// A failed apply aborts the switch, so the singbox backend stays
+			// selected — with an endpoint that is already gone. Say so before
+			// returning the error, or the sweep writes it back.
+			m.markDisabled()
+		}
+		return err
 	}
 	return fmt.Errorf("invalid backend %q", target)
 }
@@ -72,21 +79,37 @@ func (m *Manager) PrepareBackendSwitch(ctx context.Context, target string) error
 // config (reloading only on a real change). Shared by disableSingbox, the
 // singbox->kernel switch, and the boot-time residue reconcile. A nil cfgSync
 // (not wired yet) is a no-op, not an error.
-func (m *Manager) decommissionSingbox() error {
+//
+// removed reports that the config no longer carries the endpoint. It is the
+// only way callers can tell "the config was not touched" from "the config was
+// rewritten and only the reload failed" — two states that mean opposite things
+// for m.enabled, and were previously flattened into one error.
+func (m *Manager) decommissionSingbox() (removed bool, err error) {
 	m.mu.Lock()
 	s, apply := m.cfgSync, m.applyFn
 	m.mu.Unlock()
 	if s == nil {
-		return nil
+		return false, nil
 	}
 	changed, err := s.SyncAwgEndpointActive(config.ManagedAwgServerTag, nil)
 	if err != nil {
-		return err
+		return false, err
 	}
 	if changed && apply != nil {
-		return apply()
+		return true, apply()
 	}
-	return nil
+	return true, nil
+}
+
+// markDisabled records that the managed endpoint is out of the config. Called
+// as soon as the removal is durable — BEFORE any apply error is propagated —
+// because the 30s sweep reads m.enabled: leaving it true after a write that
+// already went through lets the sweep re-render a full spec and put the server
+// the operator just switched off straight back.
+func (m *Manager) markDisabled() {
+	m.mu.Lock()
+	m.enabled, m.phase = false, PhaseIdle
+	m.mu.Unlock()
 }
 
 // ReconcileBackendResidue heals leftovers of the INACTIVE backend at boot. The
@@ -116,7 +139,8 @@ func (m *Manager) ReconcileBackendResidue(ctx context.Context) {
 		return
 	}
 	// kernel backend: drop an orphaned managed endpoint from the active config.
-	if err := m.decommissionSingbox(); err != nil {
+	// m.enabled belongs to the kernel server here, so it is left alone.
+	if _, err := m.decommissionSingbox(); err != nil {
 		log.Printf("awg: remove orphaned singbox endpoint: %v", err)
 	}
 }
@@ -223,17 +247,27 @@ func (m *Manager) renderServerSpec() *config.AwgServerSpec {
 }
 
 // singboxSync renders the managed endpoint and applies ONLY if it changed.
+//
+// The hooks are snapshotted under m.mu first, as decommissionSingbox does:
+// SetConfigSync rewires them at runtime (startup wiring, then again on a backend
+// switch) while the sweep ticker and every peer op are calling in here. Bare
+// reads are a data race, and the nil check and the call would be two separate
+// reads of the same field — a rewire in between turns "not nil" into a nil
+// dereference on a box that is serving traffic.
 func (m *Manager) singboxSync() error {
-	if m.cfgSync == nil {
+	m.mu.Lock()
+	s, apply := m.cfgSync, m.applyFn
+	m.mu.Unlock()
+	if s == nil {
 		return fmt.Errorf("config sync not wired")
 	}
 	spec := m.renderServerSpec()
-	changed, err := m.cfgSync.SyncAwgEndpointActive(config.ManagedAwgServerTag, spec)
+	changed, err := s.SyncAwgEndpointActive(config.ManagedAwgServerTag, spec)
 	if err != nil {
 		return err
 	}
-	if changed && m.applyFn != nil {
-		return m.applyFn()
+	if changed && apply != nil {
+		return apply()
 	}
 	return nil
 }
@@ -274,10 +308,60 @@ func (m *Manager) addPeerSingbox(ctx context.Context, name string) (PeerSummary,
 		return PeerSummary{}, err
 	}
 	if err := m.singboxSync(); err != nil {
-		_ = m.store.Delete(pub) // compensation: don't leave a peer that isn't live
+		// Compensation: don't leave a peer that isn't live. If even that fails,
+		// the store keeps a secret sing-box never saw — say so out loud.
+		if derr := m.store.Delete(pub); derr != nil {
+			log.Printf("awg: peer %s could not be synced and could not be removed from the store: %v (sync: %v)", pub, derr, err)
+		}
 		return PeerSummary{}, err
 	}
 	return PeerSummary{Name: name, PublicKey: pub, Address: allowedIP}, nil
+}
+
+// renderState is the set of fields that decide what the server serves and what
+// the client exports say: renderServerSpec, RenderClientConf and ClientEndpoint
+// read exactly these. enableSingbox commits them before it applies (the render
+// happens under the same lock), so it also has to be able to put them back.
+//
+// enabled belongs in here for the same reason the parameters do: it decides
+// whether anything is served at all, enableSingbox has to publish it before the
+// sync (renderServerSpec gates on it), and a failed Enable must land back on
+// whatever was true before the attempt — see the commit rule on Manager.
+type renderState struct {
+	enabled          bool
+	subnet           string
+	serverIP         string
+	listenPort       int
+	mtu              int
+	obf              Obfuscation
+	obfPreset        string
+	serverPriv       string
+	headerKey        string
+	headerProtection bool
+	ipv6Broker       bool
+	v6Active         bool
+	ulaPrefix        netip.Prefix
+}
+
+// renderStateLocked snapshots the render fields. Caller holds m.mu.
+func (m *Manager) renderStateLocked() renderState {
+	return renderState{
+		enabled: m.enabled,
+		subnet:  m.subnet, serverIP: m.serverIP, listenPort: m.listenPort, mtu: m.mtu,
+		obf: m.obf, obfPreset: m.obfPreset, serverPriv: m.serverPriv,
+		headerKey: m.headerKey, headerProtection: m.headerProtection,
+		ipv6Broker: m.ipv6Broker, v6Active: m.v6Active, ulaPrefix: m.ulaPrefix,
+	}
+}
+
+// restoreRenderStateLocked puts a snapshot back — WHOLE, enabled included.
+// Caller holds m.mu.
+func (m *Manager) restoreRenderStateLocked(s renderState) {
+	m.enabled = s.enabled
+	m.subnet, m.serverIP, m.listenPort, m.mtu = s.subnet, s.serverIP, s.listenPort, s.mtu
+	m.obf, m.obfPreset, m.serverPriv = s.obf, s.obfPreset, s.serverPriv
+	m.headerKey, m.headerProtection = s.headerKey, s.headerProtection
+	m.ipv6Broker, m.v6Active, m.ulaPrefix = s.ipv6Broker, s.v6Active, s.ulaPrefix
 }
 
 // enableSingbox validates the operator fields (same canonicalisers as kernel),
@@ -389,20 +473,47 @@ func (m *Manager) enableSingbox(ctx context.Context, in EnableInput) error {
 		}
 	}
 
+	// Commit + sync under addMu, mirroring the kernel branch's full .conf rewrite:
+	// addPeerSingbox (which holds addMu) stores the secret and re-renders the
+	// endpoint FROM the store, so an Enable rendering its own spec in between
+	// would sync a snapshot taken before that peer existed and write it back out
+	// of the config — the panel would list a client sing-box has never heard of.
+	// Lock order stays addMu -> m.mu, as in AddPeer and the sweep.
+	m.addMu.Lock()
+	defer m.addMu.Unlock()
+
 	m.mu.Lock()
+	// Everything the commit below overwrites, kept for the failure path.
+	// RenderClientConf and ClientEndpoint read these fields WITHOUT gating on
+	// m.enabled, so parameters that never reached the config must not survive a
+	// failed Enable: otherwise the server keeps serving the old port while every
+	// .conf and QR issued afterwards names the new one.
+	prev := m.renderStateLocked()
 	m.subnet, m.serverIP, m.listenPort, m.mtu, m.obf, m.serverPriv = subnet, serverIP, port, mtu, obf, priv
 	m.obfPreset = in.ObfPreset
 	m.headerKey = hpk // "" when header protection is off
 	m.headerProtection = in.HeaderProtection
 	m.ipv6Broker, m.v6Active, m.ulaPrefix = in.IPv6Broker, v6Active, ula
 	// renderServerSpec gates on m.enabled, so it MUST be true BEFORE the sync
-	// below or the spec renders nil and Enable writes nothing. On sync failure
-	// enableFail rolls it back to false (so a later sweep stays a no-op).
+	// below or the spec renders nil and Enable writes nothing. The snapshot above
+	// carries the previous value, so the failure path puts THAT back rather than
+	// hardcoding false: from a server that was already up, this Enable is a
+	// re-configure, and a re-configure that never reached the config leaves the
+	// old one running.
 	m.enabled = true
 	m.mu.Unlock()
 
 	if err := m.singboxSync(); err != nil {
-		return m.enableFail("apply: " + err.Error()) // enableFail sets enabled=false
+		// Whole snapshot back, parameters and enabled together. In the nastier
+		// sub-case — endpoint written, reload refused — the config now carries a
+		// spec the process is not running; restoring the old parameters is what
+		// makes the next sweep see a difference and write the running server back.
+		// Keeping the new ones would leave the sweep with nothing to change and
+		// the exports describing a server nobody serves.
+		m.mu.Lock()
+		m.restoreRenderStateLocked(prev)
+		m.mu.Unlock()
+		return m.enableFailCause("apply", err) // records the failure, keeps the cause
 	}
 	m.mu.Lock()
 	m.lastErr, m.phase = "", PhaseReady
@@ -410,18 +521,22 @@ func (m *Manager) enableSingbox(ctx context.Context, in EnableInput) error {
 	return nil
 }
 
-// disableSingbox removes the managed endpoint and reloads.
+// disableSingbox removes the managed endpoint and reloads. The disable is
+// recorded as soon as the endpoint is out of the config, even when the reload
+// that follows fails: the server is off either way, and a still-enabled manager
+// would have the next sweep serve it again.
 func (m *Manager) disableSingbox(ctx context.Context) error {
-	if m.cfgSync == nil {
+	m.mu.Lock()
+	wired := m.cfgSync != nil
+	m.mu.Unlock()
+	if !wired {
 		return fmt.Errorf("config sync not wired")
 	}
-	if err := m.decommissionSingbox(); err != nil {
-		return err
+	removed, err := m.decommissionSingbox()
+	if removed {
+		m.markDisabled()
 	}
-	m.mu.Lock()
-	m.enabled, m.phase = false, PhaseIdle
-	m.mu.Unlock()
-	return nil
+	return err
 }
 
 // statusSingbox reports a kernel-field-free status: running = we have a server key

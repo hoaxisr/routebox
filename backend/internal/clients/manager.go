@@ -10,6 +10,8 @@ import (
 	"time"
 
 	"github.com/BurntSushi/toml"
+
+	"routebox/backend/internal/util"
 )
 
 // Entry represents one known LAN client.
@@ -27,12 +29,20 @@ type Manager struct {
 	mu    sync.RWMutex
 	byIP  map[string]*Entry
 	dirty bool
+	guard *util.WriteGuard
 }
 
 // New constructs a Manager. Pass empty path to disable persistence (used by tests).
 func New(path string) *Manager {
-	return &Manager{path: path, byIP: map[string]*Entry{}}
+	return &Manager{path: path, byIP: map[string]*Entry{}, guard: util.NewWriteGuard(path)}
 }
+
+// GetPath returns the file this store persists to ("" when persistence is off).
+func (m *Manager) GetPath() string { return m.path }
+
+// IsReadOnly reports whether the store's file cannot be written, so the panel
+// can show one read-only state for every file RouteBox persists.
+func (m *Manager) IsReadOnly() bool { return m.guard.IsReadOnly() }
 
 // Load reads the TOML file if path is set and file exists. Must be called once
 // at startup before any Observe/SetName calls — Load replaces the in-memory map
@@ -64,13 +74,24 @@ func (m *Manager) Load() error {
 	return nil
 }
 
-// Save writes the TOML file (no-op if no path or not dirty).
+// Save writes the TOML file (no-op if no path or not dirty). A failure that is
+// about writability comes back as util.ErrReadOnly naming the file, so the API
+// answers 409 with something the operator can act on instead of a raw 500.
 func (m *Manager) Save() error {
 	m.mu.Lock()
 	defer m.mu.Unlock()
 	if m.path == "" || !m.dirty {
 		return nil
 	}
+	if err := m.guard.Note(m.writeLocked()); err != nil {
+		return err
+	}
+	m.dirty = false
+	return nil
+}
+
+// writeLocked renders and writes the file. Caller holds m.mu.
+func (m *Manager) writeLocked() error {
 	if err := os.MkdirAll(filepath.Dir(m.path), 0755); err != nil {
 		return err
 	}
@@ -96,11 +117,7 @@ func (m *Manager) Save() error {
 		os.Remove(tmp)
 		return err
 	}
-	if err := os.Rename(tmp, m.path); err != nil {
-		return err
-	}
-	m.dirty = false
-	return nil
+	return os.Rename(tmp, m.path)
 }
 
 // Observe is called whenever an IP is seen in traffic. Creates or updates the entry.

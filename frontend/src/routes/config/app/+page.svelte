@@ -52,19 +52,13 @@
 
 			// GeoIP runtime settings
 			updates['geoip.enabled'] = settings.geoip.enabled;
-			updates['geoip.auto_reload'] = settings.geoip.auto_reload;
 
 			// UI settings
-			updates['ui.theme'] = settings.ui.theme;
 			updates['ui.language'] = settings.ui.language;
 			updates['ui.speed_unit'] = settings.ui.speed_unit;
-			updates['ui.time_format'] = settings.ui.time_format;
 
 			// Monitoring settings
 			updates['monitoring.enrichment_enabled'] = settings.monitoring.enrichment_enabled;
-			updates['monitoring.max_closed_connections'] = settings.monitoring.max_closed_connections;
-			updates['monitoring.poll_interval_ms'] = settings.monitoring.poll_interval_ms;
-			updates['monitoring.proxies_refresh_ms'] = settings.monitoring.proxies_refresh_ms;
 
 			// Updates settings (backend ships the field; guard for older backends)
 			if (settings.updates) {
@@ -287,16 +281,6 @@
 							/>
 							<span class="text-sm text-[var(--ctp-text)]">Enable GeoIP enrichment</span>
 						</label>
-
-						<label class="flex items-center gap-3 cursor-pointer">
-							<input
-								type="checkbox"
-								bind:checked={settings.geoip.auto_reload}
-								disabled={!geoipLoaded}
-								class="w-4 h-4 rounded border-[var(--ctp-surface2)] text-[var(--ctp-primary)] focus:ring-[var(--ctp-primary)] disabled:opacity-50"
-							/>
-							<span class="text-sm text-[var(--ctp-text)]">Auto-reload on file change</span>
-						</label>
 					</div>
 				</div>
 			</section>
@@ -311,18 +295,6 @@
 				</div>
 
 				<div class="grid grid-cols-1 md:grid-cols-2 gap-4">
-					<div>
-						<label class="block text-sm font-medium text-[var(--ctp-subtext1)] mb-1">Default Theme</label>
-						<select
-							bind:value={settings.ui.theme}
-							class="w-full px-3 py-2 bg-[var(--ctp-surface0)] border border-[var(--ctp-surface2)] rounded-lg text-[var(--ctp-text)] focus:outline-none focus:ring-2 focus:ring-[var(--ctp-primary)]"
-						>
-							<option value="system">System</option>
-							<option value="dark">Dark</option>
-							<option value="light">Light</option>
-						</select>
-					</div>
-
 					<div>
 						<label class="block text-sm font-medium text-[var(--ctp-subtext1)] mb-1">Language</label>
 						<select
@@ -344,18 +316,6 @@
 							<option value="bits">Bits (Mbps)</option>
 						</select>
 					</div>
-
-					<div>
-						<label class="block text-sm font-medium text-[var(--ctp-subtext1)] mb-1">Time Format</label>
-						<select
-							bind:value={settings.ui.time_format}
-							class="w-full px-3 py-2 bg-[var(--ctp-surface0)] border border-[var(--ctp-surface2)] rounded-lg text-[var(--ctp-text)] focus:outline-none focus:ring-2 focus:ring-[var(--ctp-primary)]"
-						>
-							<option value="relative">Relative (5m ago)</option>
-							<option value="absolute">Absolute (14:32:15)</option>
-							<option value="both">Both</option>
-						</select>
-					</div>
 				</div>
 			</section>
 
@@ -368,55 +328,14 @@
 					<h2 class="text-lg font-medium text-[var(--ctp-text)]">Monitoring</h2>
 				</div>
 
-				<div class="grid grid-cols-1 md:grid-cols-2 gap-4">
-					<div class="md:col-span-2">
-						<label class="flex items-center gap-3 cursor-pointer">
-							<input
-								type="checkbox"
-								bind:checked={settings.monitoring.enrichment_enabled}
-								class="w-4 h-4 rounded border-[var(--ctp-surface2)] text-[var(--ctp-primary)] focus:ring-[var(--ctp-primary)]"
-							/>
-							<span class="text-sm text-[var(--ctp-text)]">Enable connection enrichment (GeoIP, etc.)</span>
-						</label>
-					</div>
-
-					<div>
-						<label class="block text-sm font-medium text-[var(--ctp-subtext1)] mb-1">Max Closed Connections History</label>
-						<input
-							type="number"
-							bind:value={settings.monitoring.max_closed_connections}
-							min="0"
-							max="10000"
-							class="w-full px-3 py-2 bg-[var(--ctp-surface0)] border border-[var(--ctp-surface2)] rounded-lg text-[var(--ctp-text)] focus:outline-none focus:ring-2 focus:ring-[var(--ctp-primary)]"
-						/>
-					</div>
-
-					<div>
-						<label class="block text-sm font-medium text-[var(--ctp-subtext1)] mb-1">Poll Interval (ms)</label>
-						<input
-							type="number"
-							bind:value={settings.monitoring.poll_interval_ms}
-							min="500"
-							max="30000"
-							step="100"
-							class="w-full px-3 py-2 bg-[var(--ctp-surface0)] border border-[var(--ctp-surface2)] rounded-lg text-[var(--ctp-text)] focus:outline-none focus:ring-2 focus:ring-[var(--ctp-primary)]"
-						/>
-						<p class="text-xs text-[var(--ctp-overlay0)] mt-1">Fallback when WebSocket unavailable</p>
-					</div>
-
-					<div>
-						<label class="block text-sm font-medium text-[var(--ctp-subtext1)] mb-1">Proxies Refresh (ms)</label>
-						<input
-							type="number"
-							bind:value={settings.monitoring.proxies_refresh_ms}
-							min="0"
-							max="60000"
-							step="1000"
-							class="w-full px-3 py-2 bg-[var(--ctp-surface0)] border border-[var(--ctp-surface2)] rounded-lg text-[var(--ctp-text)] focus:outline-none focus:ring-2 focus:ring-[var(--ctp-primary)]"
-						/>
-						<p class="text-xs text-[var(--ctp-overlay0)] mt-1">0 to disable auto-refresh</p>
-					</div>
-				</div>
+				<label class="flex items-center gap-3 cursor-pointer">
+					<input
+						type="checkbox"
+						bind:checked={settings.monitoring.enrichment_enabled}
+						class="w-4 h-4 rounded border-[var(--ctp-surface2)] text-[var(--ctp-primary)] focus:ring-[var(--ctp-primary)]"
+					/>
+					<span class="text-sm text-[var(--ctp-text)]">Enable connection enrichment (GeoIP, etc.)</span>
+				</label>
 			</section>
 
 			<!-- Security Section -->
@@ -658,30 +577,10 @@
 					</div>
 
 					<div>
-						<label class="block text-sm font-medium text-[var(--ctp-subtext1)] mb-1">Log Level</label>
-						<input
-							type="text"
-							value={settings.logging.level}
-							disabled
-							class="w-full px-3 py-2 bg-[var(--ctp-surface0)] border border-[var(--ctp-surface2)] rounded-lg text-[var(--ctp-overlay1)] cursor-not-allowed"
-						/>
-					</div>
-
-					<div>
 						<label class="block text-sm font-medium text-[var(--ctp-subtext1)] mb-1">Sing-box Config</label>
 						<input
 							type="text"
 							value={settings.singbox.config_path || 'Auto-detect'}
-							disabled
-							class="w-full px-3 py-2 bg-[var(--ctp-surface0)] border border-[var(--ctp-surface2)] rounded-lg text-[var(--ctp-overlay1)] cursor-not-allowed"
-						/>
-					</div>
-
-					<div>
-						<label class="block text-sm font-medium text-[var(--ctp-subtext1)] mb-1">Binary Name</label>
-						<input
-							type="text"
-							value={settings.singbox.binary_name}
 							disabled
 							class="w-full px-3 py-2 bg-[var(--ctp-surface0)] border border-[var(--ctp-surface2)] rounded-lg text-[var(--ctp-overlay1)] cursor-not-allowed"
 						/>

@@ -56,7 +56,7 @@ func (m *Manager) SyncV2RayAPI(listen string, names []string) (changed bool, err
 	m.mu.Lock()
 	defer m.mu.Unlock()
 
-	if m.readOnly || m.path == "" {
+	if m.guard.IsReadOnly() || m.path == "" {
 		return false, nil // additivity: read-only / unconfigured => never write
 	}
 

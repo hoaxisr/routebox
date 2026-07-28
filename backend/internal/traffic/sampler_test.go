@@ -2,11 +2,15 @@ package traffic
 
 import (
 	"fmt"
+	"log"
 	"net/http"
 	"net/http/httptest"
+	"os"
+	"path/filepath"
 	"strings"
 	"sync"
 	"testing"
+	"time"
 )
 
 func TestComputeDeltas_NewConnection(t *testing.T) {
@@ -193,5 +197,40 @@ func TestComputeDeltas_HandlesCounterReset(t *testing.T) {
 	})
 	if len(deltas) != 1 || deltas[0].Upload != 100 {
 		t.Errorf("got %+v, want one entry with upload=100 (reset handled)", deltas)
+	}
+}
+
+// Пустой адрес Clash API — это "не настроено", а не "настроено пусто". Раньше
+// сэмплер всё равно шёл на "http:///connections" и оставлял в журнале при каждом
+// старте панели одну строку `no Host in request URL` — ошибку про URL там, где
+// на самом деле нечего опрашивать. Ходить некуда и говорить не о чем: цикл не
+// начинается вовсе (тот же guard, что у обхода LAN-клиентов), а о самом факте
+// "мониторинг выключен" сообщает старт панели, где известно, откуда берётся адрес.
+func TestSamplerDoesNotRunWithoutAClashAddr(t *testing.T) {
+	store, err := OpenStore(filepath.Join(t.TempDir(), "traffic.db"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer store.Close()
+
+	var logged strings.Builder
+	log.SetOutput(&logged)
+	t.Cleanup(func() { log.SetOutput(os.Stderr) })
+
+	done := make(chan struct{})
+	// stop == nil: приём из nil-канала блокируется навсегда, поэтому вернуться
+	// отсюда можно только отказом стартовать.
+	go func() {
+		NewSampler(store).Run("", "", 0, nil)
+		close(done)
+	}()
+
+	select {
+	case <-done:
+	case <-time.After(5 * time.Second):
+		t.Fatal("sampler must not start without a Clash API address")
+	}
+	if logged.Len() != 0 {
+		t.Errorf("nothing to complain about, got log output:\n%s", logged.String())
 	}
 }

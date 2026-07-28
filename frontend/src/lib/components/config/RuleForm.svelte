@@ -1,6 +1,6 @@
 <script lang="ts">
 	import type { RouteRule, RuleSet, Outbound, Inbound, DnsServer, RuleConditions } from '$lib/types';
-	import { notifications } from '$lib/stores';
+	import { notifications, configReadOnly } from '$lib/stores';
 	import { api } from '$lib/api/client';
 	import { t } from 'svelte-i18n';
 	import RuleSetForm from './RuleSetForm.svelte';
@@ -351,8 +351,12 @@
 			class="px-4 py-2 bg-[var(--ctp-surface1)] text-[var(--ctp-text)] rounded-lg hover:bg-[var(--ctp-surface2)] transition-colors">
 			{$t('common.cancel')}
 		</button>
-		<button type="submit"
-			class="px-4 py-2 bg-[var(--ctp-primary)] text-white rounded-lg hover:opacity-90 transition-opacity">
+		<button
+			type="submit"
+			class="px-4 py-2 bg-[var(--ctp-primary)] text-white rounded-lg hover:opacity-90 transition-opacity disabled:opacity-50 disabled:cursor-not-allowed"
+			disabled={$configReadOnly}
+			title={$configReadOnly ? $t('readOnly.saveBlocked') : ''}
+		>
 			{rule ? $t('common.saveChanges') : $t('routes.addRule')}
 		</button>
 	</div>

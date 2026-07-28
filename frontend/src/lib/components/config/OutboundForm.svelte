@@ -1,6 +1,6 @@
 <script lang="ts">
 	import type { Outbound, Endpoint, DnsServer, TLSConfig, TransportConfig, MultiplexConfig, ObfsConfig } from '$lib/types';
-	import { notifications } from '$lib/stores';
+	import { notifications, configReadOnly } from '$lib/stores';
 	import { parsePortRanges, parseKeyValuePairs, formatKeyValuePairs, normalizeMieruPort } from '$lib/utils/parsers';
 	import type { ParsedVless, ParsedTrojan, ParsedHysteria2, ParsedShadowsocks, ParsedNaive, ParsedMieru } from '$lib/utils/parsers';
 	import {
@@ -888,7 +888,9 @@
 		</button>
 		<button
 			type="submit"
-			class="px-4 py-2 bg-[var(--ctp-primary)] text-white rounded-lg hover:opacity-90 transition-opacity"
+			class="px-4 py-2 bg-[var(--ctp-primary)] text-white rounded-lg hover:opacity-90 transition-opacity disabled:opacity-50 disabled:cursor-not-allowed"
+			disabled={$configReadOnly}
+			title={$configReadOnly ? $t('readOnly.saveBlocked') : ''}
 		>
 			{outbound ? $t('common.saveChanges') : $t('outbounds.createOutbound')}
 		</button>

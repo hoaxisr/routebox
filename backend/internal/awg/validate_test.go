@@ -63,21 +63,6 @@ func TestValidateListenPort(t *testing.T) {
 	}
 }
 
-func TestSanitizeName(t *testing.T) {
-	// Mirrors api.sanitizeFilename: REPLACES disallowed runes with '_', never errors.
-	cases := map[string]string{
-		"phone":                 "phone",
-		"a\nPublicKey=ATTACKER": "a_PublicKey_ATTACKER",
-		"x [Peer] # y":          "x__Peer____y",
-		"!!!":                   "name", // nothing usable -> fallback
-	}
-	for in, want := range cases {
-		if got := SanitizeName(in); got != want {
-			t.Errorf("SanitizeName(%q) = %q; want %q", in, got, want)
-		}
-	}
-}
-
 func TestValidateObfuscation(t *testing.T) {
 	if _, err := ValidateHField("124410148-526234659"); err != nil {
 		t.Fatalf("valid H range: %v", err)
@@ -116,18 +101,6 @@ func TestValidateDNS(t *testing.T) {
 	}
 }
 
-func TestValidateAllowedIPs(t *testing.T) {
-	got, err := ValidateAllowedIPs([]string{"0.0.0.0/0", "10.0.0.5/24"})
-	if err != nil || got[0] != "0.0.0.0/0" || got[1] != "10.0.0.0/24" { // canonicalised
-		t.Fatalf("ValidateAllowedIPs good = %v,%v", got, err)
-	}
-	for _, bad := range [][]string{{"0.0.0.0/0; iptables -F"}, {"$(x)"}, {"-j ACCEPT"}, {"junk"}} {
-		if _, err := ValidateAllowedIPs(bad); err == nil {
-			t.Errorf("ValidateAllowedIPs(%q): want error", bad)
-		}
-	}
-}
-
 func TestValidateMTU(t *testing.T) {
 	for _, ok := range []int{576, 1420, 9000} {
 		if _, err := ValidateMTU(ok); err != nil {
@@ -142,14 +115,14 @@ func TestValidateMTU(t *testing.T) {
 }
 
 // TestCanonicalNeverLeadsWithDash guards the `awg set` argv leading-`-` class:
-// every validator's canonical output for values that reach argv (allowed_ips, dns)
-// must never begin with '-' (which a tool could mis-read as a flag). Pubkeys are
-// base64 (cannot lead with '-'); names are sanitized; ip/prefix strings start with
-// a digit. SetPeer/RemovePeer additionally pass a `--` terminator (see Task 8).
+// every validator's canonical output for values that reach argv (dns) must never
+// begin with '-' (which a tool could mis-read as a flag). Pubkeys are base64
+// (cannot lead with '-'); names are sanitized; the allowed-ips argv value is
+// built from IPAM (netip "<ip>/32"), so it always starts with a digit.
+// SetPeer/RemovePeer additionally pass a `--` terminator (see Task 8).
 func TestCanonicalNeverLeadsWithDash(t *testing.T) {
 	dns, _ := ValidateDNS([]string{"8.8.8.8"})
-	aips, _ := ValidateAllowedIPs([]string{"10.0.0.5/32"})
-	for _, s := range append(append([]string{}, dns...), aips...) {
+	for _, s := range dns {
 		if strings.HasPrefix(s, "-") {
 			t.Errorf("canonical %q must not start with '-'", s)
 		}

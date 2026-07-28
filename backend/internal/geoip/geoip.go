@@ -40,9 +40,8 @@ type mmdbRecord struct {
 
 // DB wraps MMDB database with thread-safe access
 type DB struct {
-	db   *maxminddb.Reader
-	mu   sync.RWMutex
-	path string
+	db *maxminddb.Reader
+	mu sync.RWMutex
 }
 
 // Open opens a GeoIP database from the given path
@@ -51,7 +50,7 @@ func Open(path string) (*DB, error) {
 	if err != nil {
 		return nil, err
 	}
-	return &DB{db: db, path: path}, nil
+	return &DB{db: db}, nil
 }
 
 // Close closes the database
@@ -104,14 +103,6 @@ func (d *DB) Lookup(ipStr string) *Info {
 		ASName:        record.ASName,
 		ASDomain:      record.ASDomain,
 	}
-}
-
-// Path returns the database file path
-func (d *DB) Path() string {
-	if d == nil {
-		return ""
-	}
-	return d.path
 }
 
 // IsLoaded returns true if database is loaded

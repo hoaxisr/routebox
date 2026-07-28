@@ -3,8 +3,11 @@ package settings
 import (
 	"encoding/json"
 	"fmt"
+	"maps"
 	"os"
 	"path/filepath"
+	"reflect"
+	"strings"
 	"testing"
 
 	"routebox/backend/internal/auth"
@@ -19,16 +22,16 @@ func TestUpdateNumericSettings(t *testing.T) {
 		want    int
 		get     func(s Settings) int
 	}{
-		{"float64 accepted (JSON decode)", "monitoring.poll_interval_ms", float64(1500), false, 1500,
-			func(s Settings) int { return s.Monitoring.PollIntervalMs }},
-		{"int accepted", "monitoring.max_closed_connections", 250, false, 250,
-			func(s Settings) int { return s.Monitoring.MaxClosedConnections }},
+		{"float64 accepted (JSON decode)", "security.session_timeout_minutes", float64(1500), false, 1500,
+			func(s Settings) int { return s.Security.SessionTimeoutMinutes }},
+		{"int accepted", "server.public_port", 250, false, 250,
+			func(s Settings) int { return s.Server.PublicPort }},
 		{"json.Number accepted", "advanced.ws_ping_interval_sec", json.Number("45"), false, 45,
 			func(s Settings) int { return s.Advanced.WsPingIntervalSec }},
 		{"float64 accepted", "advanced.ws_pong_timeout_sec", float64(15), false, 15,
 			func(s Settings) int { return s.Advanced.WsPongTimeoutSec }},
-		{"fractional float rejected", "monitoring.poll_interval_ms", float64(1.5), true, 0, nil},
-		{"string rejected", "monitoring.proxies_refresh_ms", "fast", true, 0, nil},
+		{"fractional float rejected", "advanced.ws_ping_interval_sec", float64(1.5), true, 0, nil},
+		{"string rejected", "advanced.ws_pong_timeout_sec", "fast", true, 0, nil},
 		{"bool rejected for numeric", "security.session_timeout_minutes", true, true, 0, nil},
 	}
 
@@ -581,5 +584,98 @@ func TestUpdateAwgObf(t *testing.T) {
 	}
 	if len(g.DNS) != 2 || g.DNS[1] != "8.8.8.8" {
 		t.Fatalf("dns not applied: %v", g.DNS)
+	}
+}
+
+// TestUpdateIsAtomic pins the all-or-nothing contract of Update: if ANY key in
+// the payload is rejected, the in-memory settings must be exactly what they
+// were before the call. Anything half-applied survives the failed request and
+// is silently flushed to disk by the next successful Save().
+//
+// The live trigger is a browser holding a stale SPA build: it posts the whole
+// settings form, including keys this build has since dropped ("ui.theme" here
+// — removed because nothing read it). The user sees "Failed to save settings"
+// while part of the payload has in fact been applied.
+//
+// The test is deterministic, not probabilistic: Update walks keys in sorted
+// order, and the rejected key is chosen to sort AFTER every accepted key. So a
+// partial-apply Update stages all 15 accepted keys before it reaches the bad
+// one and fails this test on every single run — no repetition needed, no way
+// to get lucky on map order. The guard loop below keeps that property honest
+// if someone later adds a key to the payload.
+func TestUpdateIsAtomic(t *testing.T) {
+	// Dropped in this build; a cached SPA still sends it. Sorts last.
+	const badKey = "ui.time_format"
+
+	// Every value differs from Default() so applying any single one is visible.
+	accepted := map[string]interface{}{
+		"advanced.ws_ping_interval_sec":    99,
+		"awg.dns":                          []interface{}{"9.9.9.9"},
+		"awg.listen_port":                  51999,
+		"geoip.enabled":                    false,
+		"monitoring.enrichment_enabled":    false,
+		"security.auth_enabled":            true,
+		"security.auth_password":           "correct-horse-battery-staple",
+		"security.auth_username":           "operator",
+		"security.session_timeout_minutes": 60,
+		"server.mode":                      "vps",
+		"server.public_host":               "vpn.example.com",
+		"server.public_port":               8443,
+		"singbox.v2ray_api":                "127.0.0.1:9099",
+		"ui.language":                      "ru",
+		"ui.speed_unit":                    "bits",
+	}
+
+	// The determinism of this test rests on badKey being visited last. Assert
+	// it instead of trusting it: a new payload key sorting after badKey would
+	// otherwise quietly turn this back into a coin flip.
+	for k := range accepted {
+		if k >= badKey {
+			t.Fatalf("payload key %q sorts at or after the rejected key %q; "+
+				"this test needs the rejected key to come last", k, badKey)
+		}
+	}
+
+	payload := map[string]interface{}{badKey: "24h"}
+	maps.Copy(payload, accepted)
+
+	m := &Manager{settings: Default()}
+	err := m.Update(payload)
+	if err == nil {
+		t.Fatalf("unknown key %s must be rejected, got nil error", badKey)
+	}
+	if !strings.Contains(err.Error(), badKey) {
+		t.Fatalf("error must name the offending key, got %q", err)
+	}
+
+	got, want := m.Get(), Default()
+	if !reflect.DeepEqual(got, want) {
+		t.Fatalf("Update returned %v but left settings mutated\n got: %+v\nwant: %+v", err, got, want)
+	}
+	// Called out separately: bcrypt hashing is a transform Update performs on
+	// the way in, and it must not run for a payload that is rejected.
+	if got.Security.AuthPasswordHash != "" || got.Security.AuthPassword != "" {
+		t.Fatal("password was hashed/stored despite the rejected update")
+	}
+}
+
+// TestUpdateReportsLowestBadKey pins the reason Update sorts its keys: with
+// several rejected keys in one payload the user must get the same message
+// every time. Under map iteration order the reported key was whichever came
+// up first, so the same stale form could produce a different error on refresh.
+func TestUpdateReportsLowestBadKey(t *testing.T) {
+	for i := 0; i < 20; i++ {
+		m := &Manager{settings: Default()}
+		err := m.Update(map[string]interface{}{
+			"monitoring.poll_interval_ms": 1000,
+			"ui.theme":                    "dark",
+			"geoip.auto_reload":           true,
+		})
+		if err == nil {
+			t.Fatal("expected an error for a payload of dropped keys")
+		}
+		if !strings.Contains(err.Error(), "geoip.auto_reload") {
+			t.Fatalf("iteration %d: want the lowest-sorting bad key reported, got %q", i, err)
+		}
 	}
 }

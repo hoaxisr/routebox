@@ -1,6 +1,7 @@
 <script lang="ts">
 	import { t } from 'svelte-i18n';
 	import type { AwgServerSettings } from '$lib/types';
+	import { configReadOnly } from '$lib/stores';
 	import ObfuscationControl from './ObfuscationControl.svelte';
 
 	interface Props {
@@ -112,7 +113,13 @@
 		{/if}
 	</span>
 	<button type="button" class="btn-ghost-sm" onclick={onReset} disabled={saving || !dirty}>{$t('awg.reset')}</button>
-	<button type="button" class="btn-save" onclick={onSave} disabled={saving || !dirty}>
+	<button
+		type="button"
+		class="btn-save"
+		onclick={onSave}
+		disabled={saving || !dirty || $configReadOnly}
+		title={$configReadOnly ? $t('readOnly.saveBlocked') : ''}
+	>
 		{saving ? $t('common.saving') : applied ? $t('awg.saveAndApply') : $t('awg.save')}
 	</button>
 </div>

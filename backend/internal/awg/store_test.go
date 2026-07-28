@@ -69,32 +69,28 @@ func TestStoreRollsBackOnSaveError(t *testing.T) {
 func TestReconcileBidirectional(t *testing.T) {
 	s := newTestStore(t)
 	_ = s.Put(Peer{PublicKey: "KEEP==", Address: "10.10.0.2/32"})
-	_ = s.Put(Peer{PublicKey: "ORPHAN==", Address: "10.10.0.3/32"})
+	// SUSPENDED is stored but deliberately out of the conf (expired peer).
+	_ = s.Put(Peer{PublicKey: "SUSPENDED==", Address: "10.10.0.3/32", ExpiresAt: 1})
 
-	// conf has KEEP + a hand-added EXTRA (no secret); live device has KEEP + a stale GHOST.
-	confPubs := []string{"KEEP==", "EXTRA=="}
-	livePubs := []string{"KEEP==", "GHOST=="}
-	changed, removeLive, err := s.Reconcile(confPubs, livePubs)
-	if err != nil {
-		t.Fatalf("Reconcile: %v", err)
-	}
-	if !changed {
-		t.Fatal("ORPHAN secret should have been dropped -> changed")
-	}
-	if _, ok := s.Get("ORPHAN=="); ok {
-		t.Fatal("ORPHAN secret (absent from conf) must be dropped")
+	// the live device has KEEP, SUSPENDED (crash leftover: taken out of the conf
+	// for being expired but still on the interface) and a stale GHOST that is
+	// ours nowhere.
+	livePubs := []string{"KEEP==", "SUSPENDED==", "GHOST=="}
+	removeLive := s.Reconcile(livePubs)
+
+	if _, ok := s.Get("SUSPENDED=="); !ok {
+		t.Fatal("a suspended peer's secrets must survive reconcile")
 	}
 	if _, ok := s.Get("KEEP=="); !ok {
 		t.Fatal("KEEP must survive")
 	}
-	// GHOST is live but not in conf -> reported for removal from the device.
+	// GHOST is live and the store has never heard of it -> foreign.
 	if len(removeLive) != 1 || removeLive[0] != "GHOST==" {
 		t.Fatalf("removeLive = %#v; want [GHOST==]", removeLive)
 	}
 	// Idempotent second pass.
-	changed2, _, _ := s.Reconcile([]string{"KEEP=="}, []string{"KEEP=="})
-	if changed2 {
-		t.Fatal("second reconcile should be a no-op")
+	if r := s.Reconcile([]string{"KEEP=="}); len(r) != 0 {
+		t.Fatalf("second reconcile should be a no-op, got %v", r)
 	}
 }
 
@@ -104,7 +100,7 @@ func TestStoreNeverLogsSecrets(t *testing.T) {
 	defer log.SetOutput(os.Stderr)
 	s := newTestStore(t)
 	_ = s.Put(Peer{PublicKey: "PUB==", PrivateKey: "SUPERSECRETPRIV", PresharedKey: "SUPERSECRETPSK"})
-	_, _, _ = s.Reconcile(nil, nil)
+	_ = s.Reconcile(nil)
 	if bytes.Contains(buf.Bytes(), []byte("SUPERSECRETPRIV")) || bytes.Contains(buf.Bytes(), []byte("SUPERSECRETPSK")) {
 		t.Fatalf("secrets must never be logged:\n%s", buf.String())
 	}

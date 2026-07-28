@@ -26,7 +26,7 @@ func (h *Handler) CreateRuleSet(w http.ResponseWriter, r *http.Request) {
 	}
 
 	if err := h.config.CreateRuleSet(ruleSet); err != nil {
-		writeError(w, http.StatusBadRequest, err.Error())
+		writeConfigError(w, http.StatusBadRequest, err)
 		return
 	}
 
@@ -45,9 +45,9 @@ func (h *Handler) DeleteRuleSet(w http.ResponseWriter, r *http.Request) {
 
 	if err := h.config.DeleteRuleSet(tag); err != nil {
 		if strings.Contains(err.Error(), "not found") {
-			writeError(w, http.StatusNotFound, err.Error())
+			writeConfigError(w, http.StatusNotFound, err)
 		} else {
-			writeError(w, http.StatusBadRequest, err.Error())
+			writeConfigError(w, http.StatusBadRequest, err)
 		}
 		return
 	}
@@ -67,9 +67,9 @@ func (h *Handler) UpdateRuleSet(w http.ResponseWriter, r *http.Request) {
 
 	if err := h.config.UpdateRuleSet(tag, ruleSet); err != nil {
 		if strings.Contains(err.Error(), "not found") {
-			writeError(w, http.StatusNotFound, err.Error())
+			writeConfigError(w, http.StatusNotFound, err)
 		} else {
-			writeError(w, http.StatusBadRequest, err.Error())
+			writeConfigError(w, http.StatusBadRequest, err)
 		}
 		return
 	}
@@ -94,7 +94,7 @@ func (h *Handler) CreateRule(w http.ResponseWriter, r *http.Request) {
 	}
 
 	if err := h.config.CreateRule(rule); err != nil {
-		writeError(w, http.StatusBadRequest, err.Error())
+		writeConfigError(w, http.StatusBadRequest, err)
 		return
 	}
 
@@ -117,7 +117,7 @@ func (h *Handler) UpdateRule(w http.ResponseWriter, r *http.Request) {
 	}
 
 	if err := h.config.UpdateRule(index, rule); err != nil {
-		writeError(w, http.StatusBadRequest, err.Error())
+		writeConfigError(w, http.StatusBadRequest, err)
 		return
 	}
 
@@ -134,7 +134,7 @@ func (h *Handler) DeleteRule(w http.ResponseWriter, r *http.Request) {
 	}
 
 	if err := h.config.DeleteRule(index); err != nil {
-		writeError(w, http.StatusBadRequest, err.Error())
+		writeConfigError(w, http.StatusBadRequest, err)
 		return
 	}
 
@@ -153,7 +153,7 @@ func (h *Handler) ReorderRules(w http.ResponseWriter, r *http.Request) {
 	}
 
 	if err := h.config.ReorderRules(payload.From, payload.To); err != nil {
-		writeError(w, http.StatusBadRequest, err.Error())
+		writeConfigError(w, http.StatusBadRequest, err)
 		return
 	}
 
@@ -177,7 +177,7 @@ func (h *Handler) UpdateRouteSettings(w http.ResponseWriter, r *http.Request) {
 	}
 
 	if err := h.config.UpdateRouteSettings(settings); err != nil {
-		writeError(w, http.StatusBadRequest, err.Error())
+		writeConfigError(w, http.StatusBadRequest, err)
 		return
 	}
 

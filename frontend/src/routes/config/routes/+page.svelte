@@ -2,7 +2,7 @@
 	import { onMount } from 'svelte';
 	import { t } from 'svelte-i18n';
 	import { api } from '$lib/api/client';
-	import { notifications, unsavedChanges, featureFlags } from '$lib/stores';
+	import { notifications, unsavedChanges, featureFlags, configReadOnly } from '$lib/stores';
 	import type { RouteRule, RuleSet, Outbound, Inbound, RouteSettings, Endpoint } from '$lib/types';
 	import RuleForm from '$lib/components/config/RuleForm.svelte';
 	import RuleTemplates from '$lib/components/config/RuleTemplates.svelte';
@@ -427,8 +427,9 @@
 			{#if hasChanges && activeTab === 'rules'}
 				<button
 					onclick={applyChanges}
-					disabled={applying}
-					class="px-4 py-2 bg-[var(--ctp-primary)] text-white rounded-lg hover:opacity-90 transition-opacity disabled:opacity-50 flex items-center gap-2"
+					disabled={applying || $configReadOnly}
+					title={$configReadOnly ? $t('readOnly.saveBlocked') : ''}
+					class="px-4 py-2 bg-[var(--ctp-primary)] text-white rounded-lg hover:opacity-90 transition-opacity disabled:opacity-50 disabled:cursor-not-allowed flex items-center gap-2"
 				>
 					{#if applying}
 						<svg class="w-4 h-4 animate-spin" fill="none" viewBox="0 0 24 24">

@@ -16,11 +16,15 @@ type fakeRunner struct {
 	calls   [][]string
 	outputs map[string]string
 	errs    map[string]error
-	match   func(name string, args []string) (string, bool)
+	// errsContains fails any call whose joined argv CONTAINS the key, for
+	// commands whose exact argv a test cannot know in advance (generated
+	// pubkeys, timestamped PSK temp-file paths).
+	errsContains map[string]error
+	match        func(name string, args []string) (string, bool)
 }
 
 func newFakeRunner() *fakeRunner {
-	return &fakeRunner{outputs: map[string]string{}, errs: map[string]error{}}
+	return &fakeRunner{outputs: map[string]string{}, errs: map[string]error{}, errsContains: map[string]error{}}
 }
 func (f *fakeRunner) Run(_ context.Context, name string, args ...string) (string, string, error) {
 	f.calls = append(f.calls, append([]string{name}, args...))
@@ -30,6 +34,11 @@ func (f *fakeRunner) Run(_ context.Context, name string, args ...string) (string
 		}
 	}
 	key := name + " " + strings.Join(args, " ")
+	for sub, err := range f.errsContains {
+		if strings.Contains(key, sub) {
+			return f.outputs[key], "", err
+		}
+	}
 	return f.outputs[key], "", f.errs[key]
 }
 func (f *fakeRunner) sawContains(sub string) bool {

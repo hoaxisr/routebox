@@ -4,15 +4,18 @@ import (
 	"encoding/json"
 	"fmt"
 	"log"
+	"maps"
 	"net"
 	"net/url"
 	"os"
 	"path/filepath"
+	"slices"
 	"strings"
 	"sync"
 
 	"github.com/BurntSushi/toml"
 	"routebox/backend/internal/auth"
+	"routebox/backend/internal/util"
 )
 
 // Settings represents the complete RouteBox configuration
@@ -20,7 +23,6 @@ type Settings struct {
 	GeoIP      GeoIPSettings      `toml:"geoip" json:"geoip"`
 	UI         UISettings         `toml:"ui" json:"ui"`
 	Monitoring MonitoringSettings `toml:"monitoring" json:"monitoring"`
-	Logging    LoggingSettings    `toml:"logging" json:"logging"`
 	Security   SecuritySettings   `toml:"security" json:"security"`
 	Network    NetworkSettings    `toml:"network" json:"network"`
 	Server     ServerSettings     `toml:"server" json:"server"`
@@ -79,33 +81,19 @@ type UpdatesSettings struct {
 
 // GeoIPSettings configures GeoIP enrichment
 type GeoIPSettings struct {
-	Path       string `toml:"path" json:"path"`
-	Enabled    bool   `toml:"enabled" json:"enabled"`
-	AutoReload bool   `toml:"auto_reload" json:"auto_reload"`
+	Path    string `toml:"path" json:"path"`
+	Enabled bool   `toml:"enabled" json:"enabled"`
 }
 
 // UISettings configures user interface defaults
 type UISettings struct {
-	Theme      string `toml:"theme" json:"theme"`
-	Language   string `toml:"language" json:"language"`
-	SpeedUnit  string `toml:"speed_unit" json:"speed_unit"`
-	TimeFormat string `toml:"time_format" json:"time_format"`
+	Language  string `toml:"language" json:"language"`
+	SpeedUnit string `toml:"speed_unit" json:"speed_unit"`
 }
 
 // MonitoringSettings configures monitoring features
 type MonitoringSettings struct {
-	EnrichmentEnabled    bool `toml:"enrichment_enabled" json:"enrichment_enabled"`
-	MaxClosedConnections int  `toml:"max_closed_connections" json:"max_closed_connections"`
-	PollIntervalMs       int  `toml:"poll_interval_ms" json:"poll_interval_ms"`
-	ProxiesRefreshMs     int  `toml:"proxies_refresh_ms" json:"proxies_refresh_ms"`
-}
-
-// LoggingSettings configures application logging
-type LoggingSettings struct {
-	Level      string `toml:"level" json:"level"`
-	Output     string `toml:"output" json:"output"`
-	Timestamps bool   `toml:"timestamps" json:"timestamps"`
-	Format     string `toml:"format" json:"format"`
+	EnrichmentEnabled bool `toml:"enrichment_enabled" json:"enrichment_enabled"`
 }
 
 // SecuritySettings configures access control
@@ -122,7 +110,6 @@ type SecuritySettings struct {
 type NetworkSettings struct {
 	Listen             string `toml:"listen" json:"listen"`
 	ReadTimeoutSec     int    `toml:"read_timeout_sec" json:"read_timeout_sec"`
-	WriteTimeoutSec    int    `toml:"write_timeout_sec" json:"write_timeout_sec"`
 	CompressionEnabled bool   `toml:"compression_enabled" json:"compression_enabled"`
 	TLSCertPath        string `toml:"tls_cert_path" json:"tls_cert_path"`
 	TLSKeyPath         string `toml:"tls_key_path" json:"tls_key_path"`
@@ -143,10 +130,8 @@ type ServerSettings struct {
 
 // SingboxSettings configures sing-box integration
 type SingboxSettings struct {
-	ConfigPath  string `toml:"config_path" json:"config_path"`
-	ClashAPI    string `toml:"clash_api" json:"clash_api"`
-	BinaryName  string `toml:"binary_name" json:"binary_name"`
-	ServiceName string `toml:"service_name" json:"service_name"`
+	ConfigPath string `toml:"config_path" json:"config_path"`
+	ClashAPI   string `toml:"clash_api" json:"clash_api"`
 	// V2RayAPI is the loopback gRPC StatsService listen address RouteBox writes
 	// into experimental.v2ray_api and dials for per-user traffic. MUST be
 	// loopback (never exposed). Empty => 127.0.0.1:8081.
@@ -155,11 +140,8 @@ type SingboxSettings struct {
 
 // AdvancedSettings for power users
 type AdvancedSettings struct {
-	DebugEndpoints    bool `toml:"debug_endpoints" json:"debug_endpoints"`
-	PprofEnabled      bool `toml:"pprof_enabled" json:"pprof_enabled"`
-	MaxBodySize       int  `toml:"max_body_size" json:"max_body_size"`
-	WsPingIntervalSec int  `toml:"ws_ping_interval_sec" json:"ws_ping_interval_sec"`
-	WsPongTimeoutSec  int  `toml:"ws_pong_timeout_sec" json:"ws_pong_timeout_sec"`
+	WsPingIntervalSec int `toml:"ws_ping_interval_sec" json:"ws_ping_interval_sec"`
+	WsPongTimeoutSec  int `toml:"ws_pong_timeout_sec" json:"ws_pong_timeout_sec"`
 }
 
 // Manager handles settings loading, saving, and runtime updates
@@ -167,33 +149,26 @@ type Manager struct {
 	settings Settings
 	path     string
 	mu       sync.RWMutex
+	guard    *util.WriteGuard
 }
+
+// IsReadOnly reports whether routebox.toml cannot be written, so the panel can
+// show one read-only state for every file RouteBox persists.
+func (m *Manager) IsReadOnly() bool { return m.guard.IsReadOnly() }
 
 // Default returns settings with default values
 func Default() Settings {
 	return Settings{
 		GeoIP: GeoIPSettings{
-			Path:       "",
-			Enabled:    true,
-			AutoReload: false,
+			Path:    "",
+			Enabled: true,
 		},
 		UI: UISettings{
-			Theme:      "system",
-			Language:   "en",
-			SpeedUnit:  "bytes",
-			TimeFormat: "relative",
+			Language:  "en",
+			SpeedUnit: "bytes",
 		},
 		Monitoring: MonitoringSettings{
-			EnrichmentEnabled:    true,
-			MaxClosedConnections: 500,
-			PollIntervalMs:       2000,
-			ProxiesRefreshMs:     5000,
-		},
-		Logging: LoggingSettings{
-			Level:      "info",
-			Output:     "stdout",
-			Timestamps: true,
-			Format:     "text",
+			EnrichmentEnabled: true,
 		},
 		Security: SecuritySettings{
 			AuthEnabled:           false,
@@ -205,7 +180,6 @@ func Default() Settings {
 		Network: NetworkSettings{
 			Listen:             "0.0.0.0:8080",
 			ReadTimeoutSec:     30,
-			WriteTimeoutSec:    30,
 			CompressionEnabled: true,
 			ACMEEnabled:        false,
 			ACMEEmail:          "",
@@ -213,16 +187,11 @@ func Default() Settings {
 			ACMECacheDir:       "/etc/routebox/acme",
 		},
 		Singbox: SingboxSettings{
-			ConfigPath:  "",
-			ClashAPI:    "",
-			BinaryName:  "amnezia-box",
-			ServiceName: "",
-			V2RayAPI:    "127.0.0.1:8081",
+			ConfigPath: "",
+			ClashAPI:   "",
+			V2RayAPI:   "127.0.0.1:8081",
 		},
 		Advanced: AdvancedSettings{
-			DebugEndpoints:    false,
-			PprofEnabled:      false,
-			MaxBodySize:       10485760,
 			WsPingIntervalSec: 30,
 			WsPongTimeoutSec:  10,
 		},
@@ -275,6 +244,10 @@ func NewManager(path string) (*Manager, error) {
 			log.Printf("Settings file not found at %s, using defaults", path)
 		}
 	}
+
+	// After the path is resolved, not before: the guard's verdict is about the
+	// file we will actually write.
+	m.guard = util.NewWriteGuard(m.path)
 
 	return m, nil
 }
@@ -333,13 +306,18 @@ func (m *Manager) Load() error {
 }
 
 // saveLocked writes current settings to disk atomically (write to temp file,
-// fsync, chmod 0600, rename over target). The caller must hold m.mu.Lock
-// (exclusive).
+// fsync, chmod 0600, rename over target). A failure that is about writability
+// comes back as util.ErrReadOnly naming routebox.toml, so the API answers 409
+// with something the operator can act on instead of a raw 500. The caller must
+// hold m.mu.Lock (exclusive).
 func (m *Manager) saveLocked() error {
 	if m.path == "" {
 		return fmt.Errorf("no settings path configured")
 	}
+	return m.guard.Note(m.writeLocked())
+}
 
+func (m *Manager) writeLocked() error {
 	dir := filepath.Dir(m.path)
 	if err := os.MkdirAll(dir, 0755); err != nil {
 		return fmt.Errorf("failed to create directory: %w", err)
@@ -382,6 +360,36 @@ func (m *Manager) saveLocked() error {
 	tmpName = "" // success: disable deferred cleanup
 
 	log.Printf("Saved settings to %s", m.path)
+	return nil
+}
+
+// SetSingboxConfigPath запоминает путь конфига, на который RouteBox перешёл, и
+// тут же сохраняет настройки: смена пути на лету живёт только в памяти, а при
+// следующем старте резолв снова возьмёт singbox.config_path из TOML — и
+// расхождение, которое пользователь только что вылечил, вернётся.
+//
+// Намеренно отдельный метод, а не ключ generic Update: тот обслуживает
+// PUT /api/settings, и пускать туда путь конфига значило бы разрешить сменить
+// его мимо всякого переключения на лету — то есть создать расхождение к
+// следующей загрузке одним PUT'ом.
+//
+// Ошибка означает «в памяти сменили, на диск не записали»: путь уже в работе,
+// поэтому откатывать память нельзя — она обязана совпадать с тем, что RouteBox
+// правит прямо сейчас. Вызывающий обязан сказать пользователю, что смена не
+// закреплена.
+func (m *Manager) SetSingboxConfigPath(path string) error {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+
+	m.settings.Singbox.ConfigPath = path
+	if err := m.saveLocked(); err != nil {
+		// Только факт: какой путь не лёг на диск и почему. Что из этого следует
+		// для пользователя (после перезапуска вернётся старый путь, починку
+		// придётся повторить) — забота вызывающего, у него это сказано на языке
+		// пользователя, и повторять то же самое здесь по-английски значило бы
+		// показать одно следствие дважды.
+		return fmt.Errorf("saving %s to the settings file: %w", path, err)
+	}
 	return nil
 }
 
@@ -521,129 +529,127 @@ func isPlausibleHostname(s string) bool {
 	return true
 }
 
-// Update applies partial updates to settings (runtime-safe fields only)
+// Update applies partial updates to settings (runtime-safe fields only).
+//
+// All-or-nothing: keys are validated and staged against a private copy, and
+// m.settings is replaced only once the LAST key has been accepted. A payload
+// with one bad key therefore leaves the settings byte-for-byte as they were,
+// instead of leaving a subset applied for the next successful Save() to flush
+// to disk. The live trigger is a browser on a cached SPA build posting keys
+// this build no longer knows.
+//
+// An unknown key stays an error — tolerating one would swallow typos.
+//
+// Keys are walked in sorted order so that a payload carrying several bad keys
+// always reports the same one, rather than whichever the map handed over
+// first. Nothing about correctness depends on the order — it exists so the
+// error a user sees is reproducible.
+//
+// Staging is deep enough to be safe on its own: the struct copy is shallow, so
+// the one reference-typed field is cloned below and every case then writes
+// only into memory m.settings does not share.
 func (m *Manager) Update(updates map[string]interface{}) error {
 	m.mu.Lock()
 	defer m.mu.Unlock()
 
-	// Apply updates to runtime-safe fields
-	for key, value := range updates {
+	staged := m.settings
+	// Awg.DNS is the only slice/map in Settings; the shallow copy above would
+	// otherwise share its backing array with m.settings. Today every case
+	// replaces the slice wholesale, so the clone is redundant — it is here so
+	// that a future case writing THROUGH the slice cannot break atomicity
+	// silently. Cheap: a handful of resolver addresses.
+	staged.Awg.DNS = slices.Clone(staged.Awg.DNS)
+
+	// Deferred until every key has passed: bcrypt is expensive and hashing is
+	// the one transform here with a cost worth not paying for a doomed update.
+	newPassword := ""
+
+	// Validate and stage each runtime-safe field
+	for _, key := range slices.Sorted(maps.Keys(updates)) {
+		value := updates[key]
 		switch key {
 		// GeoIP runtime settings
 		case "geoip.enabled":
 			if v, ok := value.(bool); ok {
-				m.settings.GeoIP.Enabled = v
-			}
-		case "geoip.auto_reload":
-			if v, ok := value.(bool); ok {
-				m.settings.GeoIP.AutoReload = v
+				staged.GeoIP.Enabled = v
 			}
 
 		// UI runtime settings
-		case "ui.theme":
-			if v, ok := value.(string); ok {
-				m.settings.UI.Theme = v
-			}
 		case "ui.language":
 			if v, ok := value.(string); ok {
-				m.settings.UI.Language = v
+				staged.UI.Language = v
 			}
 		case "ui.speed_unit":
 			if v, ok := value.(string); ok {
-				m.settings.UI.SpeedUnit = v
-			}
-		case "ui.time_format":
-			if v, ok := value.(string); ok {
-				m.settings.UI.TimeFormat = v
+				staged.UI.SpeedUnit = v
 			}
 
 		// Monitoring runtime settings
 		case "monitoring.enrichment_enabled":
 			if v, ok := value.(bool); ok {
-				m.settings.Monitoring.EnrichmentEnabled = v
+				staged.Monitoring.EnrichmentEnabled = v
 			}
-		case "monitoring.max_closed_connections":
-			v, ok := toInt(value)
-			if !ok {
-				return fmt.Errorf("setting %s: value must be a whole number", key)
-			}
-			m.settings.Monitoring.MaxClosedConnections = v
-		case "monitoring.poll_interval_ms":
-			v, ok := toInt(value)
-			if !ok {
-				return fmt.Errorf("setting %s: value must be a whole number", key)
-			}
-			m.settings.Monitoring.PollIntervalMs = v
-		case "monitoring.proxies_refresh_ms":
-			v, ok := toInt(value)
-			if !ok {
-				return fmt.Errorf("setting %s: value must be a whole number", key)
-			}
-			m.settings.Monitoring.ProxiesRefreshMs = v
 
 		// Security runtime settings
 		case "security.auth_enabled":
 			if v, ok := value.(bool); ok {
-				m.settings.Security.AuthEnabled = v
+				staged.Security.AuthEnabled = v
 			}
 		case "security.auth_username":
 			if v, ok := value.(string); ok {
-				m.settings.Security.AuthUsername = v
+				staged.Security.AuthUsername = v
 			}
 		case "security.session_timeout_minutes":
 			v, ok := toInt(value)
 			if !ok {
 				return fmt.Errorf("setting %s: value must be a whole number", key)
 			}
-			m.settings.Security.SessionTimeoutMinutes = v
+			staged.Security.SessionTimeoutMinutes = v
 		case "security.auth_password":
+			// Hashed after the loop; a blank or non-string value is ignored,
+			// as before.
 			if v, ok := value.(string); ok && v != "" {
-				h, err := auth.HashPassword(v)
-				if err != nil {
-					return fmt.Errorf("hash password: %w", err)
-				}
-				m.settings.Security.AuthPasswordHash = h
-				m.settings.Security.AuthPassword = ""
+				newPassword = v
 			}
 		case "network.tls_cert_path":
 			if v, ok := value.(string); ok {
-				m.settings.Network.TLSCertPath = v
+				staged.Network.TLSCertPath = v
 			}
 		case "network.tls_key_path":
 			if v, ok := value.(string); ok {
-				m.settings.Network.TLSKeyPath = v
+				staged.Network.TLSKeyPath = v
 			}
 		case "network.acme_enabled":
 			v, ok := value.(bool)
 			if !ok {
 				return fmt.Errorf("setting %s: value must be a boolean", key)
 			}
-			m.settings.Network.ACMEEnabled = v
+			staged.Network.ACMEEnabled = v
 		case "network.acme_email":
 			v, ok := value.(string)
 			if !ok {
 				return fmt.Errorf("setting %s: value must be a string", key)
 			}
-			m.settings.Network.ACMEEmail = v
+			staged.Network.ACMEEmail = v
 		case "network.acme_staging":
 			v, ok := value.(bool)
 			if !ok {
 				return fmt.Errorf("setting %s: value must be a boolean", key)
 			}
-			m.settings.Network.ACMEStaging = v
+			staged.Network.ACMEStaging = v
 		case "network.acme_cache_dir":
 			v, ok := value.(string)
 			if !ok {
 				return fmt.Errorf("setting %s: value must be a string", key)
 			}
-			m.settings.Network.ACMECacheDir = v
+			staged.Network.ACMECacheDir = v
 		case "server.mode":
 			// Fix 4: reject invalid values instead of silently ignoring them.
 			v, ok := value.(string)
 			if !ok || (v != "router" && v != "vps") {
 				return fmt.Errorf("invalid server.mode %q (want router|vps)", value)
 			}
-			m.settings.Server.Mode = v
+			staged.Server.Mode = v
 		case "server.public_host":
 			v, ok := value.(string)
 			if !ok {
@@ -653,7 +659,7 @@ func (m *Manager) Update(updates map[string]interface{}) error {
 			if err != nil {
 				return fmt.Errorf("setting %s: %w", key, err)
 			}
-			m.settings.Server.PublicHost = host
+			staged.Server.PublicHost = host
 
 		case "server.public_port":
 			v, ok := toInt(value)
@@ -663,7 +669,7 @@ func (m *Manager) Update(updates map[string]interface{}) error {
 			if v < 0 || v > 65535 {
 				return fmt.Errorf("setting %s: port %d out of range (0-65535)", key, v)
 			}
-			m.settings.Server.PublicPort = v
+			staged.Server.PublicPort = v
 
 		// Advanced runtime settings
 		case "advanced.ws_ping_interval_sec":
@@ -671,18 +677,18 @@ func (m *Manager) Update(updates map[string]interface{}) error {
 			if !ok {
 				return fmt.Errorf("setting %s: value must be a whole number", key)
 			}
-			m.settings.Advanced.WsPingIntervalSec = v
+			staged.Advanced.WsPingIntervalSec = v
 		case "advanced.ws_pong_timeout_sec":
 			v, ok := toInt(value)
 			if !ok {
 				return fmt.Errorf("setting %s: value must be a whole number", key)
 			}
-			m.settings.Advanced.WsPongTimeoutSec = v
+			staged.Advanced.WsPongTimeoutSec = v
 
 		// Updates runtime settings
 		case "updates.auto_check":
 			if v, ok := value.(bool); ok {
-				m.settings.Updates.AutoCheck = v
+				staged.Updates.AutoCheck = v
 			}
 
 		// Singbox runtime settings
@@ -694,7 +700,7 @@ func (m *Manager) Update(updates map[string]interface{}) error {
 			if err := validateLoopbackAddr(v); err != nil {
 				return fmt.Errorf("setting %s: %w", key, err)
 			}
-			m.settings.Singbox.V2RayAPI = v
+			staged.Singbox.V2RayAPI = v
 
 		// AmneziaWG runtime settings. awg.interface is set at enable time
 		// (validated by the awg orchestrator), not via the generic Update.
@@ -703,7 +709,7 @@ func (m *Manager) Update(updates map[string]interface{}) error {
 			if !ok {
 				return fmt.Errorf("setting %s: value must be a boolean", key)
 			}
-			m.settings.Awg.Enabled = v
+			staged.Awg.Enabled = v
 		case "awg.backend":
 			v, ok := value.(string)
 			if !ok || (v != "kernel" && v != "singbox") {
@@ -711,37 +717,37 @@ func (m *Manager) Update(updates map[string]interface{}) error {
 			}
 			// Guard "only switch while disabled" is enforced by the caller (handler),
 			// which has the live server status; settings stays status-agnostic.
-			m.settings.Awg.Backend = v
+			staged.Awg.Backend = v
 		case "awg.header_protection":
 			v, ok := value.(bool)
 			if !ok {
 				return fmt.Errorf("setting %s: value must be a boolean", key)
 			}
-			m.settings.Awg.HeaderProtection = v
+			staged.Awg.HeaderProtection = v
 		case "awg.ipv6_broker":
 			v, ok := value.(bool)
 			if !ok {
 				return fmt.Errorf("setting %s: value must be a boolean", key)
 			}
-			m.settings.Awg.IPv6Broker = v
+			staged.Awg.IPv6Broker = v
 		case "awg.subnet":
 			v, ok := value.(string)
 			if !ok {
 				return fmt.Errorf("setting %s: value must be a string", key)
 			}
-			m.settings.Awg.Subnet = v
+			staged.Awg.Subnet = v
 		case "awg.listen_port":
 			v, ok := toInt(value)
 			if !ok {
 				return fmt.Errorf("setting %s: value must be a whole number", key)
 			}
-			m.settings.Awg.ListenPort = v
+			staged.Awg.ListenPort = v
 		case "awg.mtu":
 			v, ok := toInt(value)
 			if !ok {
 				return fmt.Errorf("setting %s: value must be a whole number", key)
 			}
-			m.settings.Awg.MTU = v
+			staged.Awg.MTU = v
 		case "awg.server_host":
 			v, ok := value.(string)
 			if !ok {
@@ -751,13 +757,13 @@ func (m *Manager) Update(updates map[string]interface{}) error {
 			if err != nil {
 				return fmt.Errorf("setting %s: %w", key, err)
 			}
-			m.settings.Awg.ServerHost = host
+			staged.Awg.ServerHost = host
 		case "awg.wan_iface":
 			v, ok := value.(string)
 			if !ok {
 				return fmt.Errorf("setting %s: value must be a string", key)
 			}
-			m.settings.Awg.WANIface = v
+			staged.Awg.WANIface = v
 		case "awg.dns":
 			arr, ok := value.([]interface{})
 			if !ok {
@@ -771,19 +777,19 @@ func (m *Manager) Update(updates map[string]interface{}) error {
 				}
 				dns = append(dns, s)
 			}
-			m.settings.Awg.DNS = dns
+			staged.Awg.DNS = dns
 		case "awg.obf_preset":
 			v, ok := value.(string)
 			if !ok {
 				return fmt.Errorf("setting %s: value must be a string", key)
 			}
-			m.settings.Awg.ObfPreset = v
+			staged.Awg.ObfPreset = v
 		case "awg.configured":
 			v, ok := value.(bool)
 			if !ok {
 				return fmt.Errorf("setting %s: value must be a boolean", key)
 			}
-			m.settings.Awg.Configured = v
+			staged.Awg.Configured = v
 		case "awg.obf":
 			// Re-marshal the nested object into AwgObf (driftless: one decode).
 			raw, err := json.Marshal(value)
@@ -794,39 +800,25 @@ func (m *Manager) Update(updates map[string]interface{}) error {
 			if err := json.Unmarshal(raw, &obf); err != nil {
 				return fmt.Errorf("setting %s: %w", key, err)
 			}
-			m.settings.Awg.Obf = obf
+			staged.Awg.Obf = obf
 
 		default:
 			return fmt.Errorf("unknown or non-runtime setting: %s", key)
 		}
 	}
 
-	return nil
-}
-
-// UpdateSection updates an entire section (for UI forms)
-func (m *Manager) UpdateSection(section string, data interface{}) error {
-	m.mu.Lock()
-	defer m.mu.Unlock()
-
-	switch section {
-	case "geoip":
-		if v, ok := data.(GeoIPSettings); ok {
-			// Only update runtime fields
-			m.settings.GeoIP.Enabled = v.Enabled
-			m.settings.GeoIP.AutoReload = v.AutoReload
+	// Every key accepted — run the deferred transform, then commit. The commit
+	// is a single assignment under the write lock, so a Get() (RLock) never
+	// observes a half-applied update.
+	if newPassword != "" {
+		h, err := auth.HashPassword(newPassword)
+		if err != nil {
+			return fmt.Errorf("hash password: %w", err)
 		}
-	case "ui":
-		if v, ok := data.(UISettings); ok {
-			m.settings.UI = v
-		}
-	case "monitoring":
-		if v, ok := data.(MonitoringSettings); ok {
-			m.settings.Monitoring = v
-		}
-	default:
-		return fmt.Errorf("unknown or non-runtime section: %s", section)
+		staged.Security.AuthPasswordHash = h
+		staged.Security.AuthPassword = ""
 	}
 
+	m.settings = staged
 	return nil
 }

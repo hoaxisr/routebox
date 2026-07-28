@@ -111,7 +111,7 @@ func (h *Handler) ChangePassword(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	if err := h.settings.Save(); err != nil {
-		writeError(w, http.StatusInternalServerError, "failed to persist password")
+		writeOpError(w, http.StatusInternalServerError, "failed to persist password", err)
 		return
 	}
 	writeSuccess(w, map[string]string{"status": "ok"})

@@ -2,7 +2,7 @@
 	import { onMount } from 'svelte';
 	import { t } from 'svelte-i18n';
 	import { api } from '$lib/api/client';
-	import { notifications, unsavedChanges } from '$lib/stores';
+	import { notifications, unsavedChanges, configReadOnly } from '$lib/stores';
 	import type { LogSettings, ExperimentalSettings, Outbound } from '$lib/types';
 	import LogForm from '$lib/components/config/LogForm.svelte';
 	import ExperimentalForm from '$lib/components/config/ExperimentalForm.svelte';
@@ -124,8 +124,9 @@
 			<button
 				type="button"
 				onclick={applyChanges}
-				disabled={!hasChanges || applying}
-				class="px-4 py-2 bg-[var(--ctp-primary)] text-white rounded-lg hover:opacity-90 transition-opacity disabled:opacity-50 flex items-center gap-2"
+				disabled={!hasChanges || applying || $configReadOnly}
+				title={$configReadOnly ? $t('readOnly.saveBlocked') : ''}
+				class="px-4 py-2 bg-[var(--ctp-primary)] text-white rounded-lg hover:opacity-90 transition-opacity disabled:opacity-50 disabled:cursor-not-allowed flex items-center gap-2"
 			>
 				{#if applying}
 					<svg class="animate-spin h-4 w-4" fill="none" viewBox="0 0 24 24">

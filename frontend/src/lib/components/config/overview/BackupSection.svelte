@@ -1,7 +1,7 @@
 <script lang="ts">
 	import { t } from 'svelte-i18n';
 	import { api } from '$lib/api/client';
-	import { notifications, unsavedChanges } from '$lib/stores';
+	import { notifications, unsavedChanges, configReadOnly } from '$lib/stores';
 	import type { SingboxConfig } from '$lib/types';
 
 	let importing = $state(false);
@@ -187,8 +187,9 @@
 				{#if validationResult.valid}
 					<button
 						onclick={applyImportedConfig}
-						disabled={applying}
-						class="px-4 py-2 bg-[var(--ctp-primary)] text-white rounded-lg hover:opacity-90 disabled:opacity-50 transition-opacity flex items-center gap-2"
+						disabled={applying || $configReadOnly}
+						title={$configReadOnly ? $t('readOnly.saveBlocked') : ''}
+						class="px-4 py-2 bg-[var(--ctp-primary)] text-white rounded-lg hover:opacity-90 disabled:opacity-50 disabled:cursor-not-allowed transition-opacity flex items-center gap-2"
 					>
 						{#if applying}
 							<svg class="w-4 h-4 animate-spin" fill="none" viewBox="0 0 24 24">

@@ -2,6 +2,7 @@ package api
 
 import (
 	"net/http"
+	"strings"
 	"time"
 )
 
@@ -70,17 +71,32 @@ func (h *Handler) GetTrafficHistory(w http.ResponseWriter, r *http.Request) {
 	writeSuccess(w, out)
 }
 
-// ResetTrafficHistory wipes the traffic_minute table. Destructive — caller
-// is expected to confirm before invoking. Live counters (Clash) and the
-// sampler's in-memory state are not affected; future deltas continue to
-// accumulate from now.
+// ResetTrafficHistory wipes both traffic tables — traffic_minute (the
+// connection-level Breakdown series) and user_traffic (the per-user totals on
+// the Users page and in the subscription userinfo header). Together they are
+// the "all accumulated traffic statistics" the confirm dialog promises to
+// erase, so both are part of one user action. Destructive — caller is expected
+// to confirm before invoking. Live counters (Clash) and the sampler's
+// in-memory state are not affected; future deltas continue to accumulate from
+// now.
 func (h *Handler) ResetTrafficHistory(w http.ResponseWriter, r *http.Request) {
 	if h.traffic == nil {
 		writeError(w, http.StatusServiceUnavailable, "traffic store not initialized")
 		return
 	}
+	// Attempt both halves, then report every part that failed. Stopping after
+	// the first error — or reporting success while one table still holds data —
+	// would reproduce the exact defect this fixes: a reset the UI calls total
+	// but that silently leaves stale numbers behind.
+	var failed []string
 	if err := h.traffic.Reset(); err != nil {
-		writeError(w, http.StatusInternalServerError, err.Error())
+		failed = append(failed, "connection history: "+err.Error())
+	}
+	if err := h.traffic.ResetUsers(); err != nil {
+		failed = append(failed, "per-user totals: "+err.Error())
+	}
+	if len(failed) > 0 {
+		writeError(w, http.StatusInternalServerError, "reset traffic history — "+strings.Join(failed, "; "))
 		return
 	}
 	writeSuccess(w, map[string]string{"message": "traffic history cleared"})

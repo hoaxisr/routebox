@@ -4,6 +4,7 @@ import (
 	"context"
 	"crypto/rand"
 	"fmt"
+	"log"
 	"net/netip"
 	"os"
 	"strings"
@@ -41,7 +42,7 @@ type AWGStatus struct {
 	WANIface    string      `json:"wan_iface"`
 	NATOrphan   bool        `json:"nat_orphan"`
 	ConfigDirty bool        `json:"config_dirty"` // enabled & saved settings differ from running -> needs Apply
-	IPv6Active  bool        `json:"ipv6_active"` // broker desired AND egress preflight passed
+	IPv6Active  bool        `json:"ipv6_active"`  // broker desired AND egress preflight passed
 	LastError   string      `json:"last_error,omitempty"`
 }
 
@@ -51,7 +52,7 @@ type EnableInput struct {
 	ListenPort int         `json:"listen_port"`
 	MTU        int         `json:"mtu"`
 	DNS        []string    `json:"dns"`
-	WANIface   string      `json:"wan_iface"` // optional override; "" -> DetectWAN
+	WANIface   string      `json:"wan_iface"` // optional override; "" -> (*Manager).detectWAN
 	Obf        Obfuscation `json:"obf"`
 	ObfPreset  string      `json:"obf_preset"`
 	// HeaderProtection toggles the AWG3 header-protection key (singbox backend,
@@ -190,16 +191,35 @@ func (m *Manager) Enable(ctx context.Context, in EnableInput) error {
 		PrivateKey: priv, Address: serverIP + maskSuffix(subnet), ListenPort: port, MTU: mtu,
 		Subnet: subnet, WAN: wan, Iface: m.iface, Obf: obf,
 	}
-	if err := m.writeConfAtomic(RenderServer(sc, m.peerLines())); err != nil {
+	// The full rewrite and the commit of what it rendered from go under addMu,
+	// together. AddPeer holds that lock around a read-modify-write of the SAME
+	// file (allocate a /32 from the conf, `awg set`, rewrite without the key,
+	// append the block) and allocates from m.subnet/m.serverIP, so an unlocked
+	// Enable could drop a peer that AddPeer had already put live, or hand AddPeer
+	// the old subnet for a conf that is about to describe a different one.
+	// Committing inside the same critical section closes the second window: the
+	// file and the parameters it was rendered from become visible as one step.
+	//
+	// Lock order is addMu -> m.mu, the same as everywhere else in the package
+	// (AddPeer -> addPeerSingbox, SweepExpired's singbox branch); nothing under
+	// m.mu reaches back for addMu.
+	if err := func() error {
+		m.addMu.Lock()
+		defer m.addMu.Unlock()
+		if err := m.writeConfAtomic(RenderServer(sc, m.peerLines())); err != nil {
+			return err
+		}
+		// Persist canonical values for later peer ops.
+		m.mu.Lock()
+		defer m.mu.Unlock()
+		m.subnet, m.serverIP, m.listenPort, m.mtu, m.wan, m.dns, m.serverPriv, m.obf =
+			subnet, serverIP, port, mtu, wan, dns, priv, obf
+		m.obfPreset = in.ObfPreset
+		m.headerKey, m.headerProtection = "", false // awg3 header protection is sing-box-only; never on the kernel path
+		return nil
+	}(); err != nil {
 		return m.enableFail(err.Error())
 	}
-	// Persist canonical values for later peer ops.
-	m.mu.Lock()
-	m.subnet, m.serverIP, m.listenPort, m.mtu, m.wan, m.dns, m.serverPriv, m.obf =
-		subnet, serverIP, port, mtu, wan, dns, priv, obf
-	m.obfPreset = in.ObfPreset
-	m.headerKey, m.headerProtection = "", false // awg3 header protection is sing-box-only; never on the kernel path
-	m.mu.Unlock()
 
 	m.setPhase(PhaseStarting)
 	if err := m.iface_Up(ctx); err != nil {
@@ -214,7 +234,51 @@ func (m *Manager) Enable(ctx context.Context, in EnableInput) error {
 	m.mu.Lock()
 	m.enabled, m.lastErr, m.phase = true, "", PhaseReady
 	m.mu.Unlock()
+
+	// Sweep the live interface (kernel backend only — the singbox backend has no
+	// kernel iface to compare against): peers left behind by a crash or by manual
+	// `awg set` edits. "Ours" is conf ∪ store, so suspended peers are never touched.
+	// Best-effort by design: the tunnel is already up and serving, so neither a
+	// failed `awg show` nor a failed removal may fail Enable — but neither is
+	// swallowed either.
+	m.sweepForeignLivePeers(ctx)
 	return nil
+}
+
+// sweepForeignLivePeers is the Enable-tail entry point: it takes addMu and does
+// its own listing. SweepExpired already holds the lock and has a listing, so it
+// calls sweepForeignLivePeersLocked directly — taking addMu twice would deadlock.
+//
+// addMu is taken BEFORE the live listing, not after: AddPeer admits the peer to
+// the interface and only then does store.Put, so a listing from inside that
+// window names a live peer that no store knows yet — which reads as foreign and
+// gets stripped off, leaving a client that the panel reports as fine but that
+// can never connect until the next Enable/renew.
+func (m *Manager) sweepForeignLivePeers(ctx context.Context) {
+	m.addMu.Lock()
+	defer m.addMu.Unlock()
+
+	live, err := m.iface_ShowPeers(ctx)
+	if err != nil {
+		log.Printf("awg: could not list live peers of %s for reconcile: %v", m.iface, err)
+		return
+	}
+	m.sweepForeignLivePeersLocked(ctx, live)
+}
+
+// sweepForeignLivePeersLocked removes from the live interface every peer that is
+// neither in the rendered conf nor in the secret store. Failures are logged, not
+// escalated: this is a hygiene step, not a correctness gate for its callers.
+//
+// Caller holds addMu AND obtained live under it (see sweepForeignLivePeers for
+// why the order matters). Lock order is addMu -> store.mu, the same as AddPeer's
+// (admit -> store.Put); nothing under this lock reaches back for addMu or m.mu.
+func (m *Manager) sweepForeignLivePeersLocked(ctx context.Context, live []string) {
+	for _, pub := range m.store.Reconcile(live) {
+		if err := m.iface_RemovePeer(ctx, pub); err != nil {
+			log.Printf("awg: could not remove foreign peer %s from %s: %v", pub, m.iface, err)
+		}
+	}
 }
 
 // healthGate asserts the iface is up+listening and the RBOX-AWG-* chains exist.
@@ -239,11 +303,31 @@ func (m *Manager) teardownFail(ctx context.Context, msg string) error {
 	return fmt.Errorf("%s", msg)
 }
 
+// enableFail records a failed Enable. It writes lastErr/phase — the REPORT —
+// and deliberately leaves m.enabled alone: whether a server is being served is
+// decided by what reached the config/interface, not by the outcome of the last
+// attempt to change it. A failed re-configure of a running server used to clear
+// the flag here, which handed the 30s sweep an instruction to tear the live
+// endpoint down (renderServerSpec gates on m.enabled). Callers that DID change
+// what is served say so themselves: teardownFail after bringing the interface
+// down, restoreRenderStateLocked when putting a pre-Enable snapshot back.
 func (m *Manager) enableFail(msg string) error {
 	m.mu.Lock()
-	m.enabled, m.lastErr, m.phase = false, msg, PhaseFailed
+	m.lastErr, m.phase = msg, PhaseFailed
 	m.mu.Unlock()
 	return fmt.Errorf("%s", msg)
+}
+
+// enableFailCause is enableFail for a failure that already has an error behind
+// it: the cause is WRAPPED, not flattened into a string, so callers can still
+// classify it (a read-only config must reach the API as a conflict, not as an
+// opaque enable failure). Same hands-off treatment of m.enabled.
+func (m *Manager) enableFailCause(prefix string, cause error) error {
+	msg := prefix + ": " + cause.Error()
+	m.mu.Lock()
+	m.lastErr, m.phase = msg, PhaseFailed
+	m.mu.Unlock()
+	return fmt.Errorf("%s: %w", prefix, cause)
 }
 
 // Disable stops the interface (PostDown reverts NAT).
