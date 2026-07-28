@@ -1,11 +1,18 @@
 # RouteBox Configuration
 # =====================
 # This file configures the RouteBox WebUI application.
-# Place this file next to the routebox binary or specify path with --settings flag.
+# Search order: routebox.toml or config.toml next to the binary, then
+# /etc/routebox/routebox.toml. Or specify an explicit path with --settings.
 #
-# All paths can be absolute or relative to the binary location.
-# Settings marked with [runtime] can be changed without restart.
-# Settings marked with [restart] require application restart to take effect.
+# Prefer absolute paths; relative paths resolve against the working directory
+# of the process, not the binary location.
+#
+# Settings marked with [runtime] can be changed without restarting: either
+# via the WebUI/API, or by hand-editing this file and pressing Reload on the
+# Application settings page (POST /api/settings/reload), which re-reads the
+# file from disk. Settings marked with [restart] are only picked up at
+# application startup and require a restart. Note that RouteBox rewrites
+# this file whenever settings change in the WebUI.
 
 # =============================================================================
 # GeoIP Configuration
@@ -19,6 +26,7 @@
 # Default: IPLocate.io free database (auto-downloaded)
 # Alternatives: IPInfo Lite, MaxMind GeoLite2
 # Leave empty to disable GeoIP features.
+# Can be overridden with the --geoip flag.
 # [restart]
 path = "/etc/routebox/geoip.mmdb"
 
@@ -27,23 +35,12 @@ path = "/etc/routebox/geoip.mmdb"
 # [runtime]
 enabled = true
 
-# Automatically reload database when file changes.
-# Useful for automated database updates via cron.
-# [runtime]
-auto_reload = false
-
 # =============================================================================
 # User Interface
 # =============================================================================
 # UI appearance and behavior settings.
 
 [ui]
-# Default color theme for new users.
-# Values: "dark", "light", "system"
-# Users can override this in their browser.
-# [runtime]
-theme = "system"
-
 # Interface language.
 # Values: "en", "ru"
 # [runtime]
@@ -53,11 +50,6 @@ language = "en"
 # Values: "bits", "bytes"
 # [runtime]
 speed_unit = "bytes"
-
-# Date/time format.
-# Values: "relative" (5m ago), "absolute" (14:32:15), "both"
-# [runtime]
-time_format = "relative"
 
 # =============================================================================
 # Monitoring
@@ -70,73 +62,64 @@ time_format = "relative"
 # [runtime]
 enrichment_enabled = true
 
-# Maximum number of closed connections to keep in history.
-# Higher values use more memory. Set to 0 to disable history.
-# [runtime]
-max_closed_connections = 500
-
-# Interval for polling status when WebSocket is unavailable (milliseconds).
-# [runtime]
-poll_interval_ms = 2000
-
-# Auto-refresh interval for proxies page (milliseconds).
-# Set to 0 to disable auto-refresh.
-# [runtime]
-proxies_refresh_ms = 5000
-
-# =============================================================================
-# Logging
-# =============================================================================
-# RouteBox application logging (not sing-box logs).
-
-[logging]
-# Log level for RouteBox application.
-# Values: "debug", "info", "warn", "error"
-# [restart]
-level = "info"
-
-# Log output destination.
-# Values: "stdout", "stderr", or a file path
-# [restart]
-output = "stdout"
-
-# Include timestamps in log output.
-# [restart]
-timestamps = true
-
-# Log format.
-# Values: "text", "json"
-# [restart]
-format = "text"
-
 # =============================================================================
 # Security
 # =============================================================================
 # Access control and security settings.
 
 [security]
-# Enable basic authentication for the web interface.
-# When enabled, users must provide username/password.
-# [restart]
+# Enable authentication for the web interface.
+# When enabled, users must log in with username/password.
+# In VPS mode auth is forced on: if at startup it is disabled, or enabled
+# but no password has been set, RouteBox generates admin credentials and
+# prints them to the console.
+# [runtime]
 auth_enabled = false
 
-# Username for basic auth (only used if auth_enabled = true).
-# [restart]
+# Username for panel login (only used if auth_enabled = true).
+# [runtime]
 auth_username = ""
 
-# Password for basic auth (only used if auth_enabled = true).
-# Consider using environment variable ROUTEBOX_AUTH_PASSWORD instead.
-# [restart]
+# Password for panel login. On startup any plaintext value here is hashed
+# (bcrypt), stored as auth_password_hash, and this field is cleared from the
+# file. To reset a forgotten password, write a new plaintext value here and
+# restart.
+# [runtime]
 auth_password = ""
 
-# Allowed origins for CORS (comma-separated).
-# Use "*" to allow all origins (default, for local network use).
+# Allowed origin for cross-origin (CORS) requests to the API.
+# Empty (default) disables CORS entirely — the panel is same-origin only.
+# Set to "*" to allow all origins, or to a specific origin URL.
 # [restart]
-cors_origins = "*"
+cors_origins = ""
 
-# Session timeout in minutes (0 = no timeout).
+# Session lifetime in minutes. Values <= 0 fall back to 12 hours.
+# Default: 720 (12 hours).
 # [runtime]
-session_timeout_minutes = 0
+session_timeout_minutes = 720
+
+# =============================================================================
+# Server Mode
+# =============================================================================
+# Panel operating mode and public address for client share-links.
+
+[server]
+# Operating mode.
+# Values: "router" (local network gateway, default), "vps" (public server
+# panel with forced auth and user/subscription management).
+# Can be overridden with the --mode flag.
+# [restart]
+mode = "router"
+
+# Public domain or IP used in client share-links and subscription URLs.
+# Also the certificate domain when ACME is enabled. Empty = unset.
+# [runtime] for share-links/subscriptions; changing the ACME certificate
+# domain (or the AWG server host fallback) takes effect after a restart.
+public_host = ""
+
+# External panel port used in subscription URLs (0 = default/443).
+# [runtime]
+public_port = 0
 
 # =============================================================================
 # Network
@@ -147,20 +130,44 @@ session_timeout_minutes = 0
 # HTTP listen address.
 # Use "0.0.0.0:8080" to listen on all interfaces.
 # Use "127.0.0.1:8080" to only allow local connections.
+# Can be overridden with the --listen flag.
 # [restart]
 listen = "0.0.0.0:8080"
 
 # Read timeout for HTTP requests (seconds).
+# Write timeout is intentionally unlimited: the monitoring WebSocket streams
+# are long-lived and would be cut off by a global write deadline.
 # [restart]
 read_timeout_sec = 30
-
-# Write timeout for HTTP responses (seconds).
-# [restart]
-write_timeout_sec = 30
 
 # Enable gzip compression for responses.
 # [restart]
 compression_enabled = true
+
+# Serve the panel over HTTPS with a manually provided certificate.
+# Both paths must be set; ignored when acme_enabled = true.
+# [restart]
+tls_cert_path = ""
+tls_key_path = ""
+
+# Embedded ACME (Let's Encrypt): issue and renew the panel certificate
+# in-process. Requires server.public_host to be a real domain pointing at
+# this machine and port 80 reachable for the HTTP-01 challenge.
+# [restart]
+acme_enabled = false
+
+# Contact email for the Let's Encrypt account.
+# [restart]
+acme_email = ""
+
+# Use the Let's Encrypt staging directory (for testing; issues untrusted
+# certificates but avoids production rate limits).
+# [restart]
+acme_staging = false
+
+# Directory for cached certificates and the ACME account key.
+# [restart]
+acme_cache_dir = "/etc/routebox/acme"
 
 # =============================================================================
 # Sing-box Integration
@@ -170,23 +177,23 @@ compression_enabled = true
 [singbox]
 # Path to sing-box configuration file.
 # Leave empty for auto-detection from running process.
+# Can be overridden with the --config flag.
 # [restart]
 config_path = ""
 
 # Override Clash API address.
 # Leave empty to auto-detect from sing-box config.
 # Format: "host:port" (e.g., "127.0.0.1:9090")
+# Can be overridden with the --clash flag.
 # [restart]
 clash_api = ""
 
-# Binary name to search for.
+# Listen address for the per-user traffic stats gRPC service (v2ray_api)
+# that RouteBox writes into the sing-box config and polls. Must be a
+# loopback address; non-loopback values are reset to the default.
+# Empty is equivalent to the default "127.0.0.1:8081".
 # [restart]
-binary_name = "amnezia-box"
-
-# Systemd service name (if managed by systemd).
-# Leave empty for auto-detection.
-# [restart]
-service_name = ""
+v2ray_api = "127.0.0.1:8081"
 
 # =============================================================================
 # Advanced
@@ -194,23 +201,27 @@ service_name = ""
 # Advanced settings for power users.
 
 [advanced]
-# Enable debug endpoints (/api/debug/*).
-# WARNING: May expose sensitive information.
-# [restart]
-debug_endpoints = false
-
-# Enable pprof profiling endpoints.
-# [restart]
-pprof_enabled = false
-
-# Maximum request body size in bytes (default: 10MB).
-# [restart]
-max_body_size = 10485760
-
-# WebSocket ping interval (seconds).
+# WebSocket ping interval for monitoring streams (seconds).
 # [runtime]
 ws_ping_interval_sec = 30
 
 # WebSocket pong timeout (seconds).
 # [runtime]
 ws_pong_timeout_sec = 10
+
+# =============================================================================
+# Updates
+# =============================================================================
+
+[updates]
+# Check GitHub daily for new RouteBox / amnezia-box releases and show
+# available updates in the WebUI.
+# [runtime]
+auto_check = true
+
+# =============================================================================
+# AmneziaWG Server
+# =============================================================================
+# The [awg] section (RouteBox-managed AmneziaWG server interface) is created
+# and maintained by the WebUI (/config/awg). Do not hand-edit it here —
+# configure the AWG server through the panel instead.
