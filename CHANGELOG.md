@@ -6,6 +6,13 @@ All notable changes to RouteBox are documented here.
 
 ### Fixed
 
+- **A QUIC inbound can now share a port with a TCP one** ([#37](https://github.com/hoaxisr/routebox/issues/37)).
+  443 is the port that survives hostile networks, so a hysteria2 or UDP-transport mieru inbound
+  belongs there next to vless or trojan — they bind different sockets. Both port checks compared
+  only address and port and refused the combination. They now also compare the protocol each
+  inbound actually binds; a genuine double bind still fails, and any inbound type the table does
+  not know is treated as binding both, because a wrong "no conflict" means amnezia-box fails to
+  reload.
 - **Two quick actions on the rule list can no longer edit the wrong rule.** Rules are addressed by
   their position, and a position captured when you click stops being true as soon as another change
   lands — so changing a destination while a drag was still in flight could silently apply to a

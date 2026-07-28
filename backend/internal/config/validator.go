@@ -133,9 +133,12 @@ func (m *Manager) Validate(config map[string]interface{}) []string {
 		// bucket via normalizeListenAddr, so an inbound the panel sets to "::" collides
 		// with an older/hand-made one that omits listen on the same port (both bind the
 		// same wildcard at runtime). Distinct explicit IPs on the same port are allowed.
+		// The L4 protocol is part of the key too (inboundNetworks): a QUIC inbound and
+		// a TCP one can share 443, which is exactly the port operators want to reuse.
 		type addrKey struct {
-			listen string
-			port   float64
+			listen  string
+			port    float64
+			network string
 		}
 		seenPorts := map[addrKey]string{} // key -> first inbound tag
 		for _, ib := range inbounds {
@@ -150,11 +153,17 @@ func (m *Manager) Validate(config map[string]interface{}) []string {
 			listen, _ := obj["listen"].(string)
 			listen = normalizeListenAddr(listen)
 			tag, _ := obj["tag"].(string)
-			key := addrKey{listen: listen, port: port}
-			if prev, dup := seenPorts[key]; dup {
-				errors = append(errors, fmt.Sprintf("inbounds %q and %q share listen %s:%d (ports must be unique across inbounds)", prev, tag, listen, int(port)))
-			} else {
-				seenPorts[key] = tag
+			reported := false
+			for network := range inboundNetworks(obj) {
+				key := addrKey{listen: listen, port: port, network: network}
+				if prev, dup := seenPorts[key]; dup {
+					if !reported { // one message per inbound, not one per protocol
+						errors = append(errors, fmt.Sprintf("inbounds %q and %q share listen %s:%d/%s (ports must be unique across inbounds using the same protocol)", prev, tag, listen, int(port), network))
+						reported = true
+					}
+				} else {
+					seenPorts[key] = tag
+				}
 			}
 		}
 	}

@@ -56,6 +56,49 @@ func normalizeListenAddr(s string) string {
 	}
 }
 
+// inboundNetworks reports which L4 protocols an inbound actually binds, so two
+// inbounds can share a port when they cannot possibly contend for the same
+// socket. 443 is the port that survives hostile networks, and operators want a
+// QUIC inbound there next to the TCP one — which a port-only check forbade.
+//
+// The table follows what the fork's inbounds register with the shared listener
+// (protocol/*/inbound.go: `Network: []string{...}`), plus the QUIC inbounds,
+// which bind UDP themselves. mieru is the odd one: it declares both but never
+// starts that listener — its server binds one protocol, picked by `transport`.
+//
+// Anything not listed counts as binding BOTH. A wrong "no conflict" here is two
+// inbounds fighting for a socket and amnezia-box failing to reload, so an
+// unknown type must stay conservative.
+func inboundNetworks(inbound map[string]interface{}) map[string]bool {
+	both := map[string]bool{"tcp": true, "udp": true}
+	typ, _ := inbound["type"].(string)
+	switch typ {
+	case "vless", "trojan", "vmess", "http", "socks", "mixed", "anytls", "shadowtls", "snell", "naive":
+		return map[string]bool{"tcp": true}
+	case "hysteria2", "tuic":
+		return map[string]bool{"udp": true}
+	case "mieru":
+		switch tr, _ := inbound["transport"].(string); tr {
+		case "TCP":
+			return map[string]bool{"tcp": true}
+		case "UDP":
+			return map[string]bool{"udp": true}
+		}
+		return both // no/!invalid transport: the inbound is invalid anyway, stay strict
+	}
+	return both
+}
+
+// networksOverlap reports whether two inbounds could contend for the same socket.
+func networksOverlap(a, b map[string]bool) bool {
+	for net := range a {
+		if b[net] {
+			return true
+		}
+	}
+	return false
+}
+
 // listenPortConflict reports an error if inbound's (listen, listen_port) collides with
 // another inbound in arr, skipping the entry whose tag == selfTag (the one being
 // updated). This mirrors the cross-inbound check in the full-config validator so the
@@ -69,6 +112,7 @@ func listenPortConflict(arr []interface{}, inbound map[string]interface{}, selfT
 	}
 	listen, _ := inbound["listen"].(string)
 	listen = normalizeListenAddr(listen)
+	nets := inboundNetworks(inbound)
 	for _, item := range arr {
 		obj, ok := item.(map[string]interface{})
 		if !ok {
@@ -85,8 +129,11 @@ func listenPortConflict(arr []interface{}, inbound map[string]interface{}, selfT
 		if normalizeListenAddr(l) != listen {
 			continue
 		}
+		if !networksOverlap(nets, inboundNetworks(obj)) {
+			continue // e.g. a QUIC inbound next to a TCP one on 443
+		}
 		other, _ := obj["tag"].(string)
-		return fmt.Errorf("listen %s:%d is already used by inbound %q (ports must be unique across inbounds)", listen, int(port), other)
+		return fmt.Errorf("listen %s:%d is already used by inbound %q (ports must be unique across inbounds using the same protocol)", listen, int(port), other)
 	}
 	return nil
 }
