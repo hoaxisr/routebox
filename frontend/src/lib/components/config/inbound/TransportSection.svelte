@@ -7,7 +7,9 @@
 	}
 	let { transport = $bindable() }: Props = $props();
 
-	const types: TransportType[] = ['raw', 'ws', 'grpc', 'httpupgrade', 'xhttp'];
+	// No xhttp: amnezia-box implements it for OUTBOUNDS only (transport/v2rayxhttp
+	// has no server), so an inbound using it dies at startup.
+	const types: TransportType[] = ['raw', 'ws', 'grpc', 'httpupgrade'];
 </script>
 
 <div class="bg-[var(--ctp-surface0)] rounded-lg p-4 space-y-4">

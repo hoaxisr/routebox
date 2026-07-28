@@ -231,21 +231,24 @@ func TestValidateInboundTransportBadType(t *testing.T) {
 	}
 }
 
-func TestValidateInboundTransportXHTTPAccepted(t *testing.T) {
+func TestValidateInboundTransportXHTTPRejected(t *testing.T) {
 	m := &Manager{}
 	cfg := map[string]interface{}{
 		"inbounds": []interface{}{
 			map[string]interface{}{
 				"type": "vless", "tag": "v", "listen_port": float64(443),
 				"tls":       map[string]interface{}{"reality": map[string]interface{}{"enabled": true}},
-				"transport": map[string]interface{}{"type": "xhttp", "path": "/x", "host": "cdn.ex.com"},
+				"transport": map[string]interface{}{"type": "xhttp", "path": "/x", "host": "cdn.ex.com", "x_padding_bytes": XHTTPDefaultPadding},
 				"users":     []interface{}{map[string]interface{}{"uuid": "u1"}},
 			},
 		},
 		"outbounds": []interface{}{},
 	}
-	if errs := m.Validate(cfg); hasErrContaining(errs, "transport type") {
-		t.Fatalf("xhttp transport should be accepted, got: %v", errs)
+	// This test used to assert the opposite. amnezia-box implements xhttp for
+	// outbounds only — transport/v2rayxhttp has no server — so an inbound using
+	// it fails at startup, and the panel has to say so before apply.
+	if errs := m.Validate(cfg); !hasErrContaining(errs, "xhttp cannot be used on an inbound") {
+		t.Fatalf("xhttp inbound should be rejected, got: %v", errs)
 	}
 }
 

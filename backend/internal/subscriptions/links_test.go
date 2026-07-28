@@ -502,3 +502,32 @@ func TestParseLinks(t *testing.T) {
 		}
 	})
 }
+
+// An xhttp transport built from an imported link must carry x_padding_bytes:
+// without it the fork refuses to load the whole config, so one imported
+// subscription entry takes down every proxy in it.
+func TestParsedXHTTPCarriesPadding(t *testing.T) {
+	cases := map[string]string{
+		"vless":  "vless://11111111-1111-1111-1111-111111111111@example.com:443?type=xhttp&path=%2Fx&host=cdn.ex.com&security=tls#node",
+		"trojan": "trojan://secret@example.com:443?type=xhttp&path=%2Fx&host=cdn.ex.com&security=tls#node",
+	}
+	for name, uri := range cases {
+		t.Run(name, func(t *testing.T) {
+			nodes, skipped := ParseLinks([]string{uri})
+			if skipped != 0 || len(nodes) != 1 {
+				t.Fatalf("ParseLinks skipped=%d nodes=%d, want 0/1", skipped, len(nodes))
+			}
+			ob := nodes[0].Outbound
+			tr, ok := ob["transport"].(map[string]interface{})
+			if !ok {
+				t.Fatalf("no transport in %#v", ob)
+			}
+			if tr["type"] != "xhttp" {
+				t.Fatalf("transport type = %v, want xhttp", tr["type"])
+			}
+			if got := tr["x_padding_bytes"]; got != "100-1000" {
+				t.Fatalf("x_padding_bytes = %v, want \"100-1000\"", got)
+			}
+		})
+	}
+}

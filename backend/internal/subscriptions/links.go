@@ -6,6 +6,8 @@ import (
 	"net/url"
 	"strconv"
 	"strings"
+
+	"routebox/backend/internal/config"
 )
 
 // ParsedNode is a single parsed outbound plus its raw display name (from #name).
@@ -136,7 +138,13 @@ func parseVless(uri string) (map[string]interface{}, string, error) {
 		}
 		ob["transport"] = tr
 	case "xhttp":
-		tr := map[string]interface{}{"type": "xhttp", "path": orElse(params.Get("path"), "/")}
+		// x_padding_bytes is mandatory: the fork decodes it without a default and
+		// refuses the WHOLE config when it is absent, so one imported node would
+		// take down every proxy in the subscription.
+		tr := map[string]interface{}{
+			"type": "xhttp", "path": orElse(params.Get("path"), "/"),
+			"x_padding_bytes": config.XHTTPDefaultPadding,
+		}
 		if h := params.Get("host"); h != "" {
 			tr["host"] = h
 		}
@@ -197,7 +205,13 @@ func parseTrojan(uri string) (map[string]interface{}, string, error) {
 		}
 		ob["transport"] = tr
 	case "xhttp":
-		tr := map[string]interface{}{"type": "xhttp", "path": orElse(params.Get("path"), "/")}
+		// x_padding_bytes is mandatory: the fork decodes it without a default and
+		// refuses the WHOLE config when it is absent, so one imported node would
+		// take down every proxy in the subscription.
+		tr := map[string]interface{}{
+			"type": "xhttp", "path": orElse(params.Get("path"), "/"),
+			"x_padding_bytes": config.XHTTPDefaultPadding,
+		}
 		if h := params.Get("host"); h != "" {
 			tr["host"] = h
 		}

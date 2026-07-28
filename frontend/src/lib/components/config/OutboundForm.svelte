@@ -10,6 +10,7 @@
 		validateNonEmptyArray,
 		hasValidationErrors
 	} from '$lib/utils';
+	import { XHTTP_DEFAULT_PADDING } from '$lib/utils/xhttp';
 	import { t } from 'svelte-i18n';
 
 	// Sub-components
@@ -491,7 +492,8 @@
 					}
 				} else if (vlessTransport.type === 'xhttp') {
 					// xHTTP (sing-box awg3-xhttp fork): top-level host string like httpupgrade; mode defaults to auto.
-					ob.transport = { type: 'xhttp', path: vlessTransport.path || '/' };
+					// x_padding_bytes is mandatory — see XHTTP_DEFAULT_PADDING.
+					ob.transport = { type: 'xhttp', path: vlessTransport.path || '/', x_padding_bytes: XHTTP_DEFAULT_PADDING };
 					if (vlessTransport.host) {
 						(ob.transport as unknown as Record<string, unknown>).host = vlessTransport.host;
 					}

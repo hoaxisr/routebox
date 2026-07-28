@@ -340,6 +340,9 @@ export interface TransportConfig {
 	service_name?: string;
 	idle_timeout?: string;
 	ping_timeout?: string;
+	// xhttp only, and NOT optional there: the fork refuses to load a config whose
+	// xhttp transport has no padding range. See XHTTP_DEFAULT_PADDING.
+	x_padding_bytes?: string;
 }
 
 // Obfuscation configuration for Hysteria2

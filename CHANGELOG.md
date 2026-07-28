@@ -17,6 +17,20 @@ All notable changes to RouteBox are documented here.
 
 ### Fixed
 
+- **xHTTP outbounds work at all now.** Every xhttp transport the panel wrote was missing
+  `x_padding_bytes`, and amnezia-box refuses to load a config without it — the field is declared
+  with no default and its check rejects a zero range, so the whole config died at apply with
+  `x_padding_bytes cannot be disabled`, naming a file the operator never touched. The panel now
+  writes the fork's own default range (`100-1000`) wherever it builds an xhttp transport — the
+  outbound form and both subscription-link importers — and refuses a config that lacks it with a
+  message naming the field, instead of letting the failure surface at apply.
+- **xHTTP is no longer offered as a server inbound transport.** amnezia-box implements xhttp for
+  outbounds only: `transport/v2rayxhttp` ships a client and no server, and the server-transport
+  factory has no xhttp branch, so an inbound configured with it died at startup with
+  `create server transport: xhttp: unknown transport type`. The choice could never work. It is gone
+  from the picker, and a config still carrying such an inbound is now rejected with an explanation
+  rather than an opaque startup failure. xhttp remains fully supported for outbounds, which is what
+  it was ported for — dialling Xray servers.
 - **A QUIC inbound can now share a port with a TCP one** ([#37](https://github.com/hoaxisr/routebox/issues/37)).
   443 is the port that survives hostile networks, so a hysteria2 or UDP-transport mieru inbound
   belongs there next to vless or trojan — they bind different sockets. Both port checks compared

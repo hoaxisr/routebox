@@ -1,11 +1,14 @@
 import type { Inbound, ServerInboundUser, ServerTlsConfig } from '$lib/types';
 import { parseMieruListenPorts, formatMieruListenPorts } from './mieruPorts';
+import { XHTTP_DEFAULT_PADDING } from './xhttp';
 
 export type TlsMode = 'acme' | 'reality' | 'manual' | 'panel';
 export type ServerInboundType = 'vless' | 'trojan' | 'naive' | 'hysteria2' | 'mieru';
 
 export const PANEL_CERT_PATH = '/etc/routebox/panel-cert/fullchain.pem';
 export const PANEL_KEY_PATH = '/etc/routebox/panel-cert/key.pem';
+// xhttp is deliberately absent: it is an OUTBOUND-only transport in the fork.
+// Existing configs may still carry one, so parseServerInbound keeps reading it.
 export type TransportType = 'raw' | 'ws' | 'grpc' | 'httpupgrade' | 'xhttp';
 
 export interface ServerTransportState {
@@ -116,7 +119,12 @@ export function buildServerInbound(s: ServerFormState): Inbound {
 			ib.transport = hu as unknown as Inbound['transport'];
 		} else if (tr.type === 'xhttp') {
 			// xHTTP (awg3-xhttp fork): top-level host string like httpupgrade; mode defaults to auto.
-			const xh: Record<string, unknown> = { type: 'xhttp', path: tr.path?.trim() || '/' };
+			// x_padding_bytes is mandatory — see XHTTP_DEFAULT_PADDING.
+			const xh: Record<string, unknown> = {
+				type: 'xhttp',
+				path: tr.path?.trim() || '/',
+				x_padding_bytes: XHTTP_DEFAULT_PADDING
+			};
 			if (tr.host?.trim()) xh.host = tr.host.trim();
 			ib.transport = xh as unknown as Inbound['transport'];
 		} else if (tr.type === 'grpc') {

@@ -90,9 +90,17 @@ describe('buildServerInbound', () => {
 			...base,
 			transport: { type: 'xhttp', path: '/dl', host: 'cdn.example.com' }
 		});
-		expect(ib.transport).toEqual({ type: 'xhttp', path: '/dl', host: 'cdn.example.com' });
+		// x_padding_bytes is not decoration: without it the fork refuses to load
+		// the whole config ("x_padding_bytes cannot be disabled").
+		expect(ib.transport).toEqual({
+			type: 'xhttp',
+			path: '/dl',
+			host: 'cdn.example.com',
+			x_padding_bytes: '100-1000'
+		});
 		// non-raw transport strips xtls-rprx-vision flow from users
 		expect(ib.users?.[0]).toEqual({ name: 'phone', uuid: 'U1' });
+		// The form state itself has no padding field — it is emitted, not edited.
 		const state = parseServerInbound(ib);
 		expect(state.transport).toEqual({ type: 'xhttp', path: '/dl', host: 'cdn.example.com' });
 	});
