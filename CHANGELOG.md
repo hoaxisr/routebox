@@ -6,6 +6,13 @@ All notable changes to RouteBox are documented here.
 
 ### Fixed
 
+- **Two quick actions on the rule list can no longer edit the wrong rule.** Rules are addressed by
+  their position, and a position captured when you click stops being true as soon as another change
+  lands — so changing a destination while a drag was still in flight could silently apply to a
+  different rule, leaving the list on screen and the config on disk disagreeing. Writes now run one
+  at a time and each re-locates its rule when its turn comes; if the rule is gone by then, the panel
+  says so instead of guessing. Applies to routing rules and DNS rules alike. Cross-tab edits are
+  still not coordinated — a second browser tab remains a way to get stale positions.
 - **Dragging a rule DOWN now puts it where you dropped it.** The panel and the backend disagreed
   about what the destination index means: the backend decremented it for downward moves, so every
   downward drag landed one slot short — moving a rule down by one was a silent no-op — and the last

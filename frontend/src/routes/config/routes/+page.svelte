@@ -16,6 +16,7 @@
 		applyMappingOutbound,
 		reorderArray
 	} from '$lib/utils/routeRules';
+	import { createSerialQueue } from '$lib/utils/serialQueue';
 
 	type Tab = 'rules' | 'inspector';
 	let activeTab = $state<Tab>('rules');
@@ -107,65 +108,113 @@
 	// their picker CREATES the mapping (appended last, then draggable).
 	let unassignedRuleSets = $derived(ruleSets.filter((rs) => !assignedTags.has(rs.tag)));
 
+	// Every rule mutation is addressed by POSITION, and a position captured when
+	// the user clicked stops being true as soon as another mutation lands. Two
+	// overlapping actions — switching a destination while a drag is still in
+	// flight — used to edit a different rule than the one clicked, silently.
+	// Writes run one at a time, and each re-locates its rule by identity when its
+	// turn comes, so the index sent is the index the rule has right now.
+	const runExclusive = createSerialQueue();
+	// Resolved at component scope: stores cannot be subscribed inside the queued
+	// callbacks below.
+	let ruleGoneMessage = $derived($t('routes.ruleGone'));
+
+	/** Runs fn with the rule's CURRENT position, or reports that it is gone. */
+	function withRule<T>(rule: RouteRule, fn: (index: number) => Promise<T>): Promise<T | void> {
+		return runExclusive(async () => {
+			const index = rules.indexOf(rule);
+			if (index < 0) {
+				// Deleted, or the list was reloaded, while this action waited.
+				notifications.error(ruleGoneMessage);
+				return;
+			}
+			return fn(index);
+		});
+	}
+
 	// Route Rule handlers
 	async function handleCreateRule(rule: RouteRule) {
-		try {
-			await api.createRule(rule);
-			rules = [...rules, rule];
-			showRuleForm = false;
-			hasChanges = true;
-			unsavedChanges.markChanged('Routes', 'Created routing rule');
-			notifications.success($t('routes.ruleCreated'));
-		} catch (e) {
-			notifications.error(`${e}`);
-		}
+		// Appends shift no existing index, but still queue: local state must be
+		// applied in the same order the server saw it.
+		await runExclusive(async () => {
+			try {
+				await api.createRule(rule);
+				rules = [...rules, rule];
+				showRuleForm = false;
+				hasChanges = true;
+				unsavedChanges.markChanged('Routes', 'Created routing rule');
+				notifications.success($t('routes.ruleCreated'));
+			} catch (e) {
+				notifications.error(`${e}`);
+			}
+		});
 	}
 
 	async function handleUpdateRule(rule: RouteRule) {
 		if (editingRuleIndex === null) return;
-		try {
-			await api.updateRule(editingRuleIndex, rule);
-			rules = rules.map((r, i) => i === editingRuleIndex ? rule : r);
-			showRuleForm = false;
-			hasChanges = true;
-			unsavedChanges.markChanged('Routes', `Updated rule #${editingRuleIndex + 1}`);
-			editingRuleIndex = null;
-			notifications.success($t('routes.ruleUpdated'));
-		} catch (e) {
-			notifications.error(`${e}`);
-		}
+		// The rule's identity is captured here; editingRuleIndex must NOT be
+		// cleared before the write succeeds — the modal picks its save handler by
+		// it, so a failed update would retry as a CREATE and duplicate the rule.
+		const target = rules[editingRuleIndex];
+		await withRule(target, async (index) => {
+			try {
+				await api.updateRule(index, rule);
+				rules = rules.map((r, i) => i === index ? rule : r);
+				showRuleForm = false;
+				editingRuleIndex = null;
+				hasChanges = true;
+				unsavedChanges.markChanged('Routes', `Updated rule #${index + 1}`);
+				notifications.success($t('routes.ruleUpdated'));
+			} catch (e) {
+				notifications.error(`${e}`);
+			}
+		});
 	}
 
 	async function handleDeleteRule(index: number) {
 		// A row drawn as a rule-set is confirmed BY TAG: "#7" is a number that
 		// just moved if anything was dragged, and it reads as if the rule-set
 		// itself were being deleted (only its route rule is).
-		const tag = simpleRuleSetTag(rules[index]);
+		const target = rules[index];
+		const tag = simpleRuleSetTag(target);
 		const prompt = tag
 			? $t('routes.deleteRuleSetMapping', { values: { tag } })
 			: $t('routes.deleteRuleConfirm', { values: { number: index + 1 } });
 		if (!confirm(prompt)) return;
-		try {
-			await api.deleteRule(index);
-			rules = rules.filter((_, i) => i !== index);
-			hasChanges = true;
-			unsavedChanges.markChanged('Routes', tag ? `Removed route for ${tag}` : `Deleted rule #${index + 1}`);
-			notifications.success($t('routes.ruleDeleted'));
-		} catch (e) {
-			notifications.error(`${e}`);
-		}
+		await withRule(target, async (i) => {
+			try {
+				await api.deleteRule(i);
+				rules = rules.filter((_, j) => j !== i);
+				hasChanges = true;
+				unsavedChanges.markChanged('Routes', tag ? `Removed route for ${tag}` : `Deleted rule #${i + 1}`);
+				notifications.success($t('routes.ruleDeleted'));
+			} catch (e) {
+				notifications.error(`${e}`);
+			}
+		});
 	}
 
 	async function handleReorder(from: number, to: number) {
-		try {
-			await api.reorderRules(from, to);
-			// Same contract as the backend: `to` is where the rule ends up.
-			rules = reorderArray(rules, from, to);
-			hasChanges = true;
-			unsavedChanges.markChanged('Routes', 'Reordered rules');
-		} catch (e) {
-			notifications.error(`${e}`);
-		}
+		// Both ends are positions: remember the rule being moved AND the one whose
+		// place it should take, then re-locate both when the turn comes.
+		const moved = rules[from];
+		const target = rules[to];
+		await withRule(moved, async (f) => {
+			const t = rules.indexOf(target);
+			if (t < 0) {
+				notifications.error(ruleGoneMessage);
+				return;
+			}
+			try {
+				await api.reorderRules(f, t);
+				// Same contract as the backend: `to` is where the rule ends up.
+				rules = reorderArray(rules, f, t);
+				hasChanges = true;
+				unsavedChanges.markChanged('Routes', 'Reordered rules');
+			} catch (e) {
+				notifications.error(`${e}`);
+			}
+		});
 	}
 
 	function openEditRule(index: number) {
@@ -184,34 +233,38 @@
 
 	async function handleTemplateSelect(ruleSet: RuleSet, rule: RouteRule) {
 		showTemplates = false;
-		try {
-			// Create rule set first
-			await api.createRuleSet(ruleSet);
-			ruleSets = [...ruleSets, ruleSet];
+		await runExclusive(async () => {
+			try {
+				// Create rule set first
+				await api.createRuleSet(ruleSet);
+				ruleSets = [...ruleSets, ruleSet];
 
-			// Then create the rule
-			await api.createRule(rule);
-			rules = [...rules, rule];
+				// Then create the rule
+				await api.createRule(rule);
+				rules = [...rules, rule];
 
-			hasChanges = true;
-			unsavedChanges.markChanged('Routes', `Added ${ruleSet.tag} from template`);
-			notifications.success($t('routes.ruleSetAdded', { values: { tag: ruleSet.tag } }));
-		} catch (e) {
-			notifications.error(`${e}`);
-		}
+				hasChanges = true;
+				unsavedChanges.markChanged('Routes', `Added ${ruleSet.tag} from template`);
+				notifications.success($t('routes.ruleSetAdded', { values: { tag: ruleSet.tag } }));
+			} catch (e) {
+				notifications.error(`${e}`);
+			}
+		});
 	}
 
 	async function handleWizardSave(rule: RouteRule) {
 		showWizard = false;
-		try {
-			await api.createRule(rule);
-			rules = [...rules, rule];
-			hasChanges = true;
-			unsavedChanges.markChanged('Routes', 'Created rule via wizard');
-			notifications.success($t('routes.ruleCreated'));
-		} catch (e) {
-			notifications.error(`${e}`);
-		}
+		await runExclusive(async () => {
+			try {
+				await api.createRule(rule);
+				rules = [...rules, rule];
+				hasChanges = true;
+				unsavedChanges.markChanged('Routes', 'Created rule via wizard');
+				notifications.success($t('routes.ruleCreated'));
+			} catch (e) {
+				notifications.error(`${e}`);
+			}
+		});
 	}
 
 	function handleRuleSetCreated(ruleSet: RuleSet) {
@@ -223,36 +276,41 @@
 	// Inline outbound switch on a rule-set row of the ordered list. The rule keeps
 	// its position: only its destination changes.
 	async function handleMappingOutboundChange(index: number, newOutbound: string) {
-		const updatedRule = applyMappingOutbound(rules[index], newOutbound);
-		const tag = simpleRuleSetTag(rules[index]);
-		try {
-			await api.updateRule(index, updatedRule);
-			rules = rules.map((r, i) => i === index ? updatedRule : r);
-			hasChanges = true;
-			unsavedChanges.markChanged('Routes', `Changed outbound for ${tag ?? `rule #${index + 1}`}`);
-		} catch (e) {
-			// The select is one-way bound, so a failed write would leave the
-			// user's choice on screen while the rule is unchanged. Re-assigning
-			// forces it back to what the config actually says.
-			rules = [...rules];
-			notifications.error(`${e}`);
-		}
+		const target = rules[index];
+		const tag = simpleRuleSetTag(target);
+		await withRule(target, async (i) => {
+			const updatedRule = applyMappingOutbound(rules[i], newOutbound);
+			try {
+				await api.updateRule(i, updatedRule);
+				rules = rules.map((r, j) => j === i ? updatedRule : r);
+				hasChanges = true;
+				unsavedChanges.markChanged('Routes', `Changed outbound for ${tag ?? `rule #${i + 1}`}`);
+			} catch (e) {
+				// The select is one-way bound, so a failed write would leave the
+				// user's choice on screen while the rule is unchanged. Re-assigning
+				// forces it back to what the config actually says.
+				rules = [...rules];
+				notifications.error(`${e}`);
+			}
+		});
 	}
 
 	// Assigning an unassigned rule-set appends the mapping at the END of the
 	// rules array — last priority, then draggable anywhere like any other rule.
 	async function handleAssignRuleSet(ruleSetTag: string, newOutbound: string) {
 		const rule = applyMappingOutbound({ rule_set: [ruleSetTag] }, newOutbound);
-		try {
-			await api.createRule(rule);
-			rules = [...rules, rule];
-			hasChanges = true;
-			unsavedChanges.markChanged('Routes', `Added route for ${ruleSetTag}`);
-		} catch (e) {
-			// Reset the picker: nothing was created (see handleMappingOutboundChange).
-			ruleSets = [...ruleSets];
-			notifications.error(`${e}`);
-		}
+		await runExclusive(async () => {
+			try {
+				await api.createRule(rule);
+				rules = [...rules, rule];
+				hasChanges = true;
+				unsavedChanges.markChanged('Routes', `Added route for ${ruleSetTag}`);
+			} catch (e) {
+				// Reset the picker: nothing was created (see handleMappingOutboundChange).
+				ruleSets = [...ruleSets];
+				notifications.error(`${e}`);
+			}
+		});
 	}
 
 	// Settings handlers
