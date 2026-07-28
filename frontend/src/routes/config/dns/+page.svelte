@@ -7,6 +7,8 @@
 	import DnsServerForm from '$lib/components/config/DnsServerForm.svelte';
 	import DnsRuleForm from '$lib/components/config/DnsRuleForm.svelte';
 	import HelpTooltip from '$lib/components/shared/HelpTooltip.svelte';
+	import { createSerialQueue } from '$lib/utils/serialQueue';
+	import { reorderArray } from '$lib/utils/routeRules';
 
 	let dnsServers = $state<DnsServer[]>([]);
 	let dnsRules = $state<DnsRule[]>([]);
@@ -119,60 +121,96 @@
 		showServerForm = true;
 	}
 
+	// DNS rules are addressed by position exactly like route rules, with the same
+	// consequence: an index captured on click goes stale the moment another
+	// mutation lands, and the next write then hits a different rule. Writes run
+	// one at a time and re-locate their rule by identity when their turn comes.
+	const runExclusive = createSerialQueue();
+	let ruleGoneMessage = $derived($t('dns.ruleGone'));
+
+	/** Runs fn with the rule's CURRENT position, or reports that it is gone. */
+	function withRule<T>(rule: DnsRule, fn: (index: number) => Promise<T>): Promise<T | void> {
+		return runExclusive(async () => {
+			const index = dnsRules.indexOf(rule);
+			if (index < 0) {
+				notifications.error(ruleGoneMessage);
+				return;
+			}
+			return fn(index);
+		});
+	}
+
 	// Rule handlers
 	async function handleCreateRule(rule: DnsRule) {
-		try {
-			await api.createDnsRule(rule);
-			dnsRules = [...dnsRules, rule];
-			showRuleForm = false;
-			hasChanges = true;
-			unsavedChanges.markChanged('DNS', 'Created DNS rule');
-			notifications.success($t('dns.ruleCreated'));
-		} catch (e) {
-			notifications.error(`${e}`);
-		}
+		await runExclusive(async () => {
+			try {
+				await api.createDnsRule(rule);
+				dnsRules = [...dnsRules, rule];
+				showRuleForm = false;
+				hasChanges = true;
+				unsavedChanges.markChanged('DNS', 'Created DNS rule');
+				notifications.success($t('dns.ruleCreated'));
+			} catch (e) {
+				notifications.error(`${e}`);
+			}
+		});
 	}
 
 	async function handleUpdateRule(rule: DnsRule) {
 		if (editingRuleIndex === null) return;
-		try {
-			await api.updateDnsRule(editingRuleIndex, rule);
-			dnsRules = dnsRules.map((r, i) => i === editingRuleIndex ? rule : r);
-			showRuleForm = false;
-			hasChanges = true;
-			unsavedChanges.markChanged('DNS', `Updated DNS rule #${editingRuleIndex + 1}`);
-			editingRuleIndex = null;
-			notifications.success($t('dns.ruleUpdated'));
-		} catch (e) {
-			notifications.error(`${e}`);
-		}
+		// Cleared only on success: the modal picks its save handler by this, so a
+		// failed update would retry as a CREATE and duplicate the rule.
+		const target = dnsRules[editingRuleIndex];
+		await withRule(target, async (index) => {
+			try {
+				await api.updateDnsRule(index, rule);
+				dnsRules = dnsRules.map((r, i) => i === index ? rule : r);
+				showRuleForm = false;
+				editingRuleIndex = null;
+				hasChanges = true;
+				unsavedChanges.markChanged('DNS', `Updated DNS rule #${index + 1}`);
+				notifications.success($t('dns.ruleUpdated'));
+			} catch (e) {
+				notifications.error(`${e}`);
+			}
+		});
 	}
 
 	async function handleDeleteRule(index: number) {
 		if (!confirm($t('dns.confirmDeleteRule'))) return;
-		try {
-			await api.deleteDnsRule(index);
-			dnsRules = dnsRules.filter((_, i) => i !== index);
-			hasChanges = true;
-			unsavedChanges.markChanged('DNS', `Deleted DNS rule #${index + 1}`);
-			notifications.success($t('dns.ruleDeleted'));
-		} catch (e) {
-			notifications.error(`${e}`);
-		}
+		const target = dnsRules[index];
+		await withRule(target, async (i) => {
+			try {
+				await api.deleteDnsRule(i);
+				dnsRules = dnsRules.filter((_, j) => j !== i);
+				hasChanges = true;
+				unsavedChanges.markChanged('DNS', `Deleted DNS rule #${i + 1}`);
+				notifications.success($t('dns.ruleDeleted'));
+			} catch (e) {
+				notifications.error(`${e}`);
+			}
+		});
 	}
 
 	async function handleReorder(from: number, to: number) {
-		try {
-			await api.reorderDnsRules(from, to);
-			const newRules = [...dnsRules];
-			const [moved] = newRules.splice(from, 1);
-			newRules.splice(to, 0, moved);
-			dnsRules = newRules;
-			hasChanges = true;
-			unsavedChanges.markChanged('DNS', 'Reordered DNS rules');
-		} catch (e) {
-			notifications.error(`${e}`);
-		}
+		const moved = dnsRules[from];
+		const target = dnsRules[to];
+		await withRule(moved, async (f) => {
+			const t = dnsRules.indexOf(target);
+			if (t < 0) {
+				notifications.error(ruleGoneMessage);
+				return;
+			}
+			try {
+				await api.reorderDnsRules(f, t);
+				// Same contract as the backend: `to` is where the rule ends up.
+				dnsRules = reorderArray(dnsRules, f, t);
+				hasChanges = true;
+				unsavedChanges.markChanged('DNS', 'Reordered DNS rules');
+			} catch (e) {
+				notifications.error(`${e}`);
+			}
+		});
 	}
 
 	function openEditRule(index: number) {
