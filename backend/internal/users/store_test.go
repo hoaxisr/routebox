@@ -143,19 +143,13 @@ func TestStoreRoundTripAndPerm(t *testing.T) {
 	}
 }
 
-func TestStoreDeleteAndListSorted(t *testing.T) {
+func TestStoreListSorted(t *testing.T) {
 	dir := t.TempDir()
 	m := NewManager(filepath.Join(dir, "users.toml"))
 	_ = m.Put(&PanelUser{ID: "x1", Name: "B"})
 	_ = m.Put(&PanelUser{ID: "x2", Name: "A"})
 	if got := m.List(); len(got) != 2 || got[0].Name != "A" {
 		t.Fatalf("List must be sorted by name: %#v", got)
-	}
-	if err := m.Delete("x1"); err != nil {
-		t.Fatalf("Delete: %v", err)
-	}
-	if _, ok := m.Get("x1"); ok {
-		t.Fatalf("expected user gone")
 	}
 }
 

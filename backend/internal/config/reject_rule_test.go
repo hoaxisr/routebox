@@ -312,10 +312,14 @@ func TestSyncRejectRuleActive_DeferWhenDraft(t *testing.T) {
 
 func TestSyncRejectRuleActive_ReadOnlyNoOp(t *testing.T) {
 	p := writeV2Cfg(t, `{"route":{"rules":[]}}`)
-	m, err := NewReadOnlyManager(p)
+	m, err := NewManager(p)
 	if err != nil {
 		t.Fatal(err)
 	}
+	// Production derives this from the filesystem (see readonly_auto_test.go);
+	// here the switch is flipped directly because what is under test is the
+	// guard in the sync, not the detection.
+	m.SetReadOnly(true)
 	if changed, err := m.SyncRejectRuleActive([]string{"alice"}); changed || err != nil {
 		t.Fatalf("read-only must no-op: changed=%v err=%v, want false/nil", changed, err)
 	}

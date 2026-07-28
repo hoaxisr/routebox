@@ -57,7 +57,7 @@ func (m *Manager) SyncRejectRuleActive(names []string) (changed bool, err error)
 	m.mu.Lock()
 	defer m.mu.Unlock()
 
-	if m.readOnly || m.path == "" {
+	if m.guard.IsReadOnly() || m.path == "" {
 		return false, nil // additivity: read-only / unconfigured => never write
 	}
 	if m.hasDraft {

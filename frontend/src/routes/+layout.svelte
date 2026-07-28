@@ -3,9 +3,11 @@
 	import { onMount, onDestroy, type Snippet } from 'svelte';
 	import { browser } from '$app/environment';
 	import { page } from '$app/stores';
-	import { theme, notifications, loadVersion, speedUnit, loadClientNames, routerMode, panelMode, loadMode, serverMode } from '$lib/stores';
+	import { theme, notifications, loadVersion, speedUnit, loadClientNames, routerMode, panelMode, loadMode, serverMode, refreshStatus } from '$lib/stores';
 	import { api } from '$lib/api/client';
 	import UnsavedChangesBar from '$lib/components/shared/UnsavedChangesBar.svelte';
+	import ConfigMismatchBanner from '$lib/components/shared/ConfigMismatchBanner.svelte';
+	import ReadOnlyBadge from '$lib/components/shared/ReadOnlyBadge.svelte';
 	import { t, isLoading as i18nLoading } from 'svelte-i18n';
 	import { initI18n } from '$lib/i18n';
 	import { isPathAllowed } from '$lib/mode/routeModes';
@@ -97,6 +99,12 @@
 		// Load operating mode for nav/redirect gating (fail-safe: stays router until an explicit vps read).
 		loadMode();
 
+		// Seed the shared process status so the config-mismatch banner can render
+		// on every page. No timer here on purpose: the Dashboard's existing poll
+		// publishes to the same store, and a mismatch only changes when the user
+		// resolves it from the banner itself (which refreshes the store).
+		refreshStatus().catch(() => {});
+
 		// Load speed unit preference
 		api.getSettings().then(res => {
 			speedUnit.set(res.settings.ui.speed_unit);
@@ -168,6 +176,8 @@
 				</div>
 
 				<div class="flex items-center gap-4">
+					<!-- Read-only config: quiet, always-visible counterpart to the mismatch banner -->
+					<ReadOnlyBadge />
 					<!-- App Settings -->
 					<a
 						href="/config/app"
@@ -444,6 +454,8 @@
 				</div>
 			{/if}
 			<div class="p-4 md:p-6">
+				<!-- Config path mismatch: shown on every page, running or not -->
+				<ConfigMismatchBanner />
 				{@render children()}
 			</div>
 		</main>

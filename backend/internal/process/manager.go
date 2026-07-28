@@ -2,6 +2,7 @@ package process
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"os"
 	"os/exec"
@@ -19,12 +20,88 @@ type Status struct {
 	PID          int           `json:"pid,omitempty"`
 	Uptime       string        `json:"uptime,omitempty"`
 	ManagedBy    string        `json:"managed_by,omitempty"`    // "systemd", "standalone", or ""
-	ServiceName  string        `json:"service_name,omitempty"`  // systemd service name if applicable
-	ConfigPath   string        `json:"config_path,omitempty"`   // detected config path
+	ServiceName  string        `json:"service_name,omitempty"`  // systemd unit RouteBox detected for amnezia-box (independent of who started the running process — that is ManagedBy)
 	SupportsHUP  bool          `json:"supports_hup"`            // whether SIGHUP reload is supported
 	Version      string        `json:"version,omitempty"`       // binary version string
 	BinaryPath   string        `json:"binary_path,omitempty"`   // path to binary
 	SystemChecks *SystemChecks `json:"system_checks,omitempty"` // system requirements check
+
+	ConfigPaths ConfigPaths `json:"config_paths"` // с каким конфигом работаем: мы, юнит, живой процесс
+
+	// ConfigPath — DEPRECATED-алиас ConfigPaths.Process, то есть путь конфига
+	// живого процесса, ровно с тем же значением и той же формой (пусто =
+	// процесса нет = поля в ответе нет), что до объединения трёх источников в
+	// ConfigPaths.
+	//
+	// Держится не ради панели — она читает config_paths, — а ради чужих
+	// скриптов: версионирования у API нет, панель и бэкенд едут одним бинарём,
+	// и молча исчезнувшее поле сломало бы их без единого сообщения. Ровно то
+	// поведение, против которого написана вся остальная работа этой волны.
+	//
+	// Заполняется в одном месте (withLegacyConfigPath), чтобы алиас не мог
+	// разойтись с оригиналом. Снять — отдельным мажорным шагом и объявлением в
+	// CHANGELOG, а не заодно с рефакторингом.
+	ConfigPath string `json:"config_path,omitempty"`
+}
+
+// withLegacyConfigPath проставляет DEPRECATED-алиас config_path. Единственная
+// точка, где он берётся, — и берётся он из состояния, а не из отдельного
+// источника: алиас, который вычисляют дважды, однажды разойдётся.
+func (s Status) withLegacyConfigPath() Status {
+	s.ConfigPath = s.ConfigPaths.Process
+	return s
+}
+
+// ConfigPaths — единое состояние «с каким конфигом мы работаем». Правда об этом
+// приходит из трёх источников: путь, которым управляет RouteBox (Ours), путь из
+// ExecStart systemd-юнита (Unit) и путь командной строки живого процесса
+// (Process). Пока они собирались порознь и сравнивались в разных местах,
+// сравнение с процессом успело пропасть из интерфейса целиком — поэтому теперь
+// это один объект, отдаваемый одним полем статуса.
+//
+// Пустое поле означает «источника нет» (юнита нет, процесс не запущен), а не
+// «совпадает»: расхождения с несуществующим источником не бывает, и оба флага
+// при пустом источнике всегда false.
+//
+// Лечится расхождение по-разному, и в этом смысл разделения флагов:
+// UnitMismatch — правки RouteBox уходят в файл, который юнит процессу не даёт;
+// лечится сменой нашего пути или drop-in'ом на юнит, и до тех пор
+// Start/Restart/Reload заблокированы. ProcessMismatch — юнит уже согласован, но
+// живой процесс читает тот файл, с которым его запустили; лечится ТОЛЬКО
+// перезапуском, поэтому он ничего не блокирует (блокировать перезапуск значило
+// бы запретить единственное лечение).
+type ConfigPaths struct {
+	// Ours сериализуется всегда (без omitempty): путь, который правит RouteBox,
+	// есть при любом раскладе — в отличие от остальных двух источников, — и
+	// панель вправе рассчитывать на его присутствие, печатая его в тексте.
+	Ours    string `json:"ours"`
+	Unit    string `json:"unit,omitempty"`
+	Process string `json:"process,omitempty"`
+
+	UnitMismatch    bool `json:"unit_mismatch"`
+	ProcessMismatch bool `json:"process_mismatch"`
+
+	// DropIn — наш systemd drop-in, если он лежит на диске. Присутствие
+	// выводится из файла при каждом опросе статуса, а не запоминается после
+	// удачной починки: после перезапуска панели память бы обнулилась, а файл —
+	// нет, и override в юните остался бы без объяснения. Nil — файла нет.
+	DropIn *ConfigDropIn `json:"drop_in,omitempty"`
+}
+
+// ConfigDropIn описывает установленный RouteBox'ом drop-in: единственное, что
+// RouteBox пишет за пределами своих файлов, — значит единственное, что панель
+// обязана уметь показать и снять.
+type ConfigDropIn struct {
+	// Path — файл на диске. Называется прямо: снять drop-in руками (rm +
+	// daemon-reload) должно быть возможно, не зная внутренностей RouteBox.
+	Path string `json:"path"`
+	// ConfigPath — путь конфига, на который drop-in перенацеливает ExecStart
+	// ("" — файл есть, но разобрать его не вышло; факт наличия важнее разбора).
+	ConfigPath string `json:"config_path,omitempty"`
+	// PendingReload — файл записан, но юнит его ещё не подхватил: ровно то
+	// состояние, в котором остаётся упавший daemon-reload. Оно применится при
+	// следующем reload или перезагрузке, поэтому молчать о нём нельзя.
+	PendingReload bool `json:"pending_reload"`
 }
 
 // SystemChecks contains system requirement validation results
@@ -41,16 +118,34 @@ type Manager struct {
 	opMu    sync.Mutex   // serializes Start/Stop/Restart/Reload
 	stateMu sync.RWMutex // guards fields below
 
-	binaryPath      string
-	configPath      string
-	serviceName     string // detected systemd service name (set once in NewManager)
-	forceStandalone bool   // force standalone mode even if systemd service exists
-	startedPID      int    // PID of process started by us in standalone mode (0 if none)
+	binaryPath  string
+	configPath  string // путь конфига, которым управляет RouteBox (Ours в ConfigPaths)
+	unitPath    string // путь конфига из ExecStart юнита, как его прочли последний раз ("" — юнита нет)
+	serviceName string // detected systemd service name (set once in NewManager)
+	startedPID  int    // PID of process started by us in standalone mode (0 if none)
 
 	cachedVersion      string    // memoized parsed version (e.g. "1.13.13")
 	cachedVersionPath  string    // binary path the cached version belongs to
 	cachedVersionStamp time.Time // binary mtime at cache fill
 	cachedVersionSize  int64     // binary size at cache fill
+
+	// unitConfigReader yields the config path the systemd unit currently
+	// starts amnezia-box with. Defaults to UnitConfigPath when nil; overridable
+	// in tests, where shelling out to systemctl is not available.
+	unitConfigReader func() (string, error)
+
+	// Швы для работы с systemd-юнитом. Пустые/nil в бою — тогда работают
+	// настоящие /etc/systemd/system, `systemctl daemon-reload` и
+	// `systemctl show`. В тестах подменяются: drop-in — единственное, что
+	// RouteBox пишет вне своих файлов, и проверять это в настоящем /etc нельзя.
+	systemdRoot         string       // каталог юнитов ("" — defaultSystemdRoot)
+	daemonReload        func() error // systemctl daemon-reload
+	unitExecStartReader func() (string, error)
+	// pidFinder подменяет поиск живого процесса. Тому же ряду принадлежит:
+	// менеджер, отрезанный от systemd, но всё ещё находящий в /proc боевой
+	// amnezia-box, отдаёт Running=true — и хендлер из теста доходит до Reload,
+	// то есть до SIGHUP настоящему процессу.
+	pidFinder func() int
 
 	cachedVersionFull      string    // memoized full `<binary> version` output (incl. Tags: line)
 	cachedVersionFullPath  string    // binary path the cached full output belongs to
@@ -124,26 +219,154 @@ func NewManager() *Manager {
 	return m
 }
 
-// SetConfigPath sets the config path for the process
+// SetConfigPath запоминает путь конфига, которым управляет RouteBox, не трогая
+// прочитанный путь юнита.
 func (m *Manager) SetConfigPath(path string) {
+	if path != "" {
+		path = filepath.Clean(path)
+	}
 	m.stateMu.Lock()
 	defer m.stateMu.Unlock()
 	m.configPath = path
 }
 
-// SetForceStandalone enables standalone mode even if systemd service exists
-// Use this when running with a local config that differs from systemd config
-func (m *Manager) SetForceStandalone(force bool) {
+// SetConfigPaths запоминает наш путь конфига и путь, прочитанный из ExecStart
+// юнита ("" — юнита нет либо он не называет конфиг). Расхождение из них не
+// хранится, а выводится: два поля — один источник правды, и «забыть снять
+// расхождение» становится нечем.
+//
+// Пути запоминаются в канонической форме (filepath.Clean): юнит вполне может
+// нести "/etc/amnezia-box//config.json", и посимвольное сравнение объявило бы
+// расхождение там, где файл один и тот же — а ложное срабатывание глушит
+// Start/Restart/Reload.
+//
+// Сравниваются же пути с разрешёнными симлинками (resolveConfigPath): на
+// Entware/OpenWrt "/opt/etc/sing-box" — типичный симлинк, и тот же самый файл,
+// пришедший из ExecStart под вторым именем, иначе выглядел бы расхождением.
+// Запоминаем при этом именно то, что передали: баннер обязан называть пути так,
+// как их видит пользователь — в своей настройке и в ExecStart юнита, — а не
+// разрешённые до неузнаваемости.
+func (m *Manager) SetConfigPaths(ours, unit string) {
+	if ours != "" {
+		ours = filepath.Clean(ours)
+	}
+	if unit != "" {
+		unit = filepath.Clean(unit)
+	}
+
 	m.stateMu.Lock()
 	defer m.stateMu.Unlock()
-	m.forceStandalone = force
+	m.configPath = ours
+	m.unitPath = unit
 }
 
-// IsForceStandalone returns true if standalone mode is forced
-func (m *Manager) IsForceStandalone() bool {
+// samePathOrAbsent сообщает, что расхождения между нашим путём и путём из
+// источника нет: либо источника нет вовсе (пустая строка), либо это тот же
+// файл. Пустой источник — «источника нет», а не «совпадает», но в обоих случаях
+// показывать пользователю нечего.
+func samePathOrAbsent(ours, other string) bool {
+	return other == "" || resolveConfigPath(ours) == resolveConfigPath(other)
+}
+
+// resolveConfigPath приводит путь конфига к виду, пригодному для сравнения:
+// абсолютный и с разрешёнными симлинками (как exeMatches делает для бинаря).
+//
+// Резолв может не удаться, и это штатно: свежая установка (файла ещё нет),
+// битый симлинк, нет прав на промежуточный каталог. Во всех таких случаях
+// откатываемся к менее разрешённой форме — вплоть до просто канонизированного
+// пути. Именно к откату, а не к «расхождения нет»: молчаливое снятие
+// расхождения по неудавшейся проверке — то самое враньё, ради вычистки
+// которого расхождение и заводилось. Ошибка резолва делает сравнение строже
+// (пути должны совпасть текстуально), но никогда — мягче.
+//
+// Промежуточная ступень — резолв каталога — нужна ровно для свежей установки:
+// симлинком там обычно является каталог ("/opt/etc/sing-box" → "/etc/sing-box"),
+// а файла конфига может ещё не быть, и без этой ступени RouteBox встретил бы
+// пользователя ложным расхождением на первом же запуске.
+//
+// Функция детерминирована по строке: одинаковые на входе пути дают одинаковый
+// результат, так что резолв не способен породить расхождение там, где его нет.
+func resolveConfigPath(p string) string {
+	if p == "" {
+		return ""
+	}
+	abs, err := filepath.Abs(p)
+	if err != nil {
+		return filepath.Clean(p)
+	}
+	if resolved, err := filepath.EvalSymlinks(abs); err == nil {
+		return resolved
+	}
+	// Файла нет или он битый симлинк — пробуем хотя бы каталог.
+	if dir, err := filepath.EvalSymlinks(filepath.Dir(abs)); err == nil {
+		return filepath.Join(dir, filepath.Base(abs))
+	}
+	return abs
+}
+
+// ConfigMismatch выводит расхождение с ЮНИТОМ из запомненных путей. ok==false,
+// когда юнита нет или он называет тот же файл.
+func (m *Manager) ConfigMismatch() (ours, unit string, ok bool) {
 	m.stateMu.RLock()
-	defer m.stateMu.RUnlock()
-	return m.forceStandalone
+	ours, unit = m.configPath, m.unitPath
+	m.stateMu.RUnlock()
+
+	if samePathOrAbsent(ours, unit) {
+		return "", "", false
+	}
+	return ours, unit, true
+}
+
+// configPaths собирает состояние целиком. processPath передаётся снаружи, а не
+// читается здесь: GetStatus уже знает его из /proc, а второе чтение стоило бы
+// лишнего похода в findPID на каждый опрос статуса. Пустая строка — процесс не
+// запущен (либо его командная строка не называет конфиг).
+func (m *Manager) configPaths(processPath string) ConfigPaths {
+	if processPath != "" {
+		processPath = filepath.Clean(processPath)
+	}
+
+	m.stateMu.RLock()
+	ours, unit := m.configPath, m.unitPath
+	m.stateMu.RUnlock()
+
+	return ConfigPaths{
+		Ours:            ours,
+		Unit:            unit,
+		Process:         processPath,
+		UnitMismatch:    !samePathOrAbsent(ours, unit),
+		ProcessMismatch: !samePathOrAbsent(ours, processPath),
+		DropIn:          m.readConfigDropIn(unit),
+	}
+}
+
+// checkConfigMismatch возвращает ошибку, если правки RouteBox уходят не в тот
+// файл, который systemd-юнит скармливает amnezia-box. verb — глагол операции
+// ("starting", "restarting", "reloading").
+//
+// Сверяется только юнит. Расхождение с живым процессом здесь намеренно не
+// участвует: оно лечится перезапуском, а перезапуск идёт через эти же
+// Start/Restart — блокировка запретила бы единственное лечение.
+func (m *Manager) checkConfigMismatch(verb string) error {
+	if ours, unit, ok := m.ConfigMismatch(); ok {
+		return fmt.Errorf("%w: RouteBox edits %s, but the systemd unit starts amnezia-box with %s — resolve it in the panel banner before %s", ErrConfigPathMismatch, ours, unit, verb)
+	}
+	return nil
+}
+
+// ErrConfigPathMismatch — расхождение путей, из-за которого Start/Restart/Reload
+// отказывают. Отдельная ошибка ровно затем же, зачем ErrNoConfigDropIn: это
+// СОСТОЯНИЕ, а не поломка, и API обязан ответить 409, а не 500. Запрос был
+// корректен, разрешить его мешает состояние, и лечится оно из панели — клиент,
+// которому пришёл 500, отличить это от «сервер упал» не может.
+//
+// Текст ошибки начинается ровно с "config path mismatch: " — как и раньше:
+// сообщение уходит в UI как есть.
+var ErrConfigPathMismatch = errors.New("config path mismatch")
+
+// UnitConfigPath возвращает путь конфига из ExecStart systemd-юнита ("" — юнита нет).
+func (m *Manager) UnitConfigPath() string {
+	return m.getConfigFromSystemd()
 }
 
 // GetDetectedConfigPath returns the config path from running process or systemd
@@ -163,25 +386,113 @@ func (m *Manager) GetDetectedConfigPath() string {
 	return ""
 }
 
-// detectSystemdService checks if sing-box is managed by systemd
-func (m *Manager) detectSystemdService() string {
-	// Check common service names
-	serviceNames := []string{
-		"sing-box",
-		"amnezia-box",
-		"sing-box@config",
-	}
+// serviceCandidates are the unit names probed at startup, in order of preference.
+// amnezia-box comes FIRST on purpose: it is the unit both installers create, while
+// a host that once ran upstream sing-box keeps an enabled sing-box.service forever
+// (the installer never disables it). Probing sing-box first made RouteBox adopt a
+// unit it does not manage, and every decision downstream is then made about the
+// wrong service: the config-path check compares our config with a foreign
+// ExecStart (false mismatch, Start/Restart/Reload blocked), the "point the unit at
+// our config" fix writes a drop-in into somebody else's unit, and "adopt the
+// detected path" moves RouteBox onto somebody else's config.
+var serviceCandidates = []string{
+	"amnezia-box",
+	"sing-box",
+	"sing-box@config",
+}
 
-	for _, name := range serviceNames {
-		cmd := exec.Command("systemctl", "is-enabled", name+".service")
-		if err := cmd.Run(); err == nil {
+// pickServiceName returns the first candidate unit the probe reports as present.
+func pickServiceName(present func(name string) bool) string {
+	for _, name := range serviceCandidates {
+		if present(name) {
 			return name
 		}
-		// Also check if it's active even if not enabled
-		cmd = exec.Command("systemctl", "is-active", name+".service")
-		if err := cmd.Run(); err == nil {
-			return name
+	}
+	return ""
+}
+
+// systemctl runs `systemctl <args...>` and returns its stdout. A package
+// variable so unit detection can be tested without a real systemd.
+var systemctl = func(args ...string) ([]byte, error) {
+	return exec.Command("systemctl", args...).Output()
+}
+
+// systemdUnitPresent reports whether <name>.service exists on this host.
+//
+// The authority is `systemctl list-unit-files`: it sees a unit file that is
+// installed but disabled AND stopped, which is-enabled and is-active both miss.
+// Missing it is exactly how an installed-but-idle amnezia-box.service lost to a
+// leftover running sing-box.service — and every decision downstream (the config
+// path check, the drop-in fix) was then made about a unit RouteBox does not
+// manage.
+//
+// is-enabled/is-active stay as a fallback rather than being replaced: a template
+// instance (sing-box@config.service) has no unit file of its own — only the
+// template sing-box@.service does — so list-unit-files cannot see it, while an
+// enabled or running instance is undeniably present.
+func systemdUnitPresent(name string) bool {
+	unit := name + ".service"
+	if out, err := systemctl("list-unit-files", "--no-legend", "--no-pager", unit); err == nil && unitFileListed(string(out), unit) {
+		return true
+	}
+	if _, err := systemctl("is-enabled", unit); err == nil {
+		return true
+	}
+	_, err := systemctl("is-active", unit)
+	return err == nil
+}
+
+// unstartableUnitFileStates are the states in which a unit file exists but the
+// unit cannot be started at all: `systemctl start` on a masked unit always
+// fails, and `bad` is systemd's word for a unit file it could not make sense of.
+// Adopting such a unit would hand the user a service RouteBox picked for them
+// and cannot start — worse than picking the next candidate, which at least runs.
+//
+// The list is derived from the full set systemd itself reports (`systemctl
+// --state=help`, "Available unit file states"): enabled, enabled-runtime,
+// linked, linked-runtime, alias, masked, masked-runtime, static, disabled,
+// indirect, generated, transient, bad. Everything outside the three below
+// describes a unit that starts, so nothing else is filtered — an alias, for
+// instance, is a real name of a real startable unit. `not-found` is a unit LOAD
+// state, not a unit FILE state: list-unit-files cannot print a row for a file
+// that is not there.
+var unstartableUnitFileStates = map[string]bool{
+	"masked":         true,
+	"masked-runtime": true,
+	"bad":            true,
+}
+
+// unitFileListed reports whether `systemctl list-unit-files <unit>` listed the
+// unit itself as a unit that can be started.
+//
+// The name is compared in full because the argument is a PATTERN, not a name:
+// the command answers with a table of every unit file that matched, and a row
+// about another unit is not evidence about this one. The case that motivated it
+// — an instance name (sing-box@config.service) answered with the template file
+// (sing-box@.service) — was checked on systemd 255 and does not happen there:
+// the command prints nothing and exits 1, so err != nil and no row is read at
+// all. The full comparison stays as the cheap general rule, not as a workaround
+// for behaviour anyone has seen.
+func unitFileListed(output, unit string) bool {
+	for _, line := range strings.Split(output, "\n") {
+		fields := strings.Fields(line)
+		if len(fields) == 0 || fields[0] != unit {
+			continue
 		}
+		// Row layout is "<unit file> <state> [preset]"; without a state column
+		// there is nothing to judge the unit by, and the file is there.
+		if len(fields) > 1 && unstartableUnitFileStates[fields[1]] {
+			return false
+		}
+		return true
+	}
+	return false
+}
+
+// detectSystemdService checks if amnezia-box is managed by systemd
+func (m *Manager) detectSystemdService() string {
+	if name := pickServiceName(systemdUnitPresent); name != "" {
+		return name
 	}
 
 	// Check for template services (sing-box@*.service)
@@ -206,117 +517,40 @@ func (m *Manager) detectSystemdService() string {
 	return ""
 }
 
-// getConfigFromProcess extracts config path from running process cmdline
+// getConfigFromProcess extracts the config path from the running process's
+// cmdline. The argv parsing itself lives in configPathFromProcessArgv
+// (dropin.go) and shares configPathFromArgv with the systemd-unit reader, so
+// the two sources of truth can no longer disagree about the very same flags.
 func (m *Manager) getConfigFromProcess() string {
 	pid := m.findPID()
 	if pid == 0 {
 		return ""
 	}
 
-	cmdlinePath := fmt.Sprintf("/proc/%d/cmdline", pid)
-	data, err := os.ReadFile(cmdlinePath)
+	data, err := os.ReadFile(fmt.Sprintf("/proc/%d/cmdline", pid))
 	if err != nil {
 		return ""
 	}
 
-	// cmdline is null-separated
-	args := strings.Split(string(data), "\x00")
+	// cmdline is null-separated and null-terminated: trim the terminator so the
+	// split does not yield a trailing empty argument.
+	args := strings.Split(strings.TrimSuffix(string(data), "\x00"), "\x00")
 
-	// Look for -c or --config flag (direct config file path)
-	// Note: -C is config DIRECTORY in sing-box, handled separately below
-	for i, arg := range args {
-		if (arg == "-c" || arg == "--config") && i+1 < len(args) {
-			configPath := args[i+1]
-			if configPath != "" {
-				// Resolve to absolute path if relative
-				if !filepath.IsAbs(configPath) {
-					// Try to get working directory
-					cwdPath := fmt.Sprintf("/proc/%d/cwd", pid)
-					if cwd, err := os.Readlink(cwdPath); err == nil {
-						configPath = filepath.Join(cwd, configPath)
-					}
-				}
-				return configPath
-			}
-		}
-		// Handle -c/path/to/config format (no space)
-		if strings.HasPrefix(arg, "-c") && len(arg) > 2 && arg[1] != 'C' {
-			return arg[2:]
-		}
-	}
-
-	// Look for -C (config directory) pattern used by official sing-box service
-	// -C specifies directory containing config.json
-	var workDir, configDir string
-	for i, arg := range args {
-		if arg == "-D" && i+1 < len(args) {
-			workDir = args[i+1]
-		}
-		if arg == "-C" && i+1 < len(args) {
-			configDir = args[i+1]
-		}
-		// Handle -C/path format (no space)
-		if strings.HasPrefix(arg, "-C") && len(arg) > 2 {
-			configDir = arg[2:]
-		}
-	}
-	if configDir != "" {
-		// Check for config.json in config directory
-		configPath := filepath.Join(configDir, "config.json")
-		if _, err := os.Stat(configPath); err == nil {
-			return configPath
-		}
-	}
-	if workDir != "" {
-		configPath := filepath.Join(workDir, "config.json")
-		if _, err := os.Stat(configPath); err == nil {
-			return configPath
-		}
-	}
-
-	return ""
+	// A relative config path is resolved against the process's own cwd, not ours.
+	cwd, _ := os.Readlink(fmt.Sprintf("/proc/%d/cwd", pid))
+	return configPathFromProcessArgv(args, cwd)
 }
 
-// getConfigFromSystemd extracts config path from systemd service file
+// getConfigFromSystemd extracts the config path from the systemd unit's
+// ExecStart. The parsing lives in configPathFromExecStart (dropin.go) and is
+// shared with the drop-in fix, so the mismatch detector and the fix can never
+// disagree about what the unit actually starts amnezia-box with.
 func (m *Manager) getConfigFromSystemd() string {
-	if m.serviceName == "" {
-		return ""
-	}
-
-	// Use systemctl show to get ExecStart
-	cmd := exec.Command("systemctl", "show", m.serviceName+".service", "--property=ExecStart")
-	output, err := cmd.Output()
+	output, err := m.unitExecStart()
 	if err != nil {
 		return ""
 	}
-
-	line := strings.TrimSpace(string(output))
-	// Parse ExecStart line to find -c flag
-	if idx := strings.Index(line, "-c "); idx >= 0 {
-		rest := line[idx+3:]
-		// Extract path (ends at space or semicolon or end)
-		endIdx := strings.IndexAny(rest, " ;")
-		if endIdx == -1 {
-			endIdx = len(rest)
-		}
-		return strings.TrimSpace(rest[:endIdx])
-	}
-
-	// Try -C flag (config directory)
-	if idx := strings.Index(line, "-C "); idx >= 0 {
-		rest := line[idx+3:]
-		endIdx := strings.IndexAny(rest, " ;")
-		if endIdx == -1 {
-			endIdx = len(rest)
-		}
-		configDir := strings.TrimSpace(rest[:endIdx])
-		configPath := filepath.Join(configDir, "config.json")
-		if _, err := os.Stat(configPath); err == nil {
-			return configPath
-		}
-	}
-
-	return ""
+	return configPathFromExecStart(output)
 }
 
 // parseExecStartBinary extracts the executable path from `systemctl show
@@ -714,14 +948,28 @@ func (m *Manager) SupportsAWG3() bool {
 	return false
 }
 
-// GetStatus returns the current process status
+// GetStatus returns the current process status.
+//
+// Обёртка ровно ради алиаса: собранное состояние проходит через одну точку,
+// поэтому ни один из путей сборки статуса не может забыть проставить
+// config_path — см. withLegacyConfigPath.
 func (m *Manager) GetStatus() Status {
+	return m.status().withLegacyConfigPath()
+}
+
+func (m *Manager) status() Status {
 	// Get version info (cached in binaryPath if successful)
 	version, _ := m.GetVersion()
 	bp := m.getBinaryPath()
 
 	// Always include system checks
 	systemChecks := GetSystemChecks()
+
+	// Состояние путей конфига сообщаем в любом состоянии процесса: расхождение с
+	// юнитом чаще всего и проявляется как "процесс не запущен", а панели нужен
+	// повод показать баннер. Пути живого процесса при этом нет — и это честное
+	// "источника нет", а не совпадение.
+	paths := m.configPaths("")
 
 	pid := m.findPID()
 	if pid == 0 {
@@ -731,6 +979,7 @@ func (m *Manager) GetStatus() Status {
 			Version:      version,
 			BinaryPath:   bp,
 			SystemChecks: systemChecks,
+			ConfigPaths:  paths,
 		}
 		// Still report if systemd service exists
 		if m.serviceName != "" {
@@ -743,26 +992,32 @@ func (m *Manager) GetStatus() Status {
 	// Check if process is actually running
 	process, err := os.FindProcess(pid)
 	if err != nil {
-		return Status{Running: false, SupportsHUP: true, Version: version, BinaryPath: bp}
+		return Status{Running: false, SupportsHUP: true, Version: version, BinaryPath: bp, ServiceName: m.serviceName, ConfigPaths: paths}
 	}
 
 	// On Unix, FindProcess always succeeds. Need to send signal 0 to check.
 	if err := process.Signal(syscall.Signal(0)); err != nil {
-		return Status{Running: false, SupportsHUP: true, Version: version, BinaryPath: bp}
+		return Status{Running: false, SupportsHUP: true, Version: version, BinaryPath: bp, ServiceName: m.serviceName, ConfigPaths: paths}
 	}
 
 	// Get uptime from /proc
 	uptime := m.getUptime(pid)
 
-	// Detect management type and config
+	// Detect management type and config. ServiceName reports the DETECTED unit
+	// even when this particular process was launched by hand: the panel needs the
+	// unit name to say whose ExecStart the config-mismatch banner is about, and
+	// hiding it there left the banner talking about "the systemd unit" without
+	// ever naming it. Who runs the process is ManagedBy's job.
 	managedBy := "standalone"
-	serviceName := ""
 	if m.IsSystemdManaged() {
 		managedBy = "systemd"
-		serviceName = m.serviceName
 	}
+	serviceName := m.serviceName
 
-	configPath := m.getConfigFromProcess()
+	// Путь живого процесса — третий источник правды, и он попадает в то же самое
+	// состояние: панель сравнивает его с нашим путём, а не гадает по отдельному
+	// эндпоинту, как раньше.
+	paths = m.configPaths(m.getConfigFromProcess())
 
 	return Status{
 		Running:      true,
@@ -770,11 +1025,11 @@ func (m *Manager) GetStatus() Status {
 		Uptime:       uptime,
 		ManagedBy:    managedBy,
 		ServiceName:  serviceName,
-		ConfigPath:   configPath,
 		SupportsHUP:  true, // sing-box supports SIGHUP
 		Version:      version,
 		BinaryPath:   bp,
 		SystemChecks: systemChecks,
+		ConfigPaths:  paths,
 	}
 }
 
@@ -783,6 +1038,9 @@ func (m *Manager) GetStatus() Status {
 // merely mention the binary name in their arguments (e.g. RouteBox itself
 // started with "-config /opt/etc/sing-box/config.json").
 func (m *Manager) findPID() int {
+	if m.pidFinder != nil {
+		return m.pidFinder()
+	}
 	self := os.Getpid()
 
 	// Prefer the PID we started ourselves in standalone mode. Signal(0) is a
@@ -907,6 +1165,10 @@ func (m *Manager) Reload() error {
 	m.opMu.Lock()
 	defer m.opMu.Unlock()
 
+	if err := m.checkConfigMismatch("reloading"); err != nil {
+		return err
+	}
+
 	status := m.GetStatus()
 	if !status.Running {
 		return fmt.Errorf("amnezia-box is not running")
@@ -948,6 +1210,11 @@ func (m *Manager) Reload() error {
 func (m *Manager) Start(configPath string) error {
 	m.opMu.Lock()
 	defer m.opMu.Unlock()
+
+	if err := m.checkConfigMismatch("starting"); err != nil {
+		return err
+	}
+
 	return m.startLocked(configPath)
 }
 
@@ -957,8 +1224,8 @@ func (m *Manager) startLocked(configPath string) error {
 		return fmt.Errorf("amnezia-box is already running")
 	}
 
-	// If systemd service exists and standalone mode is not forced, use systemctl
-	if m.serviceName != "" && !m.IsForceStandalone() {
+	// If a systemd service exists, use systemctl
+	if m.serviceName != "" {
 		cmd := exec.Command("systemctl", "start", m.serviceName+".service")
 		if output, err := cmd.CombinedOutput(); err != nil {
 			return fmt.Errorf("systemctl start failed: %s", string(output))
@@ -1021,8 +1288,8 @@ func (m *Manager) stopLocked() error {
 		return fmt.Errorf("amnezia-box is not running")
 	}
 
-	// If managed by systemd and standalone mode is not forced, use systemctl
-	if m.IsSystemdManaged() && !m.IsForceStandalone() {
+	// If managed by systemd, use systemctl
+	if m.IsSystemdManaged() {
 		cmd := exec.Command("systemctl", "stop", m.serviceName+".service")
 		if output, err := cmd.CombinedOutput(); err != nil {
 			return fmt.Errorf("systemctl stop failed: %s", string(output))
@@ -1075,8 +1342,12 @@ func (m *Manager) Restart(configPath string) error {
 	m.opMu.Lock()
 	defer m.opMu.Unlock()
 
-	// If managed by systemd and standalone mode is not forced, use systemctl restart
-	if m.IsSystemdManaged() && !m.IsForceStandalone() {
+	if err := m.checkConfigMismatch("restarting"); err != nil {
+		return err
+	}
+
+	// If managed by systemd, use systemctl restart
+	if m.IsSystemdManaged() {
 		cmd := exec.Command("systemctl", "restart", m.serviceName+".service")
 		if output, err := cmd.CombinedOutput(); err != nil {
 			return fmt.Errorf("systemctl restart failed: %s", string(output))

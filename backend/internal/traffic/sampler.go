@@ -187,8 +187,16 @@ func (s *Sampler) noteSampleErr(err error) bool {
 
 // Run starts the periodic sample → upsert loop. Stops when stop channel closes.
 // retentionDays controls how long history is kept (0 = no pruning).
+//
+// An empty clashAddr means the Clash API is not configured — the same "nothing
+// to talk to" the client-discovery loop already refuses to start on. Without
+// this guard the loop kept building requests for "http:///connections", which
+// net/http rejects with "no Host in request URL": one line about a URL in every
+// journal, for a panel where there is simply nothing to sample. That the
+// monitoring is off is said once at startup, where it is known where the address
+// comes from — here it would be an error report about a state, once a minute.
 func (s *Sampler) Run(clashAddr, secret string, retentionDays int, stop <-chan struct{}) {
-	if s.store == nil {
+	if s.store == nil || clashAddr == "" {
 		return
 	}
 	tickInterval := 60 * time.Second

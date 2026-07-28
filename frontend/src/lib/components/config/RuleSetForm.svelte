@@ -1,7 +1,7 @@
 <script lang="ts">
 	import { t } from 'svelte-i18n';
 	import type { RuleSet, Outbound } from '$lib/types';
-	import { notifications } from '$lib/stores';
+	import { notifications, configReadOnly } from '$lib/stores';
 
 	interface Props {
 		existingTags: string[];
@@ -258,7 +258,9 @@
 		</button>
 		<button
 			type="submit"
-			class="px-4 py-2 bg-[var(--ctp-primary)] text-white rounded-lg hover:opacity-90 transition-opacity"
+			class="px-4 py-2 bg-[var(--ctp-primary)] text-white rounded-lg hover:opacity-90 transition-opacity disabled:opacity-50 disabled:cursor-not-allowed"
+			disabled={$configReadOnly}
+			title={$configReadOnly ? $t('readOnly.saveBlocked') : ''}
 		>
 			{isEditing ? $t('common.saveChanges') : $t('routes.addRuleSet')}
 		</button>

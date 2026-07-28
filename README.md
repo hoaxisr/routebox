@@ -198,6 +198,9 @@ RouteBox требует запуска от root — он создаёт TUN-и�
 | `GET /api/status` | Статус процесса amnezia-box |
 | `GET` / `PUT /api/config` | Полный конфиг sing-box |
 | `POST /api/config/apply` | Применить изменения (reload/restart) |
+| `POST /api/config/fix-unit` | Перенацелить systemd-юнит на конфиг, которым управляет RouteBox (drop-in) |
+| `DELETE /api/config/unit-dropin` | Снять этот drop-in — обратная операция к `fix-unit` |
+| `POST /api/config/adopt-unit-path` | Перейти на путь конфига из `ExecStart` юнита (второе лечение расхождения) |
 | CRUD `/api/endpoints`, `/api/outbounds`, `/api/inbounds` | Подключения |
 | CRUD `/api/route/rules`, `/api/route/rule-sets` | Маршрутизация |
 | CRUD `/api/dns/servers`, `/api/dns/rules` | DNS |

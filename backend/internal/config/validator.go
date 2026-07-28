@@ -202,8 +202,12 @@ func (m *Manager) Validate(config map[string]interface{}) []string {
 	return errors
 }
 
-// ValidateEndpointExported validates a single endpoint object (exported wrapper
-// for cross-package tests / import handlers). Returns human-readable errors.
+// ValidateEndpointExported validates a single endpoint object. It is a test seam:
+// the only callers are the awg package's export tests, which assert that a
+// generated AWG endpoint passes the very validator that ApplyConfig runs. It has
+// no production caller by design — production validates whole configs, not lone
+// endpoints — so do not delete it as "unreachable from main". Returns
+// human-readable errors.
 func ValidateEndpointExported(ep map[string]interface{}) []string {
 	return validateEndpoint(ep, 0)
 }

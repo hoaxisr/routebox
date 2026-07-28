@@ -4,7 +4,200 @@ All notable changes to RouteBox are documented here.
 
 ## [Unreleased]
 
+## [0.32.0] - 2026-07-28
+
+### Features
+
+- **RouteBox now notices when it and the amnezia-box service disagree about which config file to
+  use.** If the panel edits `/etc/routebox/config.json` while the systemd unit starts amnezia-box
+  with `-c /etc/sing-box/config.json`, every save looked successful and changed nothing — the
+  running process never saw the file being edited. On startup RouteBox compares its own config path
+  with the one in the unit's `ExecStart`; on a mismatch the status reports it, a banner appears
+  above every page, and Start / Restart / Reload refuse with an explanation (HTTP `409`: the
+  request was fine, the state forbids it, and the state is one the banner offers to resolve)
+  rather than starting a process on a config nobody is editing. The banner offers both remedies: adopt the path the unit
+  uses, or repoint the unit at RouteBox's config. Repointing writes a systemd drop-in — the unit
+  file itself is never touched — and keeps the unit's other `ExecStart` arguments intact. All three
+  paths — the one RouteBox edits, the one in the unit, and the one the running process was actually
+  started with — are reported as one piece of state, so an absent source (no unit, nothing running)
+  reads as absent instead of masquerading as agreement. The flat `config_path` that `GET /api/status`
+  used to return stays where it was, as a deprecated alias of `config_paths.process` with the same
+  value and the same shape: the API is not versioned and ships in the same binary as the panel, so
+  dropping it would have broken external readers of the status endpoint without a word. New code
+  reads `config_paths`; removing the alias will be its own announced change. Only the disagreement with the unit blocks
+  Start / Restart / Reload; the one with the live process is cured by a restart, and blocking
+  restart would forbid the only cure. So a successful repoint turns the banner into an explicit
+  restart prompt instead of quietly disappearing — and that prompt is re-derived from the running
+  process on every poll, so it clears as soon as the process restarts, whether from the Dashboard or
+  from a shell, and it shows up on its own whenever amnezia-box is running on a file nobody is
+  editing. Paths are compared in canonical form, so a
+  trailing or doubled slash in the unit is not reported as a mismatch. The check runs at startup,
+  so editing the unit by hand while the panel is running is picked up on the next RouteBox restart.
+  The banner names the unit it is talking about, and warns when that unit is not `amnezia-box` —
+  on a host where an old upstream `sing-box.service` is still enabled, repointing would otherwise
+  edit a unit RouteBox does not manage. Unit detection now prefers `amnezia-box` over `sing-box`
+  for the same reason.
+
+- **That drop-in can now be taken back off, and is visible while it is installed.** Repointing the
+  unit is the one thing RouteBox writes outside its own files, and it used to be a one-way door:
+  once written, the panel showed no trace of it and removing it meant knowing the file name and
+  running `rm` plus `daemon-reload` by hand. A standing note now names the file
+  (`/etc/systemd/system/<unit>.service.d/10-routebox-config.conf`) and the config path the unit was
+  retargeted at, with a Remove button next to it. The note is derived from the file on disk on
+  every status poll, so it is right after a panel restart and appears even when the fix only half
+  happened. Removal deletes the file, reloads systemd and re-reads the unit, so the config path
+  mismatch that comes back — the expected result of putting the unit on its own `ExecStart` again —
+  is stated next to the button before the click instead of arriving as a red banner afterwards.
+  A drop-in belonging to somebody else in the same directory is left alone — and the
+  `<unit>.service.d` directory RouteBox created is taken away with the drop-in even when the file
+  was already deleted by hand, so pressing Remove after an `rm` no longer leaves an empty directory
+  in `/etc/systemd/system` that nobody can account for later. If `daemon-reload`
+  fails after the file is written, the error now says the file is on disk and will be applied at
+  the next reload or reboot, rather than reporting a bare `systemctl` failure for a fix that is
+  half in place; the same state is flagged in the note itself. The removal endpoint is not gated by
+  read-only mode: it changes the systemd unit, not RouteBox's files.
+
+- **Read-only mode when RouteBox cannot write what it persists.** A file on a read-only mount, made
+  immutable with `chattr +i`, or blocked by a MAC policy used to fail late and cryptically — the
+  panel accepted edits, built up a draft, and produced a raw permission error at apply time.
+  (RouteBox runs as root, so ownership and permission bits alone never stop it; these are the cases
+  that do.) RouteBox now determines writability by actually trying to write, which catches
+  read-only mounts and policies that permission bits do not reveal. A missing file in a writable
+  directory still counts as writable — that is a fresh install.
+
+  This covers every file RouteBox persists, not just the sing-box config: its own settings
+  (`routebox.toml`), the panel-user registry, subscriptions, known LAN clients and the AmneziaWG
+  peer secrets. They live in three different directories that can be mounted separately, so the
+  header badge stands for all of them and opens a panel listing each unwritable path — readable by
+  tapping, not only by hovering a tooltip. Save and apply buttons for the sing-box config are
+  disabled up front when it is the config that cannot be written, and every write endpoint answers
+  `409` naming the file it could not write, instead of a `400`/`500`/`502` that blamed the request
+  or the server. Discard stays available, since it removes a draft rather than writing one — and it
+  now reports success even when the draft file itself cannot be deleted, because the draft is gone
+  either way. Once a path is made writable again the badge clears within a couple of seconds of the
+  next status poll — a standing verdict is re-probed, so no RouteBox restart is needed and no write
+  has to be attempted first. The reverse direction — a mount that goes read-only, or a `chattr +i`,
+  while RouteBox is running — is noticed by the next write, which is when the `409` and the badge
+  appear; that now holds for the sing-box config too, where it used to produce a raw `500`
+  ("operation not permitted") with the config still shown as editable. The writability probe cleans
+  up after itself in every directory it visits, and a probe file left behind by a kill at the wrong
+  moment is swept by the next probe in that directory — after a grace period, so two probes running
+  at once cannot delete each other's live file.
+
+  A full disk (or an exhausted quota) is not a permission problem and is no longer reported as one:
+  nothing is locked there, so it does not raise read-only mode, does not appear in the list of
+  unwritable paths, and does not turn a failed write into a `409` — the write reports its own error
+  instead of sending the operator off to check ownership and permissions. It is not reported as a
+  bad request either: `POST`/`PUT /api/subscriptions` used to answer `400 Bad Request` to anything
+  the subscription store refused, so "no space left on device" arrived as a complaint about the
+  request. Only refusals the caller can fix by sending something else — an empty or duplicate name,
+  an unknown id — are `400` now; a full disk is a `500`, and an unwritable file is still the `409`
+  naming it.
+
+### Removed
+
+- **`GET /api/config/detected` is gone.** It answered the same question the status response now
+  answers with its config-path state, and two answers to one question is what let the panel show
+  two different warnings about the same thing. `POST /api/config/use-detected` is replaced by
+  `POST /api/config/adopt-unit-path`, which adopts the path of the *unit* rather than of the live
+  process: adopting a third path left the disagreement with the unit standing, so the button undid
+  nothing and fixed nothing.
+
+- **Settings that never did anything are gone.** A number of keys in `routebox.toml` were parsed,
+  stored, served over `GET /api/settings` and — for most of them — editable on the App Settings
+  page, but no code ever read them: changing them had no effect. Removed from the config, the API
+  and the UI: `geoip.auto_reload`, the entire `[logging]` section, `network.write_timeout_sec`,
+  `singbox.binary_name`, `singbox.service_name`, `advanced.debug_endpoints`,
+  `advanced.pprof_enabled`, `advanced.max_body_size`, `ui.theme`, `ui.time_format`,
+  `monitoring.max_closed_connections`, `monitoring.poll_interval_ms` and
+  `monitoring.proxies_refresh_ms`.
+
+  Existing `routebox.toml` files keep loading unchanged — unknown keys are ignored — and are
+  rewritten without the dead keys the next time settings are saved. Nothing else changes: the panel
+  still honours `network.read_timeout_sec` (`http.Server` intentionally runs without a write
+  timeout so WebSocket streams are not cut), the header theme toggle still switches the theme
+  (it is stored in the browser, not in `routebox.toml`), and `ui.language` / `ui.speed_unit`
+  are unaffected. The monitor pages use their own fixed refresh intervals, as they always did.
+
+- Internal cleanup with no user-visible effect: `settings.Manager.UpdateSection`, a
+  whole-section update path that no request handler or startup code ever called, has been deleted.
+  Settings are updated only through the per-key path used by `PUT /api/settings`.
+
+- More internal cleanup, again with no user-visible effect: seven backend functions that nothing
+  called have been deleted — `awg.DetectWAN` (a duplicate of the `(*Manager).detectWAN` that AWG
+  enable actually uses), `awg.Manager.iface_SyncConf`, `awg.SanitizeName`, `awg.ValidateAllowedIPs`,
+  `traffic.ApexDomain` (apex collapsing lives in the frontend, `$lib/utils/apexDomain.ts`),
+  `users.Manager.Delete` (panel users are derived from the active config by `Reconcile`, so deleting
+  a user means removing its credentials from the draft and applying) and `geoip.DB.Path`. Their
+  tests went with them. Dropping `traffic.ApexDomain` also removes `golang.org/x/net` from the
+  direct dependencies.
+
+- Another internal cleanup with no user-visible effect: the process manager's "force standalone"
+  switch (`SetForceStandalone` / `IsForceStandalone` and the `forceStandalone` field) is gone. It
+  gated three decisions about whether to drive amnezia-box through systemd, but nothing — no flag,
+  no setting, no endpoint — could ever turn it on, so it was always false. Behaviour is unchanged;
+  systemd is still used whenever a unit is detected.
+
 ### Fixed
+
+- **A panel set up in VPS mode no longer loses the admin password it generated.** When panel auth
+  is off, VPS mode generates admin credentials on startup and writes them twice into the settings
+  directory: into `routebox.toml`, and into `routebox-initial-password` next to it. If that
+  directory could not be written, the settings write aborted startup outright and the password file
+  failed with a bare system error printed inside the credentials banner — so the one place a person
+  actually looks for that password stayed empty. The panel now comes up either way, with auth ON
+  (VPS mode exists because the panel is reachable from the internet, so it never comes up open) and
+  with the banner saying exactly what did not persist and what follows from it: that the printed
+  line is the only copy of the password, or that these credentials last only until the next start,
+  which generates a new password and rewrites the file. The password file is written through the
+  same check as every other RouteBox write, so an unwritable directory is reported as read-only
+  with the path in it instead of an errno.
+
+- **`traffic sampler: … no Host in request URL` is gone from the startup log.** On any install
+  where the Clash API address is not set, every start left that line in the journal: an error about
+  a URL, where the truth is that there is nothing to sample. The traffic sampler now does not start
+  without an address — as the LAN client-discovery loop already did — and startup says once that
+  live connections and traffic history are off, which setting turns them on, and that RouteBox
+  reads the address at startup and so has to be restarted afterwards.
+
+- **"Reset statistics" now clears per-user usage too.** The confirm dialog promised to erase all
+  accumulated traffic statistics, but only the minute-by-minute connection history was wiped: the
+  per-user totals behind the Users page and the subscription `userinfo` header survived, so the
+  numbers reappeared as soon as the page was reopened. Both are cleared now. If one half fails, the
+  error names which half — the reset is never reported as complete while stale numbers remain. Live
+  counters are unaffected, as before; new traffic starts accumulating from zero.
+
+- **Enabling AWG or adding a peer no longer reports success without writing anything.** When the
+  sing-box config could not be written, the step that publishes the AWG endpoint quietly skipped
+  itself and the operation went on to save the peer's keys into its own (usually writable) store,
+  answer `200` and draw the client in the panel — a client that could never connect, because the
+  endpoint never reached sing-box. The operation now fails with the reason. Two related losses are
+  fixed alongside it: deleting a peer no longer discards its stored secret when the config write
+  fails (the peer stayed on the interface but became unrecoverable), and renewing a peer no longer
+  leaves the new expiry date showing while the peer remains suspended.
+
+- **The AWG interface sweep no longer endangers suspended peers.** RouteBox now removes stray peers
+  from the live `awg-rb0` interface — leftovers of a crash or of manual `awg set` edits — after the
+  tunnel comes up and passes its health check. Peers RouteBox knows about are never touched, and
+  the peer store is never modified, so an expired/suspended peer (deliberately absent from the
+  generated conf) keeps its keys and can still be renewed. A failed listing or a failed removal is
+  logged and never fails an AWG enable whose tunnel is already up and serving.
+
+- **The GeoIP database is closed on shutdown.** RouteBox exited while still holding the MMDB file
+  open and memory-mapped, leaving the release to the kernel. Nothing was visibly broken by it, but
+  the shutdown sequence now closes the database alongside the traffic store, and a failure to do so
+  is logged rather than passing unnoticed.
+
+- **A rejected settings save no longer applies half of itself.** Saving settings applied each key
+  as it was read, so a payload containing one bad or unknown key returned "Failed to save settings"
+  *after* an arbitrary subset of the other keys had already been changed in memory — and Go's random
+  map order made the subset different every time. Those changes stayed, and the next successful save
+  wrote them to `routebox.toml`. The most common way to hit this was a browser tab running a cached
+  older version of the panel, which still posts keys the current build has removed. Saving settings
+  is now all-or-nothing: nothing is changed unless every key in the request is accepted, including
+  the password hashing that a rejected request used to perform anyway. An unknown key is still an
+  error, so typos are not silently ignored. A request containing several bad keys also reports the
+  same one every time instead of a different one on each retry.
 
 - **AWG peer names in Cyrillic (or any non-Latin script) are kept as typed.** A peer added as
   «Ноутбук» was stored as `name`, so three Russian-named devices became three peers called `name`.

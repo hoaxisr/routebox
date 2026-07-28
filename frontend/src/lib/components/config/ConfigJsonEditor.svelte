@@ -6,7 +6,7 @@
 	import { json } from '@codemirror/lang-json';
 	import { oneDark } from '@codemirror/theme-one-dark';
 	import { api } from '$lib/api/client';
-	import { notifications, unsavedChanges } from '$lib/stores';
+	import { notifications, unsavedChanges, configReadOnly } from '$lib/stores';
 	import type { SingboxConfig } from '$lib/types';
 
 	let editorContainer: HTMLDivElement;
@@ -200,8 +200,9 @@
 			<button
 				type="button"
 				onclick={handleSave}
-				disabled={saving}
-				class="px-4 py-1.5 text-sm bg-[var(--ctp-primary)] text-white rounded-lg hover:opacity-90 transition-opacity disabled:opacity-50"
+				disabled={saving || $configReadOnly}
+				title={$configReadOnly ? $t('readOnly.saveBlocked') : ''}
+				class="px-4 py-1.5 text-sm bg-[var(--ctp-primary)] text-white rounded-lg hover:opacity-90 transition-opacity disabled:opacity-50 disabled:cursor-not-allowed"
 			>
 				{saving ? $t('common.saving') + '...' : $t('jsonEditor.saveToDraft')}
 			</button>

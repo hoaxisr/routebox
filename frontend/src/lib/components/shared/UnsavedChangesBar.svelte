@@ -1,6 +1,6 @@
 <script lang="ts">
 	import { t } from 'svelte-i18n';
-	import { unsavedChanges } from '$lib/stores';
+	import { unsavedChanges, configReadOnly } from '$lib/stores';
 	import { api } from '$lib/api/client';
 	import { notifications } from '$lib/stores';
 	import { onMount } from 'svelte';
@@ -96,8 +96,9 @@
 					<button
 						type="button"
 						onclick={handleApply}
-						disabled={saving || discarding}
-						class="px-4 py-1.5 text-sm font-medium rounded-lg bg-[var(--ctp-base)] text-[var(--ctp-text)] hover:bg-[var(--ctp-surface0)] transition-colors disabled:opacity-50 flex items-center gap-2"
+						disabled={saving || discarding || $configReadOnly}
+						title={$configReadOnly ? $t('readOnly.saveBlocked') : ''}
+						class="px-4 py-1.5 text-sm font-medium rounded-lg bg-[var(--ctp-base)] text-[var(--ctp-text)] hover:bg-[var(--ctp-surface0)] transition-colors disabled:opacity-50 disabled:cursor-not-allowed flex items-center gap-2"
 					>
 						{#if saving}
 							<svg class="w-4 h-4 animate-spin" fill="none" viewBox="0 0 24 24">

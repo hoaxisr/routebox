@@ -36,7 +36,7 @@ func (h *Handler) CreateInbound(w http.ResponseWriter, r *http.Request) {
 	}
 
 	if err := h.config.CreateInbound(inbound); err != nil {
-		writeError(w, http.StatusBadRequest, err.Error())
+		writeConfigError(w, http.StatusBadRequest, err)
 		return
 	}
 
@@ -54,7 +54,7 @@ func (h *Handler) UpdateInbound(w http.ResponseWriter, r *http.Request) {
 	}
 
 	if err := h.config.UpdateInbound(tag, inbound); err != nil {
-		writeError(w, http.StatusNotFound, err.Error())
+		writeConfigError(w, http.StatusNotFound, err)
 		return
 	}
 
@@ -66,7 +66,7 @@ func (h *Handler) DeleteInbound(w http.ResponseWriter, r *http.Request) {
 	tag := chi.URLParam(r, "tag")
 
 	if err := h.config.DeleteInbound(tag); err != nil {
-		writeError(w, http.StatusNotFound, err.Error())
+		writeConfigError(w, http.StatusNotFound, err)
 		return
 	}
 

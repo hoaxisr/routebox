@@ -1,6 +1,7 @@
 package subscriptions
 
 import (
+	"errors"
 	"fmt"
 	"os"
 	"path/filepath"
@@ -10,7 +11,28 @@ import (
 	"time"
 
 	"github.com/BurntSushi/toml"
+
+	"routebox/backend/internal/util"
 )
+
+// ErrInvalid marks a refusal the caller can fix by sending something else: an
+// empty name, a duplicate, an id that does not exist. Everything else these
+// methods can fail with is persistence — RouteBox could not write the file —
+// and calling that a bad request sends the operator to check their input while
+// the disk is full. The API needs the two apart to answer 400 or 500.
+var ErrInvalid = errors.New("invalid subscription request")
+
+// invalidRequest carries ErrInvalid without changing the message: these texts
+// are shown to the user as written, and "invalid subscription request: name is
+// required" is a sentinel talking over them.
+type invalidRequest struct{ msg string }
+
+func (e invalidRequest) Error() string { return e.msg }
+func (invalidRequest) Unwrap() error   { return ErrInvalid }
+
+func invalidf(format string, a ...any) error {
+	return invalidRequest{msg: fmt.Sprintf(format, a...)}
+}
 
 // Subscription is one configured subscription URL and its last-refresh result.
 type Subscription struct {
@@ -26,15 +48,23 @@ type Subscription struct {
 // Manager owns the subscription set and TOML persistence. CRUD persists
 // synchronously (changes are user-initiated and rare).
 type Manager struct {
-	path string
-	mu   sync.RWMutex
-	byID map[string]*Subscription
+	path  string
+	mu    sync.RWMutex
+	byID  map[string]*Subscription
+	guard *util.WriteGuard
 }
 
 // NewManager constructs a Manager. Empty path disables persistence (tests).
 func NewManager(path string) *Manager {
-	return &Manager{path: path, byID: map[string]*Subscription{}}
+	return &Manager{path: path, byID: map[string]*Subscription{}, guard: util.NewWriteGuard(path)}
 }
+
+// GetPath returns the file this store persists to ("" when persistence is off).
+func (m *Manager) GetPath() string { return m.path }
+
+// IsReadOnly reports whether the store's file cannot be written, so the panel
+// can show one read-only state for every file RouteBox persists.
+func (m *Manager) IsReadOnly() bool { return m.guard.IsReadOnly() }
 
 // Load reads the TOML file if present, replacing the in-memory set.
 func (m *Manager) Load() error {
@@ -64,10 +94,17 @@ func (m *Manager) Load() error {
 	return nil
 }
 
+// saveLocked persists the set. A failure that is about writability comes back as
+// util.ErrReadOnly naming the file, so the API answers 409 with something the
+// operator can act on instead of a raw 500. Caller holds m.mu.
 func (m *Manager) saveLocked() error {
 	if m.path == "" {
 		return nil
 	}
+	return m.guard.Note(m.writeLocked())
+}
+
+func (m *Manager) writeLocked() error {
 	if err := os.MkdirAll(filepath.Dir(m.path), 0755); err != nil {
 		return err
 	}
@@ -139,20 +176,20 @@ func slugify(name string) string {
 func (m *Manager) Add(name, url string, intervalHrs int) (Subscription, error) {
 	name = strings.TrimSpace(name)
 	if name == "" {
-		return Subscription{}, fmt.Errorf("name is required")
+		return Subscription{}, invalidf("name is required")
 	}
 	id := slugify(name)
 	if id == "" {
-		return Subscription{}, fmt.Errorf("name must contain at least one alphanumeric character")
+		return Subscription{}, invalidf("name must contain at least one alphanumeric character")
 	}
 	m.mu.Lock()
 	defer m.mu.Unlock()
 	if _, exists := m.byID[id]; exists {
-		return Subscription{}, fmt.Errorf("subscription %q already exists", name)
+		return Subscription{}, invalidf("subscription %q already exists", name)
 	}
 	for _, s := range m.byID {
 		if s.Name == name {
-			return Subscription{}, fmt.Errorf("subscription %q already exists", name)
+			return Subscription{}, invalidf("subscription %q already exists", name)
 		}
 	}
 	s := &Subscription{ID: id, Name: name, URL: url, IntervalHrs: intervalHrs}
@@ -170,7 +207,7 @@ func (m *Manager) Update(id, url string, intervalHrs int) error {
 	defer m.mu.Unlock()
 	s, ok := m.byID[id]
 	if !ok {
-		return fmt.Errorf("subscription %q not found", id)
+		return invalidf("subscription %q not found", id)
 	}
 	s.URL = url
 	s.IntervalHrs = intervalHrs
@@ -182,7 +219,7 @@ func (m *Manager) Delete(id string) error {
 	m.mu.Lock()
 	defer m.mu.Unlock()
 	if _, ok := m.byID[id]; !ok {
-		return fmt.Errorf("subscription %q not found", id)
+		return invalidf("subscription %q not found", id)
 	}
 	delete(m.byID, id)
 	return m.saveLocked()
@@ -195,7 +232,7 @@ func (m *Manager) SetResult(id string, nodeCount int, lastErr string) error {
 	defer m.mu.Unlock()
 	s, ok := m.byID[id]
 	if !ok {
-		return fmt.Errorf("subscription %q not found", id)
+		return invalidf("subscription %q not found", id)
 	}
 	s.LastError = lastErr
 	if lastErr == "" {

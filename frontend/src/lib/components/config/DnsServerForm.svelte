@@ -1,6 +1,6 @@
 <script lang="ts">
 	import type { DnsServer, Outbound } from '$lib/types';
-	import { notifications, featureFlags } from '$lib/stores';
+	import { notifications, configReadOnly, featureFlags } from '$lib/stores';
 	import { t } from 'svelte-i18n';
 	import HelpTooltip from '$lib/components/shared/HelpTooltip.svelte';
 
@@ -409,7 +409,9 @@
 		</button>
 		<button
 			type="submit"
-			class="px-4 py-2 bg-[var(--ctp-primary)] text-white rounded-lg hover:opacity-90 transition-opacity"
+			class="px-4 py-2 bg-[var(--ctp-primary)] text-white rounded-lg hover:opacity-90 transition-opacity disabled:opacity-50 disabled:cursor-not-allowed"
+			disabled={$configReadOnly}
+			title={$configReadOnly ? $t('readOnly.saveBlocked') : ''}
 		>
 			{server ? $t('common.saveChanges') : $t('dns.addServer')}
 		</button>

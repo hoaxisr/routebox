@@ -2,7 +2,7 @@
 	import { t } from 'svelte-i18n';
 	import { onMount } from 'svelte';
 	import { api } from '$lib/api/client';
-	import { notifications, unsavedChanges } from '$lib/stores';
+	import { notifications, unsavedChanges, configReadOnly } from '$lib/stores';
 	import SideBySideDiff from '$lib/components/shared/SideBySideDiff.svelte';
 
 	let loading = $state(true);
@@ -110,8 +110,9 @@
 				<button
 					type="button"
 					onclick={handleApply}
-					disabled={applying || discarding}
-					class="px-3 py-1.5 text-sm bg-[var(--ctp-primary)] text-white rounded-lg hover:opacity-90 transition-opacity disabled:opacity-50"
+					disabled={applying || discarding || $configReadOnly}
+					title={$configReadOnly ? $t('readOnly.saveBlocked') : ''}
+					class="px-3 py-1.5 text-sm bg-[var(--ctp-primary)] text-white rounded-lg hover:opacity-90 transition-opacity disabled:opacity-50 disabled:cursor-not-allowed"
 				>
 					{applying ? $t('common.saving') + '...' : $t('changes.applyChanges')}
 				</button>

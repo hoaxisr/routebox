@@ -109,7 +109,7 @@ func (h *Handler) CreateUser(w http.ResponseWriter, r *http.Request) {
 	}
 	cred, err := h.stageUserInDraft(body.InboundTag, body.Protocol, body.Name)
 	if err != nil {
-		writeError(w, http.StatusBadRequest, err.Error())
+		writeConfigError(w, http.StatusBadRequest, err)
 		return
 	}
 	writeSuccess(w, userView{
@@ -156,7 +156,7 @@ func (h *Handler) AddBinding(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 	if _, err := h.stageUserInDraft(body.InboundTag, body.Protocol, u.Name); err != nil {
-		writeError(w, http.StatusBadRequest, err.Error())
+		writeConfigError(w, http.StatusBadRequest, err)
 		return
 	}
 	writeSuccess(w, map[string]string{"message": "binding staged in draft"})
@@ -202,10 +202,10 @@ func (h *Handler) DeleteUser(w http.ResponseWriter, r *http.Request) {
 			// The last-user-of-a-mieru-inbound guard is a client-actionable
 			// rejection (delete the inbound instead), not a server fault.
 			if errors.Is(err, ErrLastMieruUser) {
-				writeError(w, http.StatusConflict, err.Error())
+				writeConfigError(w, http.StatusConflict, err)
 				return
 			}
-			writeError(w, http.StatusInternalServerError, err.Error())
+			writeConfigError(w, http.StatusInternalServerError, err)
 			return
 		}
 	}
@@ -430,7 +430,7 @@ func (h *Handler) RotateUserToken(w http.ResponseWriter, r *http.Request) {
 	if err != nil {
 		// User exists (checked above): a non-nil error here is a save failure,
 		// a genuine server fault — not a missing user.
-		writeError(w, http.StatusInternalServerError, err.Error())
+		writeConfigError(w, http.StatusInternalServerError, err)
 		return
 	}
 	writeSuccess(w, map[string]string{"token": tok})
@@ -451,7 +451,7 @@ func (h *Handler) RevokeUserToken(w http.ResponseWriter, r *http.Request) {
 	if err := h.panelUsers.RevokeToken(id); err != nil {
 		// User exists (checked above): a non-nil error here is a save failure,
 		// a genuine server fault — not a missing user.
-		writeError(w, http.StatusInternalServerError, err.Error())
+		writeConfigError(w, http.StatusInternalServerError, err)
 		return
 	}
 	writeSuccess(w, map[string]string{"message": "token revoked"})
@@ -492,7 +492,7 @@ func (h *Handler) UpdateUser(w http.ResponseWriter, r *http.Request) {
 	}
 	if err := h.panelUsers.Put(&u); err != nil {
 		// User existed (checked above): a non-nil error here is a save failure.
-		writeError(w, http.StatusInternalServerError, err.Error())
+		writeConfigError(w, http.StatusInternalServerError, err)
 		return
 	}
 	h.syncRejectRule() // immediate enforcement + reload-on-change

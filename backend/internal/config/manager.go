@@ -16,21 +16,30 @@ import (
 	"strings"
 	"sync"
 	"time"
+
+	"routebox/backend/internal/util"
 )
 
 // Manager handles config file operations with draft/staged editing support.
 // Changes are accumulated in a draft file (config.json.bak) and only applied
 // to the active config (config.json) when explicitly saved or applied.
 type Manager struct {
-	path          string                 // config.json path
-	draftPath     string                 // config.json.bak path
-	activeConfig  map[string]interface{} // config on disk (read-only during editing)
-	draftConfig   map[string]interface{} // draft config (nil if no changes)
-	hasDraft      bool
-	draftGen      int64 // generation counter, bumped on every draft mutation (guarded by mu)
-	mu            sync.RWMutex
-	readOnly      bool
-	checkBinaryFn func() string // provider for the `check` validation binary (re-evaluated per check)
+	path         string                 // config.json path
+	draftPath    string                 // config.json.bak path
+	activeConfig map[string]interface{} // config on disk (read-only during editing)
+	draftConfig  map[string]interface{} // draft config (nil if no changes)
+	hasDraft     bool
+	draftGen     int64 // generation counter, bumped on every draft mutation (guarded by mu)
+	mu           sync.RWMutex
+	// guard is the same writability verdict every other RouteBox store keeps
+	// (util.WriteGuard): taken at startup, re-probed while it stands negative,
+	// and — the part the config used to lack — re-derived from what actually
+	// happens to a write. Sharing it is what makes one badge, one 409 and one
+	// sentinel true for the config as well as for users.toml.
+	guard          *util.WriteGuard
+	logMu          sync.Mutex // guards loggedReadOnly only
+	loggedReadOnly bool
+	checkBinaryFn  func() string // provider for the `check` validation binary (re-evaluated per check)
 }
 
 // ErrDraftChanged is returned by SaveToDiskIfGen when the draft was mutated
@@ -41,63 +50,146 @@ var ErrDraftChanged = errors.New("draft changed since validation")
 // given tag, so callers can distinguish "absent" from a real failure.
 var ErrInboundNotFound = errors.New("inbound not found")
 
-// NewManager creates a new config manager and loads the config
+// ErrReadOnly is returned by every write path when RouteBox cannot write the
+// config on disk. It is the program-wide sentinel (util.ErrReadOnly), shared
+// with every other file RouteBox persists, so the API layer has one errors.Is
+// and the panel has one read-only state. Callers match it to answer with a state
+// conflict instead of a generic failure; the wrapped message names the path.
+var ErrReadOnly = util.ErrReadOnly
+
+// readOnlyError builds the ErrReadOnly wrapper for a concrete config path, so
+// the message tells the user exactly which file to make writable.
+func readOnlyError(path string) error {
+	return util.ReadOnlyError(path)
+}
+
+// wtestPrefix names the throwaway file the writability probe creates.
+// CleanupDraft sweeps it: a kill between creation and removal would otherwise
+// leave it in the config directory forever.
+const wtestPrefix = util.WriteProbePrefix
+
+// NewManager creates a new config manager and loads the config.
+// The manager enters read-only mode by itself when the config on disk is not
+// writable: there is no separate switch to forget to flip. RouteBox runs as
+// root (main refuses to start otherwise), so ownership and permission bits are
+// not what triggers it — a read-only mount, chattr +i or a MAC policy is.
 func NewManager(path string) (*Manager, error) {
 	m := &Manager{
 		path:         path,
 		draftPath:    path + ".bak",
 		activeConfig: make(map[string]interface{}),
+		guard:        util.NewWriteGuard(path),
 	}
 
 	if err := m.Load(); err != nil {
 		return nil, err
 	}
 
+	m.logReadOnly(m.guard.IsReadOnly())
+
 	return m, nil
 }
 
-// NewEmptyManager creates a manager with empty config
-func NewEmptyManager(path string) *Manager {
-	return &Manager{
-		path:         path,
-		draftPath:    path + ".bak",
-		activeConfig: make(map[string]interface{}),
-		readOnly:     false,
+// logReadOnly records the verdict in the journal when it changes, and returns it
+// unchanged so callers can wrap a read in it. The state now moves in three
+// places — startup, a status read's re-probe, a write that failed or went
+// through — and each of them printing its own wording is how a journal stops
+// being readable.
+func (m *Manager) logReadOnly(readOnly bool) bool {
+	m.logMu.Lock()
+	defer m.logMu.Unlock()
+	if readOnly == m.loggedReadOnly {
+		return readOnly
 	}
+	m.loggedReadOnly = readOnly
+	if readOnly {
+		log.Printf("config %s is not writable — RouteBox runs in read-only mode", m.guard.Path())
+	} else {
+		log.Printf("config %s is writable again — read-only mode lifted", m.guard.Path())
+	}
+	return readOnly
 }
 
-// NewReadOnlyManager creates a manager that can read but not write
-func NewReadOnlyManager(path string) (*Manager, error) {
+// noteWrite classifies the outcome of a write to the config exactly as every
+// other store does: a write that went through clears the verdict, one that
+// failed is probed, and a failure that turns out to be about writability comes
+// back as ErrReadOnly naming the file (409, actionable) instead of a bare errno
+// (500, and nothing to do about it).
+//
+// This is the half the config was missing. The pre-write guard below cannot see
+// a mount that goes read-only, or a chattr +i, while RouteBox is running: the
+// standing verdict is positive, so nothing re-probes and the write fails raw.
+func (m *Manager) noteWrite(err error) error {
+	out := m.guard.Note(err)
+	m.logReadOnly(m.guard.IsReadOnly())
+	return out
+}
+
+// blockedByReadOnly is the guard every config-writing path runs first, and the
+// one thing the config keeps that the state stores do not need. Their writes
+// fail on their own when the file is refused; the config's would not always —
+// an atomic rename only needs the DIRECTORY, so a config file deliberately made
+// read-only under a writable directory would be replaced anyway.
+//
+// A standing verdict is re-probed here rather than trusted (Recheck, which
+// ignores the status poll's rate limit): it was taken at startup, and RouteBox
+// runs as root, so it can only come from a read-only mount, chattr +i or a MAC
+// policy — conditions an operator fixes while the panel keeps running. Probing
+// at the moment of the write is what makes "fix it and try again" true without
+// restarting RouteBox. Caller must hold m.mu write lock.
+func (m *Manager) blockedByReadOnly() error {
+	if !m.logReadOnly(m.guard.Recheck()) {
+		return nil
+	}
+	return readOnlyError(m.path)
+}
+
+// NewEmptyManager creates a manager with empty config.
+// This is the fresh-install path (no config file yet), so the read-only verdict
+// hangs on the directory: a config we cannot create is as unwritable as one we
+// cannot overwrite.
+func NewEmptyManager(path string) *Manager {
 	m := &Manager{
 		path:         path,
 		draftPath:    path + ".bak",
 		activeConfig: make(map[string]interface{}),
-		readOnly:     true,
+		guard:        util.NewWriteGuard(path),
 	}
-
-	if err := m.Load(); err != nil {
-		return nil, err
-	}
-
-	return m, nil
+	m.logReadOnly(m.guard.IsReadOnly())
+	return m
 }
 
-// IsReadOnly returns true if manager is in read-only mode
+// IsReadOnly reports whether RouteBox can write the config.
+//
+// A standing read-only verdict is re-derived here (rate-limited inside the
+// guard), so the panel's badge goes out by itself once the operator remounts rw
+// — it no longer waits for whichever background task next writes the config. A
+// writable verdict is trusted until a write proves otherwise: probing on every
+// status poll would write to the filesystem several times a minute forever, and
+// on a flash-backed router that is a real cost for a state that is almost always
+// fine.
 func (m *Manager) IsReadOnly() bool {
-	return m.readOnly
+	return m.logReadOnly(m.guard.IsReadOnly())
 }
 
-// SetReadOnly sets the read-only mode
+// SetReadOnly overrides the read-only mode. Production never calls it — the
+// mode is derived from the filesystem — it exists so tests in other packages can
+// put a manager in that state without chmod.
 func (m *Manager) SetReadOnly(readOnly bool) {
-	m.readOnly = readOnly
+	m.guard.SetReadOnly(readOnly)
+	m.logReadOnly(readOnly)
 }
 
 // SetPathWithoutLoad sets the config path without loading
 func (m *Manager) SetPathWithoutLoad(path string) {
 	m.mu.Lock()
-	defer m.mu.Unlock()
 	m.path = path
 	m.draftPath = path + ".bak"
+	m.mu.Unlock()
+	// A different file has different permissions; leaving the verdict on the old
+	// path would report (and enforce) the wrong file's state.
+	m.guard.SetPath(path)
+	m.logReadOnly(m.guard.IsReadOnly())
 }
 
 // atomicWriteFile writes data to path atomically: write to a temp file in the
@@ -214,19 +306,23 @@ func (m *Manager) Save(config map[string]interface{}) error {
 	return m.saveLocked(config)
 }
 
-// saveLocked is the body of Save without locking (caller must hold m.mu write lock).
-func (m *Manager) saveLocked(config map[string]interface{}) error {
-	// Check if read-only
-	if m.readOnly {
-		return fmt.Errorf("cannot save: config is read-only (run with sudo or stop the systemd service)")
+// encodeConfig renders a config as the JSON that goes on disk. HTML escaping
+// stays off: AWG binary data (i1, i2, ...) must survive verbatim.
+func encodeConfig(config map[string]interface{}) ([]byte, error) {
+	var buf bytes.Buffer
+	encoder := json.NewEncoder(&buf)
+	encoder.SetEscapeHTML(false)
+	encoder.SetIndent("", "  ")
+	if err := encoder.Encode(config); err != nil {
+		return nil, err
 	}
+	return buf.Bytes(), nil
+}
 
-	// Check if path is set
-	if m.path == "" {
-		return fmt.Errorf("config path not set")
-	}
-
-	// Ensure parent directory exists
+// writeActiveLocked backs the current config up and writes data over it. Every
+// error it returns is a filesystem error, so the caller can hand the lot to
+// noteWrite and let one place decide whether it was about writability.
+func (m *Manager) writeActiveLocked(data []byte) error {
 	dir := filepath.Dir(m.path)
 	if err := os.MkdirAll(dir, 0755); err != nil {
 		return fmt.Errorf("failed to create config directory: %w", err)
@@ -240,20 +336,33 @@ func (m *Manager) saveLocked(config map[string]interface{}) error {
 		}
 	}
 
-	// Write new config without HTML escaping (important for AWG binary data like i1, i2, etc.)
-	var buf bytes.Buffer
-	encoder := json.NewEncoder(&buf)
-	encoder.SetEscapeHTML(false)
-	encoder.SetIndent("", "  ")
-	if err := encoder.Encode(config); err != nil {
-		return fmt.Errorf("failed to marshal config: %w", err)
-	}
-	data := buf.Bytes()
-
 	if err := atomicWriteFile(m.path, data, 0600); err != nil {
 		return fmt.Errorf("failed to write config: %w", err)
 	}
 	pruneBackups(dir, filepath.Base(m.path), 5)
+	return nil
+}
+
+// saveLocked is the body of Save without locking (caller must hold m.mu write lock).
+func (m *Manager) saveLocked(config map[string]interface{}) error {
+	// Check if read-only
+	if err := m.blockedByReadOnly(); err != nil {
+		return err
+	}
+
+	// Check if path is set
+	if m.path == "" {
+		return fmt.Errorf("config path not set")
+	}
+
+	data, err := encodeConfig(config)
+	if err != nil {
+		return fmt.Errorf("failed to marshal config: %w", err)
+	}
+
+	if err := m.noteWrite(m.writeActiveLocked(data)); err != nil {
+		return err
+	}
 
 	m.activeConfig = config
 	// Clear draft after successful save to active
@@ -346,13 +455,39 @@ func (m *Manager) HasVpnConfig() bool {
 	return false
 }
 
-// SetPath changes the config file path and reloads
+// SetPath changes the config file path and reloads.
+// All-or-nothing: the new file is read and parsed BEFORE anything is assigned.
+// Assigning first and loading after left the manager half-switched on failure —
+// new path, old config in memory, read-only verdict of the old path — and the
+// next Save then wrote the old config to the new place. That is reachable from
+// the panel: "adopt the detected config path" can point at a file the unit's
+// ExecStart names but nobody ever created.
 func (m *Manager) SetPath(path string) error {
+	data, err := os.ReadFile(path)
+	if err != nil {
+		return fmt.Errorf("failed to read config: %w", err)
+	}
+	var config map[string]interface{}
+	if err := json.Unmarshal(data, &config); err != nil {
+		return fmt.Errorf("failed to parse config: %w", err)
+	}
+
 	m.mu.Lock()
 	m.path = path
 	m.draftPath = path + ".bak"
+	// Mirrors Load: adopting a config drops any draft of the previous one.
+	m.activeConfig = config
+	m.draftConfig = nil
+	m.hasDraft = false
+	m.draftGen++
 	m.mu.Unlock()
-	return m.Load()
+
+	// A different file has different permissions: the verdict must follow the
+	// path, otherwise adopting a writable config would stay blocked (or a
+	// read-only one would look editable).
+	m.guard.SetPath(path)
+	m.logReadOnly(m.guard.IsReadOnly())
+	return nil
 }
 
 // Diff returns the difference between current and new config
@@ -391,8 +526,9 @@ func (m *Manager) HasDraft() bool {
 	return m.hasDraft
 }
 
-// CleanupDraft removes any existing draft file and orphaned atomic-write temp
-// files (<base>.tmp-* / <base>.bak.tmp-*) left by a crash (call on startup)
+// CleanupDraft removes any existing draft file and orphaned temp files left by
+// a crash — atomic writes (<base>.tmp-* / <base>.bak.tmp-*) and the
+// writability probe (.routebox-wtest-*) (call on startup)
 func (m *Manager) CleanupDraft() {
 	m.mu.Lock()
 	defer m.mu.Unlock()
@@ -413,7 +549,8 @@ func (m *Manager) CleanupDraft() {
 		if e.IsDir() {
 			continue
 		}
-		if strings.HasPrefix(name, base+".tmp-") || strings.HasPrefix(name, base+".bak.tmp-") {
+		if strings.HasPrefix(name, base+".tmp-") || strings.HasPrefix(name, base+".bak.tmp-") ||
+			strings.HasPrefix(name, wtestPrefix) {
 			os.Remove(filepath.Join(dir, name))
 		}
 	}
@@ -442,19 +579,41 @@ func (m *Manager) saveDraftToDisk() error {
 		return nil
 	}
 
-	var buf bytes.Buffer
-	encoder := json.NewEncoder(&buf)
-	encoder.SetEscapeHTML(false)
-	encoder.SetIndent("", "  ")
-	if err := encoder.Encode(m.draftConfig); err != nil {
+	// Refuse at the first edit rather than at apply time: a draft that can
+	// never reach disk is worse than an early, explicit refusal. The pending
+	// in-memory change is dropped so the manager keeps reporting what the disk
+	// actually holds.
+	if err := m.blockedByReadOnly(); err != nil {
+		m.dropDraftLocked()
+		return err
+	}
+
+	data, err := encodeConfig(m.draftConfig)
+	if err != nil {
 		return fmt.Errorf("failed to marshal draft config: %w", err)
 	}
 
 	m.draftGen++
-	if err := atomicWriteFile(m.draftPath, buf.Bytes(), 0644); err != nil {
+	if err := m.noteWrite(atomicWriteFile(m.draftPath, data, 0644)); err != nil {
+		if errors.Is(err, ErrReadOnly) {
+			// The refusal the guard above could not see yet — the config went
+			// unwritable between that check and this write. Same invariant, and
+			// the error is passed through bare so the 409 names the file rather
+			// than burying it behind "failed to write draft config".
+			m.dropDraftLocked()
+			return err
+		}
 		return fmt.Errorf("failed to write draft config: %w", err)
 	}
 	return nil
+}
+
+// dropDraftLocked forgets a draft that could not be persisted, so the manager
+// never reports state the disk does not hold. Caller holds m.mu write lock.
+func (m *Manager) dropDraftLocked() {
+	m.draftConfig = nil
+	m.hasDraft = false
+	m.draftGen++
 }
 
 // SaveDraft persists current draft to disk
@@ -480,7 +639,15 @@ func (m *Manager) SetDraft(config map[string]interface{}) error {
 	return m.saveDraftToDisk()
 }
 
-// DiscardDraft removes draft and reverts to active config
+// DiscardDraft removes draft and reverts to active config.
+//
+// It never fails on the file. The draft is dropped from memory first, and from
+// that moment the manager reports what the disk holds — a leftover .bak is never
+// read back (startup sweeps it in CleanupDraft) and cannot resurrect anything.
+// Discard is also the one editing action that stays available in read-only mode,
+// because it takes changes away rather than putting any on disk; returning an
+// error for a delete that could not happen told the user their Discard had
+// failed when it had not. The failure is logged, not raised.
 func (m *Manager) DiscardDraft() error {
 	m.mu.Lock()
 	defer m.mu.Unlock()
@@ -489,9 +656,8 @@ func (m *Manager) DiscardDraft() error {
 	m.hasDraft = false
 	m.draftGen++
 
-	// Remove draft file
 	if err := os.Remove(m.draftPath); err != nil && !os.IsNotExist(err) {
-		return fmt.Errorf("failed to remove draft file: %w", err)
+		log.Printf("config: draft discarded, but its file %s could not be removed: %v", m.draftPath, err)
 	}
 
 	return nil
@@ -510,37 +676,19 @@ func (m *Manager) applyDraftLocked() error {
 		return nil // Nothing to apply
 	}
 
-	if m.readOnly {
-		return fmt.Errorf("cannot apply: config is read-only")
-	}
-
-	// Ensure parent directory exists
-	dir := filepath.Dir(m.path)
-	if err := os.MkdirAll(dir, 0755); err != nil {
-		return fmt.Errorf("failed to create config directory: %w", err)
-	}
-
-	// Create timestamped backup of current active config
-	if _, err := os.Stat(m.path); err == nil {
-		backupPath := fmt.Sprintf("%s.%d.bak", m.path, time.Now().Unix())
-		if data, err := os.ReadFile(m.path); err == nil {
-			os.WriteFile(backupPath, data, 0600)
-		}
+	if err := m.blockedByReadOnly(); err != nil {
+		return err
 	}
 
 	// Write draft to active config file
-	var buf bytes.Buffer
-	encoder := json.NewEncoder(&buf)
-	encoder.SetEscapeHTML(false)
-	encoder.SetIndent("", "  ")
-	if err := encoder.Encode(m.draftConfig); err != nil {
+	data, err := encodeConfig(m.draftConfig)
+	if err != nil {
 		return fmt.Errorf("failed to marshal config: %w", err)
 	}
 
-	if err := atomicWriteFile(m.path, buf.Bytes(), 0600); err != nil {
-		return fmt.Errorf("failed to write config: %w", err)
+	if err := m.noteWrite(m.writeActiveLocked(data)); err != nil {
+		return err
 	}
-	pruneBackups(dir, filepath.Base(m.path), 5)
 
 	// Update active config and clear draft
 	m.activeConfig = m.draftConfig

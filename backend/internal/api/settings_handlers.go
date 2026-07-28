@@ -23,7 +23,7 @@ func (h *Handler) UpdateLogSettings(w http.ResponseWriter, r *http.Request) {
 	}
 
 	if err := h.config.UpdateLogSettings(settings); err != nil {
-		writeError(w, http.StatusBadRequest, err.Error())
+		writeConfigError(w, http.StatusBadRequest, err)
 		return
 	}
 
@@ -47,7 +47,7 @@ func (h *Handler) UpdateExperimental(w http.ResponseWriter, r *http.Request) {
 	}
 
 	if err := h.config.UpdateExperimental(settings); err != nil {
-		writeError(w, http.StatusBadRequest, err.Error())
+		writeConfigError(w, http.StatusBadRequest, err)
 		return
 	}
 
@@ -135,7 +135,8 @@ func (h *Handler) UpdateSettings(w http.ResponseWriter, r *http.Request) {
 		updates["awg.enabled"] = false
 	}
 
-	// Apply updates
+	// Apply updates. Update only stages into memory, so nothing here can be a
+	// read-only refusal — Save below is the write.
 	if err := h.settings.Update(updates); err != nil {
 		writeError(w, http.StatusBadRequest, err.Error())
 		return
@@ -143,7 +144,7 @@ func (h *Handler) UpdateSettings(w http.ResponseWriter, r *http.Request) {
 
 	// Save to file
 	if err := h.settings.Save(); err != nil {
-		writeError(w, http.StatusInternalServerError, fmt.Sprintf("Failed to save settings: %v", err))
+		writeOpError(w, http.StatusInternalServerError, fmt.Sprintf("Failed to save settings: %v", err), err)
 		return
 	}
 

@@ -36,7 +36,7 @@ func (h *Handler) CreateEndpoint(w http.ResponseWriter, r *http.Request) {
 	}
 
 	if err := h.config.CreateEndpoint(endpoint); err != nil {
-		writeError(w, http.StatusBadRequest, err.Error())
+		writeConfigError(w, http.StatusBadRequest, err)
 		return
 	}
 
@@ -54,7 +54,7 @@ func (h *Handler) UpdateEndpoint(w http.ResponseWriter, r *http.Request) {
 	}
 
 	if err := h.config.UpdateEndpoint(tag, endpoint); err != nil {
-		writeError(w, http.StatusNotFound, err.Error())
+		writeConfigError(w, http.StatusNotFound, err)
 		return
 	}
 
@@ -66,7 +66,7 @@ func (h *Handler) DeleteEndpoint(w http.ResponseWriter, r *http.Request) {
 	tag := chi.URLParam(r, "tag")
 
 	if err := h.config.DeleteEndpoint(tag); err != nil {
-		writeError(w, http.StatusNotFound, err.Error())
+		writeConfigError(w, http.StatusNotFound, err)
 		return
 	}
 

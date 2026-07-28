@@ -36,7 +36,7 @@ func (h *Handler) CreateOutbound(w http.ResponseWriter, r *http.Request) {
 	}
 
 	if err := h.config.CreateOutbound(outbound); err != nil {
-		writeError(w, http.StatusBadRequest, err.Error())
+		writeConfigError(w, http.StatusBadRequest, err)
 		return
 	}
 
@@ -54,7 +54,7 @@ func (h *Handler) UpdateOutbound(w http.ResponseWriter, r *http.Request) {
 	}
 
 	if err := h.config.UpdateOutbound(tag, outbound); err != nil {
-		writeError(w, http.StatusNotFound, err.Error())
+		writeConfigError(w, http.StatusNotFound, err)
 		return
 	}
 
@@ -66,7 +66,7 @@ func (h *Handler) DeleteOutbound(w http.ResponseWriter, r *http.Request) {
 	tag := chi.URLParam(r, "tag")
 
 	if err := h.config.DeleteOutbound(tag); err != nil {
-		writeError(w, http.StatusNotFound, err.Error())
+		writeConfigError(w, http.StatusNotFound, err)
 		return
 	}
 

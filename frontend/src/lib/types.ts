@@ -35,18 +35,72 @@ export interface ProcessStatus {
 	uptime?: string;
 	managed_by?: 'systemd' | 'standalone' | '';
 	service_name?: string;
-	config_path?: string;
 	supports_hup?: boolean;
 	version?: string;
 	binary_path?: string;
 	system_checks?: SystemChecks;
+	/**
+	 * Which config file each of the three sources points at. Always present.
+	 */
+	config_paths?: ConfigPaths;
+	/**
+	 * Set when RouteBox cannot write the config file or its directory. Every
+	 * write endpoint answers 409 while this is up, so the UI blocks saving
+	 * up front instead of letting the user find out after the click.
+	 */
+	config_read_only?: boolean;
+	/** The config path RouteBox failed to open for writing. Empty unless read-only. */
+	config_read_only_path?: string;
+	/**
+	 * Every file RouteBox cannot write right now: the sing-box config plus its own
+	 * state files (routebox.toml, users.toml, subscriptions.toml, clients.toml,
+	 * peers.toml). They sit in different directories, so this is not derivable
+	 * from `config_read_only` — the config can be fine while a store is not.
+	 * Absent when everything is writable.
+	 */
+	read_only_paths?: string[];
 }
 
-// Detected config info
-export interface DetectedConfig {
-	detected_path: string;
-	current_path: string;
-	match: boolean;
+/**
+ * Which config file each source points at: the one RouteBox edits (`ours`), the
+ * one in the systemd unit's ExecStart (`unit`) and the one the live process was
+ * started with (`process`). An empty field means that source does not exist —
+ * no unit, or nothing running — never "it agrees".
+ *
+ * The two verdicts are computed by the backend (it resolves symlinks) and mean
+ * different things because they are cured differently: `unit_mismatch` sends
+ * every edit into a file the process is never given, and blocks
+ * Start/Restart/Reload until resolved; `process_mismatch` means the running
+ * process is still reading the file it was started with, which only a restart
+ * can change — so it blocks nothing.
+ */
+export interface ConfigPaths {
+	ours: string;
+	unit?: string;
+	process?: string;
+	unit_mismatch: boolean;
+	process_mismatch: boolean;
+	/**
+	 * The systemd drop-in RouteBox installed to repoint the unit, when the file
+	 * is on disk. Absent means there is none — the backend reads the file on
+	 * every status poll rather than remembering a past fix, so this survives a
+	 * panel restart exactly as the file does.
+	 */
+	drop_in?: ConfigDropIn;
+}
+
+/**
+ * The one file RouteBox writes outside its own: a drop-in that replaces the
+ * unit's `ExecStart` with the same command pointed at `config_path`.
+ *
+ * `pending_reload` means the file is written but the unit is still starting
+ * amnezia-box with something else — the state a failed `daemon-reload` leaves
+ * behind. It applies at the next reload or reboot, so it is never silent.
+ */
+export interface ConfigDropIn {
+	path: string;
+	config_path?: string;
+	pending_reload: boolean;
 }
 
 // Setup wizard check response
@@ -845,7 +899,6 @@ export interface RouteBoxSettings {
 	geoip: GeoIPSettings;
 	ui: UISettings;
 	monitoring: MonitoringSettings;
-	logging: LoggingSettings;
 	security: SecuritySettings;
 	network: NetworkSettings;
 	singbox: SingboxSettings;
@@ -858,28 +911,15 @@ export interface RouteBoxSettings {
 export interface GeoIPSettings {
 	path: string;
 	enabled: boolean;
-	auto_reload: boolean;
 }
 
 export interface UISettings {
-	theme: 'dark' | 'light' | 'system';
 	language: string;
 	speed_unit: 'bits' | 'bytes';
-	time_format: 'relative' | 'absolute' | 'both';
 }
 
 export interface MonitoringSettings {
 	enrichment_enabled: boolean;
-	max_closed_connections: number;
-	poll_interval_ms: number;
-	proxies_refresh_ms: number;
-}
-
-export interface LoggingSettings {
-	level: 'debug' | 'info' | 'warn' | 'error';
-	output: string;
-	timestamps: boolean;
-	format: 'text' | 'json';
 }
 
 export interface SecuritySettings {
@@ -892,7 +932,6 @@ export interface SecuritySettings {
 export interface NetworkSettings {
 	listen: string;
 	read_timeout_sec: number;
-	write_timeout_sec: number;
 	compression_enabled: boolean;
 	// Panel TLS / embedded ACME (backend serializes these; whitelisted as network.*)
 	acme_enabled?: boolean;
@@ -906,14 +945,9 @@ export interface NetworkSettings {
 export interface SingboxSettings {
 	config_path: string;
 	clash_api: string;
-	binary_name: string;
-	service_name: string;
 }
 
 export interface AdvancedSettings {
-	debug_endpoints: boolean;
-	pprof_enabled: boolean;
-	max_body_size: number;
 	ws_ping_interval_sec: number;
 	ws_pong_timeout_sec: number;
 }

@@ -1,6 +1,7 @@
 package util
 
 import (
+	"errors"
 	"os"
 	"path/filepath"
 
@@ -18,9 +19,31 @@ import (
 // directory holding private keys, 0755 for a less-sensitive registry). The temp
 // and final file are always 0600 regardless.
 //
+// A failure that turns out to be about writability comes back wrapping
+// ErrReadOnly and naming path, so callers do not have to re-diagnose an EROFS or
+// an immutable flag themselves — see ClassifyWriteErr.
+//
 // This is the shared low-level primitive behind users.Manager.saveLocked and
 // awg.Store.saveLocked; neither copy-pastes the open/sync/close/rename dance.
 func WriteTOMLAtomic(path string, dirPerm os.FileMode, v any) error {
+	return ClassifyWriteErr(path, writeTOMLAtomic(path, dirPerm, v))
+}
+
+// ClassifyWriteErr turns a failed write to path into ErrReadOnly when the path
+// is in fact unwritable, and leaves every other failure alone: a full disk or an
+// encoding bug is not something chmod fixes. The probe only runs on the failure
+// path, so a healthy write never pays for it.
+func ClassifyWriteErr(path string, err error) error {
+	if err == nil || errors.Is(err, ErrReadOnly) {
+		return err
+	}
+	if !PathWritable(path) {
+		return ReadOnlyError(path)
+	}
+	return err
+}
+
+func writeTOMLAtomic(path string, dirPerm os.FileMode, v any) error {
 	if err := os.MkdirAll(filepath.Dir(path), dirPerm); err != nil {
 		return err
 	}

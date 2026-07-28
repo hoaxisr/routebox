@@ -45,15 +45,23 @@ type Binding struct {
 
 // Manager owns the panel-user registry and its TOML persistence.
 type Manager struct {
-	path string
-	mu   sync.RWMutex
-	byID map[string]*PanelUser
+	path  string
+	mu    sync.RWMutex
+	byID  map[string]*PanelUser
+	guard *util.WriteGuard
 }
 
 // NewManager constructs a Manager. Empty path disables persistence (tests).
 func NewManager(path string) *Manager {
-	return &Manager{path: path, byID: map[string]*PanelUser{}}
+	return &Manager{path: path, byID: map[string]*PanelUser{}, guard: util.NewWriteGuard(path)}
 }
+
+// GetPath returns the file this registry persists to ("" when persistence is off).
+func (m *Manager) GetPath() string { return m.path }
+
+// IsReadOnly reports whether the registry's file cannot be written, so the panel
+// can show one read-only state for every file RouteBox persists.
+func (m *Manager) IsReadOnly() bool { return m.guard.IsReadOnly() }
 
 // Load reads the TOML file if present, replacing the in-memory set. A missing
 // file is not an error (empty registry).
@@ -101,7 +109,7 @@ func (m *Manager) saveLocked() error {
 	doc := struct {
 		Users []PanelUser `toml:"users"`
 	}{Users: m.listLocked()}
-	return util.WriteTOMLAtomic(m.path, 0755, doc)
+	return m.guard.Note(util.WriteTOMLAtomic(m.path, 0755, doc))
 }
 
 // Put inserts or replaces a user (storing a deep copy) and persists. If
@@ -123,22 +131,11 @@ func (m *Manager) Put(u *PanelUser) error {
 	return nil
 }
 
-// Delete removes a user and persists. No-op if absent. If persistence fails the
-// removed entry is restored so memory never diverges from disk.
-func (m *Manager) Delete(id string) error {
-	m.mu.Lock()
-	defer m.mu.Unlock()
-	prev, existed := m.byID[id]
-	if !existed {
-		return nil
-	}
-	delete(m.byID, id)
-	if err := m.saveLocked(); err != nil {
-		m.byID[id] = prev
-		return err
-	}
-	return nil
-}
+// NOTE: there is deliberately no Delete here. The registry is DERIVED from the
+// active config: entries disappear only via Reconcile, which is the single
+// writer from the config side (see reconcile.go). Deleting a panel user is
+// "remove its credentials from the draft, then Apply" — a direct store-level
+// delete would be undone by the next Reconcile.
 
 // Get returns a deep copy of the user with the given ID.
 func (m *Manager) Get(id string) (PanelUser, bool) {

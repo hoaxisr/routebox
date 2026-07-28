@@ -2,14 +2,13 @@
 	import { onMount } from 'svelte';
 	import { t } from 'svelte-i18n';
 	import { api, createTrafficStream, createConnectionsStream } from '$lib/api/client';
-	import { notifications, formatBytes, formatSpeed, clientNames, panelMode, routerMode } from '$lib/stores';
+	import { notifications, formatBytes, formatSpeed, clientNames, panelMode, routerMode, refreshStatus } from '$lib/stores';
 	import { singboxVersion, loadVersion } from '$lib/stores/version';
 	import PendingChanges from '$lib/components/shared/PendingChanges.svelte';
-	import type { ProcessStatus, DetectedConfig, ClashConnection } from '$lib/types';
+	import type { ProcessStatus, ClashConnection } from '$lib/types';
 
 	// Svelte 5 reactive state
 	let status = $state<ProcessStatus>({ running: false });
-	let detectedConfig = $state<DetectedConfig | null>(null);
 	let loading = $state(true);
 	let actionLoading = $state('');
 	let trafficUp = $state(0);
@@ -21,24 +20,24 @@
 	let trafficStream: { close: () => void } | null = null;
 	let connectionsStream: { close: () => void } | null = null;
 
+	// The config file the LIVE process was started with, straight from the one
+	// config-path state in the status. It is not necessarily the file RouteBox
+	// edits — when they differ, the layout banner says so on every page and
+	// asks for the restart that is the only cure.
+	let processConfigPath = $derived(status.config_paths?.process ?? '');
+
 	// Panel-mode Overview summary (MVP: counts/host/links only; per-user telemetry is Part B).
 	let userCount = $state<number | null>(null);
 	let publicHost = $state('');
 
 	async function fetchStatus() {
 		try {
-			status = await api.getStatus();
-			// Check for config mismatch if running
-			if (status.running) {
-				try {
-					detectedConfig = await api.getDetectedConfig();
-				} catch {
-					detectedConfig = null;
-				}
+			// Publishes to the shared store too, so the layout's config-mismatch
+			// banner stays fresh off this one poll instead of a second timer.
+			status = await refreshStatus();
+			if (status.running && !$singboxVersion) {
 				// Load sing-box version once
-				if (!$singboxVersion) {
-					loadVersion();
-				}
+				loadVersion();
 			}
 		} catch (e) {
 			console.error('Failed to fetch status:', e);
@@ -122,20 +121,6 @@
 			await fetchStatus();
 		} catch (e) {
 			notifications.error(`Failed to reload: ${e}`);
-		} finally {
-			actionLoading = '';
-		}
-	}
-
-	async function handleUseDetectedConfig() {
-		actionLoading = 'switch';
-		try {
-			const result = await api.useDetectedConfig();
-			notifications.success(`Switched to config: ${result.path}`);
-			detectedConfig = null;
-			await fetchStatus();
-		} catch (e) {
-			notifications.error(`Failed to switch config: ${e}`);
 		} finally {
 			actionLoading = '';
 		}
@@ -324,33 +309,6 @@
 			{/if}
 		</div>
 
-		<!-- Config mismatch warning -->
-		{#if detectedConfig && !detectedConfig.match && detectedConfig.detected_path}
-			<div class="mb-4 p-4 bg-[color-mix(in_srgb,var(--ctp-red)_10%,transparent)] border border-[var(--ctp-red)] rounded-lg">
-				<div class="flex items-start gap-3">
-					<svg class="w-5 h-5 text-[var(--ctp-red)] flex-shrink-0 mt-0.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-						<path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z" />
-					</svg>
-					<div class="flex-1">
-						<p class="text-sm font-medium text-[var(--ctp-text)]">Config path mismatch detected</p>
-						<p class="text-xs text-[var(--ctp-overlay1)] mt-1">
-							Running process uses: <code class="bg-[var(--ctp-surface1)] px-1 rounded">{detectedConfig.detected_path}</code>
-						</p>
-						<p class="text-xs text-[var(--ctp-overlay1)]">
-							UI is editing: <code class="bg-[var(--ctp-surface1)] px-1 rounded">{detectedConfig.current_path}</code>
-						</p>
-						<button
-							onclick={handleUseDetectedConfig}
-							disabled={actionLoading !== ''}
-							class="mt-2 px-3 py-1 text-sm bg-[var(--ctp-primary)] text-white rounded hover:opacity-90 disabled:opacity-50"
-						>
-							{actionLoading === 'switch' ? 'Switching...' : 'Switch to detected config'}
-						</button>
-					</div>
-				</div>
-			</div>
-		{/if}
-
 		{#if status.running}
 			<!-- Control buttons first -->
 			<div class="flex gap-3 flex-wrap mb-6">
@@ -380,7 +338,7 @@
 			</div>
 
 			<!-- Version + Config path bar -->
-			{#if $singboxVersion || status.config_path}
+			{#if $singboxVersion || processConfigPath}
 				<div class="bg-[var(--ctp-surface1)] rounded-lg px-4 py-2 flex items-center gap-4 flex-wrap mb-3 text-xs">
 					{#if $singboxVersion}
 						<div class="flex items-center gap-1.5">
@@ -388,13 +346,13 @@
 							<span class="text-[var(--ctp-subtext1)]">{$singboxVersion.version}</span>
 						</div>
 					{/if}
-					{#if $singboxVersion && status.config_path}
+					{#if $singboxVersion && processConfigPath}
 						<div class="w-px h-[14px] bg-[var(--ctp-surface2)]"></div>
 					{/if}
-					{#if status.config_path}
+					{#if processConfigPath}
 						<div class="flex items-center gap-1.5 min-w-0">
 							<span class="text-[var(--ctp-overlay1)] flex-shrink-0">Config</span>
-							<span class="text-[var(--ctp-subtext1)] truncate">{status.config_path}</span>
+							<span class="text-[var(--ctp-subtext1)] truncate">{processConfigPath}</span>
 						</div>
 					{/if}
 				</div>

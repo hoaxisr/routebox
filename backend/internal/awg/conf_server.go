@@ -1,7 +1,6 @@
 package awg
 
 import (
-	"context"
 	"fmt"
 	"strings"
 )
@@ -177,13 +176,4 @@ func parseShowPeers(out string) []string {
 		}
 	}
 	return peers
-}
-
-// DetectWAN runs `ip route show default` via the Runner and parses the device.
-func DetectWAN(ctx context.Context, run Runner) (string, error) {
-	out, _, err := run.Run(ctx, "ip", "route", "show", "default")
-	if err != nil {
-		return "", fmt.Errorf("ip route: %w", err)
-	}
-	return parseDefaultRoute(out)
 }

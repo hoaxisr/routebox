@@ -2,14 +2,34 @@ package api
 
 import (
 	"encoding/json"
+	"errors"
 	"net/http"
 
 	"github.com/go-chi/chi/v5"
 
+	"routebox/backend/internal/config"
 	"routebox/backend/internal/subscriptions"
 )
 
 const subNodePrefixSep = " · "
+
+// writeSubError answers an error from the subscription store.
+//
+// The store refuses for two unrelated reasons and they are not the same answer:
+// an empty name or a duplicate is the caller's (400), while a file that cannot
+// be written is the state's (409, naming the file) and anything else — a full
+// disk, most of all — is the machine's (500). Blanket-400 told an operator whose
+// disk was full to go and check what they had typed.
+func writeSubError(w http.ResponseWriter, err error) {
+	switch {
+	case errors.Is(err, config.ErrReadOnly):
+		writeError(w, http.StatusConflict, err.Error())
+	case errors.Is(err, subscriptions.ErrInvalid):
+		writeError(w, http.StatusBadRequest, err.Error())
+	default:
+		writeError(w, http.StatusInternalServerError, err.Error())
+	}
+}
 
 // ListSubscriptions returns all subscriptions (node_count from the store).
 func (h *Handler) ListSubscriptions(w http.ResponseWriter, r *http.Request) {
@@ -37,7 +57,7 @@ func (h *Handler) CreateSubscription(w http.ResponseWriter, r *http.Request) {
 	}
 	sub, err := h.subs.Add(body.Name, body.URL, body.IntervalHrs)
 	if err != nil {
-		writeError(w, http.StatusBadRequest, err.Error())
+		writeSubError(w, err)
 		return
 	}
 	n, _, rerr := h.subsRefresh(sub)
@@ -47,7 +67,7 @@ func (h *Handler) CreateSubscription(w http.ResponseWriter, r *http.Request) {
 	}
 	h.subs.SetResult(sub.ID, n, errMsg)
 	if rerr != nil {
-		writeError(w, http.StatusBadRequest, rerr.Error())
+		writeConfigError(w, http.StatusBadRequest, rerr)
 		return
 	}
 	updated, _ := h.subs.Get(sub.ID)
@@ -70,7 +90,7 @@ func (h *Handler) UpdateSubscription(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	if err := h.subs.Update(id, body.URL, body.IntervalHrs); err != nil {
-		writeError(w, http.StatusBadRequest, err.Error())
+		writeSubError(w, err)
 		return
 	}
 	updated, _ := h.subs.Get(id)
@@ -91,11 +111,11 @@ func (h *Handler) DeleteSubscription(w http.ResponseWriter, r *http.Request) {
 	}
 	groupTag := subscriptions.Sanitize(sub.Name)
 	if err := h.config.RemoveSubscriptionOutbounds(groupTag, groupTag+subNodePrefixSep); err != nil {
-		writeError(w, http.StatusInternalServerError, err.Error())
+		writeConfigError(w, http.StatusInternalServerError, err)
 		return
 	}
 	if err := h.subs.Delete(id); err != nil {
-		writeError(w, http.StatusInternalServerError, err.Error())
+		writeConfigError(w, http.StatusInternalServerError, err)
 		return
 	}
 	writeSuccess(w, map[string]string{"message": "subscription deleted"})
@@ -120,7 +140,7 @@ func (h *Handler) RefreshSubscription(w http.ResponseWriter, r *http.Request) {
 	}
 	h.subs.SetResult(id, n, errMsg)
 	if rerr != nil {
-		writeError(w, http.StatusBadGateway, rerr.Error())
+		writeConfigError(w, http.StatusBadGateway, rerr)
 		return
 	}
 	updated, _ := h.subs.Get(id)
