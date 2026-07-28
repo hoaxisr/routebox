@@ -148,7 +148,6 @@ public_port = ${port}
 
 [singbox]
 config_path = "${SINGBOX_CONFIG_DIR}/config.json"
-binary_name = "${AMNEZIABOX_BINARY}"
 EOF
 }
 
