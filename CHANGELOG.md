@@ -4,6 +4,17 @@ All notable changes to RouteBox are documented here.
 
 ## [Unreleased]
 
+### Features
+
+- **A mieru server can be given port ranges** ([#37](https://github.com/hoaxisr/routebox/issues/37)).
+  The client side has accepted ranges all along, but the server form only had a numeric port field
+  and the fork's mieru inbound bound exactly one port — so a client rotating across a range had
+  nowhere to land. The inbound now takes `listen_ports` (`"lo-hi"` ranges) alongside `listen_port`,
+  and either may be omitted as long as one is set: leave the single port empty and the server binds
+  only the ranges. The share link carries every range, so clients get the whole set.
+  **Requires an amnezia-box built from the matching fork commit** — the option is new on that side
+  too.
+
 ### Fixed
 
 - **A QUIC inbound can now share a port with a TCP one** ([#37](https://github.com/hoaxisr/routebox/issues/37)).

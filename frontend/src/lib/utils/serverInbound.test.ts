@@ -27,6 +27,7 @@ const base: ServerFormState = {
 	obfsPassword: '',
 	transport: { type: 'raw' },
 	mieruTransport: 'TCP',
+	mieruListenPorts: '',
 	trafficPattern: '',
 	userHintIsMandatory: false
 };
@@ -352,5 +353,55 @@ describe('validateServerInbound', () => {
 		const s = mieruState();
 		s.listenPort = 70000;
 		expect(validateServerInbound(s, tr)['port']).toBe('form.minValue');
+	});
+});
+
+// Issue #37: the mieru server form gained port ranges. The shape that matters is
+// "ranges only" — the config must then carry no listen_port at all, and reading
+// it back must leave the port field empty rather than inventing 443.
+describe('mieru listen_ports round-trip', () => {
+	const mieru = (over: Partial<ServerFormState> = {}): ServerFormState => ({
+		...base,
+		type: 'mieru',
+		tag: 'mieru-in',
+		listenPort: 2020,
+		users: [{ name: 'alice', password: 'pw' }],
+		...over
+	});
+
+	it('emits ranges alongside a single port', () => {
+		const ib = buildServerInbound(mieru({ mieruListenPorts: '25010-25012, 26000-26100' }));
+		expect(ib.listen_port).toBe(2020);
+		expect(ib.listen_ports).toEqual(['25010-25012', '26000-26100']);
+	});
+
+	it('omits listen_port entirely when only ranges are given', () => {
+		const ib = buildServerInbound(mieru({ listenPort: 0, mieruListenPorts: '25010-25012' }));
+		expect('listen_port' in ib).toBe(false);
+		expect(ib.listen_ports).toEqual(['25010-25012']);
+	});
+
+	it('emits no listen_ports key when the field is empty', () => {
+		const ib = buildServerInbound(mieru({ mieruListenPorts: '' }));
+		expect('listen_ports' in ib).toBe(false);
+	});
+
+	it('round-trips through parseServerInbound', () => {
+		const ib = buildServerInbound(mieru({ listenPort: 0, mieruListenPorts: '25010-25012' }));
+		const back = parseServerInbound(ib);
+		expect(back.listenPort).toBe(0);
+		expect(back.mieruListenPorts).toBe('25010-25012');
+	});
+
+	it('accepts an empty port when ranges are set, rejects it otherwise', () => {
+		const t = (k: string) => k;
+		expect(validateServerInbound(mieru({ listenPort: 0, mieruListenPorts: '25010-25012' }), t).port).toBeUndefined();
+		expect(validateServerInbound(mieru({ listenPort: 0, mieruListenPorts: '' }), t).port).toBeDefined();
+	});
+
+	it('reports a malformed range instead of dropping it', () => {
+		const t = (k: string) => k;
+		const errs = validateServerInbound(mieru({ mieruListenPorts: '25010-25012, nope' }), t);
+		expect(errs.mieruListenPorts).toBeDefined();
 	});
 });

@@ -18,11 +18,25 @@
 				class="w-full px-3 py-2 bg-[var(--ctp-surface0)] border border-[var(--ctp-surface2)] rounded-lg text-[var(--ctp-text)] focus:outline-none focus:ring-2 focus:ring-[var(--ctp-primary)]" />
 		</div>
 		<div>
-			<label for="listenPort" class="block text-sm font-medium text-[var(--ctp-subtext1)] mb-1">{$t('inbounds.listenPort')} *</label>
-			<input id="listenPort" type="number" bind:value={state.listenPort} min="1" max="65535"
+			<label for="listenPort" class="block text-sm font-medium text-[var(--ctp-subtext1)] mb-1">{$t('inbounds.listenPort')}</label>
+			<input id="listenPort" type="number" bind:value={state.listenPort} min="0" max="65535"
 				class="w-full px-3 py-2 bg-[var(--ctp-surface0)] border rounded-lg text-[var(--ctp-text)] focus:outline-none focus:ring-2 focus:ring-[var(--ctp-primary)] {errors['port'] ? 'border-[var(--ctp-red)]' : 'border-[var(--ctp-surface2)]'}" />
 			{#if errors['port']}<p class="mt-1 text-sm text-[var(--ctp-red)]">{errors['port']}</p>{/if}
 		</div>
+	</div>
+
+	<div>
+		<label for="mieruListenPorts" class="block text-sm font-medium text-[var(--ctp-subtext1)] mb-1">
+			{$t('inbounds.server.mieruListenPorts')}
+		</label>
+		<input id="mieruListenPorts" type="text" bind:value={state.mieruListenPorts}
+			placeholder="25010-25012, 26000-26100"
+			class="w-full px-3 py-2 bg-[var(--ctp-surface0)] border rounded-lg text-[var(--ctp-text)] placeholder-[var(--ctp-overlay0)] focus:outline-none focus:ring-2 focus:ring-[var(--ctp-primary)] {errors['mieruListenPorts'] ? 'border-[var(--ctp-red)]' : 'border-[var(--ctp-surface2)]'}" />
+		{#if errors['mieruListenPorts']}
+			<p class="mt-1 text-sm text-[var(--ctp-red)]">{errors['mieruListenPorts']}</p>
+		{:else}
+			<p class="mt-1 text-xs text-[var(--ctp-subtext0)]">{$t('inbounds.server.mieruListenPortsHint')}</p>
+		{/if}
 	</div>
 
 	<div>

@@ -502,12 +502,40 @@ func validateMieruOutbound(ob map[string]interface{}, prefix string) []string {
 func validateMieruInbound(ib map[string]interface{}, prefix string) []string {
 	var errors []string
 
-	if lp, ok := ib["listen_port"].(float64); !ok || lp < 1 || lp > 65535 {
-		errors = append(errors, prefix+": mieru inbound requires 'listen_port' (1-65535)")
-	} else if lp != math.Trunc(lp) {
-		// The fork wants an integer port; a fractional listen_port (e.g. 2020.5)
-		// is in range but not a whole number. Mieru-scoped hardening.
-		errors = append(errors, prefix+": mieru inbound 'listen_port' must be an integer")
+	// Ports: either a single listen_port, or listen_ports ranges, or both — the
+	// fork binds one mieru PortBinding per entry. A server that only offers
+	// ranges is the shape a client rotating across them needs.
+	lp, hasPort := ib["listen_port"].(float64)
+	rawRanges, hasRanges := ib["listen_ports"]
+	if hasPort && lp != 0 {
+		if lp < 1 || lp > 65535 {
+			errors = append(errors, prefix+": mieru inbound 'listen_port' must be 1-65535")
+		} else if lp != math.Trunc(lp) {
+			// The fork wants an integer port; a fractional listen_port (e.g. 2020.5)
+			// is in range but not a whole number. Mieru-scoped hardening.
+			errors = append(errors, prefix+": mieru inbound 'listen_port' must be an integer")
+		}
+	}
+	if hasRanges {
+		ranges, ok := rawRanges.([]interface{})
+		if !ok {
+			errors = append(errors, prefix+": mieru inbound 'listen_ports' must be a list of \"lo-hi\" ranges")
+		} else if len(ranges) > mieruMaxPortRanges {
+			errors = append(errors, fmt.Sprintf("%s: mieru inbound 'listen_ports' has too many entries (max %d)", prefix, mieruMaxPortRanges))
+		} else {
+			for i, raw := range ranges {
+				s, _ := raw.(string)
+				if !validMieruRange(s) {
+					errors = append(errors, fmt.Sprintf("%s: mieru inbound listen_ports[%d] must be a range \"lo-hi\" (1-65535, lo<=hi; got %q)", prefix, i, s))
+				}
+			}
+			if len(ranges) == 0 && !(hasPort && lp != 0) {
+				errors = append(errors, prefix+": mieru inbound requires 'listen_port' or a non-empty 'listen_ports'")
+			}
+		}
+	}
+	if (!hasPort || lp == 0) && !hasRanges {
+		errors = append(errors, prefix+": mieru inbound requires 'listen_port' (1-65535) or 'listen_ports'")
 	}
 
 	tr, _ := ib["transport"].(string)

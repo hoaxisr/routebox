@@ -1,4 +1,5 @@
 import type { Inbound, ServerInboundUser, ServerTlsConfig } from '$lib/types';
+import { parseMieruListenPorts, formatMieruListenPorts } from './mieruPorts';
 
 export type TlsMode = 'acme' | 'reality' | 'manual' | 'panel';
 export type ServerInboundType = 'vless' | 'trojan' | 'naive' | 'hysteria2' | 'mieru';
@@ -36,6 +37,8 @@ export interface ServerFormState {
 	obfsType: string;
 	obfsPassword: string;
 	mieruTransport: 'TCP' | 'UDP';
+	/** Free-text "lo-hi" ranges the mieru server binds on top of listenPort (#37). */
+	mieruListenPorts: string;
 	trafficPattern: string;
 	userHintIsMandatory: boolean;
 }
@@ -52,6 +55,11 @@ export function buildServerInbound(s: ServerFormState): Inbound {
 
 	if (s.type === 'mieru') {
 		ib.transport = s.mieruTransport;               // STRING "TCP"|"UDP"
+		// Ranges are optional; with them set, listen_port may be left empty and
+		// is then omitted entirely rather than emitted as a meaningless 0.
+		const { ranges } = parseMieruListenPorts(s.mieruListenPorts);
+		if (ranges.length > 0) ib.listen_ports = ranges;
+		if (!s.listenPort) delete ib.listen_port;
 		ib.users = s.users.map((u) => ({ ...u }));
 		if (s.trafficPattern.trim()) ib.traffic_pattern = s.trafficPattern.trim();
 		if (s.userHintIsMandatory) ib.user_hint_is_mandatory = true;
@@ -144,8 +152,19 @@ export function validateServerInbound(state: ServerFormState, t: Translator): Re
 	const errors: Record<string, string> = {};
 	const req = (field: string) => t('errors.fieldNamedRequired', { values: { field } });
 
-	if (state.listenPort < 1 || state.listenPort > 65535) {
+	// mieru may bind ONLY ranges, in which case the single port is left empty;
+	// every other type needs a real port. An out-of-range value is always wrong.
+	const mieruRanges = state.type === 'mieru' ? parseMieruListenPorts(state.mieruListenPorts) : null;
+	const portOptional = !!mieruRanges && mieruRanges.ranges.length > 0;
+	if (state.listenPort > 65535 || state.listenPort < 0) {
 		errors['port'] = t('form.minValue', { values: { value: 1 } });
+	} else if (state.listenPort < 1 && !portOptional) {
+		errors['port'] = t('form.minValue', { values: { value: 1 } });
+	}
+	if (mieruRanges && mieruRanges.invalid.length > 0) {
+		errors['mieruListenPorts'] = t('inbounds.server.mieruListenPortsInvalid', {
+			values: { list: mieruRanges.invalid.join(', ') }
+		});
 	}
 	if (state.users.length === 0) errors['users'] = t('inbounds.server.needUser');
 
@@ -211,7 +230,9 @@ export function parseServerInbound(ib: Inbound): ServerFormState {
 		type,
 		tag: ib.tag ?? '',
 		listen: ib.listen ?? '::',
-		listenPort: ib.listen_port ?? 443,
+		// A mieru inbound that binds only ranges has no listen_port; 0 renders the
+		// field empty rather than inventing 443 and silently adding a bind.
+		listenPort: ib.listen_port ?? (Array.isArray(ib.listen_ports) && ib.listen_ports.length > 0 ? 0 : 443),
 		tlsMode,
 		tls: {
 			server_name: tls.server_name ?? '',
@@ -233,6 +254,9 @@ export function parseServerInbound(ib: Inbound): ServerFormState {
 		obfsType: ib.obfs?.type ?? '',
 		obfsPassword: ib.obfs?.password ?? '',
 		mieruTransport: (ib.type === 'mieru' && (ib.transport === 'UDP' || ib.transport === 'TCP')) ? ib.transport : 'TCP',
+		mieruListenPorts: formatMieruListenPorts(
+			Array.isArray(ib.listen_ports) ? (ib.listen_ports as string[]) : undefined
+		),
 		trafficPattern: typeof ib.traffic_pattern === 'string' ? ib.traffic_pattern : '',
 		userHintIsMandatory: ib.user_hint_is_mandatory === true
 	};
