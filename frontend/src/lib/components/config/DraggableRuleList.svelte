@@ -1,7 +1,7 @@
 <script lang="ts">
 	import { t } from 'svelte-i18n';
 	import type { RouteRule, RuleSet, Outbound } from '$lib/types';
-	import { simpleRuleSetTag, mappingOutboundValue } from '$lib/utils/routeRules';
+	import { ruleSetRowTag, mappingOutboundValue } from '$lib/utils/routeRules';
 
 	interface Props {
 		rules: RouteRule[];
@@ -15,6 +15,8 @@
 		outbounds?: Outbound[];
 		/** Inline outbound switch; without it rule-set rows stay read-only. */
 		onOutboundChange?: (index: number, outbound: string) => void;
+		/** route.final — where a mapping with no explicit outbound actually goes. */
+		finalOutbound?: string;
 	}
 
 	let {
@@ -25,15 +27,16 @@
 		onAdd,
 		ruleSets = [],
 		outbounds = [],
-		onOutboundChange
+		onOutboundChange,
+		finalOutbound = ''
 	}: Props = $props();
 
 	// Rule-set rows are only offered where the tag is actually known and the page
 	// wired up a change handler; otherwise the rule renders as an ordinary one.
 	let knownRuleSets = $derived(new Map(ruleSets.map((rs) => [rs.tag, rs])));
+	let knownTags = $derived(new Set(knownRuleSets.keys()));
 	function ruleSetRowFor(rule: RouteRule): RuleSet | null {
-		if (!onOutboundChange) return null;
-		const tag = simpleRuleSetTag(rule);
+		const tag = ruleSetRowTag(rule, knownTags, !!onOutboundChange);
 		return tag ? (knownRuleSets.get(tag) ?? null) : null;
 	}
 
@@ -192,6 +195,13 @@
 			}
 		}
 
+		// Inversion flips the meaning of every condition above it, so it belongs in
+		// front of the summary — as a trailing detail it would be the first thing
+		// truncated, leaving a row that reads as the exact opposite of the rule.
+		if (rule.invert) {
+			main = `NOT ${main}`;
+		}
+
 		return { main, details };
 	}
 
@@ -321,6 +331,14 @@
 						}}
 						class="px-2 py-1 text-xs rounded bg-[var(--ctp-base)] border border-[var(--ctp-surface2)] text-[var(--ctp-text)] focus:outline-none focus:ring-1 focus:ring-[var(--ctp-primary)] cursor-pointer"
 					>
+						{#if mappingOutboundValue(rule) === ''}
+							<!-- No explicit outbound: the traffic falls through to route.final.
+							     Shown, disabled, so the row states where it actually goes
+							     instead of rendering an empty picker. -->
+							<option value="" disabled selected>
+								{finalOutbound ? $t('routes.finalFallback', { values: { outbound: finalOutbound } }) : $t('routes.noRoute')}
+							</option>
+						{/if}
 						{#each outbounds as ob}
 							<option value={ob.tag}>{ob.tag}</option>
 						{/each}

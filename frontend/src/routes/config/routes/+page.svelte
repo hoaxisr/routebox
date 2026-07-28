@@ -10,7 +10,12 @@
 	import RouteInspector from '$lib/components/config/RouteInspector.svelte';
 	import DraggableRuleList from '$lib/components/config/DraggableRuleList.svelte';
 	import HelpTooltip from '$lib/components/shared/HelpTooltip.svelte';
-	import { assignedRuleSetTags } from '$lib/utils/routeRules';
+	import {
+		assignedRuleSetTags,
+		simpleRuleSetTag,
+		applyMappingOutbound,
+		reorderArray
+	} from '$lib/utils/routeRules';
 
 	type Tab = 'rules' | 'inspector';
 	let activeTab = $state<Tab>('rules');
@@ -132,12 +137,19 @@
 	}
 
 	async function handleDeleteRule(index: number) {
-		if (!confirm(`Delete rule #${index + 1}?`)) return;
+		// A row drawn as a rule-set is confirmed BY TAG: "#7" is a number that
+		// just moved if anything was dragged, and it reads as if the rule-set
+		// itself were being deleted (only its route rule is).
+		const tag = simpleRuleSetTag(rules[index]);
+		const prompt = tag
+			? $t('routes.deleteRuleSetMapping', { values: { tag } })
+			: $t('routes.deleteRuleConfirm', { values: { number: index + 1 } });
+		if (!confirm(prompt)) return;
 		try {
 			await api.deleteRule(index);
 			rules = rules.filter((_, i) => i !== index);
 			hasChanges = true;
-			unsavedChanges.markChanged('Routes', `Deleted rule #${index + 1}`);
+			unsavedChanges.markChanged('Routes', tag ? `Removed route for ${tag}` : `Deleted rule #${index + 1}`);
 			notifications.success($t('routes.ruleDeleted'));
 		} catch (e) {
 			notifications.error(`${e}`);
@@ -147,11 +159,8 @@
 	async function handleReorder(from: number, to: number) {
 		try {
 			await api.reorderRules(from, to);
-			// Update local state
-			const newRules = [...rules];
-			const [moved] = newRules.splice(from, 1);
-			newRules.splice(to, 0, moved);
-			rules = newRules;
+			// Same contract as the backend: `to` is where the rule ends up.
+			rules = reorderArray(rules, from, to);
 			hasChanges = true;
 			unsavedChanges.markChanged('Routes', 'Reordered rules');
 		} catch (e) {
@@ -214,20 +223,18 @@
 	// Inline outbound switch on a rule-set row of the ordered list. The rule keeps
 	// its position: only its destination changes.
 	async function handleMappingOutboundChange(index: number, newOutbound: string) {
-		const updatedRule = { ...rules[index] };
-		if (newOutbound === '__reject__') {
-			updatedRule.action = 'reject';
-			delete updatedRule.outbound;
-		} else {
-			updatedRule.action = 'route';
-			updatedRule.outbound = newOutbound;
-		}
+		const updatedRule = applyMappingOutbound(rules[index], newOutbound);
+		const tag = simpleRuleSetTag(rules[index]);
 		try {
 			await api.updateRule(index, updatedRule);
 			rules = rules.map((r, i) => i === index ? updatedRule : r);
 			hasChanges = true;
-			unsavedChanges.markChanged('Routes', `Changed outbound for rule #${index + 1}`);
+			unsavedChanges.markChanged('Routes', `Changed outbound for ${tag ?? `rule #${index + 1}`}`);
 		} catch (e) {
+			// The select is one-way bound, so a failed write would leave the
+			// user's choice on screen while the rule is unchanged. Re-assigning
+			// forces it back to what the config actually says.
+			rules = [...rules];
 			notifications.error(`${e}`);
 		}
 	}
@@ -235,15 +242,15 @@
 	// Assigning an unassigned rule-set appends the mapping at the END of the
 	// rules array — last priority, then draggable anywhere like any other rule.
 	async function handleAssignRuleSet(ruleSetTag: string, newOutbound: string) {
-		const rule: RouteRule = newOutbound === '__reject__'
-			? { rule_set: [ruleSetTag], action: 'reject' }
-			: { rule_set: [ruleSetTag], outbound: newOutbound };
+		const rule = applyMappingOutbound({ rule_set: [ruleSetTag] }, newOutbound);
 		try {
 			await api.createRule(rule);
 			rules = [...rules, rule];
 			hasChanges = true;
 			unsavedChanges.markChanged('Routes', `Added route for ${ruleSetTag}`);
 		} catch (e) {
+			// Reset the picker: nothing was created (see handleMappingOutboundChange).
+			ruleSets = [...ruleSets];
 			notifications.error(`${e}`);
 		}
 	}
@@ -484,6 +491,7 @@
 						onEdit={openEditRule}
 						onDelete={handleDeleteRule}
 						onOutboundChange={handleMappingOutboundChange}
+						finalOutbound={settings.final}
 						onAdd={openAddRule}
 					/>
 				</div>
