@@ -343,9 +343,8 @@ func (m *Manager) ReorderDnsRules(from, to int) error {
 
 	rule := draftArr[from]
 	draftArr = append(draftArr[:from], draftArr[from+1:]...)
-	if to > from {
-		to--
-	}
+	// 'to' is the destination index — see ReorderRules in rules.go for why
+	// decrementing it here broke every downward drag.
 	newArr := make([]interface{}, 0, len(draftArr)+1)
 	newArr = append(newArr, draftArr[:to]...)
 	newArr = append(newArr, rule)

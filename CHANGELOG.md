@@ -6,6 +6,21 @@ All notable changes to RouteBox are documented here.
 
 ### Fixed
 
+- **Dragging a rule DOWN now puts it where you dropped it.** The panel and the backend disagreed
+  about what the destination index means: the backend decremented it for downward moves, so every
+  downward drag landed one slot short — moving a rule down by one was a silent no-op — and the last
+  position could not be reached by any drag at all. Worse, the list on screen and the config on
+  disk then disagreed, so the next edit, delete or destination change addressed a *different* rule
+  than the one clicked, quietly corrupting the config until the page was reloaded. The destination
+  index now means the position the rule ends up at, on both sides. Affects DNS rules too, which
+  had the same mismatch.
+- **A routing rule with `invert` is no longer drawn as a plain rule-set mapping.** `{rule_set:
+  ["ads"], invert: true, outbound: "direct"}` rendered as the friendly row "ads → direct" while it
+  actually routes everything EXCEPT ads — the row stated the opposite of the rule. The check for
+  "is this just a rule-set mapping" was a list of disqualifying conditions and missed a dozen of
+  them (`invert`, logical rules with nested `rules`, `clash_mode`, `ip_version`, `auth_user`,
+  `user`, …); it is now an allowlist, so any field it does not know — including ones sing-box adds
+  later — makes the rule render in full. Inverted rules also say `NOT` in their summary.
 - **Routing rules are one ordered list again, so an advanced rule can be given priority over a
   rule-set one.** The page drew rule-set mappings and full rules as two sections, each numbered
   from 1 and each draggable only within itself — but both kinds live in the same `route.rules`

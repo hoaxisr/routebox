@@ -359,10 +359,11 @@ func (m *Manager) ReorderRules(from, to int) error {
 	// Remove from original position
 	draftArr = append(draftArr[:from], draftArr[from+1:]...)
 
-	// Adjust 'to' if it was after 'from'
-	if to > from {
-		to--
-	}
+	// 'to' is the index the rule ENDS UP at, so it needs no adjustment after the
+	// removal. Decrementing it for downward moves (as this used to) made every
+	// such drag land one slot short — "drag one down" became a silent no-op —
+	// and made the last position unreachable by any input, while the panel's
+	// optimistic update and drop indicator both meant the plain reading.
 
 	// Insert at new position
 	newArr := make([]interface{}, 0, len(draftArr)+1)
