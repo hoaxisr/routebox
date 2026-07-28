@@ -1242,6 +1242,7 @@
     "upload": "Отправлено",
     "downloadSpeed": "Скор. приёма",
     "uploadSpeed": "Скор. отдачи",
+    "source": "Источник",
     "sourceIP": "IP источника",
     "sourcePort": "Порт источника",
     "destinationIP": "IP назначения",
@@ -1619,7 +1620,7 @@
     "name": "Имя",
     "inbound": "Входящее",
     "pending": "Ожидает",
-    "active": "активен",
+    "active": "Активен",
     "expired": "Истёк",
     "disabledLabel": "Отключён",
     "enable": "Включить",
@@ -1834,7 +1835,8 @@
     "usageSummary": "{count} клиентов · {total} передано · сортировка по объёму",
     "usageActive": "активен сейчас",
     "usagePeak": "Пик около {time}",
-    "usageNoData": "Нет трафика в этом диапазоне"
+    "usageNoData": "Нет трафика в этом диапазоне",
+    "usageAwgPeer": "AWG-пир"
   },
   "subscriptions": {
     "title": "Подписки",

@@ -4,16 +4,11 @@
 	import { api } from '$lib/api/client';
 	import { notifications, formatBytes } from '$lib/stores';
 	import type { PanelUser, UserTrafficResponse, UserTrafficPoint, TrafficRange } from '$lib/types';
+	import { peersToRows, mergeMonitorRows, type MonitorRow } from '$lib/utils/monitorRows';
 
-	type Row = {
-		id: string;
-		name: string;
-		upload: number;
-		download: number;
-		total: number;
-		series: UserTrafficPoint[];
-		active: boolean;
-	};
+	// AWG peers share this list (#40) but not the accounting source; the row
+	// shape and the peer mapping live in monitorRows.ts so they can be tested.
+	type Row = MonitorRow;
 
 	// UI range → API range. Bars/series are scoped to the selected window.
 	const ranges: { key: string; label: string; api: TrafficRange }[] = [
@@ -54,10 +49,18 @@
 					} catch {
 						/* fork without v2ray_api → zeros */
 					}
-					return { id: u.id!, name: u.name, upload: up, download: down, total: up + down, series, active: isActive(series) };
+					return { id: u.id!, name: u.name, upload: up, download: down, total: up + down, series, active: isActive(series), kind: 'user' as const };
 				})
 			);
-			rows = built.sort((a, b) => b.total - a.total);
+			// AWG peers, same shape. Absent (no AWG server, older backend) is not an
+			// error — the page is still a per-user view without them.
+			let peerRows: Row[] = [];
+			try {
+				peerRows = peersToRows(await api.getAwgPeersTraffic(apiRange));
+			} catch {
+				/* AWG unavailable → panel users only */
+			}
+			rows = mergeMonitorRows(built, peerRows);
 		} catch (e) {
 			notifications.error(`${$t('monitor.usersLoadFailed')}: ${e}`);
 		} finally {
@@ -151,6 +154,7 @@
 							<svg class="chev" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M9 5l7 7-7 7" /></svg>
 							<span class="dot" class:idle={!r.active} title={r.active ? $t('monitor.usageActive') : ''}></span>
 							{r.name}
+							{#if r.kind === 'peer'}<span class="kind">{$t('monitor.usageAwgPeer')}</span>{/if}
 						</span>
 						<span class="bar" style="width:{(r.total / maxTotal) * 100}%">
 							{#if r.total > 0}
@@ -318,6 +322,16 @@
 		font-weight: 500;
 		color: var(--ctp-text);
 		min-width: 0;
+	}
+	/* Marks the rows whose bytes come from the tunnel IP, not sing-box user stats. */
+	.name .kind {
+		flex-shrink: 0;
+		font-size: 0.65rem;
+		font-weight: 400;
+		padding: 0.05rem 0.35rem;
+		border-radius: 0.25rem;
+		color: var(--ctp-overlay1);
+		background-color: color-mix(in srgb, var(--ctp-overlay1) 18%, transparent);
 	}
 	.name .chev {
 		width: 14px;

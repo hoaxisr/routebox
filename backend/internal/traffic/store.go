@@ -20,6 +20,11 @@ CREATE TABLE IF NOT EXISTS traffic_minute (
   PRIMARY KEY (bucket_ts, source, domain, chain)
 );
 CREATE INDEX IF NOT EXISTS idx_traffic_bucket_ts ON traffic_minute(bucket_ts);
+-- Per-source reads (the AWG peer monitor, and DeleteSource) filter on source
+-- FIRST and the time window second. Without this they range-scan the whole
+-- window and test source row-by-row: a month range is ~86% of a 35-day table,
+-- twice per peer. Mirrors idx_user_traffic_user_ts on the per-user table.
+CREATE INDEX IF NOT EXISTS idx_traffic_source_ts ON traffic_minute(source, bucket_ts);
 `
 
 // AggRow is one aggregated bucket of traffic.

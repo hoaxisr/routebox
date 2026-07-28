@@ -2,7 +2,56 @@
 
 All notable changes to RouteBox are documented here.
 
-## [Unreleased]
+## [0.32.1] - 2026-07-28
+
+### Features
+
+- **AmneziaWG peers now appear on the per-user monitor with the same totals, bars and charts as
+  panel users** ([#40](https://github.com/hoaxisr/routebox/issues/40)). Peers are not sing-box
+  inbound users, so they have no counter in the per-user stats — their bytes are read from the
+  per-source history under the peer's tunnel IP, the same rows the Breakdown panel shows. Rows are
+  marked `AWG peer` and their live dot comes from the real handshake rather than from recent
+  buckets. Caveat: this counts traffic that transits sing-box. That holds for the sing-box AWG
+  backend, and on a router whose peers are routed through sing-box; where the kernel backend NATs
+  the tunnel past sing-box entirely the series stays empty and the cumulative Rx/Tx counters on the
+  AWG page remain the source of truth.
+  Long ranges are bucketed coarser than a minute (a week is 7-minute points, a month 30-minute
+  ones) so one response cannot carry tens of thousands of points per peer, and the per-source
+  history is now indexed — the same index also speeds up the client-delete purge above.
+
+### Fixed
+
+- **The inbound list no longer shows `:::443` as the address of a server inbound**
+  ([#37](https://github.com/hoaxisr/routebox/issues/37)). Server inbounds — mieru, naive, hysteria2,
+  vless, trojan — bind the wildcard, and the list rendered that bind address verbatim: the one
+  address no client can dial. A wildcard listen now shows the configured public host (a bare
+  `*:port` when none is set); a specific bind address is deliberate and still shown as-is.
+
+- **Upgrading a pre-0.23 install no longer switches the AmneziaWG backend to sing-box behind your
+  back — and no longer re-keys the server** ([#43](https://github.com/hoaxisr/routebox/issues/43)).
+  The `awg.backend` setting did not exist before 0.23, so an upgraded install had it empty, and
+  empty was read as "use sing-box". Startup then decommissioned the still-running kernel tunnel and,
+  because a kernel install keeps its server key in `<iface>.conf` rather than in `peers.toml`, the
+  sing-box path found no key and minted a new one — every client config already handed out pins the
+  old server public key, so all peers stopped connecting. An empty setting is now resolved from
+  what is actually on disk: a `peers.toml` server key (only the sing-box backend writes one) means
+  sing-box, a rendered `<iface>.conf` with no such key means kernel, and neither — a fresh install —
+  still means sing-box, so kernel stays opt-in. An install that has since been rebuilt on sing-box
+  is therefore left alone even though its stale kernel `.conf` is still on disk. On an install the
+  old default flipped, upgrading restores the kernel backend and its original server key, but the
+  tunnel itself stays down until you press Enable once: the old build disabled the `awg-quick` unit,
+  and nothing re-enables it at boot.
+- **Deleting a client on the Clients page now really removes it from the traffic Breakdown**
+  ([#19](https://github.com/hoaxisr/routebox/issues/19)). The 0.31.0 fix wired the history purge
+  into AWG peer removal only, so a delete made from the Clients page — the way it is normally done,
+  for a tunnel IP (`10.10.64.2`) or a LAN one alike — left the rows in `traffic_minute`: the IP kept
+  showing up in Breakdown and kept counting toward the total. The delete handler now purges the
+  source itself.
+- **Switching the AWG backend from kernel to sing-box keeps the server identity.** The sing-box path
+  now adopts the kernel backend's private key when `peers.toml` holds none yet, instead of
+  generating a fresh one and invalidating every issued client config/QR. The adopted key is
+  validated first: an unusable one in the `.conf` is skipped rather than stored as the permanent
+  server identity and written into a config amnezia-box would refuse to load.
 
 ## [0.32.0] - 2026-07-28
 

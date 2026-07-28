@@ -281,7 +281,7 @@
 							{/if}
 							{#if u.id}
 								<button onclick={() => remove(u)}
-									class="px-3 py-1.5 text-[var(--ctp-red)] hover:bg-[var(--ctp-red)]/10 rounded-lg transition-colors text-sm">
+									class="px-3 py-1.5 text-[var(--ctp-red)] border border-[var(--ctp-red)]/40 rounded-lg hover:bg-[var(--ctp-red)]/10 transition-colors text-sm">
 									{$t('users.delete')}
 								</button>
 							{/if}

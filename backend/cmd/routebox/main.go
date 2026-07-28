@@ -387,10 +387,10 @@ func main() {
 	// the kernel-module install path unless the operator explicitly selects it.
 	// MUST run before the sweep ticker + HTTP server start so no goroutine ever
 	// observes a half-wired Manager.
-	awgBackend := settingsMgr.Get().Awg.Backend
-	if awgBackend == "" {
-		awgBackend = "singbox"
-	}
+	// An unset setting keeps kernel when a rendered .conf shows this is a pre-0.23
+	// install that predates the setting — flipping those to singbox tore down a
+	// live tunnel and re-keyed the server (issue #43).
+	awgBackend := awgMgr.ResolveBackend(settingsMgr.Get().Awg.Backend)
 	awgMgr.SetBackend(awgBackend)
 	awgMgr.SetConfigSync(
 		cfgMgr, // *config.Manager satisfies awg.ConfigSyncer
@@ -617,6 +617,8 @@ func main() {
 				r.Post("/disable", apiHandler.DisableAWG)
 				r.Get("/peers", apiHandler.ListAWGPeers)
 				r.Post("/peers", apiHandler.CreateAWGPeer)
+				// Static segment, so chi matches it before /peers/{publicKey}/...
+				r.Get("/peers/traffic", apiHandler.GetAWGPeersTraffic)
 				r.Delete("/peers/{publicKey}", apiHandler.DeleteAWGPeer)
 				r.Get("/peers/{publicKey}/config", apiHandler.GetAWGPeerConfig)
 				r.Get("/peers/{publicKey}/singbox", apiHandler.GetAWGPeerSingbox)
