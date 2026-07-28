@@ -299,7 +299,7 @@
 						</button>
 					</th>
 					<th class="px-4 py-3 text-center font-medium">
-						{groupByChain ? $t('connections.sourceIP') : $t('connections.chain')}
+						{groupByChain ? $t('connections.source') : $t('connections.chain')}
 					</th>
 					<th class="px-4 py-3 text-center font-medium">
 						<button onclick={() => setSort('start')} class="w-full flex items-center gap-1 justify-center hover:text-[var(--ctp-text)]">

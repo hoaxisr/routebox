@@ -1231,6 +1231,7 @@
     "upload": "Upload",
     "downloadSpeed": "DL Speed",
     "uploadSpeed": "UL Speed",
+    "source": "Source",
     "sourceIP": "Source IP",
     "sourcePort": "Source Port",
     "destinationIP": "Destination IP",
@@ -1607,8 +1608,8 @@
     "addTitle": "Add user",
     "name": "Name",
     "inbound": "Inbound",
-    "pending": "pending",
-    "active": "active",
+    "pending": "Pending",
+    "active": "Active",
     "expired": "Expired",
     "disabledLabel": "Disabled",
     "enable": "Enable",
@@ -1823,7 +1824,8 @@
     "usageSummary": "{count} clients · {total} transferred · sorted by usage",
     "usageActive": "active now",
     "usagePeak": "Peak around {time}",
-    "usageNoData": "No traffic in this range"
+    "usageNoData": "No traffic in this range",
+    "usageAwgPeer": "AWG peer"
   },
   "subscriptions": {
     "title": "Subscriptions",

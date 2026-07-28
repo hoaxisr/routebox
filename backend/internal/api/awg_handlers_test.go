@@ -87,6 +87,8 @@ func newAWGTestHandler(t *testing.T) (*Handler, http.Handler) {
 		r.Post("/disable", h.DisableAWG)
 		r.Get("/peers", h.ListAWGPeers)
 		r.Post("/peers", h.CreateAWGPeer)
+		// Mirrors main.go: the static segment must win over {publicKey}.
+		r.Get("/peers/traffic", h.GetAWGPeersTraffic)
 		r.Delete("/peers/{publicKey}", h.DeleteAWGPeer)
 		r.Get("/peers/{publicKey}/config", h.GetAWGPeerConfig)
 		r.Patch("/peers/{publicKey}/expiry", h.SetAWGPeerExpiry)
@@ -304,9 +306,11 @@ func TestAWGCreatePeerSubnetExhausted(t *testing.T) {
 	}
 }
 
-// All mutating awg routes require auth (mirror TestTokenMutationRoutesRequireAuth):
+// Every awg route requires auth (mirror TestTokenMutationRoutesRequireAuth):
 // they are registered INSIDE the AuthMiddleware group, so WITHOUT panel
-// credentials they must 401 before the handler runs.
+// credentials they must 401 before the handler runs. The read routes belong here
+// too — they serve peer names, tunnel IPs, handshake times and per-minute
+// activity patterns, which is not public information either.
 func TestAWGRoutesRequireAuth(t *testing.T) {
 	dir := t.TempDir()
 	sm := newAWGSettings(t, dir, "vpn.example.com")
@@ -335,7 +339,9 @@ func TestAWGRoutesRequireAuth(t *testing.T) {
 			r.Route("/awg", func(r chi.Router) {
 				r.Post("/enable", h.EnableAWG)
 				r.Post("/disable", h.DisableAWG)
+				r.Get("/peers", h.ListAWGPeers)
 				r.Post("/peers", h.CreateAWGPeer)
+				r.Get("/peers/traffic", h.GetAWGPeersTraffic)
 				r.Delete("/peers/{publicKey}", h.DeleteAWGPeer)
 			})
 		})
@@ -344,7 +350,9 @@ func TestAWGRoutesRequireAuth(t *testing.T) {
 	for _, tc := range []struct{ method, path string }{
 		{http.MethodPost, "/api/awg/enable"},
 		{http.MethodPost, "/api/awg/disable"},
+		{http.MethodGet, "/api/awg/peers"},
 		{http.MethodPost, "/api/awg/peers"},
+		{http.MethodGet, "/api/awg/peers/traffic"},
 		{http.MethodDelete, "/api/awg/peers/" + knownPub},
 	} {
 		rec := httptest.NewRecorder()

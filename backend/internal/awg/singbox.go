@@ -24,6 +24,69 @@ type ConfigSyncer interface {
 // "singbox" (managed endpoint in the sing-box config).
 func (m *Manager) SetBackend(b string) { m.mu.Lock(); m.backend = b; m.mu.Unlock() }
 
+// ResolveBackend maps the persisted awg.backend setting to the backend to run.
+// An explicit choice always wins. Empty means "never chosen" — a fresh deploy,
+// or an install from before the setting existed (pre-0.23, kernel-only) — and
+// resolving it to singbox unconditionally decommissioned a live kernel tunnel
+// and re-keyed the server behind the operator's back (issue #43).
+//
+// Two on-disk artefacts decide, in this order:
+//
+//   - peers.toml server_key, written ONLY by enableSingbox: its presence proves
+//     the singbox backend has been enabled here, so singbox wins even with a
+//     kernel .conf still lying around. This is what keeps the fix from becoming
+//     issue #43 in reverse for the very people it already burned — nothing ever
+//     deletes the .conf, so an install the old default flipped and the operator
+//     then rebuilt on singbox still has one.
+//   - the rendered <iface>.conf, written ONLY by the kernel backend: with no
+//     singbox key, it marks a kernel install that predates the setting.
+//
+// Neither present = fresh install: singbox, so kernel stays opt-in and never an
+// auto-default. A .conf that cannot be stat'ed for any reason other than "not
+// there" counts as present: guessing "absent" is the branch that tears down a
+// running tunnel.
+func (m *Manager) ResolveBackend(setting string) string {
+	if setting != "" {
+		return setting
+	}
+	if m.store.ServerKey() != "" {
+		return "singbox"
+	}
+	if _, err := os.Stat(m.confPath); err == nil || !os.IsNotExist(err) {
+		return "kernel"
+	}
+	return "singbox"
+}
+
+// adoptKernelServerKey returns the kernel backend's server private key from the
+// rendered .conf, or "" when there is none. The singbox backend uses it as the
+// server identity of last resort before minting a new one: a kernel->singbox
+// switch otherwise changes the server public key, and every client .conf/QR
+// already issued pins it — so all peers die silently (issue #43).
+//
+// The key is validated before it is handed back. parseInterfacePrivateKey
+// returns whatever follows the "=" verbatim, and the caller PERSISTS the result
+// to peers.toml and emits it into the active config: a truncated or hand-edited
+// line would be stored as the permanent server identity (every later Enable
+// short-circuits on the stored key) and would make amnezia-box fail its config
+// load — taking down all proxying, not just AWG. Returning "" instead falls
+// through to generating a fresh key.
+func (m *Manager) adoptKernelServerKey() string {
+	data, err := os.ReadFile(m.confPath)
+	if err != nil {
+		return ""
+	}
+	priv := parseInterfacePrivateKey(string(data))
+	if priv == "" {
+		return ""
+	}
+	if _, err := PublicFromPrivate(priv); err != nil {
+		log.Printf("awg: %s holds an unusable server private key (%v) — generating a fresh one", m.confPath, err)
+		return ""
+	}
+	return priv
+}
+
 // backendIs is the lock-safe read counterpart of SetBackend: the op guards and
 // the 30s sweep ticker read the backend concurrently with runtime switches from
 // the settings handler, so a bare m.backend read is a data race under -race.
@@ -419,11 +482,16 @@ func (m *Manager) enableSingbox(ctx context.Context, in EnableInput) error {
 	if err != nil {
 		return m.enableFail(err.Error())
 	}
-	// Server key: reuse the persisted one, else generate + persist to peers.toml.
+	// Server key: reuse the persisted one; else adopt the kernel backend's (so a
+	// backend switch keeps every issued client .conf valid); else generate. Any
+	// of the latter two is persisted to peers.toml.
 	priv := m.store.ServerKey()
 	if priv == "" {
-		if priv, _, err = Generate(rand.Reader); err != nil {
-			return m.enableFail(err.Error())
+		priv = m.adoptKernelServerKey()
+		if priv == "" {
+			if priv, _, err = Generate(rand.Reader); err != nil {
+				return m.enableFail(err.Error())
+			}
 		}
 		if err := m.store.SetServerKey(priv); err != nil {
 			return m.enableFail(err.Error())

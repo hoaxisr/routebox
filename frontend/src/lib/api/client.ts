@@ -1,4 +1,4 @@
-import type { ApiResponse, ProcessStatus, SingboxConfig, Endpoint, Outbound, Inbound, RuleSet, RuleSetUsage, RouteRule, RouteSettings, DnsServer, DnsRule, DnsSettings, LogSettings, ExperimentalSettings, ConnectionsResponse, ProxiesResponse, ClashProxy, TestRouteResponse, ConnectTestResponse, SettingsResponse, RouteBoxSettings, SingBoxVersion, DomainSetInfo, RuleSetSource, ClientEntry, TrafficHistoryResponse, TrafficRange, UpdatesStatus, UpdateProgress, UpdateTargetName, Subscription, SubscriptionInput, PanelUser, UserTrafficResponse, AwgStatus, AwgPeer } from '$lib/types';
+import type { ApiResponse, ProcessStatus, SingboxConfig, Endpoint, Outbound, Inbound, RuleSet, RuleSetUsage, RouteRule, RouteSettings, DnsServer, DnsRule, DnsSettings, LogSettings, ExperimentalSettings, ConnectionsResponse, ProxiesResponse, ClashProxy, TestRouteResponse, ConnectTestResponse, SettingsResponse, RouteBoxSettings, SingBoxVersion, DomainSetInfo, RuleSetSource, ClientEntry, TrafficHistoryResponse, TrafficRange, UpdatesStatus, UpdateProgress, UpdateTargetName, Subscription, SubscriptionInput, PanelUser, UserTrafficResponse, AwgStatus, AwgPeer, AwgPeerTraffic } from '$lib/types';
 
 const API_BASE = '/api';
 
@@ -275,6 +275,8 @@ export const api = {
 	awgEnable: () => request<AwgStatus>('/awg/enable', { method: 'POST' }),
 	awgDisable: () => request<AwgStatus>('/awg/disable', { method: 'POST' }),
 	getAwgPeers: () => request<AwgPeer[]>('/awg/peers'),
+	getAwgPeersTraffic: (range: TrafficRange = '24h') =>
+		request<AwgPeerTraffic[]>(`/awg/peers/traffic?range=${encodeURIComponent(range)}`),
 	createAwgPeer: (name: string) =>
 		request<AwgPeer>('/awg/peers', { method: 'POST', body: JSON.stringify({ name }) }),
 	deleteAwgPeer: (pk: string) =>

@@ -36,11 +36,17 @@ func (m *Manager) GetInbound(tag string) (map[string]interface{}, bool) {
 	return nil, false
 }
 
-// normalizeListenAddr collapses every wildcard spelling — absent, "", "::", "[::]",
-// "::0", "0.0.0.0", "*" — into a single "*" bucket, because at bind time they all grab
-// the same port (Go listens dual-stack on "::"). Specific IPs keep their own identity.
-// Used for port-conflict detection so "::" (set by the panel) and an absent listen (on
-// older/hand-made inbounds) are correctly recognised as colliding.
+// normalizeListenAddr collapses every wildcard spelling — "", "::", "[::]", "::0",
+// "0.0.0.0", "*" — plus an ABSENT listen into a single "*" bucket. Specific IPs keep
+// their own identity. Used for port-conflict detection so "::" (set by the panel) and
+// an absent listen (on older/hand-made inbounds) are recognised as colliding.
+//
+// Folding absent in is a deliberate over-approximation for THIS purpose, not a claim
+// about where it binds: sing-box builds the bind address with a 127.0.0.1 fallback, so
+// an absent listen is loopback-only. Two inbounds on the same port still cannot both
+// be trusted to come up, so conflict detection stays conservative — but nothing else
+// should read this function as "absent means wildcard" (the panel's inbound list
+// deliberately renders it as loopback).
 func normalizeListenAddr(s string) string {
 	switch strings.TrimSpace(s) {
 	case "", "::", "[::]", "::0", "0.0.0.0", "*":

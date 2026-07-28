@@ -6,9 +6,12 @@
 	import type { Inbound } from '$lib/types';
 	import Modal from '$lib/components/shared/Modal.svelte';
 	import InboundForm from '$lib/components/config/InboundForm.svelte';
+	import { inboundDisplayAddress } from '$lib/utils/inboundAddress';
 
 	let inbounds = $state<Inbound[]>([]);
 	let loading = $state(true);
+	// Server inbounds bind the wildcard; the list shows the address clients dial (#37).
+	let publicHost = $state('');
 
 	// Modal state
 	let showModal = $state(false);
@@ -100,7 +103,14 @@
 		}
 	}
 
-	onMount(fetchInbounds);
+	onMount(async () => {
+		await fetchInbounds();
+		try {
+			publicHost = (await api.getSettings()).settings.server?.public_host ?? '';
+		} catch {
+			/* no public host → the list falls back to a bare wildcard */
+		}
+	});
 </script>
 
 <div class="space-y-6">
@@ -154,7 +164,7 @@
 											<span class="text-[var(--ctp-primary)]">• auto_route</span>
 										{/if}
 									{:else}
-										{inbound.listen ?? '127.0.0.1'}:{inbound.listen_port ?? 1080}
+										{inboundDisplayAddress(inbound, publicHost)}
 									{/if}
 								</div>
 							</div>

@@ -2,6 +2,7 @@ package api
 
 import (
 	"encoding/json"
+	"log"
 	"net/http"
 	"time"
 
@@ -71,6 +72,16 @@ func (h *Handler) DeleteClient(w http.ResponseWriter, r *http.Request) {
 	if err := h.clients.Save(); err != nil {
 		writeConfigError(w, http.StatusInternalServerError, err)
 		return
+	}
+	// Purge the client's Breakdown history (#19): `ip` is the `source` key in
+	// traffic_minute, so without this the deleted client keeps its row in the
+	// panel and its bytes in the total. The AWG peer-removal path does the same
+	// for a peer's tunnel IP; a delete made here covers both that IP and a LAN
+	// one. Best-effort: a purge failure must not fail the delete.
+	if h.traffic != nil {
+		if err := h.traffic.DeleteSource(ip); err != nil {
+			log.Printf("api: purge traffic for deleted client %q: %v", ip, err)
+		}
 	}
 	w.WriteHeader(http.StatusNoContent)
 }

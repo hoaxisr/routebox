@@ -1063,6 +1063,21 @@ export interface AwgPeer {
 	expires_at: number;     // unix seconds; 0 = never expires
 }
 
+// One AWG peer's traffic over a range, in the same shape /monitor/users renders
+// for panel users. The bytes come from the per-source history (the peer's tunnel
+// IP), not from sing-box user stats — see GetAWGPeersTraffic.
+export interface AwgPeerTraffic {
+	public_key: string;
+	name: string;
+	address: string; // "<ip>/32" as stored
+	source: string;  // the tunnel IP the bytes are keyed by
+	last_handshake: number;
+	online: boolean;
+	upload: number;
+	download: number;
+	history: UserTrafficPoint[];
+}
+
 // AmneziaWG obfuscation parameters (junk packets, init-packet sizes, magic headers)
 export interface AwgObf {
 	jc: number;
