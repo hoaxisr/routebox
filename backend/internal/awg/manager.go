@@ -316,7 +316,7 @@ func (m *Manager) Rehydrate(ctx context.Context, in EnableInput) {
 	// does (RehydrateSingbox deliberately KEEPS them).
 	obf.stripAwg3()
 	mtu, _ := ValidateMTU(in.MTU) // non-critical for render; 0 -> omitted
-	dns, _ := ValidateDNS(in.DNS) // RenderClientConf falls back to 1.1.1.1 if empty
+	dns, _ := ValidateDNS(in.DNS) // empty stays empty; the client conf omits the line
 
 	up := false
 	if out, _, e := m.run.Run(ctx, "awg", "show", m.iface); e == nil && strings.Contains(out, "listening port") {
@@ -451,9 +451,9 @@ func (m *Manager) RenderClientConf(pub, host string) (string, error) {
 	if err != nil {
 		return "", err
 	}
-	if len(dns) == 0 {
-		dns = []string{"1.1.1.1"}
-	}
+	// No fallback resolver: an empty field means the client keeps its own DNS.
+	// Inventing 1.1.1.1 here silently overrode routing that worked without it,
+	// and the UI never showed the value it was substituting (#45).
 	addr6, allowed := "", []string{"0.0.0.0/0"}
 	if broker {
 		if a, err := netip.ParsePrefix(p.Address); err == nil {
