@@ -2,7 +2,7 @@
 
 All notable changes to RouteBox are documented here.
 
-## [Unreleased]
+## [0.33.0] - 2026-07-30
 
 ### Features
 
