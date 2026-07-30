@@ -457,8 +457,8 @@ func (m *Manager) clientConfFor(pub, host string) (ClientConf, Peer, error) {
 	// the server is not running these, so promising them to a client cannot work.
 	// A nil s3fn means "supported", matching both of those call sites.
 	if s3fn != nil && !s3fn() {
-		obf.CPA, obf.RAT, headerKey = "", "", ""
-		obf.RekeyTimeout, obf.RejectAfterTime, obf.KeepaliveTimeout, obf.MaxHandshakeAttempts = "", "", "", ""
+		obf.stripAwg3()
+		headerKey = ""
 	}
 	// No fallback resolver: an empty field means the client keeps its own DNS.
 	// Inventing 1.1.1.1 here silently overrode routing that worked without it,

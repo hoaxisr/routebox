@@ -441,7 +441,11 @@ func TestRenderVPNLinkUsesPeerNameAndHost(t *testing.T) {
 func TestRenderVPNLinkUnknownPeer(t *testing.T) {
 	m := newTestManager(t, newFakeRunner())
 	m.serverPriv = "AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAEs="
-	if _, err := m.RenderVPNLink(validPub, "vpn.example.com"); err == nil {
+	_, err := m.RenderVPNLink(validPub, "vpn.example.com")
+	if err == nil {
 		t.Fatal("an unknown peer must error")
+	}
+	if errors.Is(err, ErrLinkUnrepresentable) {
+		t.Fatalf("err = %v, want a not-found error, not ErrLinkUnrepresentable (that maps to HTTP 422, not 404)", err)
 	}
 }

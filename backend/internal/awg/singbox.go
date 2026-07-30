@@ -663,8 +663,8 @@ func (m *Manager) ClientEndpoint(pub, name, host string) (map[string]interface{}
 	// Same awg3 gate as renderServerSpec: the export may be pasted into another
 	// box running a pre-awg3 binary, so strip cpa/rat/hpk when unsupported.
 	if s3fn != nil && !s3fn() {
-		obf.CPA, obf.RAT, headerKey = "", "", ""
-		obf.RekeyTimeout, obf.RejectAfterTime, obf.KeepaliveTimeout, obf.MaxHandshakeAttempts = "", "", "", ""
+		obf.stripAwg3()
+		headerKey = ""
 	}
 	addr6 := ""
 	if broker {
