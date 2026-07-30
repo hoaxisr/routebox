@@ -6,6 +6,7 @@
 	import type { PanelUser } from '$lib/types';
 	import { effectiveSubUrl } from './subscription-url';
 	import { pillLabel, defaultBinding, loadConnectionLink } from './share-links';
+	import { copyText } from '$lib/utils/clipboard';
 
 	interface Props {
 		user: PanelUser;
@@ -85,22 +86,9 @@
 	});
 
 	async function copy(text: string) {
-		try {
-			if (navigator.clipboard && window.isSecureContext) {
-				await navigator.clipboard.writeText(text);
-			} else {
-				const ta = document.createElement('textarea');
-				ta.value = text;
-				ta.style.position = 'fixed';
-				ta.style.opacity = '0';
-				document.body.appendChild(ta);
-				ta.select();
-				const ok = document.execCommand('copy');
-				document.body.removeChild(ta);
-				if (!ok) throw new Error('copy failed');
-			}
+		if (await copyText(text)) {
 			notifications.success($t('common.copied'));
-		} catch {
+		} else {
 			notifications.error($t('common.copyFailed'));
 		}
 	}

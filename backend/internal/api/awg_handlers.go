@@ -243,6 +243,50 @@ func (h *Handler) GetAWGPeerConfig(w http.ResponseWriter, r *http.Request) {
 	_, _ = w.Write([]byte(body))
 }
 
+// GetAWGPeerVPNLink serves the peer as an Amnezia vpn:// link (text/plain). Same
+// hardening as GetAWGPeerConfig: key validated first, existence checked before the
+// host (404 before 503), no internal error echoed. The one exception is an
+// unrepresentable peer — that is the operator's configuration, not an internal
+// fault, so the message names what to fix. It is safe to echo: by construction it
+// contains only static text and the literals "H1".."H4".
+func (h *Handler) GetAWGPeerVPNLink(w http.ResponseWriter, r *http.Request) {
+	if h.awg == nil {
+		http.Error(w, "awg not available", http.StatusServiceUnavailable)
+		return
+	}
+	pub, err := awgPubKeyParam(r)
+	if err != nil {
+		writeError(w, http.StatusBadRequest, "invalid public key")
+		return
+	}
+	if _, ok := h.awg.PeerConfig(pub); !ok { // existence first (404 before 503)
+		http.NotFound(w, r)
+		return
+	}
+	s := h.settings.Get()
+	host := s.Awg.ServerHost
+	if host == "" {
+		host = s.Server.PublicHost
+	}
+	if host == "" {
+		http.Error(w, "server address not set — set it on the AWG page", http.StatusServiceUnavailable)
+		return
+	}
+	link, err := h.awg.RenderVPNLink(pub, host)
+	if err != nil {
+		if errors.Is(err, awg.ErrLinkUnrepresentable) {
+			http.Error(w, err.Error(), http.StatusUnprocessableEntity)
+			return
+		}
+		http.Error(w, "link unavailable", http.StatusInternalServerError)
+		return
+	}
+	w.Header().Set("Content-Type", "text/plain; charset=utf-8")
+	w.Header().Set("Cache-Control", "no-store")
+	w.WriteHeader(http.StatusOK)
+	_, _ = w.Write([]byte(link))
+}
+
 // GetAWGPeerSingbox serves a client sing-box endpoint JSON for a peer (authorized).
 // Mirrors GetAWGPeerConfig hardening: validate key first, existence 404 before the
 // public-host 503, no err echo, Cache-Control no-store.

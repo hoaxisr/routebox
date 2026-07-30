@@ -435,21 +435,30 @@ func (m *Manager) PeerConfig(pub string) (name string, ok bool) {
 	return p.Name, true
 }
 
-// RenderClientConf builds the client .conf from the stored secret, the derived
-// server public key, and the configured obfuscation/DNS/MTU. host is the validated
-// public host; the Endpoint is assembled IPv6-safe (bare v6 host bracketed).
-func (m *Manager) RenderClientConf(pub, host string) (string, error) {
+// clientConfFor assembles the peer's client config: the stored secret, the derived
+// server public key, the locked snapshot of the server's obfuscation/DNS/MTU, and
+// the IPv6-broker address mapping. It is the single source of truth for every
+// client export — the .conf and the Amnezia link must not describe the same peer
+// differently. Returns the peer too, for its name.
+func (m *Manager) clientConfFor(pub, host string) (ClientConf, Peer, error) {
 	p, ok := m.store.Get(pub)
 	if !ok {
-		return "", fmt.Errorf("no such peer")
+		return ClientConf{}, Peer{}, fmt.Errorf("no such peer")
 	}
 	m.mu.Lock()
 	serverPriv, dns, mtu, obf, port, preset, headerKey := m.serverPriv, m.dns, m.mtu, m.obf, m.listenPort, m.obfPreset, m.headerKey
-	broker, ula := m.v6Active, m.ulaPrefix
+	broker, ula, s3fn := m.v6Active, m.ulaPrefix, m.supports3Fn
 	m.mu.Unlock()
 	serverPub, err := PublicFromPrivate(serverPriv)
 	if err != nil {
-		return "", err
+		return ClientConf{}, Peer{}, err
+	}
+	// Same awg3 gate as renderServerSpec and ClientEndpoint: on a pre-awg3 binary
+	// the server is not running these, so promising them to a client cannot work.
+	// A nil s3fn means "supported", matching both of those call sites.
+	if s3fn != nil && !s3fn() {
+		obf.CPA, obf.RAT, headerKey = "", "", ""
+		obf.RekeyTimeout, obf.RejectAfterTime, obf.KeepaliveTimeout, obf.MaxHandshakeAttempts = "", "", "", ""
 	}
 	// No fallback resolver: an empty field means the client keeps its own DNS.
 	// Inventing 1.1.1.1 here silently overrode routing that worked without it,
@@ -463,7 +472,7 @@ func (m *Manager) RenderClientConf(pub, host string) (string, error) {
 			}
 		}
 	}
-	return BuildClient(ClientConf{
+	return ClientConf{
 		PrivateKey:          p.PrivateKey,
 		Address:             p.Address,
 		Address6:            addr6,
@@ -477,7 +486,28 @@ func (m *Manager) RenderClientConf(pub, host string) (string, error) {
 		Keepalive:           25,
 		PSK:                 p.PresharedKey,
 		HeaderProtectionKey: headerKey,
-	})
+	}, p, nil
+}
+
+// RenderClientConf builds the client .conf. host is the validated public host; the
+// Endpoint is assembled IPv6-safe (bare v6 host bracketed).
+func (m *Manager) RenderClientConf(pub, host string) (string, error) {
+	c, _, err := m.clientConfFor(pub, host)
+	if err != nil {
+		return "", err
+	}
+	return BuildClient(c)
+}
+
+// RenderVPNLink builds the Amnezia vpn:// link for the same peer. Returns an error
+// wrapping ErrLinkUnrepresentable when the peer's parameters cannot be expressed in
+// Amnezia's schema; the caller should surface that message rather than a 500.
+func (m *Manager) RenderVPNLink(pub, host string) (string, error) {
+	c, p, err := m.clientConfFor(pub, host)
+	if err != nil {
+		return "", err
+	}
+	return AmneziaLink(c, p.Name)
 }
 
 // joinHostPort joins a host (domain or IP) and port, bracketing IPv6 literals so

@@ -2,6 +2,8 @@ package awg
 
 import (
 	"context"
+	"errors"
+	"fmt"
 	"os"
 	"path/filepath"
 	"strings"
@@ -302,5 +304,144 @@ func TestRenderClientConfOmitsDNSWhenUnset(t *testing.T) {
 	// A configured resolver still lands in the .conf.
 	if conf := seed(t, []string{"10.10.0.1", "9.9.9.9"}); !strings.Contains(conf, "DNS = 10.10.0.1, 9.9.9.9\n") {
 		t.Fatalf("configured DNS must be emitted, got:\n%s", conf)
+	}
+}
+
+// awg3Manager builds a manager whose server runs the full awg3 parameter set.
+// supports3 chooses whether the running binary is claimed to understand them.
+func awg3Manager(t *testing.T, supports3 bool) *Manager {
+	t.Helper()
+	m := newTestManager(t, newFakeRunner())
+	m.serverPriv = "AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAEs="
+	m.headerKey = "TESTHPK000000000000000000000000000000000000=="
+	m.obf = Obfuscation{
+		Jc: 3, Jmin: 10, Jmax: 30, S1: 15, S2: 18, S3: 20, S4: 23,
+		H1: "100-200", H2: "300-400", H3: "500-600", H4: "700-800",
+		CPA: "0-64", RAT: "120-150", RekeyTimeout: "5",
+		RejectAfterTime: "180-210", KeepaliveTimeout: "10-25", MaxHandshakeAttempts: "18",
+	}
+	m.supports3Fn = func() bool { return supports3 }
+	_ = m.store.Put(Peer{PublicKey: validPub, PrivateKey: "cpriv", Address: "10.10.0.2/32", Name: "bob"})
+	return m
+}
+
+var awg3Keys = []string{
+	"HeaderProtectionKey", "ContentPaddingAddition", "RekeyAfterTime",
+	"RekeyTimeout", "RejectAfterTime", "KeepaliveTimeout", "MaxHandshakeAttempts",
+}
+
+// awg3Values are the expected values for awg3Keys given awg3Manager's fixture
+// (headerKey and obf above). Shared by the .conf and link "supported" assertions
+// so a gate that strips everything but the header key cannot pass either.
+var awg3Values = map[string]string{
+	"HeaderProtectionKey":    "TESTHPK000000000000000000000000000000000000==",
+	"ContentPaddingAddition": "0-64",
+	"RekeyAfterTime":         "120-150",
+	"RekeyTimeout":           "5",
+	"RejectAfterTime":        "180-210",
+	"KeepaliveTimeout":       "10-25",
+	"MaxHandshakeAttempts":   "18",
+}
+
+// The awg3 capability gate belongs to the shared assembly, not to one exporter.
+// ClientEndpoint has always stripped these on a pre-awg3 binary; RenderClientConf
+// did not, so the .conf and the sing-box export disagreed about the same peer.
+func TestRenderClientConfStripsAwg3OnOldBinary(t *testing.T) {
+	conf, err := awg3Manager(t, false).RenderClientConf(validPub, "1.2.3.4")
+	if err != nil {
+		t.Fatalf("RenderClientConf: %v", err)
+	}
+	for _, k := range awg3Keys {
+		if strings.Contains(conf, k) {
+			t.Errorf("%s must not be emitted on a pre-awg3 binary:\n%s", k, conf)
+		}
+	}
+	// The AWG 2.0 fields are unaffected.
+	if !strings.Contains(conf, "Jc = 3") || !strings.Contains(conf, "H1 = 100-200") {
+		t.Errorf("AWG 2.0 obfuscation must survive:\n%s", conf)
+	}
+
+	conf, err = awg3Manager(t, true).RenderClientConf(validPub, "1.2.3.4")
+	if err != nil {
+		t.Fatalf("RenderClientConf: %v", err)
+	}
+	// An awg3 binary must emit every awg3 field, not just the header key — a gate
+	// that strips CPA/RAT/device-timers unconditionally would still pass a check
+	// that only looked for HeaderProtectionKey.
+	for _, k := range awg3Keys {
+		want := fmt.Sprintf("%s = %s", k, awg3Values[k])
+		if !strings.Contains(conf, want) {
+			t.Errorf("an awg3 binary must emit %q:\n%s", want, conf)
+		}
+	}
+}
+
+// The gate must reach the link too, not just the .conf — a client told to use awg3
+// against a server that is not running it cannot connect.
+func TestRenderVPNLinkStripsAwg3OnOldBinary(t *testing.T) {
+	link, err := awg3Manager(t, false).RenderVPNLink(validPub, "vpn.example.com")
+	if err != nil {
+		t.Fatalf("RenderVPNLink: %v", err)
+	}
+	last := lastConfig(t, decodeLink(t, link))
+	for _, k := range awg3Keys {
+		if _, ok := last[k]; ok {
+			t.Errorf("%s must be absent on a pre-awg3 binary", k)
+		}
+	}
+	// It is still an AWG peer: the AWG 2.0 fields survive.
+	if last["Jc"] != "3" || last["H1"] != "100-200" {
+		t.Errorf("AWG 2.0 obfuscation must survive: Jc=%v H1=%v", last["Jc"], last["H1"])
+	}
+}
+
+// The mirror of the .conf "supported" assertion above: an awg3 binary must emit
+// every awg3 field into the link too, not just the header key.
+func TestRenderVPNLinkKeepsAwg3WhenSupported(t *testing.T) {
+	link, err := awg3Manager(t, true).RenderVPNLink(validPub, "vpn.example.com")
+	if err != nil {
+		t.Fatalf("RenderVPNLink: %v", err)
+	}
+	last := lastConfig(t, decodeLink(t, link))
+	for _, k := range awg3Keys {
+		if got := last[k]; got != awg3Values[k] {
+			t.Errorf("%s = %v, want %s", k, got, awg3Values[k])
+		}
+	}
+}
+
+// RenderVPNLink must propagate ErrLinkUnrepresentable unwrapped (via errors.Is),
+// not swallow it behind a generic error — the handler (Task 5) distinguishes a
+// 422-worthy unrepresentable peer from a 500 by errors.Is(err, ErrLinkUnrepresentable).
+func TestRenderVPNLinkUnrepresentablePropagatesSentinel(t *testing.T) {
+	m := awg3Manager(t, true)
+	m.obf.H2 = "" // partial obfuscation: header magic incomplete, AmneziaLink must refuse
+	_, err := m.RenderVPNLink(validPub, "vpn.example.com")
+	if !errors.Is(err, ErrLinkUnrepresentable) {
+		t.Fatalf("err = %v, want ErrLinkUnrepresentable", err)
+	}
+}
+
+func TestRenderVPNLinkUsesPeerNameAndHost(t *testing.T) {
+	outer := decodeLink(t, func() string {
+		link, err := awg3Manager(t, true).RenderVPNLink(validPub, "vpn.example.com")
+		if err != nil {
+			t.Fatalf("RenderVPNLink: %v", err)
+		}
+		return link
+	}())
+	if outer["description"] != "bob — vpn.example.com" {
+		t.Fatalf("description = %v", outer["description"])
+	}
+	if outer["hostName"] != "vpn.example.com" {
+		t.Fatalf("hostName = %v", outer["hostName"])
+	}
+}
+
+func TestRenderVPNLinkUnknownPeer(t *testing.T) {
+	m := newTestManager(t, newFakeRunner())
+	m.serverPriv = "AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAEs="
+	if _, err := m.RenderVPNLink(validPub, "vpn.example.com"); err == nil {
+		t.Fatal("an unknown peer must error")
 	}
 }

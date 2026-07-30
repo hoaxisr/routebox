@@ -621,6 +621,7 @@ func main() {
 				r.Get("/peers/traffic", apiHandler.GetAWGPeersTraffic)
 				r.Delete("/peers/{publicKey}", apiHandler.DeleteAWGPeer)
 				r.Get("/peers/{publicKey}/config", apiHandler.GetAWGPeerConfig)
+				r.Get("/peers/{publicKey}/vpn-link", apiHandler.GetAWGPeerVPNLink)
 				r.Get("/peers/{publicKey}/singbox", apiHandler.GetAWGPeerSingbox)
 				r.Patch("/peers/{publicKey}/expiry", apiHandler.SetAWGPeerExpiry)
 			})

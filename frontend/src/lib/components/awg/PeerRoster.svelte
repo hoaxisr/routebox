@@ -7,6 +7,7 @@
 	import type { AwgPeer } from '$lib/types';
 	import { formatBytes } from '$lib/stores/settings';
 	import { expiryStatus, unixToDateInput, dateInputToUnix, presetExpiry } from './peerExpiry';
+	import { copyText } from '$lib/utils/clipboard';
 
 	interface Props {
 		peers: AwgPeer[];
@@ -85,6 +86,26 @@
 	let qrPeer = $state<AwgPeer | null>(null);
 	let qrDataUrl = $state('');
 
+	let linkPeer = $state<AwgPeer | null>(null);
+	let linkText = $state('');
+
+	async function showLink(p: AwgPeer) {
+		try {
+			linkText = await api.getAwgPeerVpnLink(p.public_key);
+			linkPeer = p;
+		} catch (e) {
+			notifications.error(`${$t('awg.vpnLinkFailed')}: ${e}`);
+		}
+	}
+
+	async function copyLink() {
+		if (await copyText(linkText)) {
+			notifications.success($t('common.copied'));
+		} else {
+			notifications.error($t('common.copyFailed'));
+		}
+	}
+
 	async function addPeer() {
 		const name = newName.trim();
 		if (!name) return;
@@ -142,8 +163,11 @@
 	async function copyJson(p: AwgPeer) {
 		try {
 			const ep = await api.getAwgPeerSingbox(p.public_key);
-			await navigator.clipboard.writeText(JSON.stringify(ep, null, 2));
-			notifications.success($t('awg.exportedJson'));
+			if (await copyText(JSON.stringify(ep, null, 2))) {
+				notifications.success($t('awg.exportedJson'));
+			} else {
+				notifications.error($t('common.copyFailed'));
+			}
 		} catch (e) {
 			notifications.error(`${$t('awg.configFailed')}: ${e}`);
 		}
@@ -255,6 +279,10 @@
 							{$t('awg.conf')}
 						</button>
 					{/if}
+					<button type="button" class="peer-btn" onclick={() => showLink(p)}>
+						<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" width="15" height="15"><path d="M10 13a5 5 0 0 0 7.54.54l3-3a5 5 0 0 0-7.07-7.07l-1.72 1.71" /><path d="M14 11a5 5 0 0 0-7.54-.54l-3 3a5 5 0 0 0 7.07 7.07l1.71-1.71" /></svg>
+						{$t('awg.vpnLink')}
+					</button>
 					<button type="button" class="action-btn-danger" title={$t('awg.delete')} onclick={() => removePeer(p)}>
 						<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" width="16" height="16"><polyline points="3 6 5 6 21 6" /><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2" /></svg>
 					</button>
@@ -303,6 +331,17 @@
 				<button type="button" class="btn-ghost-sm" onclick={() => (qrPeer = null)}>{$t('common.close')}</button>
 			</div>
 		{/snippet}
+	</Modal>
+{/if}
+
+{#if linkPeer}
+	<Modal open={!!linkPeer} title={$t('awg.vpnLinkTitle', { values: { name: linkPeer.name } })} size="md" onClose={() => (linkPeer = null)}>
+		<div class="link-modal">
+			<p class="link-hint">{$t('awg.vpnLinkHint')}</p>
+			<textarea class="link-text" readonly rows="4" value={linkText}
+				onfocus={(e) => (e.currentTarget as HTMLTextAreaElement).select()}></textarea>
+			<button type="button" class="peer-btn primary" onclick={copyLink}>{$t('common.copy')}</button>
+		</div>
 	</Modal>
 {/if}
 
@@ -564,6 +603,27 @@
 		display: flex;
 		justify-content: flex-end;
 		gap: 0.5rem;
+	}
+	.link-modal {
+		display: flex;
+		flex-direction: column;
+		gap: 0.75rem;
+	}
+	.link-hint {
+		font-size: 0.85rem;
+		color: var(--ctp-overlay1);
+	}
+	.link-text {
+		width: 100%;
+		padding: 0.5rem;
+		border-radius: 0.375rem;
+		border: 1px solid var(--ctp-surface2);
+		background: var(--ctp-mantle);
+		color: var(--ctp-text);
+		font-family: ui-monospace, monospace;
+		font-size: 0.75rem;
+		word-break: break-all;
+		resize: vertical;
 	}
 	.btn-ghost-sm {
 		padding: 0.5rem 0.9rem;

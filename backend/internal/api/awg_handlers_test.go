@@ -1,8 +1,13 @@
 package api
 
 import (
+	"bytes"
+	"compress/zlib"
 	"context"
+	"encoding/base64"
+	"encoding/json"
 	"fmt"
+	"io"
 	"net/http"
 	"net/http/httptest"
 	"os"
@@ -91,6 +96,7 @@ func newAWGTestHandler(t *testing.T) (*Handler, http.Handler) {
 		r.Get("/peers/traffic", h.GetAWGPeersTraffic)
 		r.Delete("/peers/{publicKey}", h.DeleteAWGPeer)
 		r.Get("/peers/{publicKey}/config", h.GetAWGPeerConfig)
+		r.Get("/peers/{publicKey}/vpn-link", h.GetAWGPeerVPNLink)
 		r.Patch("/peers/{publicKey}/expiry", h.SetAWGPeerExpiry)
 	})
 	return h, r
@@ -644,5 +650,86 @@ func TestAWGConfigDecodesEncodedPubkey(t *testing.T) {
 	r.ServeHTTP(rec, httptest.NewRequest(http.MethodGet, "/api/awg/peers/"+encoded+"/config", nil))
 	if rec.Code != http.StatusOK {
 		t.Fatalf("encoded pubkey config = %d; want 200 (handler must URL-decode); body=%q", rec.Code, rec.Body.String())
+	}
+}
+
+// decodeVPNLink unwraps a vpn:// link the way the Amnezia client does, so the tests
+// can assert on what the app would actually read.
+func decodeVPNLink(t *testing.T, link string) map[string]any {
+	t.Helper()
+	raw, err := base64.RawURLEncoding.DecodeString(strings.TrimPrefix(link, "vpn://"))
+	if err != nil {
+		t.Fatalf("payload is not unpadded base64url: %v", err)
+	}
+	zr, err := zlib.NewReader(bytes.NewReader(raw[4:]))
+	if err != nil {
+		t.Fatalf("body is not zlib: %v", err)
+	}
+	defer zr.Close()
+	plain, err := io.ReadAll(zr)
+	if err != nil {
+		t.Fatalf("zlib read: %v", err)
+	}
+	var outer map[string]any
+	if err := json.Unmarshal(plain, &outer); err != nil {
+		t.Fatalf("payload is not JSON: %v", err)
+	}
+	return outer
+}
+
+// The link endpoint gets the same hardening as /config. knownPub is the peer the
+// fixture seeds; validButUnknown is a well-formed key with no peer behind it.
+func TestAWGVPNLinkEndpoint(t *testing.T) {
+	_, router := newAWGTestHandler(t)
+
+	do := func(path string) *httptest.ResponseRecorder {
+		rec := httptest.NewRecorder()
+		router.ServeHTTP(rec, httptest.NewRequest(http.MethodGet, path, nil))
+		return rec
+	}
+
+	if got := do("/api/awg/peers/..%2Fetc%2Fpasswd/vpn-link").Code; got != http.StatusBadRequest {
+		t.Errorf("malformed key: got %d, want 400", got)
+	}
+	if got := do("/api/awg/peers/" + validButUnknown + "/vpn-link").Code; got != http.StatusNotFound {
+		t.Errorf("unknown peer: got %d, want 404", got)
+	}
+
+	rec := do("/api/awg/peers/" + knownPub + "/vpn-link")
+	if rec.Code != http.StatusOK {
+		t.Fatalf("got %d, want 200: %s", rec.Code, rec.Body.String())
+	}
+	if ct := rec.Header().Get("Content-Type"); !strings.HasPrefix(ct, "text/plain") {
+		t.Errorf("Content-Type = %q", ct)
+	}
+	if rec.Header().Get("Cache-Control") != "no-store" {
+		t.Errorf("Cache-Control = %q", rec.Header().Get("Cache-Control"))
+	}
+	if !strings.HasPrefix(rec.Body.String(), "vpn://") {
+		t.Fatalf("body is not a link: %.40q", rec.Body.String())
+	}
+	// The peer the fixture seeds is named "phone".
+	outer := decodeVPNLink(t, rec.Body.String())
+	if _, ok := outer["hostName"].(string); !ok {
+		t.Fatalf("hostName missing from payload: %#v", outer)
+	}
+}
+
+// An IPv6-literal server address makes the vpn-link unrepresentable with no
+// obfuscation required at all (the fixture peer has none) — a second, independent
+// path to awg.ErrLinkUnrepresentable alongside partial obfuscation. The handler
+// must map it to 422, not 500.
+func TestAWGVPNLinkIPv6ServerHostIs422(t *testing.T) {
+	h, r := newAWGTestHandler(t)
+	if err := h.settings.Update(map[string]interface{}{"server.public_host": "2001:db8::1"}); err != nil {
+		t.Fatal(err)
+	}
+	rec := httptest.NewRecorder()
+	r.ServeHTTP(rec, httptest.NewRequest(http.MethodGet, "/api/awg/peers/"+knownPub+"/vpn-link", nil))
+	if rec.Code != http.StatusUnprocessableEntity {
+		t.Fatalf("IPv6 server host vpn-link = %d; want 422; body=%q", rec.Code, rec.Body.String())
+	}
+	if !strings.Contains(rec.Body.String(), "IPv6") {
+		t.Fatalf("body must name the IPv6 server address:\n%s", rec.Body.String())
 	}
 }
