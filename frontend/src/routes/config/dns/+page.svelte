@@ -449,7 +449,7 @@
 									</span>
 								{/if}
 							</div>
-							<div class="flex items-center gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
+							<div class="flex items-center gap-1 sm:opacity-0 sm:group-hover:opacity-100 transition-opacity">
 								<button
 									onclick={() => openEditServer(server)}
 									class="p-1.5 rounded-md hover:bg-[var(--ctp-surface2)] text-[var(--ctp-overlay1)] hover:text-[var(--ctp-text)] transition-colors"
@@ -507,16 +507,27 @@
 								ondragleave={() => dropTargetIndex = null}
 								ondrop={(e) => handleDrop(e, index)}
 								ondragend={handleDragEnd}
-								class="group relative flex items-center gap-3 p-3 bg-[var(--ctp-base)] rounded-lg border transition-all cursor-move
+								class="group relative flex flex-wrap sm:flex-nowrap items-center gap-x-3 gap-y-2 p-3 bg-[var(--ctp-base)] rounded-lg border transition-all cursor-move
 									{draggedIndex === index ? 'opacity-50 border-[var(--ctp-primary)]' : 'border-[var(--ctp-surface2)]'}
 									{dropTargetIndex === index ? 'border-[var(--ctp-primary)] border-dashed' : ''}
 									hover:border-[var(--ctp-overlay0)]"
 							>
-								<!-- Drag handle -->
-								<div class="flex flex-col gap-0.5 text-[var(--ctp-overlay0)] group-hover:text-[var(--ctp-text)]">
-									<svg class="w-5 h-5" fill="currentColor" viewBox="0 0 20 20">
+								<!-- Drag handle plus step buttons; drag&drop never fires on touch,
+								     so the arrows are the only way to reorder on a phone (#44). -->
+								<div class="flex flex-col items-center flex-shrink-0 text-[var(--ctp-overlay1)] group-hover:text-[var(--ctp-text)]">
+									<button type="button" draggable="false" class="step-btn" disabled={index === 0}
+										title={$t('routes.moveUp')} aria-label={$t('routes.moveUp')}
+										onclick={() => handleReorder(index, index - 1)}>
+										<svg class="w-4 h-4" fill="none" stroke="currentColor" stroke-width="2.5" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M5 15l7-7 7 7" /></svg>
+									</button>
+									<svg class="w-5 h-5 hidden sm:block" fill="currentColor" viewBox="0 0 20 20">
 										<path d="M7 2a2 2 0 1 0 .001 4.001A2 2 0 0 0 7 2zm0 6a2 2 0 1 0 .001 4.001A2 2 0 0 0 7 8zm0 6a2 2 0 1 0 .001 4.001A2 2 0 0 0 7 14zm6-8a2 2 0 1 0-.001-4.001A2 2 0 0 0 13 6zm0 2a2 2 0 1 0 .001 4.001A2 2 0 0 0 13 8zm0 6a2 2 0 1 0 .001 4.001A2 2 0 0 0 13 14z" />
 									</svg>
+									<button type="button" draggable="false" class="step-btn" disabled={index === dnsRules.length - 1}
+										title={$t('routes.moveDown')} aria-label={$t('routes.moveDown')}
+										onclick={() => handleReorder(index, index + 1)}>
+										<svg class="w-4 h-4" fill="none" stroke="currentColor" stroke-width="2.5" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M19 9l-7 7-7-7" /></svg>
+									</button>
 								</div>
 
 								<!-- Index -->
@@ -524,8 +535,9 @@
 									{index + 1}
 								</div>
 
-								<!-- Rule info -->
-								<div class="flex-1 min-w-0">
+								<!-- Rule info. At phone width the row wraps so the description gets
+								     a line of its own instead of truncating to a few characters. -->
+								<div class="basis-full order-last min-w-0 sm:flex-1 sm:basis-auto sm:order-none">
 									<span class="text-sm text-[var(--ctp-text)] truncate">{getRuleDescription(rule)}</span>
 								</div>
 
@@ -549,8 +561,8 @@
 									{/if}
 								</div>
 
-								<!-- Actions -->
-								<div class="flex items-center gap-1 flex-shrink-0 opacity-0 group-hover:opacity-100 transition-opacity">
+								<!-- Actions. Reveal-on-hover hides these outright on touch. -->
+								<div class="flex items-center gap-1 flex-shrink-0 sm:opacity-0 sm:group-hover:opacity-100 transition-opacity">
 									<button
 										type="button"
 										onclick={(e) => { e.stopPropagation(); openEditRule(index); }}

@@ -389,6 +389,24 @@ code, pre {
 	font-weight: 600;
 }
 
+/* Move-up / move-down step buttons on reorderable rule rows. Drag&drop never
+   fires on touch, so on a phone these are the only way to change priority. The
+   padding overlaps the decorative grip to keep the row height unchanged. */
+.step-btn {
+	padding: 0.125rem 0.5rem;
+	border-radius: 0.25rem;
+	line-height: 0;
+	cursor: pointer;
+	transition: color 0.15s;
+}
+.step-btn:hover:not(:disabled) {
+	color: var(--ctp-primary);
+}
+.step-btn:disabled {
+	opacity: 0.25;
+	cursor: default;
+}
+
 /* Action button (delete, etc.) */
 .action-btn-danger {
 	padding: 0.375rem;

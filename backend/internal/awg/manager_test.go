@@ -276,3 +276,31 @@ func TestRenderClientConfEmitsHeaderProtectionKey(t *testing.T) {
 		t.Fatalf("client conf missing HeaderProtectionKey:\n%s", conf)
 	}
 }
+
+// An empty DNS field means "the client keeps its own resolver", not "silently
+// hand it 1.1.1.1". The invented default overrode routing rules that worked
+// before the tunnel came up, and nothing in the UI admitted it was there (#45).
+func TestRenderClientConfOmitsDNSWhenUnset(t *testing.T) {
+	seed := func(t *testing.T, dns []string) string {
+		t.Helper()
+		m := newTestManager(t, newFakeRunner())
+		m.serverPriv = "AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAEs="
+		m.dns = dns
+		_ = m.store.Put(Peer{PublicKey: validPub, PrivateKey: "cpriv", Address: "10.10.0.2/32", Name: "bob"})
+		conf, err := m.RenderClientConf(validPub, "1.2.3.4")
+		if err != nil {
+			t.Fatalf("RenderClientConf: %v", err)
+		}
+		return conf
+	}
+
+	for _, empty := range [][]string{nil, {}} {
+		if conf := seed(t, empty); strings.Contains(conf, "DNS = ") {
+			t.Fatalf("unset DNS must emit no DNS line, got:\n%s", conf)
+		}
+	}
+	// A configured resolver still lands in the .conf.
+	if conf := seed(t, []string{"10.10.0.1", "9.9.9.9"}); !strings.Contains(conf, "DNS = 10.10.0.1, 9.9.9.9\n") {
+		t.Fatalf("configured DNS must be emitted, got:\n%s", conf)
+	}
+}

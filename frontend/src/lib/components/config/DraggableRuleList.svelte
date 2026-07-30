@@ -233,16 +233,29 @@
 			ondragleave={handleDragLeave}
 			ondrop={(e) => handleDrop(e, index)}
 			ondragend={handleDragEnd}
-			class="group relative flex items-center gap-3 p-3 bg-[var(--ctp-surface0)] rounded-lg border transition-all cursor-move
+			class="group relative flex flex-wrap sm:flex-nowrap items-center gap-x-3 gap-y-2 p-3 bg-[var(--ctp-surface0)] rounded-lg border transition-all cursor-move
 				{draggedIndex === index ? 'opacity-50 border-[var(--ctp-primary)]' : 'border-[var(--ctp-surface2)]'}
 				{dropTargetIndex === index ? 'border-[var(--ctp-primary)] border-dashed' : ''}
 				hover:border-[var(--ctp-overlay0)]"
 		>
-			<!-- Drag handle -->
-			<div class="flex flex-col gap-0.5 text-[var(--ctp-overlay0)] group-hover:text-[var(--ctp-text)]">
-				<svg class="w-5 h-5" fill="currentColor" viewBox="0 0 20 20">
+			<!-- Drag handle, plus step buttons: HTML5 drag&drop never fires on touch,
+			     so on a phone the arrows are the only way to reorder at all (#44). -->
+			<div class="flex flex-col items-center flex-shrink-0 text-[var(--ctp-overlay1)] group-hover:text-[var(--ctp-text)]">
+				<button type="button" draggable="false" class="step-btn" disabled={index === 0}
+					title={$t('routes.moveUp')} aria-label={$t('routes.moveUp')}
+					onclick={() => onReorder(index, index - 1)}>
+					<svg class="w-4 h-4" fill="none" stroke="currentColor" stroke-width="2.5" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M5 15l7-7 7 7" /></svg>
+				</button>
+				<!-- The grip is decorative and drag never works on touch, so below sm it
+				     only steals width from the description. -->
+				<svg class="w-5 h-5 hidden sm:block" fill="currentColor" viewBox="0 0 20 20">
 					<path d="M7 2a2 2 0 1 0 .001 4.001A2 2 0 0 0 7 2zm0 6a2 2 0 1 0 .001 4.001A2 2 0 0 0 7 8zm0 6a2 2 0 1 0 .001 4.001A2 2 0 0 0 7 14zm6-8a2 2 0 1 0-.001-4.001A2 2 0 0 0 13 6zm0 2a2 2 0 1 0 .001 4.001A2 2 0 0 0 13 8zm0 6a2 2 0 1 0 .001 4.001A2 2 0 0 0 13 14z" />
 				</svg>
+				<button type="button" draggable="false" class="step-btn" disabled={index === rules.length - 1}
+					title={$t('routes.moveDown')} aria-label={$t('routes.moveDown')}
+					onclick={() => onReorder(index, index + 1)}>
+					<svg class="w-4 h-4" fill="none" stroke="currentColor" stroke-width="2.5" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M19 9l-7 7-7-7" /></svg>
+				</button>
 			</div>
 
 			<!-- Index -->
@@ -296,8 +309,10 @@
 				{/if}
 			</div>
 
-			<!-- Rule info -->
-			<div class="flex-1 min-w-0">
+			<!-- Rule info. At phone width the row wraps and the description takes a
+			     line of its own — squeezed inline it truncated to "Detec…", which
+			     tells you nothing about the rule you are about to move. -->
+			<div class="basis-full order-last min-w-0 sm:flex-1 sm:basis-auto sm:order-none">
 				{#if ruleSetRow}
 					<div class="flex items-center gap-2 min-w-0">
 						<span class="px-2 py-0.5 text-xs rounded bg-[var(--ctp-surface2)] text-[var(--ctp-overlay1)] flex-shrink-0">
@@ -329,7 +344,7 @@
 							const val = (e.target as HTMLSelectElement).value;
 							if (val) onOutboundChange?.(index, val);
 						}}
-						class="px-2 py-1 text-xs rounded bg-[var(--ctp-base)] border border-[var(--ctp-surface2)] text-[var(--ctp-text)] focus:outline-none focus:ring-1 focus:ring-[var(--ctp-primary)] cursor-pointer"
+						class="px-2 py-1 text-xs rounded bg-[var(--ctp-base)] border border-[var(--ctp-surface2)] text-[var(--ctp-text)] focus:outline-none focus:ring-1 focus:ring-[var(--ctp-primary)] cursor-pointer max-w-[7.5rem] sm:max-w-none"
 					>
 						{#if mappingOutboundValue(rule) === ''}
 							<!-- No explicit outbound: the traffic falls through to route.final.
@@ -352,7 +367,9 @@
 			</div>
 
 			<!-- Actions -->
-			<div class="flex items-center gap-1 flex-shrink-0 opacity-0 group-hover:opacity-100 transition-opacity">
+			<!-- Reveal-on-hover hides these outright on touch, where there is no hover
+			     and therefore no way to edit or delete a rule at all. -->
+			<div class="flex items-center gap-1 flex-shrink-0 sm:opacity-0 sm:group-hover:opacity-100 transition-opacity">
 				<button
 					type="button"
 					onclick={(e) => { e.stopPropagation(); onEdit(index); }}
@@ -398,3 +415,4 @@
 		</div>
 	{/if}
 </div>
+

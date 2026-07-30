@@ -114,6 +114,16 @@
 		return 'active';
 	}
 
+	// The native date input is kept off-screen and driven by a styled button, the
+	// same shape the AWG peer roster uses — a bare <input type="date"> rendered a
+	// locale placeholder ("дд.мм.гггг") that read as an unlabelled stray field (#36).
+	let dateEls = $state<Record<string, HTMLInputElement | null>>({});
+	function openDatePicker(id: string) {
+		const el = dateEls[id];
+		if (el?.showPicker) el.showPicker();
+		else el?.focus();
+	}
+
 	// <input type="date"> value (YYYY-MM-DD, local) <-> unix seconds.
 	function expiryToDateInput(u: PanelUser): string {
 		if (!u.expires_at || u.expires_at <= 0) return '';
@@ -265,12 +275,20 @@
 									class="px-3 py-1.5 text-[var(--ctp-text)] border border-[var(--ctp-surface2)] rounded-lg hover:bg-[var(--ctp-surface0)] transition-colors text-sm">
 									{u.enabled ? $t('users.disable') : $t('users.enable')}
 								</button>
-								<label class="flex items-center gap-1 text-xs text-[var(--ctp-overlay1)]">
-									<span>{$t('users.expiresAt')}</span>
-									<input type="date" value={expiryToDateInput(u)}
-										onchange={(e) => setExpiry(u, (e.currentTarget as HTMLInputElement).value)}
-										class="px-2 py-1 bg-[var(--ctp-mantle)] border border-[var(--ctp-surface2)] rounded text-[var(--ctp-text)] text-xs focus:outline-none focus:ring-2 focus:ring-[var(--ctp-primary)]" />
-								</label>
+								{@const expiry = expiryToDateInput(u)}
+								<div class="expiry-cell">
+									<span class="expiry-label">{$t('users.expiresAt')}</span>
+									<input type="date" class="expiry-native" tabindex="-1" aria-hidden="true"
+										value={expiry} bind:this={dateEls[u.id]}
+										onchange={(e) => setExpiry(u, (e.currentTarget as HTMLInputElement).value)} />
+									<button type="button" class="expiry-btn" onclick={() => u.id && openDatePicker(u.id)}>
+										<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" width="14" height="14"><rect x="3" y="4" width="18" height="18" rx="2" /><line x1="16" y1="2" x2="16" y2="6" /><line x1="8" y1="2" x2="8" y2="6" /><line x1="3" y1="10" x2="21" y2="10" /></svg>
+										{expiry || $t('users.setDate')}
+									</button>
+									{#if expiry}
+										<button type="button" class="expiry-clear" onclick={() => setExpiry(u, '')}>{$t('users.never')}</button>
+									{/if}
+								</div>
 							{/if}
 							{#if u.id}
 								<button onclick={() => openAddBinding(u)} disabled={availableInbounds(u).length === 0}
@@ -374,5 +392,55 @@
 	}
 	.traffic-cell .down {
 		color: var(--ctp-overlay1);
+	}
+
+	.expiry-cell {
+		position: relative;
+		display: inline-flex;
+		align-items: center;
+		gap: 0.4rem;
+	}
+	.expiry-label {
+		font-size: 0.75rem;
+		color: var(--ctp-overlay1);
+	}
+	.expiry-native {
+		position: absolute;
+		width: 1px;
+		height: 1px;
+		opacity: 0;
+		pointer-events: none;
+	}
+	.expiry-btn {
+		display: inline-flex;
+		align-items: center;
+		gap: 0.35rem;
+		padding: 0.375rem 0.75rem;
+		border-radius: 0.5rem;
+		border: 1px solid var(--ctp-surface2);
+		background: var(--ctp-mantle);
+		color: var(--ctp-text);
+		font-size: 0.875rem;
+		cursor: pointer;
+		transition: border-color 0.15s;
+	}
+	.expiry-btn:hover {
+		border-color: var(--ctp-primary);
+	}
+	.expiry-clear {
+		padding: 0.375rem 0.6rem;
+		border-radius: 0.5rem;
+		border: 1px solid var(--ctp-surface2);
+		background: var(--ctp-surface0);
+		color: var(--ctp-subtext1);
+		font-size: 0.8rem;
+		cursor: pointer;
+		transition:
+			border-color 0.15s,
+			color 0.15s;
+	}
+	.expiry-clear:hover {
+		border-color: var(--ctp-primary);
+		color: var(--ctp-primary);
 	}
 </style>

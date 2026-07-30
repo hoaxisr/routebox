@@ -17,6 +17,22 @@ All notable changes to RouteBox are documented here.
 
 ### Fixed
 
+- **AmneziaWG client configs no longer carry an invented `DNS = 1.1.1.1`** ([#45](https://github.com/hoaxisr/routebox/issues/45)).
+  With the DNS field left empty the panel showed nothing, then quietly substituted Cloudflare when
+  rendering the peer `.conf` — overriding routing rules that worked before the tunnel came up, and
+  doing it from a value the operator was never shown. Empty now means empty: the `DNS` line is
+  omitted and the client keeps its own resolver. A configured resolver is emitted as before.
+- **Rules can be reordered, edited and deleted on a phone** ([#44](https://github.com/hoaxisr/routebox/issues/44)).
+  HTML5 drag&drop never fires on touch, so on mobile there was no way to change rule priority at
+  all — and the edit/delete buttons were revealed on hover, which does not exist there either, so
+  they were permanently invisible. Route rules and DNS rules (and the DNS server list) now carry
+  move-up/move-down buttons alongside the drag handle, and their actions are always visible below
+  the `sm` breakpoint. The row also wraps at phone width so the rule description gets a line of its
+  own instead of truncating to `Detec…`.
+- **Panel user expiry is set through a proper control** ([#36](https://github.com/hoaxisr/routebox/issues/36)).
+  `/config/users` rendered a bare `<input type="date">`, which showed a locale placeholder
+  (`дд.мм.гггг`) and read as a stray field among the buttons. It is now the same styled date button
+  the AmneziaWG peer roster uses, with a `Never` control to clear the expiry.
 - **xHTTP outbounds work at all now.** Every xhttp transport the panel wrote was missing
   `x_padding_bytes`, and amnezia-box refuses to load a config without it — the field is declared
   with no default and its check rejects a zero range, so the whole config died at apply with
