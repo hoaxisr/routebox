@@ -115,7 +115,26 @@ async function requestText(path: string): Promise<string> {
 		if (response.status === 401 && typeof window !== 'undefined' && !window.location.pathname.startsWith('/login')) {
 			window.location.href = '/login';
 		}
-		throw new Error(`HTTP ${response.status}`);
+		// The backend sends actionable messages here; a bare status code would
+		// strand the operator with "HTTP 503". writeError wraps them in JSON,
+		// http.Error does not — accept either. 404 is the one exception: on
+		// these routes it only ever comes from the router's stock
+		// http.NotFound handler ("404 page not found"), never from our own
+		// code, so its body carries nothing operator-actionable — do not
+		// "restore the symmetry" by echoing it, surface the plain status
+		// instead, same as before this change.
+		if (response.status === 404) {
+			throw new Error(`HTTP ${response.status}`);
+		}
+		const body = (await response.text().catch(() => '')).trim();
+		let message = body;
+		try {
+			const parsed = JSON.parse(body);
+			message = parsed?.error || parsed?.message || body;
+		} catch {
+			/* plain text, use as-is */
+		}
+		throw new Error(message || `HTTP ${response.status}`);
 	}
 	return response.text();
 }
@@ -282,6 +301,7 @@ export const api = {
 	deleteAwgPeer: (pk: string) =>
 		requestRaw<void>(`/awg/peers/${encodeURIComponent(pk)}`, { method: 'DELETE' }),
 	getAwgPeerConfig: (pk: string) => requestText(`/awg/peers/${encodeURIComponent(pk)}/config`),
+	getAwgPeerVpnLink: (pk: string) => requestText(`/awg/peers/${encodeURIComponent(pk)}/vpn-link`),
 	getAwgPeerSingbox: (pk: string) =>
 		request<Record<string, unknown>>(`/awg/peers/${encodeURIComponent(pk)}/singbox`),
 	setAwgPeerExpiry: (pk: string, expiresAt: number) =>

@@ -1,6 +1,7 @@
 package api
 
 import (
+	"encoding/json"
 	"net/http"
 	"net/http/httptest"
 	"strings"
@@ -77,6 +78,17 @@ func TestAWGHostResolutionBothEmptyIs503(t *testing.T) {
 			t.Fatalf("both hosts empty = %d; want 503; body=%q", rec.Code, rec.Body.String())
 		}
 	})
+	t.Run("vpn-link", func(t *testing.T) {
+		h, r := newAWGTestHandler(t)
+		if err := h.settings.Update(map[string]interface{}{"server.public_host": ""}); err != nil {
+			t.Fatal(err)
+		}
+		rec := httptest.NewRecorder()
+		r.ServeHTTP(rec, httptest.NewRequest(http.MethodGet, "/api/awg/peers/"+knownPub+"/vpn-link", nil))
+		if rec.Code != http.StatusServiceUnavailable {
+			t.Fatalf("both hosts empty = %d; want 503; body=%q", rec.Code, rec.Body.String())
+		}
+	})
 }
 
 // TestAWGHostFallsBackToPublicHost: awg.server_host empty + public_host set ->
@@ -107,5 +119,47 @@ func TestAWGServerHostWinsOverPublicHost(t *testing.T) {
 	}
 	if !strings.Contains(rec.Body.String(), "Endpoint = 10.0.0.5:51820") {
 		t.Fatalf("awg.server_host must win over public_host:\n%s", rec.Body.String())
+	}
+
+	rec = httptest.NewRecorder()
+	r.ServeHTTP(rec, httptest.NewRequest(http.MethodGet, "/api/awg/peers/"+knownPub+"/vpn-link", nil))
+	if rec.Code != http.StatusOK {
+		t.Fatalf("vpn-link: got %d, want 200", rec.Code)
+	}
+	// The resolved host must reach the payload — a status code cannot catch
+	// "used server.public_host when awg.server_host was set".
+	outer := decodeVPNLink(t, rec.Body.String())
+	if outer["hostName"] != "10.0.0.5" {
+		t.Fatalf("hostName = %v, want the awg.server_host value", outer["hostName"])
+	}
+	// last_config is the copy the client actually reads for its own state; the
+	// outer hostName alone does not pin it (spec Testing §8).
+	containers, ok := outer["containers"].([]any)
+	if !ok || len(containers) != 1 {
+		t.Fatalf("containers = %#v", outer["containers"])
+	}
+	cont, ok := containers[0].(map[string]any)
+	if !ok {
+		t.Fatalf("container entry = %#v", containers[0])
+	}
+	// The fixture peer has no obfuscation configured, so this is plain wireguard.
+	inner, ok := cont["wireguard"].(map[string]any)
+	if !ok {
+		t.Fatalf("container has no wireguard object: %#v", cont)
+	}
+	lastStr, ok := inner["last_config"].(string)
+	if !ok {
+		t.Fatalf("last_config must be a JSON string, got %T", inner["last_config"])
+	}
+	var last map[string]any
+	if err := json.Unmarshal([]byte(lastStr), &last); err != nil {
+		t.Fatalf("last_config is not JSON: %v", err)
+	}
+	if last["hostName"] != "10.0.0.5" {
+		t.Fatalf("last_config.hostName = %v, want 10.0.0.5", last["hostName"])
+	}
+	confStr, _ := last["config"].(string)
+	if !strings.Contains(confStr, "Endpoint = 10.0.0.5:51820") {
+		t.Fatalf("embedded .conf missing the resolved Endpoint line:\n%s", confStr)
 	}
 }

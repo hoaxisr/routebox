@@ -6,6 +6,27 @@ All notable changes to RouteBox are documented here.
 
 ### Features
 
+- **AmneziaWG peers can be shared as `vpn://` links.** The roster gains a Link button
+  that produces the same one-paste link the Amnezia app itself generates. This is the
+  only export that carries **awg3** parameters: the app's `.conf` importer copies a
+  fixed list of obfuscation fields that does not include `HeaderProtectionKey`,
+  `ContentPaddingAddition` or the four device timers, so an awg3 peer imported from a
+  file or QR code silently connected as AWG 2.0 and failed on header protection. The
+  link carries Amnezia's own config format instead, where those fields survive.
+  Three limits are worth knowing. Two are the client's: it overwrites MTU with its
+  platform default, and it substitutes its own DNS (1.1.1.1) when the config names
+  none — which it also does for the `.conf`, so this is not a regression. The third is
+  ours: link-imported peers get IPv4 inside the tunnel even when the IPv6 broker is on,
+  because the desktop client cannot parse a dual-stack client address. The `.conf`
+  download still carries both.
+  A fourth case refuses outright rather than degrading: a peer whose obfuscation is
+  only partly configured (some of `Jc`/`Jmin`/`Jmax`/`S1`/`S2`/`H1`-`H4` set, not all),
+  or a server address that is an IPv6 literal, gets an HTTP 422 naming what to fix
+  instead of a link. Emitting one anyway would fail silently on the user's phone: a
+  half-set obfuscation either crashes the Android app on import or connects as plain
+  WireGuard to an AmneziaWG server with no handshake and no error on either side, and
+  an IPv6 literal is malformed in the endpoint format the desktop daemon actually
+  writes. Refusing is the honest outcome.
 - **A mieru server can be given port ranges** ([#37](https://github.com/hoaxisr/routebox/issues/37)).
   The client side has accepted ranges all along, but the server form only had a numeric port field
   and the fork's mieru inbound bound exactly one port — so a client rotating across a range had
@@ -17,6 +38,22 @@ All notable changes to RouteBox are documented here.
 
 ### Fixed
 
+- **The `.conf` and QR exports now respect the awg3 capability gate, matching the new
+  vpn:// link.** `RenderClientConf` built `HeaderProtectionKey`, `ContentPaddingAddition`
+  and the four device timers unconditionally, while the sing-box config already stripped
+  them on a binary without awg3 support — so on that binary the two exports described the
+  same peer differently, and the `.conf` promised parameters the server was not running.
+  They now share one assembly: a peer served by a pre-awg3 binary gets a `.conf` without
+  those fields too, which is correct, since the server isn't running them — though the
+  capability check is fail-closed, so a transient version-probe error strips the same
+  fields even on a binary that does support awg3, exactly as it already did for the
+  sing-box side.
+- **Copying a config to the clipboard works over plain HTTP.** `navigator.clipboard` only
+  exists in a secure context, so in router mode — where the panel serves plain HTTP on a
+  LAN address — the "copy config" button on `/config` and the JSON copy in the AmneziaWG
+  peer roster silently did nothing. Both now fall back to a hidden textarea. The `/config`
+  success message also no longer hardcodes English; it now goes through the same
+  translated keys as the rest of the page.
 - **AmneziaWG client configs no longer carry an invented `DNS = 1.1.1.1`** ([#45](https://github.com/hoaxisr/routebox/issues/45)).
   With the DNS field left empty the panel showed nothing, then quietly substituted Cloudflare when
   rendering the peer `.conf` — overriding routing rules that worked before the tunnel came up, and

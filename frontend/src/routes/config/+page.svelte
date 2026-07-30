@@ -7,6 +7,7 @@
 	import SideBySideDiff from '$lib/components/shared/SideBySideDiff.svelte';
 	import StatsGrid from '$lib/components/config/overview/StatsGrid.svelte';
 	import BackupSection from '$lib/components/config/overview/BackupSection.svelte';
+	import { copyText } from '$lib/utils/clipboard';
 
 	let config: SingboxConfig | null = $state(null);
 	let loading = $state(true);
@@ -56,9 +57,12 @@
 		}
 	}
 
-	function copyToClipboard() {
-		navigator.clipboard.writeText(currentConfig);
-		notifications.success('Config copied to clipboard');
+	async function copyToClipboard() {
+		if (await copyText(currentConfig)) {
+			notifications.success($t('common.copied'));
+		} else {
+			notifications.error($t('common.copyFailed'));
+		}
 	}
 
 	function downloadConfig() {
