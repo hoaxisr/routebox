@@ -406,6 +406,62 @@ func TestUpdateACMEStringAndBoolFields(t *testing.T) {
 	}
 }
 
+// TestACMEHTTPAddr covers the challenge listener address: it defaults to :80
+// (the only port Let's Encrypt connects to for HTTP-01), and is settable so a
+// packaged install can move the listener off a privileged port and have the
+// host map :80 onto it.
+func TestACMEHTTPAddr(t *testing.T) {
+	if got := Default().Network.ACMEHTTPAddr; got != ":80" {
+		t.Errorf("network.acme_http_addr default should be :80, got %q", got)
+	}
+	m := &Manager{settings: Default()}
+	if err := m.Update(map[string]interface{}{"network.acme_http_addr": ":8080"}); err != nil {
+		t.Fatalf("Update: %v", err)
+	}
+	if got := m.Get().Network.ACMEHTTPAddr; got != ":8080" {
+		t.Errorf("acme_http_addr got %q", got)
+	}
+	if err := m.Update(map[string]interface{}{"network.acme_http_addr": 80}); err == nil {
+		t.Error("int for a string field must be rejected")
+	}
+}
+
+// TestSingboxBinaryPathIsNotSettableOverTheAPI locks the one property that
+// makes pinning the binary safe: singbox.binary_path is exec'd, so — like
+// singbox.config_path — it comes from the file or the --binary flag only.
+// Accepting it in Update would put arbitrary-command execution behind a
+// PUT /api/settings from any authenticated session.
+func TestSingboxBinaryPathIsNotSettableOverTheAPI(t *testing.T) {
+	m := &Manager{settings: Default()}
+	if err := m.Update(map[string]interface{}{"singbox.binary_path": "/tmp/evil"}); err == nil {
+		t.Fatal("singbox.binary_path must be rejected by Update")
+	}
+	if got := m.Get().Singbox.BinaryPath; got != "" {
+		t.Fatalf("binary_path changed despite the rejection: %q", got)
+	}
+}
+
+// TestSingboxBinaryPathRoundTripsThroughTheFile is the other half: what the API
+// refuses, the settings file must still carry.
+func TestSingboxBinaryPathRoundTripsThroughTheFile(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "routebox.toml")
+	m, err := NewManager(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	m.settings.Singbox.BinaryPath = "/config/bin/amnezia-box"
+	if err := m.Save(); err != nil {
+		t.Fatalf("Save: %v", err)
+	}
+	reloaded, err := NewManager(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got := reloaded.Get().Singbox.BinaryPath; got != "/config/bin/amnezia-box" {
+		t.Fatalf("binary_path did not survive a save/load round trip: %q", got)
+	}
+}
+
 func TestUpdateACMEWrongTypesRejected(t *testing.T) {
 	cases := []struct {
 		key   string

@@ -64,6 +64,7 @@ var (
 	listenAddr = flag.String("listen", "", "HTTP listen address (overrides settings)")
 	clashAddr  = flag.String("clash", "", "Clash API address (overrides settings)")
 	geoipPath  = flag.String("geoip", "", "Path to GeoIP MMDB database (overrides settings)")
+	binaryPath = flag.String("binary", "", "Path to the amnezia-box binary (overrides settings; auto-detected if unset)")
 	modeFlag   = flag.String("mode", "", "panel mode: router (default) or vps")
 )
 
@@ -116,6 +117,19 @@ func main() {
 
 	// Initialize process manager
 	procMgr := process.NewManager()
+
+	// Resolve the amnezia-box binary: CLI flag > settings > auto-detect. An
+	// explicit path wins over the systemd ExecStart the manager prefers on its
+	// own — pinning it is how a packaged install (the Docker image keeps the
+	// binary on the writable /config volume so the panel can update it) says
+	// where the binary it actually runs lives.
+	resolvedBinaryPath := *binaryPath
+	if resolvedBinaryPath == "" {
+		resolvedBinaryPath = cfg.Singbox.BinaryPath
+	}
+	if replaced := procMgr.PinBinaryPath(resolvedBinaryPath); replaced != "" {
+		log.Printf("amnezia-box binary pinned to %s (detected %s). Status, version and updates all follow the pinned path.", resolvedBinaryPath, replaced)
+	}
 
 	// Resolve config path: CLI flag > settings > auto-detect > default
 	resolvedConfigPath := *configPath
@@ -428,6 +442,18 @@ func main() {
 	// SweepExpired is a cheap no-op when the interface is down.
 	stopAwgSweep := make(chan struct{})
 	go awg.RunSweepLoop(func() { awgMgr.SweepExpired(context.Background()) }, 30*time.Second, stopAwgSweep)
+
+	// Bring amnezia-box up when nothing else will. Done here rather than before
+	// the AWG wiring above so the process starts on the config those steps may
+	// have just synced, and before SyncRejectRuleAndReload so user lifecycle
+	// enforcement lands on a running process instead of waiting for a reload.
+	if shouldAutoStartAmneziaBox(effectiveMode, procMgr.GetStatus(), fileExists(resolvedConfigPath), procMgr.IsBinaryInstalled()) {
+		if err := procMgr.Start(resolvedConfigPath); err != nil {
+			log.Printf("amnezia-box did not start automatically: %v — the panel's Start button reports the same failure with the logs", err)
+		} else {
+			fmt.Printf("Started amnezia-box with %s\n", resolvedConfigPath)
+		}
+	}
 
 	// Phase 4: warn (don't block) when pre-existing panel users share a name.
 	// auth_user matches by name, so duplicates over-block during lifecycle reject.
@@ -900,6 +926,37 @@ func main() {
 			log.Printf("geoip close: %v", err)
 		}
 	}
+}
+
+// shouldAutoStartAmneziaBox reports whether RouteBox should start amnezia-box
+// itself at boot.
+//
+// With a systemd unit present this is systemd's job — the installer enables the
+// unit, and starting the process from here would race it. Without one, RouteBox
+// is the only thing that runs at boot (a container, or a hand-rolled install),
+// and the panel would otherwise come up with the proxy down until someone
+// pressed Start — after every restart, not just the first.
+//
+// vps-only, for the same reason the root check is router-only: a router's
+// config is written by the setup wizard, which starts the process as part of
+// itself, and bringing a half-configured router's TUN up unprompted is not the
+// same harmless act as starting a panel's proxy on the config it already has.
+func shouldAutoStartAmneziaBox(mode string, st process.Status, configExists, binaryInstalled bool) bool {
+	if mode != "vps" || !configExists || !binaryInstalled {
+		return false
+	}
+	// ServiceName is the DETECTED unit, set even when this particular process
+	// was launched by hand — which is exactly the case we must not start into.
+	return !st.Running && st.ServiceName == ""
+}
+
+// fileExists reports whether path names an existing file.
+func fileExists(path string) bool {
+	if path == "" {
+		return false
+	}
+	_, err := os.Stat(path)
+	return err == nil
 }
 
 // generatePassword returns a 24-character URL-safe random password.

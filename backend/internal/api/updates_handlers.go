@@ -71,6 +71,14 @@ func (h *Handler) buildTargetStatus(t updates.Target) targetStatus {
 	if cur, err := t.CurrentVersion(); err == nil {
 		ts.Current = cur
 	}
+	// Set before the no-cached-check early return below: how this target is
+	// updated is a property of where its binary lives, not of whether anyone has
+	// checked GitHub yet. Deciding it after the return made the flag — and so the
+	// panel's Apply button — appear only once a check had been cached.
+	if t.SelfUpdate && h.dockerMode {
+		ts.DockerManaged = true
+		ts.UpdateCommand = dockerUpdateCommand
+	}
 	cached, ok := h.updates.Checker.Cached(t.Name)
 	if !ok {
 		return ts
@@ -90,10 +98,6 @@ func (h *Handler) buildTargetStatus(t updates.Target) targetStatus {
 		// numerically orderable, so compare identity, not magnitude.
 		ts.UpdateAvailable = ts.Current != "" && ts.Latest != "" &&
 			updates.NormalizeVersion(ts.Current) != updates.NormalizeVersion(ts.Latest)
-	}
-	if t.SelfUpdate && h.dockerMode {
-		ts.DockerManaged = true
-		ts.UpdateCommand = dockerUpdateCommand
 	}
 	return ts
 }
