@@ -154,7 +154,7 @@ func awg3Conf() ClientConf {
 		PrivateKey: "cpriv", Address: "10.10.0.2/32",
 		MTU: 1420, Obf: fullObf(), ServerPub: validPub,
 		Endpoint: "vpn.example.com:51820", AllowedIPs: []string{"0.0.0.0/0"},
-		Keepalive: 25, PSK: "psk", HeaderProtectionKey: "hpk==",
+		Keepalive: "25", PSK: "psk", HeaderProtectionKey: "hpk==",
 	}
 }
 

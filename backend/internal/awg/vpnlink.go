@@ -147,8 +147,10 @@ func AmneziaLink(c ClientConf, peerName string) (string, error) {
 		// object is complete if they ever stop doing that.
 		last["mtu"] = strconv.Itoa(c.MTU)
 	}
-	if c.Keepalive > 0 {
-		last["persistent_keep_alive"] = strconv.Itoa(c.Keepalive)
+	if c.Keepalive != "" && c.Keepalive != "0" {
+		// A string on their side already, so an AWG 3.0 "lo-hi" range passes through
+		// as typed — the embedded .conf carries the same value.
+		last["persistent_keep_alive"] = c.Keepalive
 	}
 
 	proto, containerName := amneziaProtoWG, amneziaContainerWG

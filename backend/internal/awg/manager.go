@@ -483,10 +483,34 @@ func (m *Manager) clientConfFor(pub, host string) (ClientConf, Peer, error) {
 		ServerPub:           serverPub,
 		Endpoint:            joinHostPort(host, port),
 		AllowedIPs:          allowed,
-		Keepalive:           25,
+		Keepalive:           m.clientKeepalive(),
 		PSK:                 p.PresharedKey,
 		HeaderProtectionKey: headerKey,
 	}, p, nil
+}
+
+// DefaultClientKeepalive is the PersistentKeepalive every client export used
+// before the value became configurable; still the fallback when it is unset or
+// unusable.
+const DefaultClientKeepalive = "25"
+
+// clientKeepalive resolves the PersistentKeepalive for client exports from the
+// live saved settings (not from Enable-time state: it never reaches the server
+// device, so a change applies to the next export without re-enabling anything).
+// Canonicalised through the same UintRange parser the AWG3 fields use, so an
+// impossible value falls back to 25 rather than producing an unimportable .conf.
+func (m *Manager) clientKeepalive() string {
+	m.mu.Lock()
+	desired := m.desired
+	m.mu.Unlock()
+	if desired == nil {
+		return DefaultClientKeepalive
+	}
+	v, err := ValidateUintRange(desired().ClientKeepalive)
+	if err != nil || v == "" {
+		return DefaultClientKeepalive
+	}
+	return v
 }
 
 // RenderClientConf builds the client .conf. host is the validated public host; the

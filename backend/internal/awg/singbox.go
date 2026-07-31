@@ -687,6 +687,7 @@ func (m *Manager) ClientEndpoint(pub, name, host string) (map[string]interface{}
 		PSK:                 p.PresharedKey,
 		Host:                host,
 		Port:                port,
+		Keepalive:           m.clientKeepalive(),
 	}), nil
 }
 

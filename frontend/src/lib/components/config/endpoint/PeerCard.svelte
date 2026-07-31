@@ -88,12 +88,14 @@
 		</div>
 		<div>
 			<label for="peer_{index}_keepalive" class="block text-xs text-[var(--ctp-overlay0)] mb-1">{$t('endpoints.keepalive')}</label>
+			<!-- text, not number: AWG 3.0 accepts a "lo-hi" range here (the device
+			     redraws the interval on every timer arm) as well as plain seconds. -->
 			<input
 				id="peer_{index}_keepalive"
-				type="number"
+				type="text"
+				inputmode="numeric"
 				bind:value={peer.persistent_keepalive_interval}
-				min="0"
-				placeholder="25"
+				placeholder="25 / 22-30"
 				class="w-full px-3 py-2 bg-[var(--ctp-mantle)] border border-[var(--ctp-surface2)] rounded-lg text-[var(--ctp-text)] placeholder-[var(--ctp-overlay0)] focus:outline-none focus:ring-2 focus:ring-[var(--ctp-primary)]"
 			/>
 		</div>

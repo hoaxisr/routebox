@@ -59,6 +59,11 @@ type EnableInput struct {
 	// awg3+ binary only). Obf carries the awg3 CPA/RAT strings.
 	HeaderProtection bool `json:"header_protection"`
 	IPv6Broker       bool `json:"ipv6_broker"`
+	// ClientKeepalive is export-only: the PersistentKeepalive written into client
+	// .conf/QR/vpn:// exports and the sing-box client endpoint. "N" seconds, or an
+	// AWG 3.0 "lo-hi" range the peer redraws on every timer arm. "" => 25. It never
+	// touches the server device, so it is deliberately absent from ConfigDirty.
+	ClientKeepalive string `json:"client_keepalive"`
 }
 
 // beginEnable claims the single-flight slot. Returns false if an orchestrator is

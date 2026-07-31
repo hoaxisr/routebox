@@ -104,7 +104,8 @@ export interface ParsedAWG {
 	peerPort: number;
 	presharedKey?: string;
 	allowedIps: string[];
-	persistentKeepalive?: number;
+	/** Seconds, or an AWG 3.0 "lo-hi" range kept verbatim. */
+	persistentKeepalive?: number | string;
 	// Obfuscation (Amnezia-specific)
 	jc?: number;
 	jmin?: number;
@@ -626,6 +627,33 @@ export function parseMieruLink(uri: string, transport?: 'TCP' | 'UDP'): ParseRes
  * Parse an AmneziaWG/WireGuard configuration
  * INI-like format with [Interface] and [Peer] sections
  */
+/**
+ * PersistentKeepalive from a .conf: a number, or an AWG 3.0 "lo-hi" range kept
+ * as typed (the device draws a fresh interval inside it on every timer arm).
+ * Anything unparseable — and a plain 0 — becomes undefined, i.e. no keepalive.
+ */
+export function parseKeepalive(raw: string | undefined): number | string | undefined {
+	const s = raw?.trim();
+	if (!s) return undefined;
+	if (/^\d+-\d+$/.test(s)) return s;
+	return parseInt(s, 10) || undefined;
+}
+
+/**
+ * Whether a peer keepalive is usable: unset, seconds, or a "lo-hi" range with
+ * lo <= hi, both uint16. Mirrors the fork's parser — a value it rejects makes the
+ * entire config unloadable, not just that peer.
+ */
+export function isValidKeepalive(v: number | string | undefined): boolean {
+	if (v === undefined || v === null || v === '') return true;
+	const s = String(v).trim();
+	const m = /^(\d+)(?:-(\d+))?$/.exec(s);
+	if (!m) return false;
+	const lo = parseInt(m[1], 10);
+	const hi = m[2] === undefined ? lo : parseInt(m[2], 10);
+	return lo <= 65535 && hi <= 65535 && lo <= hi;
+}
+
 export function parseAWG(configText: string): ParseResult {
 	try {
 		const lines = configText.split('\n').map(l => l.trim());
@@ -718,9 +746,7 @@ export function parseAWG(configText: string): ParseResult {
 			peerPort,
 			presharedKey: peerData['presharedkey'],
 			allowedIps,
-			persistentKeepalive: peerData['persistentkeepalive']
-				? parseInt(peerData['persistentkeepalive'], 10)
-				: undefined,
+			persistentKeepalive: parseKeepalive(peerData['persistentkeepalive']),
 		};
 
 		// Amnezia-specific obfuscation params

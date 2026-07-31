@@ -2,6 +2,34 @@
 
 All notable changes to RouteBox are documented here.
 
+## [Unreleased]
+
+### Features
+
+- **Client keepalive is configurable, and may be an AWG 3.0 range.** The AWG server page
+  gains a *Client keepalive* field: plain seconds as before, or a `"lo-hi"` range (e.g.
+  `22-30`) that the device redraws every time it arms the timer — a fixed 25-second
+  heartbeat is itself a fingerprint. It reaches the client `.conf`, the QR code, the
+  `vpn://` link and the sing-box client export; empty keeps the historical 25. Peer
+  keepalive on a client **endpoint** takes a range too (the field is now free text).
+  Plain seconds are still written as a JSON number, so a config edited here still loads
+  on a pre-awg3 binary; only a range is emitted as a string.
+  The range form **requires amnezia-box `1.14.0-beta.1-awgm.4` or newer**; verified against
+  that build, which accepts both shapes and rejects `30-22`/`22-`/`abc` exactly where the
+  panel does.
+
+### Fixed
+
+- **mieru share links were rejected by the client whenever port ranges were used**
+  ([#46](https://github.com/hoaxisr/routebox/issues/46)). The link carried one `protocol=`
+  for all ports, but mieru's own parser pairs `port[i]` with `protocol[i]` and refuses the
+  whole URL when the counts differ — so the moment a server offered `listen_ports`, every
+  link and subscription entry it produced became unimportable. Each port now carries its
+  own `protocol=`. Verified against mieru's `URLToClientProfile` itself.
+- **A mieru inbound bound only to ranges no longer claims to listen on 1080**
+  ([#46](https://github.com/hoaxisr/routebox/issues/46)). The inbound list filled in a
+  default port when `listen_port` was absent; it now shows the ranges the server actually binds.
+
 ## [0.33.0] - 2026-07-30
 
 ### Features

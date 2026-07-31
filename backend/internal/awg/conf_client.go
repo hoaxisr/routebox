@@ -46,7 +46,10 @@ type ClientConf struct {
 	PSK                 string
 	Endpoint            string // host:port, IPv6 already bracketed
 	AllowedIPs          []string
-	Keepalive           int
+	// Keepalive is the PersistentKeepalive value verbatim: "25" or, on AWG 3.0, a
+	// "lo-hi" range (the device draws a fresh interval every time it arms the
+	// timer). "" and "0" omit the line.
+	Keepalive string
 }
 
 // BuildClient renders the extended-WireGuard client config an AmneziaWG client
@@ -82,8 +85,8 @@ func BuildClient(c ClientConf) (string, error) {
 	}
 	fmt.Fprintf(&b, "Endpoint = %s\n", c.Endpoint)
 	fmt.Fprintf(&b, "AllowedIPs = %s\n", strings.Join(c.AllowedIPs, ", "))
-	if c.Keepalive > 0 {
-		fmt.Fprintf(&b, "PersistentKeepalive = %d\n", c.Keepalive)
+	if c.Keepalive != "" && c.Keepalive != "0" {
+		fmt.Fprintf(&b, "PersistentKeepalive = %s\n", c.Keepalive)
 	}
 	return b.String(), nil
 }
