@@ -593,7 +593,9 @@ export interface AWGPeer {
 	public_key: string;
 	preshared_key?: string;
 	allowed_ips: string[];
-	persistent_keepalive_interval?: number;
+	// Seconds, or an AWG 3.0 "lo-hi" range the device redraws every time it arms
+	// the timer. Pre-3.0 configs carry a number; the fork reads both.
+	persistent_keepalive_interval?: number | string;
 	reserved?: number[];      // 3-byte reserved field for WARP
 }
 
@@ -1120,6 +1122,9 @@ export interface AwgServerSettings {
 	header_protection: boolean;
 	ipv6_broker: boolean;
 	configured: boolean;
+	// PersistentKeepalive for client exports: "N" seconds or an AWG 3.0 "lo-hi"
+	// range; "" => 25.
+	client_keepalive?: string;
 	backend: string; // may be "" on fresh deploy; status.backend is authoritative
 	server_host: string; // client-facing AWG address; falls back to server.public_host when empty
 }

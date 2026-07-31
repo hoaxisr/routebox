@@ -52,7 +52,7 @@ func TestBuildClientGolden(t *testing.T) {
 		PSK:        "PSK==",
 		Endpoint:   "vpn.example.com:51820",
 		AllowedIPs: []string{"0.0.0.0/0"},
-		Keepalive:  25,
+		Keepalive:  "25",
 	}
 	want := `[Interface]
 PrivateKey = CLIENTPRIV==
@@ -165,7 +165,7 @@ func TestBuildClientEmptyOmitAndNoPSKAndV6(t *testing.T) {
 		PrivateKey: "P==", Address: "10.10.0.2/32", MTU: 1420,
 		Obf:       Obfuscation{Jc: 4}, // S/H/others zero -> omitted
 		ServerPub: "S==", Endpoint: "[2001:db8::1]:51820",
-		AllowedIPs: []string{"0.0.0.0/0"}, Keepalive: 25,
+		AllowedIPs: []string{"0.0.0.0/0"}, Keepalive: "25",
 	}
 	got, err := BuildClient(in)
 	if err != nil {

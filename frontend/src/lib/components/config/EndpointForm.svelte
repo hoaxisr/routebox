@@ -8,7 +8,9 @@
 		validateOptionalPort,
 		parseCSV,
 		hasValidationErrors,
-		isDomain
+		isDomain,
+		parseKeepalive,
+		isValidKeepalive
 	} from '$lib/utils';
 	import HelpTooltip from '$lib/components/shared/HelpTooltip.svelte';
 	import ObfuscationFields from './endpoint/ObfuscationFields.svelte';
@@ -129,7 +131,8 @@
 				public_key: p.public_key ?? '',
 				preshared_key: p.preshared_key || undefined,
 				allowed_ips: p.allowed_ips ?? ['0.0.0.0/0', '::/0'],
-				persistent_keepalive_interval: p.persistent_keepalive_interval || undefined
+				// A config may carry either shape (number, or an AWG 3.0 "lo-hi" string).
+				persistent_keepalive_interval: parseKeepalive(String(p.persistent_keepalive_interval ?? ''))
 			}));
 		}
 	}
@@ -220,7 +223,7 @@
 				public_key: p['publickey'] ?? '',
 				preshared_key: p['presharedkey'] || undefined,
 				allowed_ips: (p['allowedips'] ?? '0.0.0.0/0, ::/0').split(',').map(s => s.trim()),
-				persistent_keepalive_interval: parseInt(p['persistentkeepalive'] ?? '0') || undefined
+				persistent_keepalive_interval: parseKeepalive(p['persistentkeepalive'])
 			}));
 		}
 
@@ -253,6 +256,12 @@
 
 			const pubKeyResult = validateBase64Key(peer.public_key, 'Public key');
 			if (!pubKeyResult.valid) errors[`peer_${i}_public_key`] = pubKeyResult.error!;
+
+			// Keepalive is seconds or an AWG 3.0 "lo-hi" range; anything else makes
+			// the whole sing-box config unloadable, so catch it in the form.
+			if (!isValidKeepalive(peer.persistent_keepalive_interval)) {
+				errors[`peer_${i}_keepalive`] = $t('validation.keepaliveRange');
+			}
 		});
 
 		if (hasValidationErrors(errors)) {
@@ -290,7 +299,9 @@
 				public_key: p.public_key.trim(),
 				preshared_key: p.preshared_key?.trim() || undefined,
 				allowed_ips: p.allowed_ips,
-				persistent_keepalive_interval: p.persistent_keepalive_interval || undefined
+				// Back to a NUMBER when it is plain seconds: only a range needs a string,
+				// and a pre-AWG3 sing-box rejects a string here.
+				persistent_keepalive_interval: parseKeepalive(String(p.persistent_keepalive_interval ?? ''))
 			}))
 		};
 

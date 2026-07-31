@@ -15,6 +15,8 @@ import {
 	extractDomain,
 	parseReservedBytes,
 	formatReservedBytes,
+	parseKeepalive,
+	isValidKeepalive,
 	parseNaive,
 	parseShadowsocks,
 	splitHostPort,
@@ -634,5 +636,30 @@ describe('parseMieruLink', () => {
 		expect(r.success).toBe(false);
 		expect(r.error).toBe('Failed to parse mieru link');
 		expect(r.error).not.toContain('secretpass');
+	});
+});
+
+// AWG 3.0 made PersistentKeepalive a range the device redraws on every timer
+// arm; a .conf carrying "22-30" must survive import as typed, not as NaN.
+describe('keepalive', () => {
+	it('keeps a range verbatim and a plain value as a number', () => {
+		expect(parseKeepalive('22-30')).toBe('22-30');
+		expect(parseKeepalive(' 25 ')).toBe(25);
+	});
+
+	it('treats absent, zero and junk as no keepalive', () => {
+		expect(parseKeepalive(undefined)).toBeUndefined();
+		expect(parseKeepalive('')).toBeUndefined();
+		expect(parseKeepalive('0')).toBeUndefined();
+		expect(parseKeepalive('abc')).toBeUndefined();
+	});
+
+	it('accepts only what the device can parse', () => {
+		for (const ok of [undefined, '', 25, '25', '0-80', '22-30']) {
+			expect(isValidKeepalive(ok)).toBe(true);
+		}
+		for (const bad of ['abc', '30-22', '22-', '-5', '70000', '1-2-3']) {
+			expect(isValidKeepalive(bad)).toBe(false);
+		}
 	});
 });

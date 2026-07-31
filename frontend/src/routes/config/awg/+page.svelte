@@ -99,6 +99,7 @@
 				'awg.subnet': form.subnet,
 				'awg.listen_port': form.listen_port,
 				'awg.mtu': form.mtu,
+				'awg.client_keepalive': (form.client_keepalive ?? '').trim(),
 				'awg.dns': form.dns,
 				'awg.wan_iface': form.wan_iface,
 				'awg.obf': form.obf,

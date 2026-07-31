@@ -1,6 +1,21 @@
 package awg
 
-import "routebox/backend/internal/awg/cps"
+import (
+	"strconv"
+
+	"routebox/backend/internal/awg/cps"
+)
+
+// keepaliveValue renders a keepalive for a sing-box endpoint: a NUMBER while the
+// value is plain seconds, a string only for an AWG 3.0 "lo-hi" range. The export
+// is meant to be pasted into another box, which may run a pre-3.0 binary where
+// the field is still a uint16 and a string fails to decode.
+func keepaliveValue(s string) interface{} {
+	if n, err := strconv.Atoi(s); err == nil {
+		return n
+	}
+	return s
+}
 
 // ClientEndpointSpec is the resolved input for a client sing-box endpoint export.
 // Obf carries the SERVER's s/h/j values (symmetric where required); Mimic carries
@@ -19,11 +34,15 @@ type ClientEndpointSpec struct {
 	PSK                 string
 	Host                string
 	Port                int
+	// Keepalive is the peer's persistent_keepalive_interval: "25" or an AWG 3.0
+	// "lo-hi" range. Emitted as a STRING — the fork's option type reads both a
+	// number (pre-3.0 configs) and a range, and marshals back as a string.
+	Keepalive string
 }
 
 // BuildClientEndpoint renders a sing-box endpoints[] element another RouteBox can
 // paste in: type "awg", client-side (peer carries address+port), full-tunnel
-// allowed_ips, keepalive 25. Zero/empty obf and mimic values are omitted. The peer
+// allowed_ips, keepalive (25 unless the operator set one). Zero/empty obf and mimic values are omitted. The peer
 // field is preshared_key (fork naming); i-fields are the generated CPS mimicry.
 func BuildClientEndpoint(s ClientEndpointSpec) map[string]interface{} {
 	address := []interface{}{s.Address}
@@ -76,12 +95,16 @@ func BuildClientEndpoint(s ClientEndpointSpec) map[string]interface{} {
 	putObfStr("i4", s.Mimic.I4)
 	putObfStr("i5", s.Mimic.I5)
 
+	keepalive := s.Keepalive
+	if keepalive == "" {
+		keepalive = DefaultClientKeepalive
+	}
 	peer := map[string]interface{}{
 		"address":                       s.Host,
 		"port":                          s.Port,
 		"public_key":                    s.ServerPub,
 		"allowed_ips":                   allowedIPs,
-		"persistent_keepalive_interval": 25,
+		"persistent_keepalive_interval": keepaliveValue(keepalive),
 	}
 	if s.PSK != "" {
 		peer["preshared_key"] = s.PSK

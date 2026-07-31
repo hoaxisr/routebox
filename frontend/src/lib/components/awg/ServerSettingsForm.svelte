@@ -2,6 +2,7 @@
 	import { t } from 'svelte-i18n';
 	import type { AwgServerSettings } from '$lib/types';
 	import { configReadOnly } from '$lib/stores';
+	import { isValidKeepalive } from '$lib/utils';
 	import ObfuscationControl from './ObfuscationControl.svelte';
 
 	interface Props {
@@ -53,6 +54,20 @@
 		<label for="awg-mtu">{$t('awg.mtu')}</label>
 		<input id="awg-mtu" type="number" bind:value={form.mtu} />
 		<span class="hint">{$t('awg.mtuHint')}</span>
+	</div>
+	<div class="field">
+		<!-- Export-only: it lands in client .conf/QR/vpn:// exports, never on the
+		     server device, so a change needs no re-enable. -->
+		<label for="awg-keepalive">{$t('awg.clientKeepalive')}</label>
+		<input
+			id="awg-keepalive"
+			type="text"
+			inputmode="numeric"
+			bind:value={form.client_keepalive}
+			placeholder="25"
+			class:invalid={!isValidKeepalive(form.client_keepalive)}
+		/>
+		<span class="hint">{$t('awg.clientKeepaliveHint')}</span>
 	</div>
 	<div class="field">
 		<label for="awg-dns">{$t('awg.dns')}</label>
@@ -159,6 +174,9 @@
 	}
 	.field input::placeholder {
 		color: var(--ctp-overlay0);
+	}
+	.field input.invalid {
+		border-color: var(--ctp-red);
 	}
 	.mono-readonly {
 		color: var(--ctp-overlay1);

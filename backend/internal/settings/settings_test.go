@@ -274,6 +274,32 @@ func TestUpdateServerPublicHost(t *testing.T) {
 // awg.server_host is the client-facing AWG address (router LAN/WAN IP or
 // domain). It validates through SanitizePublicHost (scheme/port/path stripped,
 // empty allowed) and defaults empty.
+// awg.client_keepalive is the PersistentKeepalive clients get: seconds, or an
+// AWG 3.0 "lo-hi" range. A value the device could not parse is rejected at save
+// time — otherwise it would silently revert to 25 in every exported config.
+func TestUpdateAwgClientKeepalive(t *testing.T) {
+	m := &Manager{settings: Default(), path: ""}
+	for _, ok := range []string{"25", "22-30", "0", "65535", "  22-30  ", ""} {
+		if err := m.Update(map[string]interface{}{"awg.client_keepalive": ok}); err != nil {
+			t.Fatalf("keepalive %q rejected: %v", ok, err)
+		}
+	}
+	if got := m.Get().Awg.ClientKeepalive; got != "" {
+		t.Fatalf("empty must clear the setting; got %q", got)
+	}
+	if err := m.Update(map[string]interface{}{"awg.client_keepalive": "22-30"}); err != nil {
+		t.Fatal(err)
+	}
+	for _, bad := range []interface{}{"abc", "30-22", "22-", "-5", "70000", "1-2-3", 25} {
+		if err := m.Update(map[string]interface{}{"awg.client_keepalive": bad}); err == nil {
+			t.Fatalf("keepalive %#v must be rejected", bad)
+		}
+	}
+	if got := m.Get().Awg.ClientKeepalive; got != "22-30" {
+		t.Fatalf("rejected updates must not modify the stored value; got %q", got)
+	}
+}
+
 func TestUpdateAwgServerHost(t *testing.T) {
 	if got := Default().Awg.ServerHost; got != "" {
 		t.Fatalf("awg.server_host must default empty; got %q", got)

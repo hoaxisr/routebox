@@ -10,6 +10,7 @@ import (
 	"os"
 	"path/filepath"
 	"slices"
+	"strconv"
 	"strings"
 	"sync"
 
@@ -40,6 +41,9 @@ type AwgSettings struct {
 	ListenPort       int      `toml:"listen_port" json:"listen_port"`
 	MTU              int      `toml:"mtu" json:"mtu"`
 	DNS              []string `toml:"dns" json:"dns"`
+	// ClientKeepalive is the PersistentKeepalive handed to clients: "N" seconds or,
+	// on AWG 3.0, a "lo-hi" range the peer redraws on every timer arm. "" => 25.
+	ClientKeepalive  string   `toml:"client_keepalive" json:"client_keepalive"`
 	WANIface         string   `toml:"wan_iface" json:"wan_iface"`
 	Obf              AwgObf   `toml:"obf" json:"obf"`
 	ObfPreset        string   `toml:"obf_preset" json:"obf_preset"`               // "off"|"dns"|"web"|"stealth"|"custom" — selects param ranges + client CPS mimicry
@@ -434,6 +438,34 @@ func toInt(v interface{}) (int, bool) {
 	return 0, false
 }
 
+// validateKeepaliveRange checks a PersistentKeepalive value: "" (unset => the
+// 25s default), "N", or the AWG 3.0 "lo-hi" range, both bounds uint16 seconds
+// with lo <= hi. The general UintRange parser lives in the awg package, which
+// settings must not import (awg imports settings) — and a value rejected here is
+// a value the operator gets told about instead of one that silently reverts.
+func validateKeepaliveRange(s string) error {
+	if s == "" {
+		return nil
+	}
+	bad := fmt.Errorf("keepalive must be seconds (\"25\") or a range (\"22-30\"), 0-65535")
+	parts := strings.Split(s, "-")
+	if len(parts) > 2 {
+		return bad
+	}
+	bounds := make([]uint64, len(parts))
+	for i, part := range parts {
+		v, err := strconv.ParseUint(part, 10, 16)
+		if err != nil {
+			return bad
+		}
+		bounds[i] = v
+	}
+	if len(bounds) == 2 && bounds[0] > bounds[1] {
+		return fmt.Errorf("keepalive range %q: lower bound is above the upper one", s)
+	}
+	return nil
+}
+
 // SanitizePublicHost normalizes a user-entered public host for share links:
 // strips an optional scheme, userinfo, path, query, port, and a single trailing
 // FQDN dot, leaving a bare hostname or IP literal. Empty input is allowed
@@ -778,6 +810,16 @@ func (m *Manager) Update(updates map[string]interface{}) error {
 				dns = append(dns, s)
 			}
 			staged.Awg.DNS = dns
+		case "awg.client_keepalive":
+			v, ok := value.(string)
+			if !ok {
+				return fmt.Errorf("setting %s: value must be a string", key)
+			}
+			ka := strings.TrimSpace(v)
+			if err := validateKeepaliveRange(ka); err != nil {
+				return fmt.Errorf("setting %s: %w", key, err)
+			}
+			staged.Awg.ClientKeepalive = ka
 		case "awg.obf_preset":
 			v, ok := value.(string)
 			if !ok {
