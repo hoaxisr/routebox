@@ -420,3 +420,53 @@ func TestPinnedBinaryDoesNotFallBackToPATH(t *testing.T) {
 		t.Fatalf("unpinned lookup should have found the PATH binary; got %q, %v", v, err)
 	}
 }
+
+// TestExeMatchesSurvivesTheUpdateSwap: the updater renames the running binary
+// to <path>.old and moves the new one into place, then calls Restart. If the
+// running process stops matching the managed path at that point, Restart reads
+// "not running", skips the stop, and starts a second amnezia-box next to the
+// first — two processes competing for the same inbound ports, with the update
+// reported as successful. Standalone installs only (a container, or any
+// non-systemd host): systemctl restart tracks the unit's cgroup instead.
+func TestExeMatchesSurvivesTheUpdateSwap(t *testing.T) {
+	// Needs a real ELF: /proc/<pid>/exe of a script points at the interpreter.
+	sleepBin, err := exec.LookPath("sleep")
+	if err != nil {
+		t.Skip("sleep not available")
+	}
+	payload, err := os.ReadFile(sleepBin)
+	if err != nil {
+		t.Skip("cannot read sleep binary")
+	}
+	dir := t.TempDir()
+	bin := filepath.Join(dir, "amnezia-box")
+	if err := os.WriteFile(bin, payload, 0755); err != nil {
+		t.Fatal(err)
+	}
+
+	cmd := exec.Command(bin, "30")
+	if err := cmd.Start(); err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() {
+		cmd.Process.Kill()
+		cmd.Wait()
+	})
+	pid := cmd.Process.Pid
+
+	m := &Manager{binaryPath: bin}
+	if !m.exeMatches(pid) {
+		t.Fatal("the process was not recognised before the swap")
+	}
+
+	// Exactly what updates.Updater.apply does to the file underneath it.
+	if err := os.Rename(bin, bin+".old"); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(bin, payload, 0755); err != nil {
+		t.Fatal(err)
+	}
+	if !m.exeMatches(pid) {
+		t.Fatal("the running process became invisible after the binary swap — Restart would start a second one beside it")
+	}
+}
