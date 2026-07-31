@@ -1118,6 +1118,15 @@ func (m *Manager) exeMatches(pid int) bool {
 		return false
 	}
 	exe = strings.TrimSuffix(exe, " (deleted)")
+	// An update renames the running binary to <path>.old before moving the new
+	// one into place (updates.Updater.apply), so from that moment the process
+	// RouteBox started reports a /proc/<pid>/exe under the .old name. Stripping
+	// it keeps the process findable at exactly the moment it must be found: the
+	// restart right after the swap. Without this, standalone Restart saw
+	// "not running", skipped the stop, and left the pre-update process alive
+	// beside the new one — both holding the same inbound ports. systemd installs
+	// never hit this (systemctl restart tracks the unit's cgroup, not the path).
+	exe = strings.TrimSuffix(exe, ".old")
 	if bp := m.getBinaryPath(); bp != "" {
 		if abs, err := filepath.Abs(bp); err == nil {
 			// /proc/<pid>/exe is always fully resolved; resolve symlinks on
