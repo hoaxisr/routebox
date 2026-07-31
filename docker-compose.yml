@@ -1,0 +1,32 @@
+services:
+  routebox:
+    image: ghcr.io/hoaxisr/routebox:latest
+    # build: .   # uncomment to build locally instead of pulling
+    container_name: routebox
+    restart: unless-stopped
+    environment:
+      - PUID=1000
+      - PGID=1000
+      - TZ=Etc/UTC
+      # Domain with an A/AAAA record on this host's IP — required for the
+      # built-in ACME (Let's Encrypt) client to issue the panel's TLS cert.
+      # Leave unset to run the panel over plain HTTP on LISTEN instead.
+      - PUBLIC_HOST=panel.example.com
+      - ACME_EMAIL=you@example.com
+      # Uncomment for the Let's Encrypt *staging* CA while testing — avoids
+      # burning the real issuance rate limit. Switch to false once it works.
+      # - ACME_STAGING=true
+    ports:
+      - "8443:8443" # panel
+      - "80:80" # ACME HTTP-01 challenge; must stay reachable for renewals
+      # amnezia-box inbounds are user-configured in the panel — map each one
+      # you create. The container runs unprivileged, so give each inbound a
+      # port >=1024 inside the container and remap it to whatever host port
+      # you actually want, e.g. an inbound on container port 8444:
+      # - "443:8444"
+    volumes:
+      - ./config:/config
+    # Only needed if you'd rather configure an amnezia-box inbound on a
+    # container-side port <1024 than remap it as shown above:
+    # cap_add:
+    #   - NET_BIND_SERVICE

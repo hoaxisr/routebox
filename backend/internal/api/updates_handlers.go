@@ -42,6 +42,12 @@ var scheduleExit = func(path string) {
 	})
 }
 
+// dockerUpdateCommand is what the Updates page shows in place of the RouteBox
+// Apply button when running in Docker: the image is the source of truth for
+// the routebox binary, so "updating" means recreating the container from a
+// newer tag rather than replacing the on-disk binary in place.
+const dockerUpdateCommand = "docker compose pull routebox && docker compose up -d routebox"
+
 type targetStatus struct {
 	Name            string     `json:"name"`
 	Supported       bool       `json:"supported"`
@@ -52,6 +58,11 @@ type targetStatus struct {
 	LastChecked     *time.Time `json:"last_checked,omitempty"`
 	UpdateAvailable bool       `json:"update_available"`
 	Error           string     `json:"error,omitempty"`
+	// DockerManaged is true when this target's Apply is refused because
+	// RouteBox is running in the official Docker image; UpdateCommand is the
+	// command the UI should show instead.
+	DockerManaged bool   `json:"docker_managed,omitempty"`
+	UpdateCommand string `json:"update_command,omitempty"`
 }
 
 func (h *Handler) buildTargetStatus(t updates.Target) targetStatus {
@@ -79,6 +90,10 @@ func (h *Handler) buildTargetStatus(t updates.Target) targetStatus {
 		// numerically orderable, so compare identity, not magnitude.
 		ts.UpdateAvailable = ts.Current != "" && ts.Latest != "" &&
 			updates.NormalizeVersion(ts.Current) != updates.NormalizeVersion(ts.Latest)
+	}
+	if t.SelfUpdate && h.dockerMode {
+		ts.DockerManaged = true
+		ts.UpdateCommand = dockerUpdateCommand
 	}
 	return ts
 }
@@ -132,6 +147,14 @@ func (h *Handler) ApplyUpdate(w http.ResponseWriter, r *http.Request) {
 	target, ok := h.updates.Target(req.Target)
 	if !ok {
 		writeError(w, http.StatusNotFound, fmt.Sprintf("Unknown target: %s", req.Target))
+		return
+	}
+
+	if target.SelfUpdate && h.dockerMode {
+		writeError(w, http.StatusConflict, fmt.Sprintf(
+			"RouteBox is running in Docker; the image is the source of truth for its own binary. Update by running: %s",
+			dockerUpdateCommand,
+		))
 		return
 	}
 

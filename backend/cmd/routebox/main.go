@@ -74,22 +74,6 @@ func main() {
 	}
 	flag.Parse()
 
-	// Require root privileges (needed for TUN interface)
-	if os.Geteuid() != 0 {
-		fmt.Println()
-		fmt.Println("╔══════════════════════════════════════════════════════════════════╗")
-		fmt.Println("║  ERROR: Root privileges required                                 ║")
-		fmt.Println("╠══════════════════════════════════════════════════════════════════╣")
-		fmt.Println("║  routebox must run as root to create TUN interfaces.             ║")
-		fmt.Println("║                                                                  ║")
-		fmt.Println("║  Please run with sudo:                                           ║")
-		fmt.Println("║     sudo ./routebox                                              ║")
-		fmt.Println("║                                                                  ║")
-		fmt.Println("╚══════════════════════════════════════════════════════════════════╝")
-		fmt.Println()
-		os.Exit(1)
-	}
-
 	// Load settings
 	settingsMgr, err := settings.NewManager(*settingsPath)
 	if err != nil {
@@ -104,6 +88,25 @@ func main() {
 	}
 	if effectiveMode == "" {
 		effectiveMode = "router"
+	}
+
+	// Root is only required in router mode, where routebox itself creates the
+	// TUN interface. VPS mode never touches TUN — amnezia-box's own inbounds
+	// bind ports like any other userspace process — so it can run unprivileged
+	// (e.g. under a container's PUID/PGID user).
+	if effectiveMode == "router" && os.Geteuid() != 0 {
+		fmt.Println()
+		fmt.Println("╔══════════════════════════════════════════════════════════════════╗")
+		fmt.Println("║  ERROR: Root privileges required                                 ║")
+		fmt.Println("╠══════════════════════════════════════════════════════════════════╣")
+		fmt.Println("║  routebox must run as root to create TUN interfaces.             ║")
+		fmt.Println("║                                                                  ║")
+		fmt.Println("║  Please run with sudo:                                           ║")
+		fmt.Println("║     sudo ./routebox                                              ║")
+		fmt.Println("║                                                                  ║")
+		fmt.Println("╚══════════════════════════════════════════════════════════════════╝")
+		fmt.Println()
+		os.Exit(1)
 	}
 
 	// Print settings info
@@ -353,6 +356,10 @@ func main() {
 		Updater: updUpdater,
 		Targets: updTargets,
 	})
+	// ROUTEBOX_RUNTIME=docker is set by the official Dockerfile; it means
+	// RouteBox's own binary lives in the image, not in a writable install
+	// directory a self-update should touch.
+	apiHandler.SetDockerMode(os.Getenv("ROUTEBOX_RUNTIME") == "docker")
 	apiHandler.SetSubscriptions(subsMgr, subsRefresh)
 	apiHandler.SetUsers(usersMgr)
 
@@ -830,10 +837,17 @@ func main() {
 		// Keep the panel cert mirrored to the canonical PEM path so server inbounds can
 		// reuse it; on renewal this SIGHUP-reloads amnezia-box to pick up the new cert.
 		go panelcert.Refresh(context.Background(), cacheDir, domain, panelCertDir, procMgr.Reload)
-		// HTTP-01 challenge listener on :80. TLS-ALPN-01 is impossible (LE would
-		// connect on :443 = vless+Reality). :80 must stay open for renewals too.
+		// HTTP-01 challenge listener, ":80" by default. TLS-ALPN-01 is impossible
+		// (LE would connect on :443 = vless+Reality). Port 80 must stay reachable
+		// from the internet for renewals too — in Docker that's normally done by
+		// mapping the host's :80 to this listener's (possibly unprivileged) port,
+		// rather than changing the listener's own bind address.
+		acmeHTTPAddr := cfg.Network.ACMEHTTPAddr
+		if acmeHTTPAddr == "" {
+			acmeHTTPAddr = ":80"
+		}
 		go func() {
-			errCh <- fmt.Errorf("acme http-01 listener (:80): %w", http.ListenAndServe(":80", am.HTTPHandler(nil)))
+			errCh <- fmt.Errorf("acme http-01 listener (%s): %w", acmeHTTPAddr, http.ListenAndServe(acmeHTTPAddr, am.HTTPHandler(nil)))
 		}()
 		srv.TLSConfig = am.TLSConfig()
 		go func() {

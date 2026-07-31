@@ -1,0 +1,47 @@
+#!/usr/bin/with-contenv bash
+# Bootstraps /config on first boot: seeds the GeoIP database from the image
+# default and, if routebox.toml doesn't exist yet, writes a minimal one from
+# env vars — the Docker equivalent of what vps-install.sh prompts for on
+# bare metal. RouteBox itself (bootstrapVPSAuth in main.go) generates and
+# announces the admin password on first start; this script never touches auth.
+
+set -e
+
+mkdir -p /config/amnezia-box /config/acme /config/panel-cert /config/amneziawg
+
+if [ ! -f /config/geoip.mmdb ] && [ -f /defaults/geoip.mmdb ]; then
+    echo "**** seeding GeoIP database ****"
+    cp /defaults/geoip.mmdb /config/geoip.mmdb
+fi
+
+if [ ! -f /config/routebox.toml ]; then
+    echo "**** bootstrapping routebox.toml from environment ****"
+
+    acme_enabled="${ACME_ENABLED:-}"
+    if [ -z "$acme_enabled" ]; then
+        if [ -n "${PUBLIC_HOST:-}" ]; then acme_enabled=true; else acme_enabled=false; fi
+    fi
+
+    cat > /config/routebox.toml <<EOF
+[server]
+mode = "vps"
+public_host = "${PUBLIC_HOST:-}"
+
+[network]
+listen = "${LISTEN:-0.0.0.0:8443}"
+acme_enabled = ${acme_enabled}
+acme_email = "${ACME_EMAIL:-}"
+acme_staging = ${ACME_STAGING:-false}
+acme_cache_dir = "/config/acme"
+acme_http_addr = "${ACME_HTTP_ADDR:-:80}"
+
+[geoip]
+path = "/config/geoip.mmdb"
+enabled = true
+
+[singbox]
+config_path = "/config/amnezia-box/config.json"
+EOF
+fi
+
+chown -R abc:abc /config /etc/amnezia

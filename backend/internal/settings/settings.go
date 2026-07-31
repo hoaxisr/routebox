@@ -35,23 +35,23 @@ type Settings struct {
 
 // AwgSettings configures the RouteBox-owned AmneziaWG server interface.
 type AwgSettings struct {
-	Enabled          bool     `toml:"enabled" json:"enabled"`
-	Interface        string   `toml:"interface" json:"interface"`
-	Subnet           string   `toml:"subnet" json:"subnet"`
-	ListenPort       int      `toml:"listen_port" json:"listen_port"`
-	MTU              int      `toml:"mtu" json:"mtu"`
-	DNS              []string `toml:"dns" json:"dns"`
+	Enabled    bool     `toml:"enabled" json:"enabled"`
+	Interface  string   `toml:"interface" json:"interface"`
+	Subnet     string   `toml:"subnet" json:"subnet"`
+	ListenPort int      `toml:"listen_port" json:"listen_port"`
+	MTU        int      `toml:"mtu" json:"mtu"`
+	DNS        []string `toml:"dns" json:"dns"`
 	// ClientKeepalive is the PersistentKeepalive handed to clients: "N" seconds or,
 	// on AWG 3.0, a "lo-hi" range the peer redraws on every timer arm. "" => 25.
-	ClientKeepalive  string   `toml:"client_keepalive" json:"client_keepalive"`
-	WANIface         string   `toml:"wan_iface" json:"wan_iface"`
-	Obf              AwgObf   `toml:"obf" json:"obf"`
-	ObfPreset        string   `toml:"obf_preset" json:"obf_preset"`               // "off"|"dns"|"web"|"stealth"|"custom" — selects param ranges + client CPS mimicry
-	Backend          string   `toml:"backend" json:"backend"`                     // "kernel"|"singbox"; "" => singbox (kernel is opt-in only, never the auto-default)
-	ServerHost       string   `toml:"server_host" json:"server_host"`             // client-facing address of the AWG server (host/IP clients connect to); falls back to Server.PublicHost; router LAN/WAN IP typically
-	HeaderProtection bool     `toml:"header_protection" json:"header_protection"` // AWG3 additional header protection toggle
-	IPv6Broker       bool     `toml:"ipv6_broker" json:"ipv6_broker"`             // dual-stack IPv6 broker; gated by egress preflight
-	Configured       bool     `toml:"configured" json:"configured"`               // sticky: set true after first successful Enable; drives wizard-vs-steady UI (never reset on Disable)
+	ClientKeepalive  string `toml:"client_keepalive" json:"client_keepalive"`
+	WANIface         string `toml:"wan_iface" json:"wan_iface"`
+	Obf              AwgObf `toml:"obf" json:"obf"`
+	ObfPreset        string `toml:"obf_preset" json:"obf_preset"`               // "off"|"dns"|"web"|"stealth"|"custom" — selects param ranges + client CPS mimicry
+	Backend          string `toml:"backend" json:"backend"`                     // "kernel"|"singbox"; "" => singbox (kernel is opt-in only, never the auto-default)
+	ServerHost       string `toml:"server_host" json:"server_host"`             // client-facing address of the AWG server (host/IP clients connect to); falls back to Server.PublicHost; router LAN/WAN IP typically
+	HeaderProtection bool   `toml:"header_protection" json:"header_protection"` // AWG3 additional header protection toggle
+	IPv6Broker       bool   `toml:"ipv6_broker" json:"ipv6_broker"`             // dual-stack IPv6 broker; gated by egress preflight
+	Configured       bool   `toml:"configured" json:"configured"`               // sticky: set true after first successful Enable; drives wizard-vs-steady UI (never reset on Disable)
 }
 
 // AwgObf holds AmneziaWG obfuscation values. Numeric J/S fields; string H fields
@@ -118,11 +118,16 @@ type NetworkSettings struct {
 	TLSCertPath        string `toml:"tls_cert_path" json:"tls_cert_path"`
 	TLSKeyPath         string `toml:"tls_key_path" json:"tls_key_path"`
 	// Embedded ACME (Let's Encrypt) — issues/renews the panel cert in-process.
-	// Domain = Server.PublicHost (no separate field). HTTP-01 challenge on :80.
+	// Domain = Server.PublicHost (no separate field). HTTP-01 challenge listens
+	// on ACMEHTTPAddr (default ":80"). Must remain externally reachable on port
+	// 80 for the challenge and renewals — in Docker that's usually satisfied by
+	// mapping the host's port 80 to whatever ACMEHTTPAddr binds inside the
+	// container, so the listener itself doesn't need a privileged port.
 	ACMEEnabled  bool   `toml:"acme_enabled" json:"acme_enabled"`     // false = manual cert/key or plain HTTP
 	ACMEEmail    string `toml:"acme_email" json:"acme_email"`         // LE account contact
 	ACMEStaging  bool   `toml:"acme_staging" json:"acme_staging"`     // true = LE staging directory (testing)
 	ACMECacheDir string `toml:"acme_cache_dir" json:"acme_cache_dir"` // cert/account cache (perm 0700)
+	ACMEHTTPAddr string `toml:"acme_http_addr" json:"acme_http_addr"` // HTTP-01 challenge listen address; "" = ":80"
 }
 
 // ServerSettings holds panel operating-mode configuration.
@@ -189,6 +194,7 @@ func Default() Settings {
 			ACMEEmail:          "",
 			ACMEStaging:        false,
 			ACMECacheDir:       "/etc/routebox/acme",
+			ACMEHTTPAddr:       ":80",
 		},
 		Singbox: SingboxSettings{
 			ConfigPath: "",
@@ -675,6 +681,12 @@ func (m *Manager) Update(updates map[string]interface{}) error {
 				return fmt.Errorf("setting %s: value must be a string", key)
 			}
 			staged.Network.ACMECacheDir = v
+		case "network.acme_http_addr":
+			v, ok := value.(string)
+			if !ok {
+				return fmt.Errorf("setting %s: value must be a string", key)
+			}
+			staged.Network.ACMEHTTPAddr = v
 		case "server.mode":
 			// Fix 4: reject invalid values instead of silently ignoring them.
 			v, ok := value.(string)
