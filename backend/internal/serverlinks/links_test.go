@@ -737,8 +737,9 @@ func TestBuildMieruTransportDefault(t *testing.T) {
 
 // Issue #37: a mieru server may bind port ranges (listen_ports) as well as, or
 // instead of, a single port. The share link has to carry them or the client
-// never learns about the extra ports — the mierus:// parser already accepts
-// repeated port= values and broadcasts one protocol= across them.
+// never learns about the extra ports. mieru's parser pairs port[i]/protocol[i]
+// and rejects a link whose counts differ (#46), so every port gets its own
+// protocol=.
 func TestBuildShareLinkMieruListenPorts(t *testing.T) {
 	user := map[string]interface{}{"name": "alice", "password": "pw"}
 
@@ -765,9 +766,16 @@ func TestBuildShareLinkMieruListenPorts(t *testing.T) {
 				t.Fatalf("port params = %v, want %v", ports, want)
 			}
 		}
-		// One protocol for all of them: the client broadcasts it.
-		if got := u.Query()["protocol"]; len(got) != 1 || got[0] != "UDP" {
-			t.Fatalf("protocol params = %v, want [UDP]", got)
+		// One protocol PER port: mieru pairs them positionally and rejects the
+		// link outright when the counts differ.
+		if got := u.Query()["protocol"]; len(got) != len(want) {
+			t.Fatalf("protocol params = %v, want one per port (%d)", got, len(want))
+		} else {
+			for _, p := range got {
+				if p != "UDP" {
+					t.Fatalf("protocol params = %v, want all UDP", got)
+				}
+			}
 		}
 	})
 
@@ -783,6 +791,9 @@ func TestBuildShareLinkMieruListenPorts(t *testing.T) {
 		u, _ := url.Parse(link)
 		if got := u.Query()["port"]; len(got) != 1 || got[0] != "25010-25012" {
 			t.Fatalf("port params = %v, want [25010-25012]", got)
+		}
+		if got := u.Query()["protocol"]; len(got) != 1 || got[0] != "TCP" {
+			t.Fatalf("protocol params = %v, want [TCP]", got)
 		}
 	})
 

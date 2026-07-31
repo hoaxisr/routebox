@@ -13,10 +13,18 @@ const WILDCARDS = new Set(['', '::', '[::]', '::0', '0.0.0.0', '*']);
  * address is deliberate and shown as-is.
  */
 export function inboundDisplayAddress(
-	inbound: { listen?: string; listen_port?: number },
+	inbound: { listen?: string; listen_port?: number; listen_ports?: string[] },
 	publicHost: string
 ): string {
-	const port = inbound.listen_port ?? 1080;
+	// A mieru inbound may bind ONLY ranges (listen_ports, no listen_port); showing
+	// the 1080 fallback there invented a port nothing listens on (#46). Ranges are
+	// listed alongside the single port when both are set.
+	const ranges = inbound.listen_ports?.filter(Boolean) ?? [];
+	const specs = [
+		...(inbound.listen_port !== undefined ? [String(inbound.listen_port)] : []),
+		...ranges
+	];
+	const port = specs.length > 0 ? specs.join(',') : 1080;
 	const listen = inbound.listen;
 	if (listen !== undefined && WILDCARDS.has(listen)) {
 		if (!publicHost) return `*:${port}`;
