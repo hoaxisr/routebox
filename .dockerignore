@@ -1,0 +1,16 @@
+.git
+.github
+.claude
+node_modules
+frontend/node_modules
+frontend/build
+frontend/.svelte-kit
+backend/internal/embedded/dist
+docs
+specs
+*.md
+!README.md
+routebox
+routebox-linux-amd64
+data
+*.mmdb

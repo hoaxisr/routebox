@@ -111,6 +111,29 @@ curl -fsSL https://raw.githubusercontent.com/hoaxisr/routebox/main/vps-install.s
 
 ![Пользователи панели: состояние, срок действия, ссылка-подписка и учёт трафика](assets/06-users.png)
 
+## Docker (панель на VPS)
+
+Образ собран на [баз-имидже LinuxServer.io](https://docs.linuxserver.io/general/containers-101/) — только режим панели на VPS; режим роутера в Docker не поддерживается (ему нужен TUN и роль шлюза локальной сети — используйте `install.sh` на голом железе).
+
+```bash
+curl -fsSLO https://raw.githubusercontent.com/hoaxisr/routebox/main/docker-compose.yml
+# отредактируйте PUBLIC_HOST и ACME_EMAIL в docker-compose.yml
+docker compose up -d
+```
+
+- `/config` — единственный volume: `routebox.toml`, конфиг amnezia-box, GeoIP-база, `traffic.db`, ACME-кэш, данные сервера AmneziaWG. Всё, что панель обычно хранит в `/etc/routebox` и `/etc/amnezia/amneziawg`, живёт здесь через символические ссылки внутри контейнера.
+- При первом запуске без `routebox.toml` в `/config` контейнер создаёт минимальный конфиг из переменных окружения `PUBLIC_HOST`, `ACME_EMAIL`, `ACME_STAGING` — аналог флагов `vps-install.sh`. Пароль администратора панель генерирует сама при первом старте и пишет в `/config/routebox-initial-password` (виден также в `docker compose logs routebox`).
+- Порт `8443` (панель) и `80` (ACME HTTP-01, должен оставаться открытым для продлений) публикуются по умолчанию. Инбаунды amnezia-box настраиваются в панели и публикуются по отдельности через `ports:`; контейнер работает без root, поэтому для порта <1024 внутри контейнера либо перенаправьте его на непривилегированный (`"443:8444"`), либо добавьте `cap_add: [NET_BIND_SERVICE]` — оба варианта закомментированы в `docker-compose.yml`.
+- `PUID`/`PGID` — как в любом образе LinuxServer.io, задают владельца файлов в `/config`.
+
+Обновление образа:
+
+```bash
+docker compose pull && docker compose up -d
+```
+
+Раздел Updates в панели по-прежнему проверяет новые версии RouteBox и amnezia-box: обновление amnezia-box ставится прямо из панели, а для самого RouteBox панель показывает эту же команду вместо кнопки — образ является источником истины для собственного бинарника.
+
 ## Обновление
 
 В обоих режимах: раздел Updates в панели проверяет и ставит новые версии RouteBox и amnezia-box. Список изменений — в [CHANGELOG.md](CHANGELOG.md).

@@ -34,6 +34,12 @@ type Handler struct {
 	subLimiter      *auth.Limiter
 	awg             *awg.Manager
 
+	// dockerMode is true when RouteBox is running inside the official Docker
+	// image (ROUTEBOX_RUNTIME=docker). It blocks the RouteBox self-update
+	// target from replacing its own binary — the image is the source of
+	// truth there — while leaving the amnezia-box target untouched.
+	dockerMode bool
+
 	// v2rayAPISupported reports whether the running binary supports the
 	// experimental.v2ray_api block (with_v2ray_api build tag). Defaults to
 	// h.process.SupportsV2RayAPI when nil; overridable in tests.
@@ -71,6 +77,13 @@ func (h *Handler) SetRouteBoxVersion(v string) {
 // SetUpdatesService wires the binary-updates service into the API.
 func (h *Handler) SetUpdatesService(s *updates.Service) {
 	h.updates = s
+}
+
+// SetDockerMode records whether RouteBox is running inside the official
+// Docker image, so the updates API can refuse RouteBox self-replacement and
+// point the user at `docker compose pull` instead.
+func (h *Handler) SetDockerMode(v bool) {
+	h.dockerMode = v
 }
 
 // SetSubscriptions wires the subscription store and refresh closure into the API.
