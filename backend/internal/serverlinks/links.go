@@ -331,16 +331,21 @@ func buildMieru(inbound, user map[string]interface{}, host string, port int) (st
 	q := url.Values{}
 	q.Set("profile", remarkOf(inbound, user, "Mieru"))
 	// Ports: the single listen_port (when set) followed by every listen_ports
-	// range. The client accepts repeated port= values and broadcasts a single
-	// protocol= across them, so a server bound to a range hands the whole range
-	// over — that is the point of ranges (#37).
+	// range. mieru's own parser (appctl.URLToClientProfile) pairs port[i] with
+	// protocol[i] and REJECTS the whole link when the two counts differ — a
+	// single broadcast protocol= only worked while there was exactly one port,
+	// so adding ranges silently broke every link (#37/#46). One protocol per
+	// port; url.Values.Encode keeps each key's values in insertion order.
+	addPort := func(spec string) {
+		q.Add("port", spec)
+		q.Add("protocol", transport)
+	}
 	if port > 0 {
-		q.Add("port", strconv.Itoa(port))
+		addPort(strconv.Itoa(port))
 	}
 	for _, raw := range listOfStrings(inbound["listen_ports"]) {
-		q.Add("port", raw)
+		addPort(raw)
 	}
-	q.Set("protocol", transport)
 	if tp, _ := inbound["traffic_pattern"].(string); tp != "" {
 		q.Set("traffic-pattern", tp)
 	}

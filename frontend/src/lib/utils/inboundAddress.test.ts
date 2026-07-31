@@ -32,6 +32,23 @@ describe('inboundDisplayAddress', () => {
 		);
 	});
 
+	// #46: a mieru inbound bound to ranges only has no listen_port — the old
+	// `?? 1080` claimed it listened on 1080.
+	it('shows the ranges when a mieru inbound binds only listen_ports', () => {
+		expect(
+			inboundDisplayAddress({ listen: '::', listen_ports: ['25010-25012'] }, host)
+		).toBe('vpn.example.com:25010-25012');
+	});
+
+	it('lists the single port and the ranges together', () => {
+		expect(
+			inboundDisplayAddress(
+				{ listen: '::', listen_port: 2020, listen_ports: ['25010-25012', '26000-26100'] },
+				host
+			)
+		).toBe('vpn.example.com:2020,25010-25012,26000-26100');
+	});
+
 	it('shows a bare wildcard when no public host is configured', () => {
 		expect(inboundDisplayAddress({ listen: '::', listen_port: 443 }, '')).toBe('*:443');
 	});
