@@ -140,6 +140,13 @@ type ServerSettings struct {
 // SingboxSettings configures sing-box integration
 type SingboxSettings struct {
 	ConfigPath string `toml:"config_path" json:"config_path"`
+	// BinaryPath pins the amnezia-box executable RouteBox manages (status,
+	// version, start/stop, and the update swap) instead of auto-detecting it.
+	// Empty => auto-detect. Like ConfigPath it is settable from the file or the
+	// --binary flag only, never through PUT /api/settings: this path is exec'd,
+	// so letting a request choose it would turn a panel session into arbitrary
+	// code execution.
+	BinaryPath string `toml:"binary_path" json:"binary_path"`
 	ClashAPI   string `toml:"clash_api" json:"clash_api"`
 	// V2RayAPI is the loopback gRPC StatsService listen address RouteBox writes
 	// into experimental.v2ray_api and dials for per-user traffic. MUST be
