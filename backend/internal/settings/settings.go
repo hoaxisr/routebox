@@ -127,7 +127,13 @@ type NetworkSettings struct {
 	ACMEEmail    string `toml:"acme_email" json:"acme_email"`         // LE account contact
 	ACMEStaging  bool   `toml:"acme_staging" json:"acme_staging"`     // true = LE staging directory (testing)
 	ACMECacheDir string `toml:"acme_cache_dir" json:"acme_cache_dir"` // cert/account cache (perm 0700)
-	ACMEHTTPAddr string `toml:"acme_http_addr" json:"acme_http_addr"` // HTTP-01 challenge listen address; "" = ":80"
+	// ACMEHTTPAddr is the HTTP-01 challenge listen address; "" = ":80". File-
+	// and flag-level only, like Listen and singbox.binary_path: it is a listen
+	// address the process binds at startup, so an unbindable value does not
+	// fail a request — it fails the next boot, in a loop under systemd's
+	// Restart= or a container's restart policy, recoverable only by editing
+	// the file by hand. Not a setting to hand to a PUT.
+	ACMEHTTPAddr string `toml:"acme_http_addr" json:"acme_http_addr"`
 }
 
 // ServerSettings holds panel operating-mode configuration.
@@ -688,12 +694,6 @@ func (m *Manager) Update(updates map[string]interface{}) error {
 				return fmt.Errorf("setting %s: value must be a string", key)
 			}
 			staged.Network.ACMECacheDir = v
-		case "network.acme_http_addr":
-			v, ok := value.(string)
-			if !ok {
-				return fmt.Errorf("setting %s: value must be a string", key)
-			}
-			staged.Network.ACMEHTTPAddr = v
 		case "server.mode":
 			// Fix 4: reject invalid values instead of silently ignoring them.
 			v, ok := value.(string)

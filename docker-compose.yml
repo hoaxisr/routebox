@@ -11,8 +11,14 @@ services:
       # Domain with an A/AAAA record on this host's IP — required for the
       # built-in ACME (Let's Encrypt) client to issue the panel's TLS cert.
       # Leave unset to run the panel over plain HTTP on LISTEN instead.
+      # Left as the example below, the container treats it as unset and stays
+      # on HTTP rather than asking Let's Encrypt for a domain you don't own —
+      # failed issuance counts against their rate limit.
       - PUBLIC_HOST=panel.example.com
       - ACME_EMAIL=you@example.com
+      # These are read only when /config/routebox.toml does not exist yet: the
+      # file is written on first boot and the panel edits it from then on.
+      # Changing them later has no effect — edit /config/routebox.toml instead.
       # Uncomment for the Let's Encrypt *staging* CA while testing — avoids
       # burning the real issuance rate limit. Switch to false once it works.
       # - ACME_STAGING=true

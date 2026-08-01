@@ -101,9 +101,24 @@ jobs:
           username: ${{ github.actor }}
           password: ${{ secrets.GITHUB_TOKEN }}
 
-      - name: Resolve version
+      # `latest` follows stable releases only: a prerelease tag (v1.2.3-beta.1)
+      # publishes its own version tag and leaves `latest` where it was, so
+      # nobody tracking `latest` is moved onto a beta by a tag push.
+      - name: Resolve version and tags
         id: version
-        run: echo "value=${GITHUB_REF_NAME#v}" >> "$GITHUB_OUTPUT"
+        run: |
+          version="${GITHUB_REF_NAME#v}"
+          echo "value=$version" >> "$GITHUB_OUTPUT"
+          tags="ghcr.io/hoaxisr/routebox:$version"
+          case "$version" in
+            *-*) echo "prerelease: $version — not tagging latest" ;;
+            *)   tags="$tags"$'\n'"ghcr.io/hoaxisr/routebox:latest" ;;
+          esac
+          {
+            echo "tags<<EOF"
+            echo "$tags"
+            echo "EOF"
+          } >> "$GITHUB_OUTPUT"
 
       - name: Build and push
         uses: docker/build-push-action@v6
@@ -113,6 +128,4 @@ jobs:
           push: true
           build-args: |
             ROUTEBOX_VERSION=${{ steps.version.outputs.value }}
-          tags: |
-            ghcr.io/hoaxisr/routebox:${{ steps.version.outputs.value }}
-            ghcr.io/hoaxisr/routebox:latest
+          tags: ${{ steps.version.outputs.tags }}

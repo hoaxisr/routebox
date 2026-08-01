@@ -373,7 +373,7 @@ func main() {
 	// ROUTEBOX_RUNTIME=docker is set by the official Dockerfile; it means
 	// RouteBox's own binary lives in the image, not in a writable install
 	// directory a self-update should touch.
-	apiHandler.SetDockerMode(os.Getenv("ROUTEBOX_RUNTIME") == "docker")
+	apiHandler.SetDockerMode(dockerRuntime())
 	apiHandler.SetSubscriptions(subsMgr, subsRefresh)
 	apiHandler.SetUsers(usersMgr)
 
@@ -412,6 +412,15 @@ func main() {
 	// install that predates the setting — flipping those to singbox tore down a
 	// live tunnel and re-keyed the server (issue #43).
 	awgBackend := awgMgr.ResolveBackend(settingsMgr.Get().Awg.Backend)
+	// The API refuses to switch to a kernel backend this system cannot run; a
+	// settings file written before the tools went missing (or edited by hand)
+	// can still ask for it, and it would otherwise surface as a failing
+	// systemctl at Enable rather than as a missing prerequisite.
+	if awgBackend == "kernel" {
+		if reason := awg.KernelBackendUnsupported(); reason != "" {
+			log.Printf("WARNING: awg.backend is \"kernel\" but %s. The AmneziaWG server will fail to come up; set awg.backend = \"singbox\" in %s, or install the missing pieces.", reason, settingsMgr.GetPath())
+		}
+	}
 	awgMgr.SetBackend(awgBackend)
 	awgMgr.SetConfigSync(
 		cfgMgr, // *config.Manager satisfies awg.ConfigSyncer
@@ -812,7 +821,14 @@ func main() {
 		fmt.Printf("Clash API: %s\n", resolvedClashAddr)
 	}
 	if !procMgr.IsBinaryInstalled() {
-		fmt.Println("Note: amnezia-box not installed - run setup wizard to configure")
+		// The wizard is a router-mode thing; a panel (and a container in
+		// particular) has no wizard to send anyone to, and the useful fact there
+		// is which path was looked at.
+		if effectiveMode == "vps" {
+			fmt.Printf("Note: no working amnezia-box binary at %s — the panel can manage the config but not the process\n", procMgr.GetBinaryPath())
+		} else {
+			fmt.Println("Note: amnezia-box not installed - run setup wizard to configure")
+		}
 	}
 	fmt.Println()
 
@@ -948,6 +964,13 @@ func shouldAutoStartAmneziaBox(mode string, st process.Status, configExists, bin
 	// ServiceName is the DETECTED unit, set even when this particular process
 	// was launched by hand — which is exactly the case we must not start into.
 	return !st.Running && st.ServiceName == ""
+}
+
+// dockerRuntime reports whether this process is the one the official image
+// starts. Set by the Dockerfile, so it means the packaged container
+// specifically — not "some container somewhere", which nothing here can tell.
+func dockerRuntime() bool {
+	return os.Getenv("ROUTEBOX_RUNTIME") == "docker"
 }
 
 // fileExists reports whether path names an existing file.
