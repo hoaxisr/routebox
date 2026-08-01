@@ -6,6 +6,7 @@ import (
 	"net/http"
 	"net/netip"
 	"strings"
+	"sync"
 
 	"routebox/backend/internal/settings"
 )
@@ -34,6 +35,7 @@ func clientIP(r *http.Request, trusted []netip.Prefix) string {
 	}
 	peerAddr, err := netip.ParseAddr(peer)
 	if err != nil || !inPrefixes(peerAddr, trusted) {
+		warnUntrustedForwarder(peer, r)
 		return peer
 	}
 	// nginx needs `proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for`;
@@ -131,4 +133,37 @@ func trustedProxiesFrom(sm *settings.Manager) []netip.Prefix {
 		return nil
 	}
 	return parseTrustedProxies(sm.Get().Security.TrustedProxies)
+}
+
+// untrustedForwarders remembers which peers have already been warned about, so
+// a misconfiguration produces one line per proxy rather than one per request.
+// Bounded: a panel reachable directly could otherwise be made to log for every
+// source address that sends the header.
+var untrustedForwarders struct {
+	sync.Mutex
+	seen map[string]bool
+}
+
+const maxWarnedForwarders = 32
+
+// warnUntrustedForwarder reports a request that carried forwarding headers from
+// an address the operator did not list. Silence here is the expensive case: the
+// trust list looks configured, the header is ignored anyway, and every client
+// collapses onto the proxy's address for rate limiting. The common cause is
+// listing only IPv4 while the proxy actually connects over IPv6 — Docker's DNS
+// answers AAAA first, so that happens by default on a dual-stack network.
+func warnUntrustedForwarder(peer string, r *http.Request) {
+	if r.Header.Get("X-Forwarded-For") == "" && r.Header.Get("X-Real-IP") == "" {
+		return
+	}
+	untrustedForwarders.Lock()
+	defer untrustedForwarders.Unlock()
+	if untrustedForwarders.seen == nil {
+		untrustedForwarders.seen = make(map[string]bool)
+	}
+	if untrustedForwarders.seen[peer] || len(untrustedForwarders.seen) >= maxWarnedForwarders {
+		return
+	}
+	untrustedForwarders.seen[peer] = true
+	log.Printf("security: X-Forwarded-For from %s, which is not in security.trusted_proxies — the header is ignored and rate limiting will attribute every client behind it to that one address. Add %s to the list if it is your proxy.", peer, peer)
 }

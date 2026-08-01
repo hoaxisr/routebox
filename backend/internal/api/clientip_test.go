@@ -1,9 +1,13 @@
 package api
 
 import (
+	"bytes"
+	"log"
 	"net/http"
 	"net/http/httptest"
 	"net/netip"
+	"os"
+	"strings"
 	"testing"
 )
 
@@ -181,4 +185,45 @@ func mustAddr(t *testing.T, s string) netip.Addr {
 		t.Fatal(err)
 	}
 	return a
+}
+
+// TestWarnsOnceAboutAnUntrustedForwarder: the misconfiguration this catches is
+// silent by nature — the trust list looks set, the header is ignored, and every
+// client collapses onto one address. It must warn, and warn once per peer, so a
+// busy proxy cannot flood the log.
+func TestWarnsOnceAboutAnUntrustedForwarder(t *testing.T) {
+	untrustedForwarders.Lock()
+	untrustedForwarders.seen = nil
+	untrustedForwarders.Unlock()
+
+	var buf bytes.Buffer
+	log.SetOutput(&buf)
+	t.Cleanup(func() { log.SetOutput(os.Stderr) })
+
+	trusted := parseTrustedProxies([]string{"172.20.0.0/24"}) // IPv4 only...
+	// ...while the proxy actually connects over the network's IPv6 ULA.
+	for i := 0; i < 3; i++ {
+		clientIP(requestFrom("[fd00:d0c:1::5]:40000",
+			map[string][]string{"X-Forwarded-For": {"198.51.100.9"}}), trusted)
+	}
+	if got := strings.Count(buf.String(), "not in security.trusted_proxies"); got != 1 {
+		t.Fatalf("warned %d times, want exactly 1: %s", got, buf.String())
+	}
+	if !strings.Contains(buf.String(), "fd00:d0c:1::5") {
+		t.Errorf("the warning must name the address to add: %s", buf.String())
+	}
+
+	// A second, different peer is its own warning.
+	clientIP(requestFrom("10.9.9.9:40000",
+		map[string][]string{"X-Real-IP": {"198.51.100.9"}}), trusted)
+	if got := strings.Count(buf.String(), "not in security.trusted_proxies"); got != 2 {
+		t.Fatalf("a distinct peer should warn too, got %d", got)
+	}
+
+	// No forwarding headers => nothing to warn about; this is just a direct client.
+	buf.Reset()
+	clientIP(requestFrom("203.0.113.7:1234", nil), trusted)
+	if buf.Len() != 0 {
+		t.Fatalf("a plain direct request must not warn: %s", buf.String())
+	}
 }
