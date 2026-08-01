@@ -121,6 +121,15 @@ func (h *Handler) GetStatus(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 
+	// SystemChecks answer one question — can this host route a LAN through a TUN
+	// interface — and a VPS panel never does that. Reported there, they render a
+	// red "System Requirements Not Met / run routebox with sudo" banner on a
+	// panel that is working exactly as designed, telling the operator to undo
+	// the very thing that lets it run unprivileged.
+	if h.panelMode == "vps" {
+		status.SystemChecks = nil
+	}
+
 	resp := statusResponse{Status: status, ReadOnlyPaths: h.readOnlyPaths()}
 	if h.config != nil && h.config.IsReadOnly() {
 		resp.ConfigReadOnly = true
