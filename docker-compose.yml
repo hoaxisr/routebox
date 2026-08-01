@@ -1,3 +1,13 @@
+# Two ways to run the panel:
+#
+#   1. Standalone (this file as-is) — RouteBox terminates TLS itself with a
+#      Let's Encrypt certificate it issues and renews in-process.
+#   2. Behind a reverse proxy (nginx, Caddy, Traefik) that already terminates
+#      TLS — see the commented block at the bottom, and the README.
+#
+# Everything under `environment:` is read ONLY when /config/routebox.toml does
+# not exist yet. The file is written on first boot and the panel edits it from
+# then on, so changing these later has no effect — edit /config/routebox.toml.
 services:
   routebox:
     image: ghcr.io/hoaxisr/routebox:latest
@@ -16,9 +26,10 @@ services:
       # failed issuance counts against their rate limit.
       - PUBLIC_HOST=panel.example.com
       - ACME_EMAIL=you@example.com
-      # These are read only when /config/routebox.toml does not exist yet: the
-      # file is written on first boot and the panel edits it from then on.
-      # Changing them later has no effect — edit /config/routebox.toml instead.
+      # The port CLIENTS use to reach the panel — it ends up in the subscription
+      # URLs handed to users, so it must be the published port, not the one the
+      # panel binds inside the container. Defaults to the LISTEN port (8443).
+      # - PUBLIC_PORT=8443
       # Uncomment for the Let's Encrypt *staging* CA while testing — avoids
       # burning the real issuance rate limit. Switch to false once it works.
       # - ACME_STAGING=true
@@ -39,3 +50,33 @@ services:
       - ./config:/config
     # cap_add:
     #   - NET_BIND_SERVICE
+
+# ---- Behind a reverse proxy -------------------------------------------------
+# Replace the environment/ports above with the following when nginx, Caddy or
+# Traefik already holds the certificate for your domain.
+#
+#    environment:
+#      - PUID=1000
+#      - PGID=1000
+#      - TZ=Etc/UTC
+#      # The panel still needs to know its public address: it goes into the
+#      # subscription URLs users are given. The proxy's, not the container's.
+#      - PUBLIC_HOST=panel.example.com
+#      - PUBLIC_PORT=443
+#      # RouteBox serves plain HTTP; the proxy does TLS. No :80 mapping and no
+#      # ACME_EMAIL needed — nothing here talks to Let's Encrypt.
+#      - ACME_ENABLED=false
+#      # Whose X-Forwarded-For to believe. Without it every client shares the
+#      # proxy's address, and they throttle as one: login lockout and the
+#      # subscription rate limiter are both keyed on the client address.
+#      # Use the proxy's address on the shared network, or that network's CIDR.
+#      - TRUSTED_PROXIES=172.18.0.0/16
+#    ports: []              # nothing published: the proxy reaches it over the
+#                           # container network, so the panel is not exposed
+#    expose:
+#      - "8443"
+#
+# The proxy must forward WebSocket upgrades (the dashboard streams traffic,
+# logs and connections over them) and set X-Forwarded-Proto so the session
+# cookie is marked Secure. Config snippets for nginx and Caddy are in the
+# README.
