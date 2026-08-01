@@ -131,6 +131,68 @@ docker compose up -d
 - Сервер AmneziaWG работает на бэкенде `singbox` (по умолчанию), которому не нужны ни модуль ядра, ни `awg-quick`. Бэкенд `kernel` RouteBox поднимает через systemd unit `awg-quick@<iface>`, а в этом образе нет ни amneziawg-tools, ни systemd — панель откажет и скажет, чего не хватает. Это ограничение образа, а не Docker: свой образ с amneziawg-tools и systemd, `cap_add: [NET_ADMIN]` и модулем ядра на хосте пройдёт ту же проверку, что и голое железо.
 - Версию amnezia-box можно зафиксировать при сборке: `docker build --build-arg AMNEZIA_BOX_VERSION=1.14.0-beta.4-awgm.5 .`. По умолчанию берётся последний релиз, а какой именно — записано в `/defaults/amnezia-box.version`.
 
+### За обратным прокси
+
+Если TLS уже держит nginx, Caddy или Traefik, встроенный ACME не нужен: RouteBox отдаёт панель по обычному HTTP, сертификат остаётся заботой прокси. Порт `80` наружу не публикуется, `ACME_EMAIL` можно не задавать.
+
+```yaml
+environment:
+  - PUID=1000
+  - PGID=1000
+  # Публичный адрес панели: он попадает в ссылки-подписки, поэтому это адрес
+  # прокси, а не контейнера.
+  - PUBLIC_HOST=panel.example.com
+  - PUBLIC_PORT=443
+  - ACME_ENABLED=false
+  # Чьему X-Forwarded-For верить: адрес прокси или подсеть общей docker-сети.
+  - TRUSTED_PROXIES=172.18.0.0/16
+ports: []
+expose:
+  - "8443"
+```
+
+`TRUSTED_PROXIES` стоит задать сразу. На адресе клиента завязаны блокировка перебора пароля и лимит запросов к публичному `/sub/{token}`, а из-за прокси все клиенты приходят с одного адреса и считаются за одного: лимит подписок срабатывает через несколько запросов и накрывает всех разом. Заголовку RouteBox верит только от перечисленных адресов, с остальных смотрит на реальный адрес соединения — подделать не выйдет. Из цепочки берётся самый правый адрес, которого нет в списке: это то, что видел ваш собственный прокси.
+
+Прокси должен пробрасывать WebSocket-соединения — по ним на дашборд идут трафик, логи и список соединений — и передавать `X-Forwarded-Proto`, иначе cookie сессии останется без флага `Secure`.
+
+nginx:
+
+```nginx
+server {
+    listen 443 ssl http2;
+    server_name panel.example.com;
+
+    ssl_certificate     /etc/letsencrypt/live/panel.example.com/fullchain.pem;
+    ssl_certificate_key /etc/letsencrypt/live/panel.example.com/privkey.pem;
+
+    location / {
+        proxy_pass http://routebox:8443;
+        proxy_http_version 1.1;
+        proxy_set_header Upgrade $http_upgrade;
+        proxy_set_header Connection $connection_upgrade;
+        proxy_set_header Host $host;
+        proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+        proxy_set_header X-Forwarded-Proto $scheme;
+        # Дашборд держит WebSocket открытым, с дефолтным таймаутом он рвётся.
+        proxy_read_timeout 3600s;
+        proxy_buffering off;
+    }
+}
+
+# в http-блоке:
+# map $http_upgrade $connection_upgrade { default upgrade; "" close; }
+```
+
+Caddy — `X-Forwarded-*` и WebSocket из коробки:
+
+```caddy
+panel.example.com {
+    reverse_proxy routebox:8443
+}
+```
+
+Инбаунды amnezia-box через прокси не пойдут: это не HTTP. Их порты контейнер публикует сам через `ports:`. Через прокси ходят панель и подписки, VPN-трафик — мимо.
+
 Обновление образа:
 
 ```bash

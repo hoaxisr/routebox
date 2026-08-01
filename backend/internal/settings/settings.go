@@ -108,6 +108,17 @@ type SecuritySettings struct {
 	AuthPasswordHash      string `toml:"auth_password_hash" json:"-"` // bcrypt hash; never expose in JSON
 	CorsOrigins           string `toml:"cors_origins" json:"cors_origins"`
 	SessionTimeoutMinutes int    `toml:"session_timeout_minutes" json:"session_timeout_minutes"`
+	// TrustedProxies lists the reverse proxies (IPs or CIDRs) whose
+	// X-Forwarded-For RouteBox may believe. It decides ONE thing: which address
+	// login lockout and the subscription rate limiter are keyed on. Behind a
+	// proxy with this unset, every client shares the proxy's address and
+	// throttles as one — the subscription limiter counts every fetch, so a
+	// handful of users is enough to trip it for all of them.
+	//
+	// File-level only, never PUT /api/settings: it decides whose word RouteBox
+	// takes about who is calling, and an empty list is the safe default that a
+	// request should not be able to widen.
+	TrustedProxies []string `toml:"trusted_proxies" json:"trusted_proxies"`
 }
 
 // NetworkSettings configures network parameters
