@@ -35,18 +35,32 @@ if [ ! -f /config/geoip.mmdb ] && [ -f /defaults/geoip.mmdb ]; then
     cp /defaults/geoip.mmdb /config/geoip.mmdb
 fi
 
+public_host="${PUBLIC_HOST:-}"
+
+# The domain shipped in docker-compose.yml. Running the file unedited would
+# otherwise point the built-in ACME client at a domain the operator does not
+# own: issuance fails on every handshake, and Let's Encrypt counts those
+# failures against a rate limit. Treated as "unset" — the panel comes up on
+# plain HTTP and says what to do — rather than as a real domain.
+if [ "$public_host" = "panel.example.com" ]; then
+    echo "**** PUBLIC_HOST is still the docker-compose.yml example (panel.example.com) ****"
+    echo "**** TLS stays off and the panel serves plain HTTP. Set PUBLIC_HOST to a domain ****"
+    echo "**** pointing at this host, then edit public_host/acme_enabled in /config/routebox.toml ****"
+    public_host=""
+fi
+
 if [ ! -f /config/routebox.toml ]; then
     echo "**** bootstrapping routebox.toml from environment ****"
 
     acme_enabled="${ACME_ENABLED:-}"
     if [ -z "$acme_enabled" ]; then
-        if [ -n "${PUBLIC_HOST:-}" ]; then acme_enabled=true; else acme_enabled=false; fi
+        if [ -n "$public_host" ]; then acme_enabled=true; else acme_enabled=false; fi
     fi
 
     cat > /config/routebox.toml <<EOF
 [server]
 mode = "vps"
-public_host = "${PUBLIC_HOST:-}"
+public_host = "$public_host"
 
 [network]
 listen = "${LISTEN:-0.0.0.0:8443}"
@@ -64,6 +78,17 @@ enabled = true
 config_path = "/config/amnezia-box/config.json"
 binary_path = "/config/bin/amnezia-box"
 EOF
+else
+    # The file is written once, on first boot, and is the source of truth from
+    # then on — the panel edits it, so regenerating it from the environment
+    # would throw those edits away. Changing PUBLIC_HOST in compose afterwards
+    # therefore does nothing, which is worth saying out loud rather than
+    # leaving someone to wonder why their new domain never took effect.
+    if [ -n "$public_host" ] && ! grep -q "^public_host = \"$public_host\"" /config/routebox.toml; then
+        echo "**** PUBLIC_HOST=$public_host does not match /config/routebox.toml ****"
+        echo "**** the file wins (it is written once, on first boot, and the panel edits it); ****"
+        echo "**** change the domain in /config/routebox.toml to take effect ****"
+    fi
 fi
 
 chown -R abc:abc /config /etc/amnezia

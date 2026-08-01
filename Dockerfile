@@ -103,3 +103,13 @@ RUN chmod +x /usr/bin/routebox /defaults/amnezia-box /etc/services.d/routebox/ru
 
 EXPOSE 8443 80
 VOLUME /config
+
+# /api/health is unauthenticated and answers only once the panel is serving, so
+# it reports the thing worth reporting: whether the container is usable. Tries
+# HTTPS first (-k: the cert is issued for the public domain, not 127.0.0.1) and
+# falls back to HTTP for a panel running without TLS. LISTEN is read at runtime
+# — Docker does not expand variables in HEALTHCHECK — so a custom port works.
+HEALTHCHECK --interval=30s --timeout=6s --start-period=30s --retries=3 \
+    CMD port="${LISTEN##*:}"; port="${port:-8443}"; \
+        curl -fsk --max-time 5 "https://127.0.0.1:$port/api/health" >/dev/null \
+        || curl -fs --max-time 5 "http://127.0.0.1:$port/api/health" >/dev/null

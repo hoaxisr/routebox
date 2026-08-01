@@ -113,7 +113,7 @@ curl -fsSL https://raw.githubusercontent.com/hoaxisr/routebox/main/vps-install.s
 
 ## Docker (панель на VPS)
 
-Образ собран на [баз-имидже LinuxServer.io](https://docs.linuxserver.io/general/containers-101/) — только режим панели на VPS; режим роутера в Docker не поддерживается (ему нужен TUN и роль шлюза локальной сети — используйте `install.sh` на голом железе).
+Образ собран на [base image LinuxServer.io](https://docs.linuxserver.io/general/containers-101/) и умеет только режим панели на VPS. Режим роутера в Docker не поддерживается: ему нужен TUN и роль шлюза локальной сети — для него есть `install.sh` на голом железе.
 
 ```bash
 curl -fsSLO https://raw.githubusercontent.com/hoaxisr/routebox/main/docker-compose.yml
@@ -121,12 +121,15 @@ curl -fsSLO https://raw.githubusercontent.com/hoaxisr/routebox/main/docker-compo
 docker compose up -d
 ```
 
-- `/config` — единственный volume: `routebox.toml`, конфиг amnezia-box, бинарник amnezia-box (`/config/bin`), GeoIP-база, `traffic.db`, ACME-кэш, данные сервера AmneziaWG. Всё, что панель обычно хранит в `/etc/routebox` и `/etc/amnezia/amneziawg`, живёт здесь через символические ссылки внутри контейнера.
-- При первом запуске без `routebox.toml` в `/config` контейнер создаёт минимальный конфиг из переменных окружения `PUBLIC_HOST`, `ACME_EMAIL`, `ACME_STAGING` — аналог флагов `vps-install.sh`. Пароль администратора панель генерирует сама при первом старте и пишет в `/config/routebox-initial-password` (виден также в `docker compose logs routebox`).
-- amnezia-box кладётся из образа в `/config/bin/amnezia-box` при первом запуске и дальше живёт на volume — поэтому обновление из панели работает (бинарник принадлежит пользователю `PUID`) и переживает пересоздание контейнера. Образ никогда не перезаписывает уже установленный бинарник; если он старше того, что в образе, контейнер пишет об этом в лог. Чтобы вернуться к версии из образа, удалите файл и перезапустите контейнер.
-- systemd в контейнере нет, поэтому amnezia-box запускает сам RouteBox — при каждом старте контейнера, если конфиг и бинарник на месте. Кнопки Start/Stop/Restart в панели работают как обычно.
-- Порт `8443` (панель) и `80` (ACME HTTP-01, должен оставаться открытым для продлений) публикуются по умолчанию. Инбаунды amnezia-box настраиваются в панели и публикуются по отдельности через `ports:`. Панель и инбаунды работают не под root, но Docker выставляет в контейнерах `net.ipv4.ip_unprivileged_port_start=0`, так что порты <1024 занимаются без `NET_BIND_SERVICE`. Если ваш runtime ведёт себя иначе — добавьте `cap_add: [NET_BIND_SERVICE]` либо отдайте инбаунду порт ≥1024 внутри контейнера и перенаправьте его на нужный (`"443:8444"`), а для ACME задайте `ACME_HTTP_ADDR`.
-- `PUID`/`PGID` — как в любом образе LinuxServer.io, задают владельца файлов в `/config`.
+- `/config` — единственный volume: `routebox.toml`, конфиг amnezia-box, сам бинарник amnezia-box (`/config/bin`), GeoIP-база, `traffic.db`, ACME-кэш, данные сервера AmneziaWG. Внутри контейнера `/etc/routebox` и `/etc/amnezia/amneziawg` — симлинки сюда же, так что всё состояние панели лежит в одном месте.
+- Если `routebox.toml` в `/config` ещё нет, контейнер пишет минимальный конфиг из переменных окружения — то же самое, что спрашивает `vps-install.sh`. Пароль администратора панель генерирует сама при первом старте и кладёт в `/config/routebox-initial-password`; он же виден в `docker compose logs routebox`.
+- **Переменные окружения читаются только в этот момент.** Дальше правит файл, его же меняет панель — поэтому новый `PUBLIC_HOST` в `docker-compose.yml` после первого запуска уже ничего не изменит, о чём контейнер предупредит в логе. Домен меняйте в `/config/routebox.toml`. Контейнер понимает `PUBLIC_HOST`, `ACME_EMAIL`, `ACME_STAGING`, `ACME_ENABLED`, `ACME_HTTP_ADDR` и `LISTEN`. Пример `PUBLIC_HOST=panel.example.com` считается незаполненным: просить у Let's Encrypt сертификат на чужой домен бессмысленно, а неудачные проверки идут в счёт лимитов.
+- amnezia-box контейнер копирует из образа в `/config/bin/amnezia-box` при первом запуске, дальше бинарник живёт на volume. Поэтому обновление из панели работает (файлом владеет пользователь `PUID`) и переживает пересоздание контейнера. Уже установленный бинарник образ не трогает; если он старше, чем в образе, контейнер скажет об этом в логе. Нужна версия из образа — удалите файл и перезапустите контейнер.
+- systemd в контейнере нет, поэтому amnezia-box запускает сам RouteBox — при каждом старте, если конфиг и бинарник на месте. Start/Stop/Restart в панели работают как обычно.
+- Наружу отданы `8443` (панель) и `80` (ACME HTTP-01; его нужно держать открытым и ради продлений). Инбаунды amnezia-box вы настраиваете в панели и публикуете сами через `ports:`. Панель и инбаунды работают не под root, но Docker выставляет в контейнерах `net.ipv4.ip_unprivileged_port_start=0`, так что порт <1024 занимается и без `NET_BIND_SERVICE`. Если ваш runtime так не умеет — добавьте `cap_add: [NET_BIND_SERVICE]` или дайте инбаунду порт ≥1024 внутри контейнера и пробросьте его на нужный (`"443:8444"`), а для ACME задайте `ACME_HTTP_ADDR`.
+- `PUID`/`PGID` — как в любом образе LinuxServer.io: задают владельца файлов в `/config`. Состояние контейнера показывает `HEALTHCHECK`: он опрашивает `/api/health`.
+- Сервер AmneziaWG работает на бэкенде `singbox` (по умолчанию), которому не нужны ни модуль ядра, ни `awg-quick`. Бэкенд `kernel` RouteBox поднимает через systemd unit `awg-quick@<iface>`, а в этом образе нет ни amneziawg-tools, ни systemd — панель откажет и скажет, чего не хватает. Это ограничение образа, а не Docker: свой образ с amneziawg-tools и systemd, `cap_add: [NET_ADMIN]` и модулем ядра на хосте пройдёт ту же проверку, что и голое железо.
+- Версию amnezia-box можно зафиксировать при сборке: `docker build --build-arg AMNEZIA_BOX_VERSION=1.14.0-beta.4-awgm.5 .`. По умолчанию берётся последний релиз, а какой именно — записано в `/defaults/amnezia-box.version`.
 
 Обновление образа:
 
@@ -134,7 +137,7 @@ docker compose up -d
 docker compose pull && docker compose up -d
 ```
 
-Раздел Updates в панели по-прежнему проверяет новые версии RouteBox и amnezia-box: обновление amnezia-box ставится прямо из панели (бинарник на volume, поэтому обновление остаётся после `docker compose up -d`), а для самого RouteBox панель показывает эту же команду вместо кнопки — образ является источником истины для собственного бинарника.
+Раздел Updates работает и здесь: amnezia-box ставится прямо из панели, и обновление никуда не денется после `docker compose up -d` — бинарник лежит на volume. Для самого RouteBox панель вместо кнопки показывает команду выше: свой бинарник он берёт из образа.
 
 ## Обновление
 

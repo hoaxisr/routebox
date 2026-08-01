@@ -407,22 +407,52 @@ func TestUpdateACMEStringAndBoolFields(t *testing.T) {
 }
 
 // TestACMEHTTPAddr covers the challenge listener address: it defaults to :80
-// (the only port Let's Encrypt connects to for HTTP-01), and is settable so a
-// packaged install can move the listener off a privileged port and have the
-// host map :80 onto it.
+// (the only port Let's Encrypt connects to for HTTP-01) and comes from the
+// settings file, never from a request. A listen address does not fail the PUT
+// that sets it — it fails the next startup, and keeps failing it, which under
+// a restart policy is an outage recoverable only by hand-editing the file.
+// network.listen is excluded for the same reason.
 func TestACMEHTTPAddr(t *testing.T) {
 	if got := Default().Network.ACMEHTTPAddr; got != ":80" {
 		t.Errorf("network.acme_http_addr default should be :80, got %q", got)
 	}
 	m := &Manager{settings: Default()}
-	if err := m.Update(map[string]interface{}{"network.acme_http_addr": ":8080"}); err != nil {
-		t.Fatalf("Update: %v", err)
+	if err := m.Update(map[string]interface{}{"network.acme_http_addr": ":0"}); err == nil {
+		t.Fatal("network.acme_http_addr must be rejected by Update")
 	}
-	if got := m.Get().Network.ACMEHTTPAddr; got != ":8080" {
-		t.Errorf("acme_http_addr got %q", got)
+	if got := m.Get().Network.ACMEHTTPAddr; got != ":80" {
+		t.Fatalf("acme_http_addr changed despite the rejection: %q", got)
 	}
-	if err := m.Update(map[string]interface{}{"network.acme_http_addr": 80}); err == nil {
-		t.Error("int for a string field must be rejected")
+	// What the API refuses, the file still carries.
+	path := filepath.Join(t.TempDir(), "routebox.toml")
+	fm, err := NewManager(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	fm.settings.Network.ACMEHTTPAddr = ":8080"
+	if err := fm.Save(); err != nil {
+		t.Fatalf("Save: %v", err)
+	}
+	reloaded, err := NewManager(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got := reloaded.Get().Network.ACMEHTTPAddr; got != ":8080" {
+		t.Fatalf("acme_http_addr did not survive a save/load round trip: %q", got)
+	}
+}
+
+// TestNoListenAddressIsSettableOverTheAPI keeps the class closed: every
+// address the process binds at startup stays out of Update, so no single
+// request can make the next boot fail.
+func TestNoListenAddressIsSettableOverTheAPI(t *testing.T) {
+	for _, key := range []string{"network.listen", "network.acme_http_addr"} {
+		t.Run(key, func(t *testing.T) {
+			m := &Manager{settings: Default()}
+			if err := m.Update(map[string]interface{}{key: ":9999"}); err == nil {
+				t.Fatalf("%s must not be settable through the settings API", key)
+			}
+		})
 	}
 }
 
