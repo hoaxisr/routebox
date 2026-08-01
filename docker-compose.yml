@@ -69,8 +69,13 @@ services:
 #      # Whose X-Forwarded-For to believe. Without it every client shares the
 #      # proxy's address, and they throttle as one: login lockout and the
 #      # subscription rate limiter are both keyed on the client address.
-#      # Use the proxy's address on the shared network, or that network's CIDR.
-#      - TRUSTED_PROXIES=172.18.0.0/16
+#      #
+#      # List BOTH families of the shared network. Docker's DNS answers AAAA
+#      # first, so on an IPv6-enabled network the proxy reaches this container
+#      # over the ULA even though you configured IPv4 — and an address that is
+#      # not listed is simply not trusted, silently. Find the subnets with:
+#      #   docker network inspect <network> -f '{{range .IPAM.Config}}{{.Subnet}} {{end}}'
+#      - TRUSTED_PROXIES=172.18.0.0/16,fd00:dead:beef::/64
 #    ports: []              # nothing published: the proxy reaches it over the
 #                           # container network, so the panel is not exposed
 #    expose:
