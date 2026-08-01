@@ -373,6 +373,7 @@ func main() {
 	// ROUTEBOX_RUNTIME=docker is set by the official Dockerfile; it means
 	// RouteBox's own binary lives in the image, not in a writable install
 	// directory a self-update should touch.
+	apiHandler.SetPanelMode(effectiveMode)
 	apiHandler.SetDockerMode(dockerRuntime())
 	apiHandler.SetSubscriptions(subsMgr, subsRefresh)
 	apiHandler.SetUsers(usersMgr)
