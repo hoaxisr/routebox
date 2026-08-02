@@ -118,11 +118,12 @@ type Manager struct {
 	opMu    sync.Mutex   // serializes Start/Stop/Restart/Reload
 	stateMu sync.RWMutex // guards fields below
 
-	binaryPath  string
-	configPath  string // путь конфига, которым управляет RouteBox (Ours в ConfigPaths)
-	unitPath    string // путь конфига из ExecStart юнита, как его прочли последний раз ("" — юнита нет)
-	serviceName string // detected systemd service name (set once in NewManager)
-	startedPID  int    // PID of process started by us in standalone mode (0 if none)
+	binaryPath   string
+	binaryPinned bool   // binaryPath came from configuration (--binary / singbox.binary_path), not detection
+	configPath   string // путь конфига, которым управляет RouteBox (Ours в ConfigPaths)
+	unitPath     string // путь конфига из ExecStart юнита, как его прочли последний раз ("" — юнита нет)
+	serviceName  string // detected systemd service name (set once in NewManager)
+	startedPID   int    // PID of process started by us in standalone mode (0 if none)
 
 	cachedVersion      string    // memoized parsed version (e.g. "1.13.13")
 	cachedVersionPath  string    // binary path the cached version belongs to
@@ -217,6 +218,36 @@ func NewManager() *Manager {
 		}
 	}
 	return m
+}
+
+// PinBinaryPath overrides the detected amnezia-box binary with an explicitly
+// configured one (settings singbox.binary_path / --binary). It reports the
+// path it replaced when that differs, so the caller can say so: an operator
+// who pins a path while a systemd unit execs another one gets a panel that
+// updates one binary and reports the version of the other, and the only place
+// that discrepancy is visible is right here. No-op for an empty path.
+func (m *Manager) PinBinaryPath(path string) (replaced string) {
+	if path == "" {
+		return ""
+	}
+	path = filepath.Clean(path)
+	previous := m.getBinaryPath()
+	m.setBinaryPath(path)
+	m.stateMu.Lock()
+	m.binaryPinned = true
+	m.stateMu.Unlock()
+	if previous == path {
+		return ""
+	}
+	return previous
+}
+
+// binaryIsPinned reports whether the binary came from configuration rather than
+// from detection.
+func (m *Manager) binaryIsPinned() bool {
+	m.stateMu.RLock()
+	defer m.stateMu.RUnlock()
+	return m.binaryPinned
 }
 
 // SetConfigPath запоминает путь конфига, которым управляет RouteBox, не трогая
@@ -661,6 +692,14 @@ func (m *Manager) GetVersion() (string, error) {
 		}
 	}
 
+	// A pinned path is the answer, including when the answer is "nothing runs
+	// there". Falling through to whatever else is on PATH would silently undo
+	// the pin — and since the updater installs to this same path, it would then
+	// report one binary's version while replacing another one's file.
+	if m.binaryIsPinned() {
+		return "", fmt.Errorf("configured amnezia-box binary %s is missing or does not run", m.getBinaryPath())
+	}
+
 	// Try amnezia-box in PATH
 	if path, err := exec.LookPath("amnezia-box"); err == nil {
 		if version, err := m.runVersion(path); err == nil {
@@ -1079,6 +1118,15 @@ func (m *Manager) exeMatches(pid int) bool {
 		return false
 	}
 	exe = strings.TrimSuffix(exe, " (deleted)")
+	// An update renames the running binary to <path>.old before moving the new
+	// one into place (updates.Updater.apply), so from that moment the process
+	// RouteBox started reports a /proc/<pid>/exe under the .old name. Stripping
+	// it keeps the process findable at exactly the moment it must be found: the
+	// restart right after the swap. Without this, standalone Restart saw
+	// "not running", skipped the stop, and left the pre-update process alive
+	// beside the new one — both holding the same inbound ports. systemd installs
+	// never hit this (systemctl restart tracks the unit's cgroup, not the path).
+	exe = strings.TrimSuffix(exe, ".old")
 	if bp := m.getBinaryPath(); bp != "" {
 		if abs, err := filepath.Abs(bp); err == nil {
 			// /proc/<pid>/exe is always fully resolved; resolve symlinks on

@@ -1,0 +1,87 @@
+# Two ways to run the panel:
+#
+#   1. Standalone (this file as-is) — RouteBox terminates TLS itself with a
+#      Let's Encrypt certificate it issues and renews in-process.
+#   2. Behind a reverse proxy (nginx, Caddy, Traefik) that already terminates
+#      TLS — see the commented block at the bottom, and the README.
+#
+# Everything under `environment:` is read ONLY when /config/routebox.toml does
+# not exist yet. The file is written on first boot and the panel edits it from
+# then on, so changing these later has no effect — edit /config/routebox.toml.
+services:
+  routebox:
+    image: ghcr.io/hoaxisr/routebox:latest
+    # build: .   # uncomment to build locally instead of pulling
+    container_name: routebox
+    restart: unless-stopped
+    environment:
+      - PUID=1000
+      - PGID=1000
+      - TZ=Etc/UTC
+      # Domain with an A/AAAA record on this host's IP — required for the
+      # built-in ACME (Let's Encrypt) client to issue the panel's TLS cert.
+      # Leave unset to run the panel over plain HTTP on LISTEN instead.
+      # Left as the example below, the container treats it as unset and stays
+      # on HTTP rather than asking Let's Encrypt for a domain you don't own —
+      # failed issuance counts against their rate limit.
+      - PUBLIC_HOST=panel.example.com
+      - ACME_EMAIL=you@example.com
+      # The port CLIENTS use to reach the panel — it ends up in the subscription
+      # URLs handed to users, so it must be the published port, not the one the
+      # panel binds inside the container. Defaults to the LISTEN port (8443).
+      # - PUBLIC_PORT=8443
+      # Uncomment for the Let's Encrypt *staging* CA while testing — avoids
+      # burning the real issuance rate limit. Switch to false once it works.
+      # - ACME_STAGING=true
+    ports:
+      - "8443:8443" # panel
+      - "80:80" # ACME HTTP-01 challenge; must stay reachable for renewals
+      # amnezia-box inbounds are user-configured in the panel — map each one
+      # you create, e.g. an inbound on container port 443:
+      # - "443:443"
+      # Panel and inbounds run as the PUID/PGID user, but Docker sets
+      # net.ipv4.ip_unprivileged_port_start=0 in containers, so ports below 1024
+      # (including the :80 ACME listener) bind without root or NET_BIND_SERVICE.
+      # Under a runtime that doesn't — or with that sysctl raised — either add
+      # cap_add: [NET_BIND_SERVICE] below, or give the inbound a container port
+      # >=1024 and remap it on the host ("443:8444") and set ACME_HTTP_ADDR
+      # to match for the challenge listener.
+    volumes:
+      - ./config:/config
+    # cap_add:
+    #   - NET_BIND_SERVICE
+
+# ---- Behind a reverse proxy -------------------------------------------------
+# Replace the environment/ports above with the following when nginx, Caddy or
+# Traefik already holds the certificate for your domain.
+#
+#    environment:
+#      - PUID=1000
+#      - PGID=1000
+#      - TZ=Etc/UTC
+#      # The panel still needs to know its public address: it goes into the
+#      # subscription URLs users are given. The proxy's, not the container's.
+#      - PUBLIC_HOST=panel.example.com
+#      - PUBLIC_PORT=443
+#      # RouteBox serves plain HTTP; the proxy does TLS. No :80 mapping and no
+#      # ACME_EMAIL needed — nothing here talks to Let's Encrypt.
+#      - ACME_ENABLED=false
+#      # Whose X-Forwarded-For to believe. Without it every client shares the
+#      # proxy's address, and they throttle as one: login lockout and the
+#      # subscription rate limiter are both keyed on the client address.
+#      #
+#      # List BOTH families of the shared network. Docker's DNS answers AAAA
+#      # first, so on an IPv6-enabled network the proxy reaches this container
+#      # over the ULA even though you configured IPv4 — and an address that is
+#      # not listed is simply not trusted, silently. Find the subnets with:
+#      #   docker network inspect <network> -f '{{range .IPAM.Config}}{{.Subnet}} {{end}}'
+#      - TRUSTED_PROXIES=172.18.0.0/16,fd00:dead:beef::/64
+#    ports: []              # nothing published: the proxy reaches it over the
+#                           # container network, so the panel is not exposed
+#    expose:
+#      - "8443"
+#
+# The proxy must forward WebSocket upgrades (the dashboard streams traffic,
+# logs and connections over them) and set X-Forwarded-Proto so the session
+# cookie is marked Secure. Config snippets for nginx and Caddy are in the
+# README.

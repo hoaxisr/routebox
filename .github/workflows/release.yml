@@ -1,8 +1,9 @@
 # Release pipeline: push a version tag (v1.2.3) and this builds the panel
 # (frontend embedded into the Go binary), runs the full test suite as a gate,
 # publishes routebox-linux-{amd64,arm64} + .sha256 sidecars (the exact asset
-# names install.sh and the in-app self-updater download), and fills the release
-# body with the tag's CHANGELOG.md section via .github/scripts/extract-changelog.sh.
+# names install.sh and the in-app self-updater download), fills the release
+# body with the tag's CHANGELOG.md section via .github/scripts/extract-changelog.sh,
+# and (once that succeeds) builds+pushes the multi-arch Docker image.
 name: Release
 
 on:
@@ -11,6 +12,7 @@ on:
 
 permissions:
   contents: write # create the release + upload assets
+  packages: write # push the image to ghcr.io
 
 jobs:
   release:
@@ -82,3 +84,48 @@ jobs:
           name: ${{ github.ref_name }}
           body_path: release-notes.md
           files: dist/*
+
+  docker:
+    needs: release # only build the image once the binary release+tests are green
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+
+      - uses: docker/setup-qemu-action@v3 # arm64 emulation for the buildx build below
+
+      - uses: docker/setup-buildx-action@v3
+
+      - uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      # `latest` follows stable releases only: a prerelease tag (v1.2.3-beta.1)
+      # publishes its own version tag and leaves `latest` where it was, so
+      # nobody tracking `latest` is moved onto a beta by a tag push.
+      - name: Resolve version and tags
+        id: version
+        run: |
+          version="${GITHUB_REF_NAME#v}"
+          echo "value=$version" >> "$GITHUB_OUTPUT"
+          tags="ghcr.io/hoaxisr/routebox:$version"
+          case "$version" in
+            *-*) echo "prerelease: $version — not tagging latest" ;;
+            *)   tags="$tags"$'\n'"ghcr.io/hoaxisr/routebox:latest" ;;
+          esac
+          {
+            echo "tags<<EOF"
+            echo "$tags"
+            echo "EOF"
+          } >> "$GITHUB_OUTPUT"
+
+      - name: Build and push
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          platforms: linux/amd64,linux/arm64
+          push: true
+          build-args: |
+            ROUTEBOX_VERSION=${{ steps.version.outputs.value }}
+          tags: ${{ steps.version.outputs.tags }}

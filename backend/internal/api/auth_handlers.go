@@ -27,7 +27,7 @@ func (h *Handler) Login(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusUnauthorized, "invalid credentials")
 		return
 	}
-	key := lockKey(r, req.Username)
+	key := lockKey(r, req.Username, trustedProxiesFrom(h.settings))
 	if h.limiter != nil && !h.limiter.Allowed(key) {
 		writeError(w, http.StatusTooManyRequests, "too many attempts, try again later")
 		return
@@ -87,7 +87,7 @@ func (h *Handler) ChangePassword(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusBadRequest, "password auth is not configured")
 		return
 	}
-	key := lockKey(r, sec.AuthUsername)
+	key := lockKey(r, sec.AuthUsername, trustedProxiesFrom(h.settings))
 	if h.limiter != nil && !h.limiter.Allowed(key) {
 		writeError(w, http.StatusTooManyRequests, "too many attempts, try again later")
 		return

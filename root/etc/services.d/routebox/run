@@ -1,0 +1,11 @@
+#!/usr/bin/with-contenv bash
+# VPS mode never needs root (no TUN interface — see main.go's root check),
+# so RouteBox runs as the PUID/PGID-mapped abc user, matching LSP convention.
+#
+# --binary is passed on the command line rather than left to routebox.toml
+# alone: the toml is written once, on first boot, so a config file from an
+# earlier image would otherwise keep sending auto-detection to a path this
+# image no longer installs. RouteBox starts amnezia-box itself (there is no
+# systemd unit here to do it), so this path has to be right on every boot,
+# not only the first.
+exec s6-setuidgid abc /usr/bin/routebox --mode vps --binary /config/bin/amnezia-box

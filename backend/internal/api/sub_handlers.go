@@ -30,7 +30,7 @@ import (
 func (h *Handler) GetSubscription(w http.ResponseWriter, r *http.Request) {
 	// Per-IP rate-limit FIRST (before any registry work). Allowed → 429 check,
 	// then count this request so a sustained burst from one IP trips backoff.
-	ip := clientIP(r)
+	ip := clientIP(r, trustedProxiesFrom(h.settings))
 	if h.subLimiter != nil {
 		if !h.subLimiter.Allowed(ip) {
 			http.Error(w, "too many requests", http.StatusTooManyRequests)

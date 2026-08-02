@@ -1553,6 +1553,7 @@
     "updateFailed": "Не удалось обновить: {error}",
     "checkFailed": "Не удалось проверить: {error}",
     "loadFailed": "Не удалось загрузить статус обновления: {error}",
+    "dockerManagedHint": "RouteBox запущен в Docker — образ является источником истины для этого бинарного файла. Обновите командой:",
     "targets": {
       "amnezia-box": "amnezia-box (sing-box)",
       "routebox": "RouteBox"

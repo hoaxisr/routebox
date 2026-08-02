@@ -4,6 +4,8 @@ import (
 	"encoding/json"
 	"fmt"
 	"net/http"
+
+	"routebox/backend/internal/awg"
 )
 
 // --- Log Settings ---
@@ -97,6 +99,18 @@ func (h *Handler) UpdateSettings(w http.ResponseWriter, r *http.Request) {
 		if bs != "kernel" && bs != "singbox" {
 			writeError(w, http.StatusBadRequest, "invalid awg.backend")
 			return
+		}
+		// RouteBox's kernel path runs `systemctl … awg-quick@<iface>`, so it needs
+		// the amneziawg-tools and systemd present. Refused here, where the choice
+		// is made and the reason can be named, instead of at Enable, where it
+		// surfaces as a failing command. Deliberately a capability check and not
+		// a runtime one: a host with the module loaded can serve a containerised
+		// kernel interface just fine, and an image that ships the tools passes.
+		if bs == "kernel" {
+			if reason := awg.KernelBackendUnsupported(); reason != "" {
+				writeError(w, http.StatusConflict, "the kernel AWG backend is unavailable on this system: "+reason+". Use the singbox backend, which needs neither.")
+				return
+			}
 		}
 		if h.awg != nil && h.awg.Status(r.Context()).Enabled {
 			writeError(w, http.StatusConflict, "disable the AWG server before switching backend")

@@ -1542,6 +1542,7 @@
     "updateFailed": "Update failed: {error}",
     "checkFailed": "Check failed: {error}",
     "loadFailed": "Failed to load update status: {error}",
+    "dockerManagedHint": "RouteBox is running in Docker — the image is the source of truth for this binary. Update by running:",
     "targets": {
       "amnezia-box": "amnezia-box (sing-box)",
       "routebox": "RouteBox"

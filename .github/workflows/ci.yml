@@ -39,3 +39,28 @@ jobs:
           go vet ./backend/...
           go test ./backend/...
           CGO_ENABLED=0 go build ./backend/cmd/routebox
+
+  docker:
+    # The image is only built by the release pipeline, which runs after the
+    # binaries are published — a Dockerfile mistake would surface with the
+    # release already out. Build it here on the same events that gate the code,
+    # amd64 only and without pushing: the cross-compiling stages are the ones
+    # that can break, and arm64 differs only in GOARCH.
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+      - uses: docker/setup-buildx-action@v3
+      - name: Build image (no push)
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          platforms: linux/amd64
+          push: false
+          load: true
+          build-args: |
+            ROUTEBOX_VERSION=ci
+          tags: routebox:ci
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+      - name: Smoke-test the image
+        run: docker run --rm --entrypoint /usr/bin/routebox routebox:ci version

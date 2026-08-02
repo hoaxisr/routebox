@@ -4,6 +4,7 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"strings"
 	"testing"
 	"time"
 )
@@ -354,5 +355,118 @@ func TestParseExecStartBinary(t *testing.T) {
 				t.Fatalf("parseExecStartBinary(%q) = %q, want %q", tt.in, got, tt.want)
 			}
 		})
+	}
+}
+
+// TestPinBinaryPathReportsWhatItReplaced: pinning is how a packaged install
+// (the Docker image keeps amnezia-box on the writable volume) says where the
+// binary it runs lives. Whoever pins over a detected path has to be told, since
+// from then on status, version and updates all follow the pinned one.
+func TestPinBinaryPathReportsWhatItReplaced(t *testing.T) {
+	m := &Manager{binaryPath: "/usr/local/bin/amnezia-box"}
+
+	if replaced := m.PinBinaryPath("/config/bin/amnezia-box"); replaced != "/usr/local/bin/amnezia-box" {
+		t.Errorf("replaced = %q, want the previously detected path", replaced)
+	}
+	if got := m.GetBinaryPath(); got != "/config/bin/amnezia-box" {
+		t.Errorf("binary path = %q, want the pinned one", got)
+	}
+	// Same path pinned again is not a replacement — nothing to report.
+	if replaced := m.PinBinaryPath("/config/bin/amnezia-box"); replaced != "" {
+		t.Errorf("re-pinning the same path reported %q, want no report", replaced)
+	}
+	// Empty means "not configured": detection stands, and nothing is pinned.
+	unpinned := &Manager{binaryPath: "/usr/local/bin/amnezia-box"}
+	if replaced := unpinned.PinBinaryPath(""); replaced != "" {
+		t.Errorf("empty pin reported %q", replaced)
+	}
+	if got := unpinned.GetBinaryPath(); got != "/usr/local/bin/amnezia-box" {
+		t.Errorf("empty pin changed the path to %q", got)
+	}
+	if unpinned.binaryIsPinned() {
+		t.Error("empty pin must leave the manager unpinned")
+	}
+}
+
+// TestPinnedBinaryDoesNotFallBackToPATH: with a pin in place, a missing binary
+// must read as missing. Silently resolving another amnezia-box from PATH would
+// leave the panel reporting that one's version while the updater still installs
+// over the pinned path — two binaries, one of them invisible.
+func TestPinnedBinaryDoesNotFallBackToPATH(t *testing.T) {
+	if _, err := exec.LookPath("sh"); err != nil {
+		t.Skip("sh not available")
+	}
+	dir := t.TempDir()
+	// A runnable decoy first on PATH: the fallback would find this one.
+	decoy := filepath.Join(dir, "amnezia-box")
+	if err := os.WriteFile(decoy, []byte("#!/bin/sh\necho 'fake-box version 9.9.9'\n"), 0755); err != nil {
+		t.Fatal(err)
+	}
+	t.Setenv("PATH", dir+string(os.PathListSeparator)+os.Getenv("PATH"))
+
+	m := &Manager{}
+	m.PinBinaryPath(filepath.Join(dir, "not-installed-here"))
+
+	v, err := m.GetVersion()
+	if err == nil {
+		t.Fatalf("GetVersion returned %q; a pinned-but-missing binary must be an error", v)
+	}
+	if got := m.GetBinaryPath(); got != filepath.Join(dir, "not-installed-here") {
+		t.Errorf("the pin was overwritten by detection: %q", got)
+	}
+	// Unpinned, the same setup resolves the decoy — this is the behaviour the
+	// pin suppresses, asserted so the test can't pass for the wrong reason.
+	if v, err := (&Manager{}).GetVersion(); err != nil || !strings.Contains(v, "9.9.9") {
+		t.Fatalf("unpinned lookup should have found the PATH binary; got %q, %v", v, err)
+	}
+}
+
+// TestExeMatchesSurvivesTheUpdateSwap: the updater renames the running binary
+// to <path>.old and moves the new one into place, then calls Restart. If the
+// running process stops matching the managed path at that point, Restart reads
+// "not running", skips the stop, and starts a second amnezia-box next to the
+// first — two processes competing for the same inbound ports, with the update
+// reported as successful. Standalone installs only (a container, or any
+// non-systemd host): systemctl restart tracks the unit's cgroup instead.
+func TestExeMatchesSurvivesTheUpdateSwap(t *testing.T) {
+	// Needs a real ELF: /proc/<pid>/exe of a script points at the interpreter.
+	sleepBin, err := exec.LookPath("sleep")
+	if err != nil {
+		t.Skip("sleep not available")
+	}
+	payload, err := os.ReadFile(sleepBin)
+	if err != nil {
+		t.Skip("cannot read sleep binary")
+	}
+	dir := t.TempDir()
+	bin := filepath.Join(dir, "amnezia-box")
+	if err := os.WriteFile(bin, payload, 0755); err != nil {
+		t.Fatal(err)
+	}
+
+	cmd := exec.Command(bin, "30")
+	if err := cmd.Start(); err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() {
+		cmd.Process.Kill()
+		cmd.Wait()
+	})
+	pid := cmd.Process.Pid
+
+	m := &Manager{binaryPath: bin}
+	if !m.exeMatches(pid) {
+		t.Fatal("the process was not recognised before the swap")
+	}
+
+	// Exactly what updates.Updater.apply does to the file underneath it.
+	if err := os.Rename(bin, bin+".old"); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(bin, payload, 0755); err != nil {
+		t.Fatal(err)
+	}
+	if !m.exeMatches(pid) {
+		t.Fatal("the running process became invisible after the binary swap — Restart would start a second one beside it")
 	}
 }

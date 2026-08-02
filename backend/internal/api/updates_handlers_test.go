@@ -243,6 +243,93 @@ func TestApplySelfUpdateReExecsInstallPath(t *testing.T) {
 	}
 }
 
+// dockerHandler returns a handler in Docker mode carrying both target kinds:
+// the self-update one (RouteBox's own binary, which lives in the image) and a
+// normal one (amnezia-box, which lives on the /config volume and stays
+// updatable). The distinction is the whole point of the mode.
+func dockerHandler(t *testing.T) *Handler {
+	t.Helper()
+	h := newUpdatesHandler(t)
+	h.updates.Targets = append(h.updates.Targets, updates.Target{
+		Name:           "routebox",
+		Repo:           "hoaxisr/routebox",
+		AssetSuffix:    func(string) (string, bool) { return "linux-amd64", true },
+		BinaryPath:     func() string { return "/usr/bin/routebox" },
+		CurrentVersion: func() (string, error) { return "1.0.0", nil },
+		SelfUpdate:     true,
+	})
+	h.SetDockerMode(true)
+	return h
+}
+
+func TestDockerModeRefusesSelfUpdate(t *testing.T) {
+	h := dockerHandler(t)
+	rec := httptest.NewRecorder()
+	req := httptest.NewRequest("POST", "/api/updates/apply", strings.NewReader(`{"target":"routebox"}`))
+	h.ApplyUpdate(rec, req)
+	if rec.Code != http.StatusConflict {
+		t.Fatalf("status = %d, want 409: %s", rec.Code, rec.Body.String())
+	}
+	// The message must carry the command that replaces the button, or the refusal
+	// is a dead end for whoever hit it.
+	if body := rec.Body.String(); !strings.Contains(body, "docker compose pull") {
+		t.Errorf("refusal does not say what to run instead: %s", body)
+	}
+}
+
+// TestDockerModeStillUpdatesAmneziaBox is the guard against over-blocking: the
+// image is the source of truth for RouteBox's binary only. amnezia-box lives on
+// the writable volume and must keep its Apply button.
+func TestDockerModeStillUpdatesAmneziaBox(t *testing.T) {
+	h := dockerHandler(t)
+	rec := httptest.NewRecorder()
+	req := httptest.NewRequest("POST", "/api/updates/apply", strings.NewReader(`{"target":"amnezia-box"}`))
+	h.ApplyUpdate(rec, req)
+	if rec.Code == http.StatusConflict {
+		t.Fatalf("amnezia-box must not be refused as docker-managed: %s", rec.Body.String())
+	}
+}
+
+// TestDockerModeStatusFlagsOnlySelfUpdate covers what the Updates page renders
+// from: the flag and the command ride on the RouteBox target alone.
+func TestDockerModeStatusFlagsOnlySelfUpdate(t *testing.T) {
+	h := dockerHandler(t)
+	rec := httptest.NewRecorder()
+	h.GetUpdatesStatus(rec, httptest.NewRequest("GET", "/api/updates/status", nil))
+	if rec.Code != http.StatusOK {
+		t.Fatalf("status = %d", rec.Code)
+	}
+	for _, raw := range decodeData(t, rec)["targets"].([]interface{}) {
+		ts := raw.(map[string]interface{})
+		wantManaged := ts["name"] == "routebox"
+		if got := ts["docker_managed"] == true; got != wantManaged {
+			t.Errorf("%v: docker_managed = %v, want %v", ts["name"], got, wantManaged)
+		}
+		if _, has := ts["update_command"]; has != wantManaged {
+			t.Errorf("%v: update_command present = %v, want %v", ts["name"], has, wantManaged)
+		}
+	}
+}
+
+// TestWithoutDockerModeNoFlags: the same handler outside a container must look
+// exactly as it did before the mode existed — no flag, no command, no button
+// swapped out on a bare-metal install.
+func TestWithoutDockerModeNoFlags(t *testing.T) {
+	h := dockerHandler(t)
+	h.SetDockerMode(false)
+	rec := httptest.NewRecorder()
+	h.GetUpdatesStatus(rec, httptest.NewRequest("GET", "/api/updates/status", nil))
+	for _, raw := range decodeData(t, rec)["targets"].([]interface{}) {
+		ts := raw.(map[string]interface{})
+		if _, has := ts["docker_managed"]; has {
+			t.Errorf("%v: docker_managed leaked outside Docker", ts["name"])
+		}
+		if _, has := ts["update_command"]; has {
+			t.Errorf("%v: update_command leaked outside Docker", ts["name"])
+		}
+	}
+}
+
 func TestApplyWhenUpToDate(t *testing.T) {
 	h := newUpdatesHandler(t)
 	// Make current == latest so apply must refuse

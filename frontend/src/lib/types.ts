@@ -980,6 +980,10 @@ export interface UpdateTarget {
 	last_checked?: string;
 	update_available: boolean;
 	error?: string;
+	/** True when this target's Apply is refused because RouteBox runs in Docker. */
+	docker_managed?: boolean;
+	/** Command to run instead, shown when docker_managed is true. */
+	update_command?: string;
 }
 
 export interface UpdatesStatus {
