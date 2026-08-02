@@ -23,7 +23,9 @@ func TestRenderServerNATIdempotentChains(t *testing.T) {
 		"-F RBOX-AWG-NAT", // flush-stale-first (idempotent)
 		"-s 10.10.0.0/24 -o ens3 -j MASQUERADE",
 		"-p udp --dport 51820 -j ACCEPT", // INPUT rule
-		"net.ipv4.ip_forward=1",
+		// Tolerated on failure: a container runtime may already own this, and
+		// forwarding being on is not a reason to refuse to bring the interface up.
+		"net.ipv4.ip_forward=1 2>/dev/null || true",
 	} {
 		if !strings.Contains(out, want) {
 			t.Errorf("rendered .conf missing %q:\n%s", want, out)

@@ -109,10 +109,15 @@ jobs:
         run: |
           version="${GITHUB_REF_NAME#v}"
           echo "value=$version" >> "$GITHUB_OUTPUT"
-          tags="ghcr.io/hoaxisr/routebox:$version"
+          # Derived from the repository rather than hardcoded, so a fork can tag
+          # and exercise this whole job against its own GHCR namespace. On this
+          # repository it resolves to exactly what it always was. GHCR requires
+          # the name to be lowercase.
+          image="ghcr.io/${GITHUB_REPOSITORY,,}"
+          tags="$image:$version"
           case "$version" in
             *-*) echo "prerelease: $version — not tagging latest" ;;
-            *)   tags="$tags"$'\n'"ghcr.io/hoaxisr/routebox:latest" ;;
+            *)   tags="$tags"$'\n'"$image:latest" ;;
           esac
           {
             echo "tags<<EOF"

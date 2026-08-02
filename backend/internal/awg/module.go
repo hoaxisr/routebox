@@ -116,7 +116,13 @@ func (m *ModuleManager) Ensure(ctx context.Context) error {
 
 	id, idLike := m.distro()
 	if !isDebianFamily(id, idLike) {
-		return m.fail(fmt.Sprintf("unsupported distro %q (v1 supports Debian/Ubuntu only)", id))
+		// Naming the distro alone sends people to fix the wrong thing. What is
+		// missing is a loaded module, and nothing here can produce one: in a
+		// container the kernel belongs to the host, and on a non-Debian host
+		// this installer does not know how to build it.
+		return m.fail(fmt.Sprintf(
+			"the amneziawg kernel module is not loaded, and RouteBox cannot install it here (distro %q; the installer supports Debian/Ubuntu). Load it on the host — `modprobe amneziawg`, installing amneziawg-dkms and the matching kernel headers first — or use the singbox backend, which needs no module",
+			id))
 	}
 	codename := m.codename()
 	if codename == "" {
