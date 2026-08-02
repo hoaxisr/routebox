@@ -68,6 +68,32 @@ RUN set -e; \
 RUN curl -fsSL -o /out/geoip.mmdb \
     https://github.com/iplocate/ip-address-databases/raw/main/ip-to-country/ip-to-country.mmdb
 
+# ---- amneziawg-tools (awg, awg-quick) for the kernel AmneziaWG backend ----
+# Alpine does not package these, so they come from upstream. Built for the
+# TARGET arch rather than cross-compiled: awg is a small C program and the
+# emulated build costs seconds, where a cross toolchain would cost a stage.
+# The tools are inert unless the operator selects the kernel backend.
+FROM alpine:3.20 AS awg-tools
+ARG AMNEZIAWG_TOOLS_VERSION=v3.0.20260730
+RUN apk add --no-cache build-base linux-headers curl
+RUN set -e; \
+    curl -fsSL -o /tmp/tools.tar.gz \
+        "https://github.com/amnezia-vpn/amneziawg-tools/archive/refs/tags/${AMNEZIAWG_TOOLS_VERSION}.tar.gz"; \
+    mkdir -p /src; tar xzf /tmp/tools.tar.gz -C /src --strip-components=1; \
+    make -C /src/src -j"$(nproc)"; \
+    # The install target is what renames wg -> awg and wg-quick -> awg-quick,
+    # and awg-quick calls `awg` by that name, so the rename is not cosmetic.
+    make -C /src/src install DESTDIR=/out PREFIX=/usr \
+        WITH_BASHCOMPLETION=no WITH_SYSTEMDUNITS=no WITH_WGQUICK=yes; \
+    # awg-quick refuses to run unless it is uid 0 and re-execs itself through
+    # sudo. That check predates capabilities: the kernel asks for CAP_NET_ADMIN,
+    # not for root, and this image grants exactly that to the panel (see the s6
+    # run script). Neutralising the check removes an assumption, not a
+    # safeguard — every operation below it is still enforced by the kernel.
+    sed -i "/exec sudo/s|.*|\treturn 0 # patched: RouteBox runs this with CAP_NET_ADMIN instead of uid 0|" /out/usr/bin/awg-quick; \
+    grep -q "CAP_NET_ADMIN instead of uid 0" /out/usr/bin/awg-quick; \
+    /out/usr/bin/awg --version
+
 # ---- runtime ----
 FROM ghcr.io/linuxserver/baseimage-alpine:3.20
 
@@ -80,6 +106,12 @@ LABEL org.opencontainers.image.source="https://github.com/hoaxisr/routebox" \
 # (https://docs.linuxserver.io/general/container-branding/).
 ENV LSIO_FIRST_PARTY=false \
     ROUTEBOX_RUNTIME=docker
+
+# awg-quick is a bash script that drives ip/iptables; bash is already in the
+# base image. Everything here is unused by the default singbox backend.
+RUN apk add --no-cache iproute2 iptables libcap
+COPY --from=awg-tools /out/usr/bin/awg /usr/bin/awg
+COPY --from=awg-tools /out/usr/bin/awg-quick /usr/bin/awg-quick
 
 COPY --from=go-builder /out/routebox /usr/bin/routebox
 # amnezia-box ships as a /defaults template, not an installed binary: cont-init
@@ -96,7 +128,7 @@ COPY root/ /
 # binary (panel TLS cert mirror, ACME cache default, AmneziaWG server data);
 # symlinking them into /config keeps everything RouteBox persists under the
 # single volume LSP images conventionally expose, with no code changes needed.
-RUN chmod +x /usr/bin/routebox /defaults/amnezia-box /etc/services.d/routebox/run /etc/cont-init.d/10-routebox-config && \
+RUN chmod +x /usr/bin/routebox /usr/bin/awg /usr/bin/awg-quick /defaults/amnezia-box /etc/services.d/routebox/run /etc/cont-init.d/10-routebox-config && \
     mkdir -p /config /etc/amnezia && \
     ln -s /config /etc/routebox && \
     ln -s /config/amneziawg /etc/amnezia/amneziawg

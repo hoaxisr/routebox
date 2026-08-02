@@ -3,6 +3,7 @@ package awg
 import (
 	"context"
 	"fmt"
+	"os"
 	"strconv"
 	"strings"
 )
@@ -14,11 +15,61 @@ import (
 // Apply/re-enable change unapplied to the live interface (conf on disk updated, but
 // awg-quick never re-read it).
 func (m *Manager) iface_Up(ctx context.Context) error {
-	if _, _, err := m.run.Run(ctx, "systemctl", "enable", "awg-quick@"+m.iface); err != nil {
+	if _, err := lookPath("systemctl"); err == nil {
+		if _, _, err := m.run.Run(ctx, "systemctl", "enable", "awg-quick@"+m.iface); err != nil {
+			return err
+		}
+		_, _, err := m.run.Run(ctx, "systemctl", "restart", "awg-quick@"+m.iface)
 		return err
 	}
-	_, _, err := m.run.Run(ctx, "systemctl", "restart", "awg-quick@"+m.iface)
+
+	// No systemd: drive awg-quick directly. This is the container case, and any
+	// host without systemd — iface_Down has always had the same fallback, so
+	// until now such a system could tear an interface down but never bring one
+	// up. There is no unit to hold boot persistence here, so RestoreKernelIface
+	// re-applies the conf at startup instead.
+	//
+	// `awg-quick up` refuses an interface that already exists, while this
+	// function must be re-appliable (a changed port or obfuscation has to reach
+	// the live link), so an existing one is taken down first.
+	if m.kernelIfacePresent(ctx) {
+		if _, _, err := m.run.Run(ctx, "awg-quick", "down", m.iface); err != nil {
+			return err
+		}
+	}
+	_, _, err := m.run.Run(ctx, "awg-quick", "up", m.iface)
 	return err
+}
+
+// RestoreKernelIface brings the kernel interface back up at startup when there
+// is no systemd unit to have done it. Without this a container that comes back
+// shows an AmneziaWG server the settings call enabled, with no interface behind
+// it — the same gap RouteBox closes for amnezia-box itself.
+//
+// Best-effort by construction: it reports what happened for the log and never
+// blocks startup. A no-op when systemd is present (the unit owns persistence),
+// when the operator disabled the server, or when the link is already there.
+func (m *Manager) RestoreKernelIface(ctx context.Context, desiredEnabled bool) error {
+	if !desiredEnabled {
+		return nil
+	}
+	if _, err := lookPath("systemctl"); err == nil {
+		return nil
+	}
+	if m.kernelIfacePresent(ctx) {
+		return nil
+	}
+	if _, err := os.Stat(m.confPath); err != nil {
+		return nil // never configured; nothing to restore
+	}
+	if _, _, err := m.run.Run(ctx, "awg-quick", "up", m.iface); err != nil {
+		return fmt.Errorf("restoring the AmneziaWG interface: %w", err)
+	}
+	m.mu.Lock()
+	m.enabled = true
+	m.phase = PhaseReady
+	m.mu.Unlock()
+	return nil
 }
 
 // iface_Down stops the interface AND clears its boot persistence, covering every
