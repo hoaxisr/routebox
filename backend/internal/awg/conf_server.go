@@ -114,7 +114,11 @@ func postUp(s ServerConf) string {
 	// One PostUp line (semicolon-joined; awg-quick runs it via /bin/sh, so every
 	// interpolated value MUST be component-0 canonical — they are).
 	cmds := []string{
-		"sysctl -w net.ipv4.ip_forward=1",
+		// Tolerated on failure: the value may already be set by something that
+		// owns it — a container runtime's sysctls, or a host where /proc/sys is
+		// not writable by whoever runs this. Forwarding being on already is not
+		// a reason to refuse to bring the interface up.
+		"sysctl -w net.ipv4.ip_forward=1 2>/dev/null || true",
 		// NAT chain
 		recreateChain("-t nat", "RBOX-AWG-NAT"),
 		fmt.Sprintf("iptables -t nat -A RBOX-AWG-NAT -s %s -o %s -j MASQUERADE", s.Subnet, s.WAN),

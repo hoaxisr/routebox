@@ -220,3 +220,126 @@ func TestReconcileResidueKernelRemovesOrphanEndpoint(t *testing.T) {
 		t.Fatalf("apply calls = %d, want 1", *applyCount)
 	}
 }
+
+// TestIfaceUpWithoutSystemd: bringing an interface up used to require systemd,
+// so a host (or container) without it could tear one down but never start one.
+// awg-quick is driven directly instead, and because `up` refuses an existing
+// link, a live one is taken down first so a changed port or obfuscation reaches
+// it.
+func TestIfaceUpWithoutSystemd(t *testing.T) {
+	withoutSystemd(t)
+
+	t.Run("no link yet: straight up, and never touches systemctl", func(t *testing.T) {
+		f := newFakeRunner()
+		m := newTestManager(t, f)
+		linkPresentUntil(f, m.iface, "\x00never-present") // link absent throughout
+		f.match = func(name string, args []string) (string, bool) {
+			if name == "ip" {
+				return "", true // absent: empty output
+			}
+			return "", false
+		}
+		if err := m.iface_Up(context.Background()); err != nil {
+			t.Fatalf("iface_Up: %v", err)
+		}
+		if f.sawContains("systemctl") {
+			t.Error("systemctl must not be called when it is not installed")
+		}
+		if !f.sawContains("awg-quick up " + m.iface) {
+			t.Fatalf("expected `awg-quick up %s`, got %v", m.iface, f.calls)
+		}
+	})
+
+	t.Run("existing link is re-applied, not left stale", func(t *testing.T) {
+		f := newFakeRunner()
+		m := newTestManager(t, f)
+		linkPresentUntil(f, m.iface, "awg-quick down "+m.iface)
+		if err := m.iface_Up(context.Background()); err != nil {
+			t.Fatalf("iface_Up: %v", err)
+		}
+		down, up := f.indexOf("awg-quick down "+m.iface), f.indexOf("awg-quick up "+m.iface)
+		if down < 0 || up < 0 || down > up {
+			t.Fatalf("a live link must be taken down before up, got %v", f.calls)
+		}
+	})
+}
+
+// TestRestoreKernelIface: with systemd the unit owns boot persistence; without
+// one, a restarted container would show an enabled server with no interface.
+func TestRestoreKernelIface(t *testing.T) {
+	writeConf := func(t *testing.T, m *Manager) {
+		t.Helper()
+		if err := os.MkdirAll(filepath.Dir(m.confPath), 0o700); err != nil {
+			t.Fatal(err)
+		}
+		if err := os.WriteFile(m.confPath, []byte("[Interface]\nPrivateKey = x\n"), 0o600); err != nil {
+			t.Fatal(err)
+		}
+	}
+
+	t.Run("brings it up", func(t *testing.T) {
+		withoutSystemd(t)
+		f := newFakeRunner()
+		m := newTestManager(t, f)
+		writeConf(t, m)
+		if err := m.RestoreKernelIface(context.Background(), true); err != nil {
+			t.Fatalf("RestoreKernelIface: %v", err)
+		}
+		if !f.sawContains("awg-quick up " + m.iface) {
+			t.Fatalf("expected the interface to be restored, got %v", f.calls)
+		}
+	})
+
+	t.Run("disabled server is left alone", func(t *testing.T) {
+		withoutSystemd(t)
+		f := newFakeRunner()
+		m := newTestManager(t, f)
+		writeConf(t, m)
+		if err := m.RestoreKernelIface(context.Background(), false); err != nil {
+			t.Fatal(err)
+		}
+		if f.sawContains("awg-quick") {
+			t.Fatalf("must not start a server the operator disabled: %v", f.calls)
+		}
+	})
+
+	t.Run("systemd present: the unit owns this", func(t *testing.T) {
+		orig := lookPath
+		lookPath = func(string) (string, error) { return "/usr/bin/systemctl", nil }
+		t.Cleanup(func() { lookPath = orig })
+		f := newFakeRunner()
+		m := newTestManager(t, f)
+		writeConf(t, m)
+		if err := m.RestoreKernelIface(context.Background(), true); err != nil {
+			t.Fatal(err)
+		}
+		if f.sawContains("awg-quick") {
+			t.Fatalf("systemd installs must not be second-guessed: %v", f.calls)
+		}
+	})
+
+	t.Run("never configured: nothing to restore", func(t *testing.T) {
+		withoutSystemd(t)
+		f := newFakeRunner()
+		m := newTestManager(t, f) // no conf written
+		if err := m.RestoreKernelIface(context.Background(), true); err != nil {
+			t.Fatal(err)
+		}
+		if f.sawContains("awg-quick") {
+			t.Fatalf("no conf on disk means nothing to bring up: %v", f.calls)
+		}
+	})
+}
+
+// withoutSystemd makes lookPath report systemctl as absent for one test.
+func withoutSystemd(t *testing.T) {
+	t.Helper()
+	orig := lookPath
+	lookPath = func(file string) (string, error) {
+		if file == "systemctl" {
+			return "", os.ErrNotExist
+		}
+		return "/usr/bin/" + file, nil
+	}
+	t.Cleanup(func() { lookPath = orig })
+}
