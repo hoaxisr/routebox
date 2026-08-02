@@ -49,6 +49,7 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v7
+      - uses: docker/setup-qemu-action@v3 # for the arm64 tools build below
       - uses: docker/setup-buildx-action@v3
       - name: Build image (no push)
         uses: docker/build-push-action@v6
@@ -64,3 +65,15 @@ jobs:
           cache-to: type=gha,mode=max
       - name: Smoke-test the image
         run: docker run --rm --entrypoint /usr/bin/routebox routebox:ci version
+      # amneziawg-tools is the one thing compiled for the TARGET arch rather than
+      # cross-compiled, so an amd64-only build says nothing about arm64. Just the
+      # stage: it fails in seconds if the sources or toolchain drift.
+      - name: Build amneziawg-tools for arm64
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          target: awg-tools
+          platforms: linux/arm64
+          push: false
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
