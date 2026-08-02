@@ -445,6 +445,15 @@ func main() {
 	// crash mid-switch) can leave awg-quick@<iface> enabled/running while the
 	// backend is singbox — a live, panel-invisible kernel tunnel — or an orphaned
 	// managed endpoint in the active config while the backend is kernel.
+	// Kernel backend without systemd (a container, or a host without it): no unit
+	// holds boot persistence, so the interface has to be brought back here or the
+	// panel comes up reporting a server that is enabled with nothing behind it.
+	// A no-op wherever systemd owns the interface.
+	if awgBackend == "kernel" {
+		if err := awgMgr.RestoreKernelIface(context.Background(), settingsMgr.Get().Awg.Enabled); err != nil {
+			log.Printf("WARNING: %v — the AmneziaWG server is enabled in settings but its interface is not up; the panel's Enable will report the same failure", err)
+		}
+	}
 	awgMgr.ReconcileBackendResidue(context.Background())
 	apiHandler.SetAWG(awgMgr)
 
