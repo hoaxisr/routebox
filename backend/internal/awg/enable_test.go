@@ -459,6 +459,10 @@ func TestValidateObfGuards(t *testing.T) {
 // on an already-active unit, so a changed conf (port/obfuscation/subnet) silently
 // never loaded into the live interface. Regression for the "Apply did nothing" bug.
 func TestEnableRestartsIface(t *testing.T) {
+	// Pin the systemd path explicitly: iface_Up picks its route by whether
+	// systemctl exists, so without this the assertion below would quietly depend
+	// on the machine running the tests having systemd.
+	withSystemd(t)
 	f := newFakeRunner()
 	m := newEnableManager(t, f)
 	f.outputs["awg show awg-rb0"] = "interface: awg-rb0\n  listening port: 51820\n"
