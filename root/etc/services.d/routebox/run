@@ -8,4 +8,26 @@
 # image no longer installs. RouteBox starts amnezia-box itself (there is no
 # systemd unit here to do it), so this path has to be right on every boot,
 # not only the first.
-exec s6-setuidgid abc /usr/bin/routebox --mode vps --binary /config/bin/amnezia-box
+BIN=/usr/bin/routebox
+ARGS=(--mode vps --binary /config/bin/amnezia-box)
+
+# The kernel AmneziaWG backend needs CAP_NET_ADMIN, and awg-quick runs ip and
+# iptables as children, so the capability has to be in the AMBIENT set to reach
+# them — s6-setuidgid drops everything, which is why the panel measured
+# CapEff: 0 before this.
+#
+# Only when the operator asked for it: without `cap_add: [NET_ADMIN]` the
+# capability is not in our bounding set, and the panel runs exactly as it always
+# has. CAP_NET_ADMIN is bit 12 of the bounding-set mask.
+capbnd=$(awk '/^CapBnd:/ {print $2}' /proc/self/status)
+if [[ -n "$capbnd" ]] && (( 0x${capbnd} & (1 << 12) )); then
+    echo "**** CAP_NET_ADMIN present: the kernel AmneziaWG backend is available ****"
+    # capsh, not busybox setpriv: the latter has no --reuid, so it would run the
+    # panel as root — the opposite of what this image is for. capsh keeps the
+    # capability across the uid change (--keep=1) and puts it in the ambient set,
+    # which is what makes it reach the ip and iptables that awg-quick runs.
+    exec capsh --keep=1 --user=abc --inh=cap_net_admin --addamb=cap_net_admin \
+        -- -c 'exec "$0" "$@"' "$BIN" "${ARGS[@]}"
+fi
+
+exec s6-setuidgid abc "$BIN" "${ARGS[@]}"

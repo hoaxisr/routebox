@@ -51,6 +51,19 @@ services:
     # cap_add:
     #   - NET_BIND_SERVICE
 
+    # ---- kernel AmneziaWG backend (optional) --------------------------------
+    # The default singbox backend needs none of this. For the kernel one the
+    # host must have the amneziawg module loaded (modprobe amneziawg), and the
+    # server's UDP port has to be published — it is not HTTP, so no reverse
+    # proxy can carry it. The panel refuses the backend, naming what is missing,
+    # rather than failing later at Enable.
+    # cap_add:
+    #   - NET_ADMIN
+    # sysctls:
+    #   - net.ipv4.ip_forward=1
+    # ports:
+    #   - "51820:51820/udp"
+
 # ---- Behind a reverse proxy -------------------------------------------------
 # Replace the environment/ports above with the following when nginx, Caddy or
 # Traefik already holds the certificate for your domain.
