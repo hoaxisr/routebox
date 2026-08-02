@@ -3,6 +3,7 @@
 	import { api } from '$lib/api/client';
 	import { notifications } from '$lib/stores';
 	import { t } from 'svelte-i18n';
+	import { copyText } from '$lib/utils/clipboard';
 	import type { UpdatesStatus, UpdateTarget, UpdateProgress, UpdateTargetName } from '$lib/types';
 
 	let loading = $state(true);
@@ -130,6 +131,14 @@
 		manualRestart = true;
 	}
 
+	async function copyCommand(command: string) {
+		if (await copyText(command)) {
+			notifications.success($t('common.copied'));
+		} else {
+			notifications.error($t('common.copyFailed'));
+		}
+	}
+
 	async function applyUpdate(target: UpdateTarget) {
 		if (target.name === 'amnezia-box' && !confirm($t('updates.confirmProxyRestart'))) {
 			return;
@@ -254,13 +263,15 @@
 								<span class="px-2 py-0.5 text-xs rounded-full bg-[var(--ctp-yellow)]/20 text-[var(--ctp-yellow)]">
 									{$t('updates.updateAvailable')}
 								</span>
-								<button
-									onclick={() => applyUpdate(target)}
-									disabled={applying !== null || restartWait}
-									class="px-4 py-2 bg-[var(--ctp-primary)] text-white rounded-lg hover:opacity-90 transition-opacity disabled:opacity-50"
-								>
-									{applying === target.name ? $t('updates.updating') : $t('updates.update')}
-								</button>
+								{#if !target.docker_managed}
+									<button
+										onclick={() => applyUpdate(target)}
+										disabled={applying !== null || restartWait}
+										class="px-4 py-2 bg-[var(--ctp-primary)] text-white rounded-lg hover:opacity-90 transition-opacity disabled:opacity-50"
+									>
+										{applying === target.name ? $t('updates.updating') : $t('updates.update')}
+									</button>
+								{/if}
 							{:else}
 								<span class="px-2 py-0.5 text-xs rounded-full bg-[var(--ctp-green)]/20 text-[var(--ctp-green)]">
 									{$t('updates.upToDate')}
@@ -271,6 +282,25 @@
 
 					{#if target.error}
 						<div class="mt-3 text-sm text-[var(--ctp-red)]">{target.error}</div>
+					{/if}
+
+					{#if target.update_available && target.docker_managed && target.update_command}
+						<div class="mt-3">
+							<p class="text-sm text-[var(--ctp-subtext1)] mb-2">{$t('updates.dockerManagedHint')}</p>
+							<div class="flex items-center gap-2">
+								<code
+									class="flex-1 text-sm font-mono bg-[var(--ctp-surface0)] rounded-lg px-3 py-2 overflow-x-auto whitespace-nowrap"
+								>
+									{target.update_command}
+								</code>
+								<button
+									onclick={() => copyCommand(target.update_command ?? '')}
+									class="px-3 py-2 text-sm bg-[var(--ctp-surface0)] text-[var(--ctp-text)] rounded-lg hover:bg-[var(--ctp-surface1)] transition-colors"
+								>
+									{$t('common.copy')}
+								</button>
+							</div>
+						</div>
 					{/if}
 
 					<!-- Progress bar while this target is updating -->

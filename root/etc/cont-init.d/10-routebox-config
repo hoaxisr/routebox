@@ -1,0 +1,127 @@
+#!/usr/bin/with-contenv bash
+# Bootstraps /config on first boot: seeds the amnezia-box binary and the GeoIP
+# database from the image defaults and, if routebox.toml doesn't exist yet,
+# writes a minimal one from env vars — the Docker equivalent of what
+# vps-install.sh prompts for on bare metal. RouteBox itself (bootstrapVPSAuth in
+# main.go) generates and announces the admin password on first start; this
+# script never touches auth.
+
+set -e
+
+mkdir -p /config/amnezia-box /config/acme /config/panel-cert /config/amneziawg /config/bin
+
+# amnezia-box lives on the volume rather than in the image: that is what lets
+# the panel's Updates page replace it (the updater writes <path>.new next to the
+# binary as the unprivileged run user, which root-owned /usr/bin refuses) and
+# what makes an update outlive the container being recreated.
+if [ ! -f /config/bin/amnezia-box ]; then
+    echo "**** seeding amnezia-box $(cat /defaults/amnezia-box.version 2>/dev/null) ****"
+    cp /defaults/amnezia-box /config/bin/amnezia-box
+    chmod +x /config/bin/amnezia-box
+elif [ -f /defaults/amnezia-box.version ]; then
+    # Deliberately does not overwrite: a binary installed from the panel is
+    # newer than the image's more often than not, and rolling it back on every
+    # image pull would silently undo an update the operator just made.
+    have=$(/config/bin/amnezia-box version 2>/dev/null | head -1)
+    image=$(cat /defaults/amnezia-box.version)
+    case "$have" in
+        *"$image"*) ;;
+        *) echo "**** keeping /config/bin/amnezia-box (${have:-version unknown}); this image ships $image — update from the panel, or delete the file to reseed ****" ;;
+    esac
+fi
+
+if [ ! -f /config/geoip.mmdb ] && [ -f /defaults/geoip.mmdb ]; then
+    echo "**** seeding GeoIP database ****"
+    cp /defaults/geoip.mmdb /config/geoip.mmdb
+fi
+
+public_host="${PUBLIC_HOST:-}"
+
+# The domain shipped in docker-compose.yml. Running the file unedited would
+# otherwise point the built-in ACME client at a domain the operator does not
+# own: issuance fails on every handshake, and Let's Encrypt counts those
+# failures against a rate limit. Treated as "unset" — the panel comes up on
+# plain HTTP and says what to do — rather than as a real domain.
+if [ "$public_host" = "panel.example.com" ]; then
+    echo "**** PUBLIC_HOST is still the docker-compose.yml example (panel.example.com), so it is ignored ****"
+    echo "**** Until it names a real domain: no TLS certificate is requested, and subscription ****"
+    echo "**** links have no host to point at. Set it, then fix public_host in /config/routebox.toml ****"
+    public_host=""
+fi
+
+if [ ! -f /config/routebox.toml ]; then
+    echo "**** bootstrapping routebox.toml from environment ****"
+
+    listen="${LISTEN:-0.0.0.0:8443}"
+
+    acme_enabled="${ACME_ENABLED:-}"
+    if [ -z "$acme_enabled" ]; then
+        if [ -n "$public_host" ]; then acme_enabled=true; else acme_enabled=false; fi
+    fi
+
+    # public_port is the port CLIENTS reach the panel on, which is what goes into
+    # subscription URLs — not the port the panel binds. They differ whenever
+    # anything remaps: behind a reverse proxy on 443, or a `ports: "9443:8443"`.
+    # Defaulting it to the listen port matches the shipped compose; leaving it
+    # unset handed out subscription URLs with no port at all, which resolve to
+    # :443 — where a VLESS inbound may well be answering instead of the panel.
+    public_port="${PUBLIC_PORT:-${listen##*:}}"
+
+    # TRUSTED_PROXIES is a comma-separated list of IPs/CIDRs; TOML wants an array.
+    trusted_proxies=""
+    if [ -n "${TRUSTED_PROXIES:-}" ]; then
+        IFS=',' read -ra _tp <<< "$TRUSTED_PROXIES"
+        for entry in "${_tp[@]}"; do
+            entry="$(echo "$entry" | tr -d '[:space:]')"
+            [ -z "$entry" ] && continue
+            trusted_proxies="${trusted_proxies:+$trusted_proxies, }\"$entry\""
+        done
+    fi
+
+    cat > /config/routebox.toml <<EOF
+[server]
+mode = "vps"
+public_host = "$public_host"
+public_port = $public_port
+
+[network]
+listen = "$listen"
+acme_enabled = ${acme_enabled}
+acme_email = "${ACME_EMAIL:-}"
+acme_staging = ${ACME_STAGING:-false}
+acme_cache_dir = "/config/acme"
+acme_http_addr = "${ACME_HTTP_ADDR:-:80}"
+
+[security]
+trusted_proxies = [$trusted_proxies]
+
+[geoip]
+path = "/config/geoip.mmdb"
+enabled = true
+
+[singbox]
+config_path = "/config/amnezia-box/config.json"
+binary_path = "/config/bin/amnezia-box"
+EOF
+
+    if [ -n "$trusted_proxies" ]; then
+        echo "**** trusting X-Forwarded-For from $TRUSTED_PROXIES ****"
+    elif [ "$acme_enabled" = "false" ] && [ -n "$public_host" ]; then
+        echo "**** ACME is off with a public host set — looks like a reverse proxy in front ****"
+        echo "**** set TRUSTED_PROXIES to its address, or every client behind it shares one ****"
+        echo "**** rate-limit bucket for logins and subscription fetches ****"
+    fi
+else
+    # The file is written once, on first boot, and is the source of truth from
+    # then on — the panel edits it, so regenerating it from the environment
+    # would throw those edits away. Changing PUBLIC_HOST in compose afterwards
+    # therefore does nothing, which is worth saying out loud rather than
+    # leaving someone to wonder why their new domain never took effect.
+    if [ -n "$public_host" ] && ! grep -q "^public_host = \"$public_host\"" /config/routebox.toml; then
+        echo "**** PUBLIC_HOST=$public_host does not match /config/routebox.toml ****"
+        echo "**** the file wins (it is written once, on first boot, and the panel edits it); ****"
+        echo "**** change the domain in /config/routebox.toml to take effect ****"
+    fi
+fi
+
+chown -R abc:abc /config /etc/amnezia

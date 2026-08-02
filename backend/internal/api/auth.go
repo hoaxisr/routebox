@@ -4,8 +4,8 @@ import (
 	"crypto/sha256"
 	"crypto/subtle"
 	"encoding/hex"
-	"net"
 	"net/http"
+	"net/netip"
 
 	"routebox/backend/internal/auth"
 	"routebox/backend/internal/settings"
@@ -53,7 +53,7 @@ func AuthMiddleware(settingsMgr *settings.Manager, sessions *auth.SessionStore, 
 				return
 			}
 			user, pass, ok := r.BasicAuth()
-			key := lockKey(r, user)
+			key := lockKey(r, user, trustedProxiesFrom(settingsMgr))
 			if !ok || (limiter != nil && !limiter.Allowed(key)) {
 				unauthorized(w)
 				return
@@ -79,25 +79,13 @@ func unauthorized(w http.ResponseWriter) {
 	http.Error(w, "Unauthorized", http.StatusUnauthorized)
 }
 
-// clientIP returns the TCP peer IP for lockout keying. X-Forwarded-For is NOT
-// trusted: it is attacker-controlled on a direct connection and would let a
-// flood evade per-IP lockout. Behind a reverse proxy this collapses to the
-// proxy IP, which (combined with the username in the key, and a valid session
-// bypassing the limiter) is an acceptable, fail-closed trade-off.
-func clientIP(r *http.Request) string {
-	host, _, err := net.SplitHostPort(r.RemoteAddr)
-	if err != nil {
-		return r.RemoteAddr
-	}
-	return host
-}
-
 func sha256Sum(s string) []byte { h := sha256.Sum256([]byte(s)); return h[:] }
 
-// lockKey builds a bounded lockout key: real client IP plus a short digest of
-// the (attacker-controlled, unbounded) username, so a flood of long/unique
+// lockKey builds a bounded lockout key: the client IP (see clientIP, which
+// resolves it through any trusted proxy) plus a short digest of the
+// (attacker-controlled, unbounded) username, so a flood of long/unique
 // usernames can't bloat the limiter map.
-func lockKey(r *http.Request, username string) string {
+func lockKey(r *http.Request, username string, trusted []netip.Prefix) string {
 	sum := sha256.Sum256([]byte(username))
-	return clientIP(r) + "|" + hex.EncodeToString(sum[:8])
+	return clientIP(r, trusted) + "|" + hex.EncodeToString(sum[:8])
 }

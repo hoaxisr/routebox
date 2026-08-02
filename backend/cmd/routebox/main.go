@@ -64,6 +64,7 @@ var (
 	listenAddr = flag.String("listen", "", "HTTP listen address (overrides settings)")
 	clashAddr  = flag.String("clash", "", "Clash API address (overrides settings)")
 	geoipPath  = flag.String("geoip", "", "Path to GeoIP MMDB database (overrides settings)")
+	binaryPath = flag.String("binary", "", "Path to the amnezia-box binary (overrides settings; auto-detected if unset)")
 	modeFlag   = flag.String("mode", "", "panel mode: router (default) or vps")
 )
 
@@ -73,22 +74,6 @@ func main() {
 		return
 	}
 	flag.Parse()
-
-	// Require root privileges (needed for TUN interface)
-	if os.Geteuid() != 0 {
-		fmt.Println()
-		fmt.Println("╔══════════════════════════════════════════════════════════════════╗")
-		fmt.Println("║  ERROR: Root privileges required                                 ║")
-		fmt.Println("╠══════════════════════════════════════════════════════════════════╣")
-		fmt.Println("║  routebox must run as root to create TUN interfaces.             ║")
-		fmt.Println("║                                                                  ║")
-		fmt.Println("║  Please run with sudo:                                           ║")
-		fmt.Println("║     sudo ./routebox                                              ║")
-		fmt.Println("║                                                                  ║")
-		fmt.Println("╚══════════════════════════════════════════════════════════════════╝")
-		fmt.Println()
-		os.Exit(1)
-	}
 
 	// Load settings
 	settingsMgr, err := settings.NewManager(*settingsPath)
@@ -106,6 +91,25 @@ func main() {
 		effectiveMode = "router"
 	}
 
+	// Root is only required in router mode, where routebox itself creates the
+	// TUN interface. VPS mode never touches TUN — amnezia-box's own inbounds
+	// bind ports like any other userspace process — so it can run unprivileged
+	// (e.g. under a container's PUID/PGID user).
+	if effectiveMode == "router" && os.Geteuid() != 0 {
+		fmt.Println()
+		fmt.Println("╔══════════════════════════════════════════════════════════════════╗")
+		fmt.Println("║  ERROR: Root privileges required                                 ║")
+		fmt.Println("╠══════════════════════════════════════════════════════════════════╣")
+		fmt.Println("║  routebox must run as root to create TUN interfaces.             ║")
+		fmt.Println("║                                                                  ║")
+		fmt.Println("║  Please run with sudo:                                           ║")
+		fmt.Println("║     sudo ./routebox                                              ║")
+		fmt.Println("║                                                                  ║")
+		fmt.Println("╚══════════════════════════════════════════════════════════════════╝")
+		fmt.Println()
+		os.Exit(1)
+	}
+
 	// Print settings info
 	if settingsMgr.GetPath() != "" {
 		fmt.Printf("Settings: %s\n", settingsMgr.GetPath())
@@ -113,6 +117,19 @@ func main() {
 
 	// Initialize process manager
 	procMgr := process.NewManager()
+
+	// Resolve the amnezia-box binary: CLI flag > settings > auto-detect. An
+	// explicit path wins over the systemd ExecStart the manager prefers on its
+	// own — pinning it is how a packaged install (the Docker image keeps the
+	// binary on the writable /config volume so the panel can update it) says
+	// where the binary it actually runs lives.
+	resolvedBinaryPath := *binaryPath
+	if resolvedBinaryPath == "" {
+		resolvedBinaryPath = cfg.Singbox.BinaryPath
+	}
+	if replaced := procMgr.PinBinaryPath(resolvedBinaryPath); replaced != "" {
+		log.Printf("amnezia-box binary pinned to %s (detected %s). Status, version and updates all follow the pinned path.", resolvedBinaryPath, replaced)
+	}
 
 	// Resolve config path: CLI flag > settings > auto-detect > default
 	resolvedConfigPath := *configPath
@@ -353,6 +370,11 @@ func main() {
 		Updater: updUpdater,
 		Targets: updTargets,
 	})
+	// ROUTEBOX_RUNTIME=docker is set by the official Dockerfile; it means
+	// RouteBox's own binary lives in the image, not in a writable install
+	// directory a self-update should touch.
+	apiHandler.SetPanelMode(effectiveMode)
+	apiHandler.SetDockerMode(dockerRuntime())
 	apiHandler.SetSubscriptions(subsMgr, subsRefresh)
 	apiHandler.SetUsers(usersMgr)
 
@@ -391,6 +413,15 @@ func main() {
 	// install that predates the setting — flipping those to singbox tore down a
 	// live tunnel and re-keyed the server (issue #43).
 	awgBackend := awgMgr.ResolveBackend(settingsMgr.Get().Awg.Backend)
+	// The API refuses to switch to a kernel backend this system cannot run; a
+	// settings file written before the tools went missing (or edited by hand)
+	// can still ask for it, and it would otherwise surface as a failing
+	// systemctl at Enable rather than as a missing prerequisite.
+	if awgBackend == "kernel" {
+		if reason := awg.KernelBackendUnsupported(); reason != "" {
+			log.Printf("WARNING: awg.backend is \"kernel\" but %s. The AmneziaWG server will fail to come up; set awg.backend = \"singbox\" in %s, or install the missing pieces.", reason, settingsMgr.GetPath())
+		}
+	}
 	awgMgr.SetBackend(awgBackend)
 	awgMgr.SetConfigSync(
 		cfgMgr, // *config.Manager satisfies awg.ConfigSyncer
@@ -421,6 +452,18 @@ func main() {
 	// SweepExpired is a cheap no-op when the interface is down.
 	stopAwgSweep := make(chan struct{})
 	go awg.RunSweepLoop(func() { awgMgr.SweepExpired(context.Background()) }, 30*time.Second, stopAwgSweep)
+
+	// Bring amnezia-box up when nothing else will. Done here rather than before
+	// the AWG wiring above so the process starts on the config those steps may
+	// have just synced, and before SyncRejectRuleAndReload so user lifecycle
+	// enforcement lands on a running process instead of waiting for a reload.
+	if shouldAutoStartAmneziaBox(effectiveMode, procMgr.GetStatus(), fileExists(resolvedConfigPath), procMgr.IsBinaryInstalled()) {
+		if err := procMgr.Start(resolvedConfigPath); err != nil {
+			log.Printf("amnezia-box did not start automatically: %v — the panel's Start button reports the same failure with the logs", err)
+		} else {
+			fmt.Printf("Started amnezia-box with %s\n", resolvedConfigPath)
+		}
+	}
 
 	// Phase 4: warn (don't block) when pre-existing panel users share a name.
 	// auth_user matches by name, so duplicates over-block during lifecycle reject.
@@ -779,7 +822,14 @@ func main() {
 		fmt.Printf("Clash API: %s\n", resolvedClashAddr)
 	}
 	if !procMgr.IsBinaryInstalled() {
-		fmt.Println("Note: amnezia-box not installed - run setup wizard to configure")
+		// The wizard is a router-mode thing; a panel (and a container in
+		// particular) has no wizard to send anyone to, and the useful fact there
+		// is which path was looked at.
+		if effectiveMode == "vps" {
+			fmt.Printf("Note: no working amnezia-box binary at %s — the panel can manage the config but not the process\n", procMgr.GetBinaryPath())
+		} else {
+			fmt.Println("Note: amnezia-box not installed - run setup wizard to configure")
+		}
 	}
 	fmt.Println()
 
@@ -830,10 +880,17 @@ func main() {
 		// Keep the panel cert mirrored to the canonical PEM path so server inbounds can
 		// reuse it; on renewal this SIGHUP-reloads amnezia-box to pick up the new cert.
 		go panelcert.Refresh(context.Background(), cacheDir, domain, panelCertDir, procMgr.Reload)
-		// HTTP-01 challenge listener on :80. TLS-ALPN-01 is impossible (LE would
-		// connect on :443 = vless+Reality). :80 must stay open for renewals too.
+		// HTTP-01 challenge listener, ":80" by default. TLS-ALPN-01 is impossible
+		// (LE would connect on :443 = vless+Reality). Port 80 must stay reachable
+		// from the internet for renewals too — in Docker that's normally done by
+		// mapping the host's :80 to this listener's (possibly unprivileged) port,
+		// rather than changing the listener's own bind address.
+		acmeHTTPAddr := cfg.Network.ACMEHTTPAddr
+		if acmeHTTPAddr == "" {
+			acmeHTTPAddr = ":80"
+		}
 		go func() {
-			errCh <- fmt.Errorf("acme http-01 listener (:80): %w", http.ListenAndServe(":80", am.HTTPHandler(nil)))
+			errCh <- fmt.Errorf("acme http-01 listener (%s): %w", acmeHTTPAddr, http.ListenAndServe(acmeHTTPAddr, am.HTTPHandler(nil)))
 		}()
 		srv.TLSConfig = am.TLSConfig()
 		go func() {
@@ -886,6 +943,44 @@ func main() {
 			log.Printf("geoip close: %v", err)
 		}
 	}
+}
+
+// shouldAutoStartAmneziaBox reports whether RouteBox should start amnezia-box
+// itself at boot.
+//
+// With a systemd unit present this is systemd's job — the installer enables the
+// unit, and starting the process from here would race it. Without one, RouteBox
+// is the only thing that runs at boot (a container, or a hand-rolled install),
+// and the panel would otherwise come up with the proxy down until someone
+// pressed Start — after every restart, not just the first.
+//
+// vps-only, for the same reason the root check is router-only: a router's
+// config is written by the setup wizard, which starts the process as part of
+// itself, and bringing a half-configured router's TUN up unprompted is not the
+// same harmless act as starting a panel's proxy on the config it already has.
+func shouldAutoStartAmneziaBox(mode string, st process.Status, configExists, binaryInstalled bool) bool {
+	if mode != "vps" || !configExists || !binaryInstalled {
+		return false
+	}
+	// ServiceName is the DETECTED unit, set even when this particular process
+	// was launched by hand — which is exactly the case we must not start into.
+	return !st.Running && st.ServiceName == ""
+}
+
+// dockerRuntime reports whether this process is the one the official image
+// starts. Set by the Dockerfile, so it means the packaged container
+// specifically — not "some container somewhere", which nothing here can tell.
+func dockerRuntime() bool {
+	return os.Getenv("ROUTEBOX_RUNTIME") == "docker"
+}
+
+// fileExists reports whether path names an existing file.
+func fileExists(path string) bool {
+	if path == "" {
+		return false
+	}
+	_, err := os.Stat(path)
+	return err == nil
 }
 
 // generatePassword returns a 24-character URL-safe random password.

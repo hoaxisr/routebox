@@ -488,6 +488,7 @@ func TestBackendSwitchRejectedWhileEnableInFlight(t *testing.T) {
 		t.Fatal("rejected switch must not persist awg.backend")
 	}
 }
+
 // awgRecordingRunner records every argv (thread-safe not needed: handler path is
 // synchronous) and answers everything with ("", nil).
 type awgRecordingRunner struct{ calls [][]string }
@@ -731,5 +732,60 @@ func TestAWGVPNLinkIPv6ServerHostIs422(t *testing.T) {
 	}
 	if !strings.Contains(rec.Body.String(), "IPv6") {
 		t.Fatalf("body must name the IPv6 server address:\n%s", rec.Body.String())
+	}
+}
+
+// TestKernelBackendRefusedWhenPrerequisitesMissing: RouteBox brings a kernel
+// interface up through the awg-quick@ systemd unit, so selecting that backend
+// without the tools or without systemd would persist a backend that can never
+// come up. Refused at the point of choice, naming the missing piece. The check
+// is about the system's capabilities, not about being in a container: a host
+// with the module loaded and the tools installed passes it either way.
+func TestKernelBackendRefusedWhenPrerequisitesMissing(t *testing.T) {
+	orig := awg.KernelBackendUnsupported
+	awg.KernelBackendUnsupported = func() string { return "awg-quick is not installed (amneziawg-tools)" }
+	t.Cleanup(func() { awg.KernelBackendUnsupported = orig })
+
+	sm := newAWGSettings(t, t.TempDir(), "")
+	h := &Handler{settings: sm}
+
+	rec := httptest.NewRecorder()
+	req := httptest.NewRequest(http.MethodPut, "/api/settings", strings.NewReader(`{"awg.backend":"kernel"}`))
+	h.UpdateSettings(rec, req)
+	if rec.Code != http.StatusConflict {
+		t.Fatalf("kernel backend without its tools = %d; want 409; body=%q", rec.Code, rec.Body.String())
+	}
+	if !strings.Contains(rec.Body.String(), "awg-quick") {
+		t.Errorf("the refusal must name what is missing: %s", rec.Body.String())
+	}
+	if got := sm.Get().Awg.Backend; got == "kernel" {
+		t.Fatal("a refused switch must not persist awg.backend")
+	}
+
+	// The backend that needs neither stays selectable.
+	rec = httptest.NewRecorder()
+	req = httptest.NewRequest(http.MethodPut, "/api/settings", strings.NewReader(`{"awg.backend":"singbox"}`))
+	h.UpdateSettings(rec, req)
+	if rec.Code == http.StatusConflict {
+		t.Fatalf("singbox backend must stay selectable; body=%q", rec.Body.String())
+	}
+}
+
+// TestKernelBackendAllowedWhenSupported is the other half: where the tools and
+// systemd exist — bare metal, or a container built to have them — the switch
+// goes through untouched.
+func TestKernelBackendAllowedWhenSupported(t *testing.T) {
+	orig := awg.KernelBackendUnsupported
+	awg.KernelBackendUnsupported = func() string { return "" }
+	t.Cleanup(func() { awg.KernelBackendUnsupported = orig })
+
+	sm := newAWGSettings(t, t.TempDir(), "")
+	h := &Handler{settings: sm}
+
+	rec := httptest.NewRecorder()
+	req := httptest.NewRequest(http.MethodPut, "/api/settings", strings.NewReader(`{"awg.backend":"kernel"}`))
+	h.UpdateSettings(rec, req)
+	if rec.Code == http.StatusConflict {
+		t.Fatalf("kernel backend must stay selectable where it is supported; body=%q", rec.Body.String())
 	}
 }

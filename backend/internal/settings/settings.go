@@ -35,23 +35,23 @@ type Settings struct {
 
 // AwgSettings configures the RouteBox-owned AmneziaWG server interface.
 type AwgSettings struct {
-	Enabled          bool     `toml:"enabled" json:"enabled"`
-	Interface        string   `toml:"interface" json:"interface"`
-	Subnet           string   `toml:"subnet" json:"subnet"`
-	ListenPort       int      `toml:"listen_port" json:"listen_port"`
-	MTU              int      `toml:"mtu" json:"mtu"`
-	DNS              []string `toml:"dns" json:"dns"`
+	Enabled    bool     `toml:"enabled" json:"enabled"`
+	Interface  string   `toml:"interface" json:"interface"`
+	Subnet     string   `toml:"subnet" json:"subnet"`
+	ListenPort int      `toml:"listen_port" json:"listen_port"`
+	MTU        int      `toml:"mtu" json:"mtu"`
+	DNS        []string `toml:"dns" json:"dns"`
 	// ClientKeepalive is the PersistentKeepalive handed to clients: "N" seconds or,
 	// on AWG 3.0, a "lo-hi" range the peer redraws on every timer arm. "" => 25.
-	ClientKeepalive  string   `toml:"client_keepalive" json:"client_keepalive"`
-	WANIface         string   `toml:"wan_iface" json:"wan_iface"`
-	Obf              AwgObf   `toml:"obf" json:"obf"`
-	ObfPreset        string   `toml:"obf_preset" json:"obf_preset"`               // "off"|"dns"|"web"|"stealth"|"custom" — selects param ranges + client CPS mimicry
-	Backend          string   `toml:"backend" json:"backend"`                     // "kernel"|"singbox"; "" => singbox (kernel is opt-in only, never the auto-default)
-	ServerHost       string   `toml:"server_host" json:"server_host"`             // client-facing address of the AWG server (host/IP clients connect to); falls back to Server.PublicHost; router LAN/WAN IP typically
-	HeaderProtection bool     `toml:"header_protection" json:"header_protection"` // AWG3 additional header protection toggle
-	IPv6Broker       bool     `toml:"ipv6_broker" json:"ipv6_broker"`             // dual-stack IPv6 broker; gated by egress preflight
-	Configured       bool     `toml:"configured" json:"configured"`               // sticky: set true after first successful Enable; drives wizard-vs-steady UI (never reset on Disable)
+	ClientKeepalive  string `toml:"client_keepalive" json:"client_keepalive"`
+	WANIface         string `toml:"wan_iface" json:"wan_iface"`
+	Obf              AwgObf `toml:"obf" json:"obf"`
+	ObfPreset        string `toml:"obf_preset" json:"obf_preset"`               // "off"|"dns"|"web"|"stealth"|"custom" — selects param ranges + client CPS mimicry
+	Backend          string `toml:"backend" json:"backend"`                     // "kernel"|"singbox"; "" => singbox (kernel is opt-in only, never the auto-default)
+	ServerHost       string `toml:"server_host" json:"server_host"`             // client-facing address of the AWG server (host/IP clients connect to); falls back to Server.PublicHost; router LAN/WAN IP typically
+	HeaderProtection bool   `toml:"header_protection" json:"header_protection"` // AWG3 additional header protection toggle
+	IPv6Broker       bool   `toml:"ipv6_broker" json:"ipv6_broker"`             // dual-stack IPv6 broker; gated by egress preflight
+	Configured       bool   `toml:"configured" json:"configured"`               // sticky: set true after first successful Enable; drives wizard-vs-steady UI (never reset on Disable)
 }
 
 // AwgObf holds AmneziaWG obfuscation values. Numeric J/S fields; string H fields
@@ -108,6 +108,17 @@ type SecuritySettings struct {
 	AuthPasswordHash      string `toml:"auth_password_hash" json:"-"` // bcrypt hash; never expose in JSON
 	CorsOrigins           string `toml:"cors_origins" json:"cors_origins"`
 	SessionTimeoutMinutes int    `toml:"session_timeout_minutes" json:"session_timeout_minutes"`
+	// TrustedProxies lists the reverse proxies (IPs or CIDRs) whose
+	// X-Forwarded-For RouteBox may believe. It decides ONE thing: which address
+	// login lockout and the subscription rate limiter are keyed on. Behind a
+	// proxy with this unset, every client shares the proxy's address and
+	// throttles as one — the subscription limiter counts every fetch, so a
+	// handful of users is enough to trip it for all of them.
+	//
+	// File-level only, never PUT /api/settings: it decides whose word RouteBox
+	// takes about who is calling, and an empty list is the safe default that a
+	// request should not be able to widen.
+	TrustedProxies []string `toml:"trusted_proxies" json:"trusted_proxies"`
 }
 
 // NetworkSettings configures network parameters
@@ -118,11 +129,22 @@ type NetworkSettings struct {
 	TLSCertPath        string `toml:"tls_cert_path" json:"tls_cert_path"`
 	TLSKeyPath         string `toml:"tls_key_path" json:"tls_key_path"`
 	// Embedded ACME (Let's Encrypt) — issues/renews the panel cert in-process.
-	// Domain = Server.PublicHost (no separate field). HTTP-01 challenge on :80.
+	// Domain = Server.PublicHost (no separate field). HTTP-01 challenge listens
+	// on ACMEHTTPAddr (default ":80"). Must remain externally reachable on port
+	// 80 for the challenge and renewals — in Docker that's usually satisfied by
+	// mapping the host's port 80 to whatever ACMEHTTPAddr binds inside the
+	// container, so the listener itself doesn't need a privileged port.
 	ACMEEnabled  bool   `toml:"acme_enabled" json:"acme_enabled"`     // false = manual cert/key or plain HTTP
 	ACMEEmail    string `toml:"acme_email" json:"acme_email"`         // LE account contact
 	ACMEStaging  bool   `toml:"acme_staging" json:"acme_staging"`     // true = LE staging directory (testing)
 	ACMECacheDir string `toml:"acme_cache_dir" json:"acme_cache_dir"` // cert/account cache (perm 0700)
+	// ACMEHTTPAddr is the HTTP-01 challenge listen address; "" = ":80". File-
+	// and flag-level only, like Listen and singbox.binary_path: it is a listen
+	// address the process binds at startup, so an unbindable value does not
+	// fail a request — it fails the next boot, in a loop under systemd's
+	// Restart= or a container's restart policy, recoverable only by editing
+	// the file by hand. Not a setting to hand to a PUT.
+	ACMEHTTPAddr string `toml:"acme_http_addr" json:"acme_http_addr"`
 }
 
 // ServerSettings holds panel operating-mode configuration.
@@ -135,6 +157,13 @@ type ServerSettings struct {
 // SingboxSettings configures sing-box integration
 type SingboxSettings struct {
 	ConfigPath string `toml:"config_path" json:"config_path"`
+	// BinaryPath pins the amnezia-box executable RouteBox manages (status,
+	// version, start/stop, and the update swap) instead of auto-detecting it.
+	// Empty => auto-detect. Like ConfigPath it is settable from the file or the
+	// --binary flag only, never through PUT /api/settings: this path is exec'd,
+	// so letting a request choose it would turn a panel session into arbitrary
+	// code execution.
+	BinaryPath string `toml:"binary_path" json:"binary_path"`
 	ClashAPI   string `toml:"clash_api" json:"clash_api"`
 	// V2RayAPI is the loopback gRPC StatsService listen address RouteBox writes
 	// into experimental.v2ray_api and dials for per-user traffic. MUST be
@@ -189,6 +218,7 @@ func Default() Settings {
 			ACMEEmail:          "",
 			ACMEStaging:        false,
 			ACMECacheDir:       "/etc/routebox/acme",
+			ACMEHTTPAddr:       ":80",
 		},
 		Singbox: SingboxSettings{
 			ConfigPath: "",
