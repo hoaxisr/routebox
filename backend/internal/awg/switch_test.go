@@ -331,6 +331,15 @@ func TestRestoreKernelIface(t *testing.T) {
 	})
 }
 
+// withSystemd pins the systemd bring-up path for tests that assert on it, so
+// they do not depend on whether the machine running them has systemd.
+func withSystemd(t *testing.T) {
+	t.Helper()
+	orig := lookPath
+	lookPath = func(file string) (string, error) { return "/usr/bin/" + file, nil }
+	t.Cleanup(func() { lookPath = orig })
+}
+
 // withoutSystemd makes lookPath report systemctl as absent for one test.
 func withoutSystemd(t *testing.T) {
 	t.Helper()
