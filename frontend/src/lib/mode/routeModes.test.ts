@@ -154,6 +154,18 @@ describe('single-mode classification (sidebar drift guard)', () => {
 	});
 
 	it('panel-only sections are exactly these (update +layout.svelte {#if $panelMode} if this changes)', () => {
-		expect(singleMode('vps')).toEqual(['/config/users', '/monitor/users']);
+		expect(singleMode('vps')).toEqual(['/config/telegram', '/config/users', '/monitor/users']);
+	});
+});
+
+// The Telegram proxy is a panel feature: a router has no public-port story for
+// it, and the page would offer links nobody could reach.
+describe('telegram section', () => {
+	it('is reachable in vps mode', () => {
+		expect(isPathAllowed('/config/telegram', 'vps')).toBe(true);
+	});
+
+	it('is hidden in router mode', () => {
+		expect(isPathAllowed('/config/telegram', 'router')).toBe(false);
 	});
 });

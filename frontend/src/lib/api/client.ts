@@ -1,4 +1,4 @@
-import type { ApiResponse, ProcessStatus, SingboxConfig, Endpoint, Outbound, Inbound, RuleSet, RuleSetUsage, RouteRule, RouteSettings, DnsServer, DnsRule, DnsSettings, LogSettings, ExperimentalSettings, ConnectionsResponse, ProxiesResponse, ClashProxy, TestRouteResponse, ConnectTestResponse, SettingsResponse, RouteBoxSettings, SingBoxVersion, DomainSetInfo, RuleSetSource, ClientEntry, TrafficHistoryResponse, TrafficRange, UpdatesStatus, UpdateProgress, UpdateTargetName, Subscription, SubscriptionInput, PanelUser, UserTrafficResponse, AwgStatus, AwgPeer, AwgPeerTraffic } from '$lib/types';
+import type { ApiResponse, ProcessStatus, SingboxConfig, Endpoint, Outbound, Inbound, RuleSet, RuleSetUsage, RouteRule, RouteSettings, DnsServer, DnsRule, DnsSettings, LogSettings, ExperimentalSettings, ConnectionsResponse, ProxiesResponse, ClashProxy, TestRouteResponse, ConnectTestResponse, SettingsResponse, RouteBoxSettings, SingBoxVersion, DomainSetInfo, RuleSetSource, ClientEntry, TrafficHistoryResponse, TrafficRange, UpdatesStatus, UpdateProgress, UpdateTargetName, Subscription, SubscriptionInput, PanelUser, UserTrafficResponse, AwgStatus, AwgPeer, AwgPeerTraffic, MtprotoState, MtprotoStatus, MtprotoSettings, MtprotoClient, MtprotoConnection, MtprotoLink } from '$lib/types';
 
 const API_BASE = '/api';
 
@@ -309,6 +309,30 @@ export const api = {
 			method: 'PATCH',
 			body: JSON.stringify({ expires_at: expiresAt })
 		}),
+
+	// Telegram MTProto proxy (panel/vps mode)
+	mtprotoStatus: () => request<MtprotoState>('/mtproto'),
+	mtprotoEnable: () => request<MtprotoStatus>('/mtproto/enable', { method: 'POST' }),
+	mtprotoDisable: () => request<MtprotoStatus>('/mtproto/disable', { method: 'POST' }),
+	updateMtprotoSettings: (patch: Partial<MtprotoSettings>) =>
+		request<MtprotoSettings>('/mtproto', { method: 'PUT', body: JSON.stringify(patch) }),
+	getMtprotoClients: () => request<MtprotoClient[]>('/mtproto/clients'),
+	getMtprotoConnections: () => request<MtprotoConnection[]>('/mtproto/connections'),
+	createMtprotoClient: (name: string) =>
+		request<{ name: string }>('/mtproto/clients', { method: 'POST', body: JSON.stringify({ name }) }),
+	deleteMtprotoClient: (name: string) =>
+		request<{ deleted: string }>(`/mtproto/clients/${encodeURIComponent(name)}`, { method: 'DELETE' }),
+	rotateMtprotoClient: (name: string) =>
+		request<{ name: string }>(`/mtproto/clients/${encodeURIComponent(name)}/rotate`, { method: 'POST' }),
+	updateMtprotoClient: (name: string, patch: { enabled?: boolean; expires_at?: number }) =>
+		request<{ name: string }>(`/mtproto/clients/${encodeURIComponent(name)}`, {
+			method: 'PATCH',
+			body: JSON.stringify(patch)
+		}),
+	// The only endpoint that discloses a secret, so it is fetched per share
+	// action rather than with the roster.
+	getMtprotoClientLink: (name: string) =>
+		request<MtprotoLink>(`/mtproto/clients/${encodeURIComponent(name)}/link`),
 
 	// Rule Sets CRUD
 	listRuleSets: () => request<RuleSet[]>('/route/rule-sets'),
