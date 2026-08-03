@@ -90,8 +90,15 @@ RUN set -e; \
     # not for root, and this image grants exactly that to the panel (see the s6
     # run script). Neutralising the check removes an assumption, not a
     # safeguard — every operation below it is still enforced by the kernel.
-    sed -i "/exec sudo/s|.*|\treturn 0 # patched: RouteBox runs this with CAP_NET_ADMIN instead of uid 0|" /out/usr/bin/awg-quick; \
+    # The replacement is a no-op `:`, not `return 0`: at top level of an
+    # executed script bash prints "can only return from a function" on every
+    # run, and if upstream ever moves the check into a function, `return`
+    # would silently short-circuit that function instead of just this check.
+    sed -i "/exec sudo/s|.*|\t: # patched: RouteBox runs this with CAP_NET_ADMIN instead of uid 0|" /out/usr/bin/awg-quick; \
     grep -q "CAP_NET_ADMIN instead of uid 0" /out/usr/bin/awg-quick; \
+    if grep -q "exec sudo" /out/usr/bin/awg-quick; then \
+        echo "awg-quick root-check patch did not apply" >&2; exit 1; \
+    fi; \
     /out/usr/bin/awg --version
 
 # ---- runtime ----
@@ -139,9 +146,13 @@ VOLUME /config
 # /api/health is unauthenticated and answers only once the panel is serving, so
 # it reports the thing worth reporting: whether the container is usable. Tries
 # HTTPS first (-k: the cert is issued for the public domain, not 127.0.0.1) and
-# falls back to HTTP for a panel running without TLS. LISTEN is read at runtime
-# — Docker does not expand variables in HEALTHCHECK — so a custom port works.
+# falls back to HTTP for a panel running without TLS. The port comes from
+# /config/routebox.toml at probe time: LISTEN is consumed only on first boot to
+# scaffold that file, which is the source of truth from then on — the operator
+# (or the panel) can move the listen address in it and the probe must follow.
+# Falls back to LISTEN, then the 8443 default, when the file or key is absent.
 HEALTHCHECK --interval=30s --timeout=6s --start-period=30s --retries=3 \
-    CMD port="${LISTEN##*:}"; port="${port:-8443}"; \
+    CMD port=$(sed -n 's/^[[:space:]]*listen[[:space:]]*=[[:space:]]*"[^"]*:\([0-9]*\)".*/\1/p' /config/routebox.toml 2>/dev/null | head -n1); \
+        port="${port:-${LISTEN##*:}}"; port="${port:-8443}"; \
         curl -fsk --max-time 5 "https://127.0.0.1:$port/api/health" >/dev/null \
         || curl -fs --max-time 5 "http://127.0.0.1:$port/api/health" >/dev/null

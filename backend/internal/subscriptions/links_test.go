@@ -5,6 +5,8 @@ import (
 	"reflect"
 	"strings"
 	"testing"
+
+	"routebox/backend/internal/serverlinks"
 )
 
 func TestSplitHostPort(t *testing.T) {
@@ -529,5 +531,230 @@ func TestParsedXHTTPCarriesPadding(t *testing.T) {
 				t.Fatalf("x_padding_bytes = %v, want \"100-1000\"", got)
 			}
 		})
+	}
+}
+
+func TestNormalizeMieruPort(t *testing.T) {
+	good := map[string]string{"443": "443", "9000-9010": "9000-9010", "0443": "443"}
+	for in, want := range good {
+		if got, ok := normalizeMieruPort(in); !ok || got != want {
+			t.Errorf("normalizeMieruPort(%q) = (%q,%v), want (%q,true)", in, got, ok, want)
+		}
+	}
+	for _, in := range []string{"0", "65536", "-1", "abc", "9000:9010", "9010-9000", "1-2-3", "", "+443", "4 43"} {
+		if got, ok := normalizeMieruPort(in); ok {
+			t.Errorf("normalizeMieruPort(%q) = (%q,true), want reject", in, got)
+		}
+	}
+}
+
+func TestParseMieru(t *testing.T) {
+	t.Run("single tcp port", func(t *testing.T) {
+		ob, name, err := parseMieru("mierus://alice:s3cret@example.com?profile=home&port=443&protocol=TCP")
+		if err != nil {
+			t.Fatalf("err: %v", err)
+		}
+		if name != "home" {
+			t.Fatalf("name = %q, want %q (mieru names come from profile=, there is no #fragment)", name, "home")
+		}
+		want := map[string]interface{}{
+			"type": "mieru", "server": "example.com", "server_port": 443,
+			"transport": "TCP", "username": "alice", "password": "s3cret",
+		}
+		if !reflect.DeepEqual(ob, want) {
+			t.Fatalf("got %#v\nwant %#v", ob, want)
+		}
+	})
+	t.Run("two single ports become server_port plus degenerate range", func(t *testing.T) {
+		ob, _, err := parseMieru("mierus://a:b@h?profile=p&port=443&port=8443&protocol=TCP")
+		if err != nil {
+			t.Fatalf("err: %v", err)
+		}
+		if ob["server_port"] != 443 {
+			t.Fatalf("server_port = %v", ob["server_port"])
+		}
+		// Extra singles are emitted as degenerate ranges (never bare "N") —
+		// the fork rejects bare numbers inside server_ports.
+		if !reflect.DeepEqual(ob["server_ports"], []string{"8443-8443"}) {
+			t.Fatalf("server_ports = %#v", ob["server_ports"])
+		}
+	})
+	t.Run("range goes to server_ports, no server_port", func(t *testing.T) {
+		ob, _, err := parseMieru("mierus://a:b@h?profile=p&port=9000-9010&protocol=TCP")
+		if err != nil {
+			t.Fatalf("err: %v", err)
+		}
+		if _, has := ob["server_port"]; has {
+			t.Fatalf("server_port must be absent: %#v", ob)
+		}
+		if !reflect.DeepEqual(ob["server_ports"], []string{"9000-9010"}) {
+			t.Fatalf("server_ports = %#v", ob["server_ports"])
+		}
+	})
+	t.Run("duplicate identical specs are de-duplicated", func(t *testing.T) {
+		ob, _, err := parseMieru("mierus://a:b@h?profile=p&port=443&port=443&protocol=TCP")
+		if err != nil {
+			t.Fatalf("err: %v", err)
+		}
+		if ob["server_port"] != 443 {
+			t.Fatalf("server_port = %v", ob["server_port"])
+		}
+		if _, has := ob["server_ports"]; has {
+			t.Fatalf("server_ports must be absent: %#v", ob)
+		}
+	})
+	t.Run("single protocol broadcasts to all ports", func(t *testing.T) {
+		ob, _, err := parseMieru("mierus://a:b@h?profile=p&port=443&port=8443&protocol=UDP")
+		if err != nil {
+			t.Fatalf("err: %v", err)
+		}
+		if ob["transport"] != "UDP" || ob["server_port"] != 443 {
+			t.Fatalf("transport/port = %v/%v", ob["transport"], ob["server_port"])
+		}
+		if !reflect.DeepEqual(ob["server_ports"], []string{"8443-8443"}) {
+			t.Fatalf("server_ports = %#v", ob["server_ports"])
+		}
+	})
+	t.Run("mixed tcp+udp prefers tcp deterministically", func(t *testing.T) {
+		// The frontend asks the user which transport to keep; a background
+		// subscription refresh cannot, so TCP wins and UDP ports are dropped.
+		ob, _, err := parseMieru("mierus://a:b@h?profile=p&port=444&protocol=UDP&port=443&protocol=TCP")
+		if err != nil {
+			t.Fatalf("err: %v", err)
+		}
+		if ob["transport"] != "TCP" || ob["server_port"] != 443 {
+			t.Fatalf("transport/port = %v/%v", ob["transport"], ob["server_port"])
+		}
+		if _, has := ob["server_ports"]; has {
+			t.Fatalf("UDP ports must be dropped: %#v", ob)
+		}
+	})
+	t.Run("lowercase protocol is accepted", func(t *testing.T) {
+		ob, _, err := parseMieru("mierus://a:b@h?profile=p&port=443&protocol=tcp")
+		if err != nil {
+			t.Fatalf("err: %v", err)
+		}
+		if ob["transport"] != "TCP" {
+			t.Fatalf("transport = %v", ob["transport"])
+		}
+	})
+	t.Run("ipv6 host loses brackets", func(t *testing.T) {
+		ob, _, err := parseMieru("mierus://a:b@[2001:db8::1]?profile=p&port=443&protocol=TCP")
+		if err != nil {
+			t.Fatalf("err: %v", err)
+		}
+		if ob["server"] != "2001:db8::1" {
+			t.Fatalf("server = %v", ob["server"])
+		}
+	})
+	t.Run("multiplexing and traffic-pattern with plus restored", func(t *testing.T) {
+		ob, _, err := parseMieru("mierus://a:b@h?profile=p&port=443&protocol=TCP&multiplexing=MULTIPLEXING_DEFAULT&traffic-pattern=YQ b")
+		if err != nil {
+			t.Fatalf("err: %v", err)
+		}
+		if ob["multiplexing"] != "MULTIPLEXING_DEFAULT" {
+			t.Fatalf("multiplexing = %v", ob["multiplexing"])
+		}
+		// Query decoding turned '+' into a space; the parser restores it.
+		if ob["traffic_pattern"] != "YQ+b" {
+			t.Fatalf("traffic_pattern = %v", ob["traffic_pattern"])
+		}
+	})
+	t.Run("percent-encoded userinfo round-trips", func(t *testing.T) {
+		ob, _, err := parseMieru("mierus://a:p%40ss%3Aw%23rd%25@h?profile=p&port=443&protocol=TCP")
+		if err != nil {
+			t.Fatalf("err: %v", err)
+		}
+		if ob["password"] != "p@ss:w#rd%" {
+			t.Fatalf("password = %v", ob["password"])
+		}
+	})
+	t.Run("rejects", func(t *testing.T) {
+		bad := map[string]string{
+			"no userinfo":                "mierus://h?profile=p&port=443&protocol=TCP",
+			"empty password":             "mierus://a:@h?profile=p&port=443&protocol=TCP",
+			"no profile":                 "mierus://a:b@h?port=443&protocol=TCP",
+			"no port":                    "mierus://a:b@h?profile=p&protocol=TCP",
+			"no protocol (no default)":   "mierus://a:b@h?profile=p&port=443",
+			"bad protocol":               "mierus://a:b@h?profile=p&port=443&protocol=SCTP",
+			"port in authority":          "mierus://a:b@h:443?profile=p&port=443&protocol=TCP",
+			"count mismatch":             "mierus://a:b@h?profile=p&port=1&port=2&port=3&protocol=TCP&protocol=TCP",
+			"invalid port spec":          "mierus://a:b@h?profile=p&port=9010-9000&protocol=TCP",
+			"bad multiplexing":           "mierus://a:b@h?profile=p&port=443&protocol=TCP&multiplexing=BOGUS",
+			"pattern bad alphabet":       "mierus://a:b@h?profile=p&port=443&protocol=TCP&traffic-pattern=ab$d",
+			"pattern unpadded":           "mierus://a:b@h?profile=p&port=443&protocol=TCP&traffic-pattern=YQ",
+			"pattern truncated padding":  "mierus://a:b@h?profile=p&port=443&protocol=TCP&traffic-pattern=YWJjZA%3D",
+			"bad percent escape in user": "mierus://a%:secretpass@h?profile=p&port=443&protocol=TCP",
+		}
+		for name, uri := range bad {
+			if ob, _, err := parseMieru(uri); err == nil {
+				t.Errorf("%s: expected error, got %#v", name, ob)
+			} else if strings.Contains(err.Error(), "secretpass") {
+				// Parse errors surface in the UI/logs; they must never echo
+				// the credential embedded in the raw link.
+				t.Errorf("%s: error leaks the password: %v", name, err)
+			}
+		}
+	})
+	t.Run("rejects too many ports", func(t *testing.T) {
+		var sb strings.Builder
+		sb.WriteString("mierus://a:b@h?profile=p&protocol=TCP")
+		for i := 0; i < 65; i++ {
+			sb.WriteString("&port=443")
+		}
+		if _, _, err := parseMieru(sb.String()); err == nil {
+			t.Fatal("expected error on >64 ports")
+		}
+	})
+	t.Run("oversize traffic-pattern rejected before base64 check", func(t *testing.T) {
+		big := strings.Repeat("A", 90000)
+		if _, _, err := parseMieru("mierus://a:b@h?profile=p&port=443&protocol=TCP&traffic-pattern=" + big); err == nil {
+			t.Fatal("expected error on oversize traffic-pattern")
+		}
+	})
+}
+
+// A mierus:// line must be dispatched by ParseLinks, not counted as skipped —
+// that was the whole of issue #50 (mieru-only subscriptions failed with
+// "no usable nodes").
+func TestParseLinksMieru(t *testing.T) {
+	nodes, skipped := ParseLinks([]string{"mierus://alice:pw@example.com?profile=home&port=443&protocol=TCP"})
+	if skipped != 0 || len(nodes) != 1 {
+		t.Fatalf("nodes=%d skipped=%d", len(nodes), skipped)
+	}
+	if nodes[0].Outbound["type"] != "mieru" || nodes[0].Name != "home" {
+		t.Fatalf("node = %#v %q", nodes[0].Outbound, nodes[0].Name)
+	}
+}
+
+// Round-trip: the exact link the VPS panel emits for a mieru inbound user
+// (serverlinks.BuildShareLink) must come back as a usable outbound here.
+func TestParseMieruRoundTrip(t *testing.T) {
+	inbound := map[string]interface{}{
+		"type": "mieru", "tag": "m-in", "listen_port": float64(2020), "transport": "TCP",
+		"listen_ports":    []interface{}{"25010-25012"},
+		"traffic_pattern": "YWJj",
+	}
+	user := map[string]interface{}{"name": "alice", "password": "p@ss w#rd"}
+	link, err := serverlinks.BuildShareLink(inbound, user, "vpn.example.com")
+	if err != nil {
+		t.Fatalf("BuildShareLink: %v", err)
+	}
+	ob, name, err := parseMieru(link)
+	if err != nil {
+		t.Fatalf("parseMieru(%q): %v", link, err)
+	}
+	// The panel puts the remark in profile= ("<user> · <inbound-tag>").
+	if name != "alice · m-in" {
+		t.Fatalf("name = %q", name)
+	}
+	want := map[string]interface{}{
+		"type": "mieru", "server": "vpn.example.com", "server_port": 2020,
+		"server_ports": []string{"25010-25012"},
+		"transport":    "TCP", "username": "alice", "password": "p@ss w#rd",
+		"traffic_pattern": "YWJj",
+	}
+	if !reflect.DeepEqual(ob, want) {
+		t.Fatalf("got %#v\nwant %#v", ob, want)
 	}
 }

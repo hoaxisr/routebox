@@ -916,7 +916,9 @@
       "upMbps": "Отдача (Мбит/с)",
       "downMbps": "Приём (Мбит/с)",
       "obfsType": "Обфускация",
+      "obfsOff": "Выкл.",
       "obfsPassword": "Пароль обфускации",
+      "clientsConnect": "Клиенты подключаются к {address}",
       "transport": "Транспорт",
       "transports": {
         "raw": "Raw (TCP)",

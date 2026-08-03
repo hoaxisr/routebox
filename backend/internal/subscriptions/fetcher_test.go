@@ -91,11 +91,35 @@ func TestRefreshNoNodes(t *testing.T) {
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) { w.Write([]byte(b64("garbage-no-uri"))) }))
 	defer srv.Close()
 	fm := &fakeMerger{}
-	if _, _, err := Refresh(Subscription{Name: "S", URL: srv.URL}, fm); err == nil {
+	_, _, err := Refresh(Subscription{Name: "S", URL: srv.URL}, fm)
+	if err == nil {
 		t.Fatal("expected error on zero usable nodes")
+	}
+	// The error must say WHY nothing was usable (issue #50: an unsupported
+	// scheme and an empty body both surfaced as a bare "no usable nodes").
+	if !strings.Contains(err.Error(), "no usable nodes") || !strings.Contains(err.Error(), "1 link") {
+		t.Fatalf("error should count the skipped links: %v", err)
 	}
 	if fm.called != 0 {
 		t.Fatal("merger must NOT be called with no nodes")
+	}
+}
+
+func TestRefreshEmptyBody(t *testing.T) {
+	// An inactive/empty panel user serves a 200 with an empty body — the error
+	// must name that, not the misleading "no usable nodes".
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) { w.Write([]byte("  \n\n")) }))
+	defer srv.Close()
+	fm := &fakeMerger{}
+	_, _, err := Refresh(Subscription{Name: "S", URL: srv.URL}, fm)
+	if err == nil {
+		t.Fatal("expected error on empty body")
+	}
+	if !strings.Contains(err.Error(), "subscription is empty") {
+		t.Fatalf("error = %v, want \"subscription is empty\"", err)
+	}
+	if fm.called != 0 {
+		t.Fatal("merger must NOT be called on empty body")
 	}
 }
 

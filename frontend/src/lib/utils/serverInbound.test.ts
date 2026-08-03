@@ -362,6 +362,26 @@ describe('validateServerInbound', () => {
 		s.listenPort = 70000;
 		expect(validateServerInbound(s, tr)['port']).toBe('form.minValue');
 	});
+
+	// #48: with obfs enabled, an empty password would serialize `"password": ""`
+	// — a config the binary accepts but no client can be pointed at.
+	it('hysteria2 obfs with empty password produces obfsPassword error', () => {
+		const s: ServerFormState = {
+			...base, type: 'hysteria2', tlsMode: 'acme',
+			tls: { ...base.tls, acme: { domain: 'd.example.com', email: 'a@b.c' } },
+			users: [{ name: 'u', password: 'p' }],
+			obfsType: 'salamander', obfsPassword: ''
+		};
+		expect(validateServerInbound(s, tr)['obfsPassword']).toBe('errors.fieldNamedRequired');
+		expect(validateServerInbound({ ...s, obfsPassword: 'pw' }, tr)).toEqual({});
+		// Off (empty type) needs no password.
+		expect(validateServerInbound({ ...s, obfsType: '', obfsPassword: '' }, tr)).toEqual({});
+	});
+
+	it('obfs password check is hysteria2-specific', () => {
+		const s: ServerFormState = { ...base, obfsType: 'salamander', obfsPassword: '' };
+		expect(validateServerInbound(s, tr)['obfsPassword']).toBeUndefined();
+	});
 });
 
 // Issue #37: the mieru server form gained port ranges. The shape that matters is

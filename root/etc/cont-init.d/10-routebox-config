@@ -35,7 +35,20 @@ if [ ! -f /config/geoip.mmdb ] && [ -f /defaults/geoip.mmdb ]; then
     cp /defaults/geoip.mmdb /config/geoip.mmdb
 fi
 
-public_host="${PUBLIC_HOST:-}"
+# Env values below are interpolated into routebox.toml inside quoted TOML
+# strings — a stray double quote, backslash or newline there is a syntax error,
+# and an unreadable toml means the panel crash-loops under restart:unless-stopped.
+# Strip the offending characters (and say so) rather than wedging the container.
+sanitize() {
+    # Control chars (not just \n\r) are forbidden inside TOML basic strings.
+    _clean=$(printf '%s' "$2" | tr -d '\000-\037\177"\\')
+    if [ "$_clean" != "$2" ]; then
+        echo "**** $1 contained quotes, backslashes or newlines; using '$_clean' ****" >&2
+    fi
+    printf '%s' "$_clean"
+}
+
+public_host="$(sanitize PUBLIC_HOST "${PUBLIC_HOST:-}")"
 
 # The domain shipped in docker-compose.yml. Running the file unedited would
 # otherwise point the built-in ACME client at a domain the operator does not
@@ -52,12 +65,38 @@ fi
 if [ ! -f /config/routebox.toml ]; then
     echo "**** bootstrapping routebox.toml from environment ****"
 
-    listen="${LISTEN:-0.0.0.0:8443}"
+    listen="$(sanitize LISTEN "${LISTEN:-0.0.0.0:8443}")"
+    # Must be host:port — a bare "8443" would pass the numeric check below but
+    # net.Listen refuses it ("missing port in address") and the panel crash-loops.
+    case "$listen" in
+        *:*) ;;
+        *)
+            echo "**** LISTEN='$listen' is not host:port; using 0.0.0.0:8443 ****" >&2
+            listen="0.0.0.0:8443" ;;
+    esac
+    case "${listen##*:}" in
+        ''|*[!0-9]*)
+            echo "**** LISTEN='$listen' does not end in a numeric port; using 0.0.0.0:8443 ****" >&2
+            listen="0.0.0.0:8443" ;;
+    esac
 
     acme_enabled="${ACME_ENABLED:-}"
     if [ -z "$acme_enabled" ]; then
         if [ -n "$public_host" ]; then acme_enabled=true; else acme_enabled=false; fi
     fi
+    # acme_enabled/acme_staging land in the toml as bare booleans — anything
+    # but true/false there is the same syntax error as a stray quote above.
+    case "$acme_enabled" in
+        true|false) ;;
+        *) echo "**** ACME_ENABLED='$acme_enabled' is not true/false; using false ****" >&2
+           acme_enabled=false ;;
+    esac
+    acme_staging="${ACME_STAGING:-false}"
+    case "$acme_staging" in
+        true|false) ;;
+        *) echo "**** ACME_STAGING='$acme_staging' is not true/false; using false ****" >&2
+           acme_staging=false ;;
+    esac
 
     # public_port is the port CLIENTS reach the panel on, which is what goes into
     # subscription URLs — not the port the panel binds. They differ whenever
@@ -66,13 +105,21 @@ if [ ! -f /config/routebox.toml ]; then
     # unset handed out subscription URLs with no port at all, which resolve to
     # :443 — where a VLESS inbound may well be answering instead of the panel.
     public_port="${PUBLIC_PORT:-${listen##*:}}"
+    # public_port is written unquoted, so a non-number is invalid TOML.
+    case "$public_port" in
+        ''|*[!0-9]*)
+            echo "**** PUBLIC_PORT='$public_port' is not a number; using ${listen##*:} ****" >&2
+            public_port="${listen##*:}" ;;
+    esac
 
     # TRUSTED_PROXIES is a comma-separated list of IPs/CIDRs; TOML wants an array.
     trusted_proxies=""
     if [ -n "${TRUSTED_PROXIES:-}" ]; then
         IFS=',' read -ra _tp <<< "$TRUSTED_PROXIES"
         for entry in "${_tp[@]}"; do
-            entry="$(echo "$entry" | tr -d '[:space:]')"
+            # whitespace never belongs in an IP/CIDR; quotes and backslashes
+            # would additionally break out of the TOML string being built.
+            entry="$(echo "$entry" | tr -d '[:space:]"\\')"
             [ -z "$entry" ] && continue
             trusted_proxies="${trusted_proxies:+$trusted_proxies, }\"$entry\""
         done
@@ -87,10 +134,10 @@ public_port = $public_port
 [network]
 listen = "$listen"
 acme_enabled = ${acme_enabled}
-acme_email = "${ACME_EMAIL:-}"
-acme_staging = ${ACME_STAGING:-false}
+acme_email = "$(sanitize ACME_EMAIL "${ACME_EMAIL:-}")"
+acme_staging = ${acme_staging}
 acme_cache_dir = "/config/acme"
-acme_http_addr = "${ACME_HTTP_ADDR:-:80}"
+acme_http_addr = "$(sanitize ACME_HTTP_ADDR "${ACME_HTTP_ADDR:-:80}")"
 
 [security]
 trusted_proxies = [$trusted_proxies]
@@ -117,7 +164,9 @@ else
     # would throw those edits away. Changing PUBLIC_HOST in compose afterwards
     # therefore does nothing, which is worth saying out loud rather than
     # leaving someone to wonder why their new domain never took effect.
-    if [ -n "$public_host" ] && ! grep -q "^public_host = \"$public_host\"" /config/routebox.toml; then
+    # The panel's own settings writer indents keys, so anchor on optional leading
+    # whitespace or this warning false-positives after the first in-panel save.
+    if [ -n "$public_host" ] && ! grep -q "^[[:space:]]*public_host = \"$public_host\"" /config/routebox.toml; then
         echo "**** PUBLIC_HOST=$public_host does not match /config/routebox.toml ****"
         echo "**** the file wins (it is written once, on first boot, and the panel edits it); ****"
         echo "**** change the domain in /config/routebox.toml to take effect ****"

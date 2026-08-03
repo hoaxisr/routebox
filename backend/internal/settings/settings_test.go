@@ -456,6 +456,22 @@ func TestNoListenAddressIsSettableOverTheAPI(t *testing.T) {
 	}
 }
 
+// TestTrustedProxiesAreNotSettableOverTheAPI pins security.trusted_proxies out
+// of the Update whitelist: it decides whose word RouteBox takes about who is
+// calling, so — like the listen addresses and singbox.binary_path — it comes
+// from the file only. Accepting it over PUT /api/settings would let any
+// authenticated session widen the empty-by-default trust list and then forge
+// rate-limit identities with a header.
+func TestTrustedProxiesAreNotSettableOverTheAPI(t *testing.T) {
+	m := &Manager{settings: Default()}
+	if err := m.Update(map[string]interface{}{"security.trusted_proxies": []interface{}{"0.0.0.0/0"}}); err == nil {
+		t.Fatal("security.trusted_proxies must be rejected by Update")
+	}
+	if got := m.Get().Security.TrustedProxies; len(got) != 0 {
+		t.Fatalf("trusted_proxies changed despite the rejection: %v", got)
+	}
+}
+
 // TestSingboxBinaryPathIsNotSettableOverTheAPI locks the one property that
 // makes pinning the binary safe: singbox.binary_path is exec'd, so — like
 // singbox.config_path — it comes from the file or the --binary flag only.

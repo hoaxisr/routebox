@@ -41,19 +41,44 @@ func clientIP(r *http.Request, trusted []netip.Prefix) string {
 	// nginx needs `proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for`;
 	// Caddy and Traefik send it by default. X-Real-IP is the common nginx-only
 	// alternative, so it is accepted too — from a trusted peer, and only when
-	// there is no usable X-Forwarded-For.
-	for _, hop := range reversedForwardedFor(r) {
+	// there is no X-Forwarded-For at all (or every hop of it was trusted).
+	for i, hop := range reversedForwardedFor(r) {
 		addr, err := netip.ParseAddr(hop)
-		if err != nil {
-			continue
+		if err != nil && i == 0 {
+			// The rightmost hop is the one value the trusted proxy itself
+			// appended, so an "ip:port" spelling there (Azure App Gateway
+			// style) is the proxy's observation, not client input. Tolerating
+			// it exactly there — and nowhere left of it — keeps such deploys
+			// from collapsing every client onto the proxy's address.
+			if host, _, splitErr := net.SplitHostPort(hop); splitErr == nil {
+				addr, err = netip.ParseAddr(host)
+			}
 		}
-		if !inPrefixes(addr, trusted) {
+		if err != nil {
+			// Fail closed. A hop that does not parse (RFC 7239 "unknown", an
+			// empty entry, junk) cannot be verified trusted, so nothing to its
+			// left is vouched for either — skipping over it would let the
+			// client mint identities. The peer is the last address still known
+			// to be real.
+			return peer
+		}
+		// Unmap and strip any IPv6 zone on both sides: the trust check does the
+		// same, and the returned key must match it, or ::ffff:a.b.c.d vs
+		// a.b.c.d (or fe80::1%eth0 vs fe80::1) would be two limiter buckets.
+		if addr = addr.Unmap().WithZone(""); !inPrefixes(addr, trusted) {
 			return addr.String()
 		}
 	}
+	// Same treatment as a forwarded hop: parse or fall back to the peer, and a
+	// value naming a trusted proxy is self-attribution, not a client. Residual
+	// limitation: a trusted proxy that neither sets nor strips X-Real-IP passes
+	// a client-supplied value through — that skews rate-limit bucketing only,
+	// never auth.
 	if real := strings.TrimSpace(r.Header.Get("X-Real-IP")); real != "" {
 		if addr, err := netip.ParseAddr(real); err == nil {
-			return addr.String()
+			if addr = addr.Unmap().WithZone(""); !inPrefixes(addr, trusted) {
+				return addr.String()
+			}
 		}
 	}
 	// Every hop was trusted (or the header was absent/garbage): the peer is the
@@ -73,13 +98,13 @@ func peerIP(r *http.Request) string {
 // reversedForwardedFor returns the X-Forwarded-For hops, nearest proxy first.
 // Values may arrive as one comma-separated header or as repeated headers; both
 // are the same list, in order, so they are concatenated before reversing.
+// Empty entries are KEPT: "a, , b" is as unverifiable at the gap as "unknown"
+// would be, and the walk must fail closed on it rather than skip it.
 func reversedForwardedFor(r *http.Request) []string {
 	var hops []string
 	for _, header := range r.Header.Values("X-Forwarded-For") {
 		for _, part := range strings.Split(header, ",") {
-			if part = strings.TrimSpace(part); part != "" {
-				hops = append(hops, part)
-			}
+			hops = append(hops, strings.TrimSpace(part))
 		}
 	}
 	for i, j := 0, len(hops)-1; i < j; i, j = i+1, j-1 {
@@ -89,7 +114,9 @@ func reversedForwardedFor(r *http.Request) []string {
 }
 
 func inPrefixes(addr netip.Addr, prefixes []netip.Prefix) bool {
-	addr = addr.Unmap() // an IPv4-mapped IPv6 peer must match an IPv4 prefix
+	// An IPv4-mapped IPv6 peer must match an IPv4 prefix, and Contains is
+	// always false for zoned addresses, so normalize both away.
+	addr = addr.Unmap().WithZone("")
 	for _, p := range prefixes {
 		if p.Contains(addr) {
 			return true

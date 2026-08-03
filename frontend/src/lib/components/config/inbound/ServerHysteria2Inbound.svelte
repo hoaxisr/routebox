@@ -2,29 +2,25 @@
 	import { t } from 'svelte-i18n';
 	import ServerTlsConfig from './ServerTlsConfig.svelte';
 	import ServerUsers from './ServerUsers.svelte';
+	import ListenAddressFields from './ListenAddressFields.svelte';
 	import type { ServerFormState } from '$lib/utils/serverInbound';
 
 	interface Props {
 		state: ServerFormState;
 		errors?: Record<string, string>;
+		publicHost?: string;
 	}
-	let { state = $bindable(), errors = {} }: Props = $props();
+	let { state = $bindable(), errors = {}, publicHost = '' }: Props = $props();
+
+	// sing-box knows exactly one hysteria2 obfs type ("salamander"), so the type
+	// is an Off/Salamander toggle (#48). A stored value that is neither keeps the
+	// original free-text input instead — silently rewriting a hand-edited config
+	// to '' or 'salamander' on the next save would be the wrong kind of helpful.
+	let legacyObfsType = $derived(state.obfsType !== '' && state.obfsType !== 'salamander');
 </script>
 
 <div class="space-y-4">
-	<div class="grid grid-cols-3 gap-4">
-		<div class="col-span-2">
-			<label for="listen" class="block text-sm font-medium text-[var(--ctp-subtext1)] mb-1">{$t('inbounds.listenAddress')} *</label>
-			<input id="listen" type="text" bind:value={state.listen} placeholder="::"
-				class="w-full px-3 py-2 bg-[var(--ctp-surface0)] border border-[var(--ctp-surface2)] rounded-lg text-[var(--ctp-text)] focus:outline-none focus:ring-2 focus:ring-[var(--ctp-primary)]" />
-		</div>
-		<div>
-			<label for="listenPort" class="block text-sm font-medium text-[var(--ctp-subtext1)] mb-1">{$t('inbounds.listenPort')} *</label>
-			<input id="listenPort" type="number" bind:value={state.listenPort} min="1" max="65535"
-				class="w-full px-3 py-2 bg-[var(--ctp-surface0)] border rounded-lg text-[var(--ctp-text)] focus:outline-none focus:ring-2 focus:ring-[var(--ctp-primary)] {errors['port'] ? 'border-[var(--ctp-red)]' : 'border-[var(--ctp-surface2)]'}" />
-			{#if errors['port']}<p class="mt-1 text-sm text-[var(--ctp-red)]">{errors['port']}</p>{/if}
-		</div>
-	</div>
+	<ListenAddressFields bind:listen={state.listen} bind:listenPort={state.listenPort} {errors} {publicHost} />
 
 	<div class="grid grid-cols-2 gap-4">
 		<div>
@@ -40,15 +36,28 @@
 	</div>
 	<div class="grid grid-cols-2 gap-4">
 		<div>
-			<label for="obfsType" class="block text-sm font-medium text-[var(--ctp-subtext1)] mb-1">{$t('inbounds.server.obfsType')}</label>
-			<input id="obfsType" type="text" bind:value={state.obfsType} placeholder="salamander"
-				class="w-full px-3 py-2 bg-[var(--ctp-surface0)] border border-[var(--ctp-surface2)] rounded-lg text-[var(--ctp-text)] focus:outline-none focus:ring-2 focus:ring-[var(--ctp-primary)]" />
+			{#if legacyObfsType}
+				<label for="obfsType" class="block text-sm font-medium text-[var(--ctp-subtext1)] mb-1">{$t('inbounds.server.obfsType')}</label>
+				<input id="obfsType" type="text" bind:value={state.obfsType}
+					class="w-full px-3 py-2 bg-[var(--ctp-surface0)] border border-[var(--ctp-surface2)] rounded-lg text-[var(--ctp-text)] focus:outline-none focus:ring-2 focus:ring-[var(--ctp-primary)]" />
+			{:else}
+				<span class="block text-sm font-medium text-[var(--ctp-subtext1)] mb-1">{$t('inbounds.server.obfsType')}</span>
+				<div class="flex gap-2" role="group" aria-label={$t('inbounds.server.obfsType')}>
+					<button type="button" class="toggle-btn {state.obfsType === '' ? 'selected' : ''}"
+						onclick={() => (state.obfsType = '')}>{$t('inbounds.server.obfsOff')}</button>
+					<button type="button" class="toggle-btn {state.obfsType === 'salamander' ? 'selected' : ''}"
+						onclick={() => (state.obfsType = 'salamander')}>Salamander</button>
+				</div>
+			{/if}
 		</div>
-		<div>
-			<label for="obfsPw" class="block text-sm font-medium text-[var(--ctp-subtext1)] mb-1">{$t('inbounds.server.obfsPassword')}</label>
-			<input id="obfsPw" type="text" bind:value={state.obfsPassword}
-				class="w-full px-3 py-2 bg-[var(--ctp-surface0)] border border-[var(--ctp-surface2)] rounded-lg text-[var(--ctp-text)] focus:outline-none focus:ring-2 focus:ring-[var(--ctp-primary)]" />
-		</div>
+		{#if state.obfsType !== ''}
+			<div>
+				<label for="obfsPw" class="block text-sm font-medium text-[var(--ctp-subtext1)] mb-1">{$t('inbounds.server.obfsPassword')} *</label>
+				<input id="obfsPw" type="text" bind:value={state.obfsPassword}
+					class="w-full px-3 py-2 bg-[var(--ctp-surface0)] border rounded-lg text-[var(--ctp-text)] focus:outline-none focus:ring-2 focus:ring-[var(--ctp-primary)] {errors['obfsPassword'] ? 'border-[var(--ctp-red)]' : 'border-[var(--ctp-surface2)]'}" />
+				{#if errors['obfsPassword']}<p class="mt-1 text-sm text-[var(--ctp-red)]">{errors['obfsPassword']}</p>{/if}
+			</div>
+		{/if}
 	</div>
 
 	<ServerTlsConfig

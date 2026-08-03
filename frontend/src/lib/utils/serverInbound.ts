@@ -193,6 +193,13 @@ export function validateServerInbound(state: ServerFormState, t: Translator): Re
 		// 'panel' mode injects the canonical cert/key paths at build time — nothing to validate.
 	}
 
+	// hysteria2 obfs: with a type selected, the password is what actually keys
+	// the obfuscation — an empty one would emit `"password": ""`, a config the
+	// binary accepts but no client can be pointed at intentionally (#48).
+	if (state.type === 'hysteria2' && state.obfsType && !state.obfsPassword.trim()) {
+		errors['obfsPassword'] = req(t('inbounds.server.obfsPassword'));
+	}
+
 	// Per-user credential required fields
 	for (const u of state.users) {
 		if (state.type === 'vless' && !u.uuid?.trim()) { errors['userCred'] = t('inbounds.server.needUserCred'); break; }

@@ -304,9 +304,7 @@ func TestRestoreKernelIface(t *testing.T) {
 	})
 
 	t.Run("systemd present: the unit owns this", func(t *testing.T) {
-		orig := lookPath
-		lookPath = func(string) (string, error) { return "/usr/bin/systemctl", nil }
-		t.Cleanup(func() { lookPath = orig })
+		withSystemd(t)
 		f := newFakeRunner()
 		m := newTestManager(t, f)
 		writeConf(t, m)
@@ -332,23 +330,20 @@ func TestRestoreKernelIface(t *testing.T) {
 }
 
 // withSystemd pins the systemd bring-up path for tests that assert on it, so
-// they do not depend on whether the machine running them has systemd.
+// they do not depend on whether the machine running them booted systemd. The
+// seam is systemdRunning (the /run/systemd/system probe), not lookPath — a
+// systemctl binary on disk proves nothing about the running init.
 func withSystemd(t *testing.T) {
 	t.Helper()
-	orig := lookPath
-	lookPath = func(file string) (string, error) { return "/usr/bin/" + file, nil }
-	t.Cleanup(func() { lookPath = orig })
+	orig := systemdRunning
+	systemdRunning = func() bool { return true }
+	t.Cleanup(func() { systemdRunning = orig })
 }
 
-// withoutSystemd makes lookPath report systemctl as absent for one test.
+// withoutSystemd pins systemd as not running (not PID 1) for one test.
 func withoutSystemd(t *testing.T) {
 	t.Helper()
-	orig := lookPath
-	lookPath = func(file string) (string, error) {
-		if file == "systemctl" {
-			return "", os.ErrNotExist
-		}
-		return "/usr/bin/" + file, nil
-	}
-	t.Cleanup(func() { lookPath = orig })
+	orig := systemdRunning
+	systemdRunning = func() bool { return false }
+	t.Cleanup(func() { systemdRunning = orig })
 }

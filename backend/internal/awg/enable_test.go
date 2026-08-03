@@ -460,8 +460,8 @@ func TestValidateObfGuards(t *testing.T) {
 // never loaded into the live interface. Regression for the "Apply did nothing" bug.
 func TestEnableRestartsIface(t *testing.T) {
 	// Pin the systemd path explicitly: iface_Up picks its route by whether
-	// systemctl exists, so without this the assertion below would quietly depend
-	// on the machine running the tests having systemd.
+	// systemd is the running init, so without this the assertion below would
+	// quietly depend on the init system of the machine running the tests.
 	withSystemd(t)
 	f := newFakeRunner()
 	m := newEnableManager(t, f)
