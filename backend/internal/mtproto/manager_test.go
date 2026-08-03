@@ -129,6 +129,26 @@ func TestStartIsIdempotentlyRefusedWhileRunning(t *testing.T) {
 	}
 }
 
+func TestStopImmediatelyAfterStart(t *testing.T) {
+	// Stopping before the serve goroutine has been scheduled used to have
+	// mtglib's Shutdown wait on a counter Serve was about to increment. Run it
+	// repeatedly so the scheduler actually lands in that window.
+	for range 20 {
+		m := NewManager(NewStore(""))
+		if err := m.Store().Put(Client{Name: "alice", Secret: secretA, Enabled: true}); err != nil {
+			t.Fatal(err)
+		}
+
+		if err := m.Start(testConfig(t)); err != nil {
+			t.Fatal(err)
+		}
+
+		if err := m.Stop(); err != nil {
+			t.Fatalf("Stop: %v", err)
+		}
+	}
+}
+
 func TestStopOnAStoppedManagerIsFine(t *testing.T) {
 	m := testManager(t)
 
