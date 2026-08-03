@@ -4,7 +4,7 @@
 	import { api } from '$lib/api/client';
 	import { notifications, formatBytes } from '$lib/stores';
 	import type { PanelUser, UserTrafficResponse, UserTrafficPoint, TrafficRange } from '$lib/types';
-	import { peersToRows, mergeMonitorRows, type MonitorRow } from '$lib/utils/monitorRows';
+	import { peersToRows, mtprotoClientsToRows, mergeMonitorRows, type MonitorRow } from '$lib/utils/monitorRows';
 
 	// AWG peers share this list (#40) but not the accounting source; the row
 	// shape and the peer mapping live in monitorRows.ts so they can be tested.
@@ -60,7 +60,15 @@
 			} catch {
 				/* AWG unavailable → panel users only */
 			}
-			rows = mergeMonitorRows(built, peerRows);
+			// Telegram proxy clients, same shape again. Absent in router mode and
+			// on older backends, which is not an error either.
+			let mtprotoRows: Row[] = [];
+			try {
+				mtprotoRows = mtprotoClientsToRows(await api.getMtprotoClientsTraffic(apiRange));
+			} catch {
+				/* Telegram proxy unavailable → the other two sources still render */
+			}
+			rows = mergeMonitorRows(built, peerRows, mtprotoRows);
 		} catch (e) {
 			notifications.error(`${$t('monitor.usersLoadFailed')}: ${e}`);
 		} finally {
@@ -154,7 +162,7 @@
 							<svg class="chev" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M9 5l7 7-7 7" /></svg>
 							<span class="dot" class:idle={!r.active} title={r.active ? $t('monitor.usageActive') : ''}></span>
 							{r.name}
-							{#if r.kind === 'peer'}<span class="kind">{$t('monitor.usageAwgPeer')}</span>{/if}
+							{#if r.kind === 'peer'}<span class="kind">{$t('monitor.usageAwgPeer')}</span>{:else if r.kind === 'mtproto'}<span class="kind">{$t('monitor.usageMtprotoClient')}</span>{/if}
 						</span>
 						<span class="bar" style="width:{(r.total / maxTotal) * 100}%">
 							{#if r.total > 0}

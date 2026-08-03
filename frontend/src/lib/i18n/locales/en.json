@@ -1848,7 +1848,8 @@
     "usageActive": "active now",
     "usagePeak": "Peak around {time}",
     "usageNoData": "No traffic in this range",
-    "usageAwgPeer": "AWG peer"
+    "usageAwgPeer": "AWG peer",
+    "usageMtprotoClient": "Telegram"
   },
   "subscriptions": {
     "title": "Subscriptions",

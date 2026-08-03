@@ -1859,7 +1859,8 @@
     "usageActive": "активен сейчас",
     "usagePeak": "Пик около {time}",
     "usageNoData": "Нет трафика в этом диапазоне",
-    "usageAwgPeer": "AWG-пир"
+    "usageAwgPeer": "AWG-пир",
+    "usageMtprotoClient": "Telegram"
   },
   "subscriptions": {
     "title": "Подписки",
