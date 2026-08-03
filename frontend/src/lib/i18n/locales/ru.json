@@ -1215,6 +1215,8 @@
     "clashApiUnavailable": "Clash API недоступен"
   },
   "logs": {
+    "sourceSingbox": "amnezia-box",
+    "sourceMtproto": "Telegram",
     "title": "Live-логи",
     "description": "Просмотр логов sing-box в реальном времени",
     "level": "Уровень",

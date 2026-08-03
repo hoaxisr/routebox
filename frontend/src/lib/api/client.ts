@@ -773,6 +773,25 @@ export function createLogsStream(
 	});
 }
 
+/**
+ * The Telegram proxy's own log. Separate from createLogsStream because it is a
+ * different process: the proxy runs inside RouteBox, not inside amnezia-box, so
+ * the Clash stream never carries its lines. Same frame shape, so the log view
+ * renders both with one code path.
+ */
+export function createMtprotoLogsStream(
+	onMessage: (data: { type: string; payload: string }) => void,
+	onError?: (error: string) => void,
+	onStatus?: (status: StreamStatus) => void
+): StreamHandle {
+	return createReconnectingStream({
+		path: '/api/mtproto/logs',
+		onMessage: (data) => onMessage(data as { type: string; payload: string }),
+		onError,
+		onStatus
+	});
+}
+
 export function createConnectionsStream(
 	onMessage: (data: ConnectionsResponse) => void,
 	onError?: (error: string) => void,
