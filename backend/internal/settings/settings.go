@@ -31,6 +31,35 @@ type Settings struct {
 	Advanced   AdvancedSettings   `toml:"advanced" json:"advanced"`
 	Updates    UpdatesSettings    `toml:"updates" json:"updates"`
 	Awg        AwgSettings        `toml:"awg" json:"awg"`
+	Mtproto    MtprotoSettings    `toml:"mtproto" json:"mtproto"`
+}
+
+// MtprotoSettings configures the built-in Telegram MTProto proxy.
+//
+// Client secrets are NOT here: they live in mtproto.toml, the same way AWG peer
+// keys live in peers.toml rather than in this file.
+type MtprotoSettings struct {
+	Enabled bool   `toml:"enabled" json:"enabled"`
+	Listen  string `toml:"listen" json:"listen"` // "host:port" the proxy binds
+
+	// MaskingDomain is the site FakeTLS impersonates, and where connections
+	// that authenticate against no secret are fronted to.
+	//
+	// It is encoded into every issued secret, so changing it invalidates every
+	// link already handed out. There is no safe default: it has to be a real
+	// host that plausibly receives HTTPS from your users.
+	MaskingDomain string `toml:"masking_domain" json:"masking_domain"`
+
+	// PublicHost and PublicPort are what go into tg:// links. Empty falls back
+	// to the panel's own public address, as subscription URLs do — they differ
+	// whenever a reverse proxy or SNI router sits in front.
+	PublicHost string `toml:"public_host" json:"public_host"`
+	PublicPort int    `toml:"public_port" json:"public_port"`
+
+	Concurrency        int    `toml:"concurrency" json:"concurrency"`
+	IdleTimeoutSec     int    `toml:"idle_timeout_sec" json:"idle_timeout_sec"`
+	PreferIP           string `toml:"prefer_ip" json:"prefer_ip"` // ""|prefer-ipv4|prefer-ipv6|only-ipv4|only-ipv6
+	DomainFrontingPort int    `toml:"domain_fronting_port" json:"domain_fronting_port"`
 }
 
 // AwgSettings configures the RouteBox-owned AmneziaWG server interface.
@@ -232,6 +261,21 @@ func Default() Settings {
 		Server:  ServerSettings{Mode: "router", PublicHost: "", PublicPort: 0},
 		Updates: UpdatesSettings{AutoCheck: true},
 		Awg:     AwgSettings{Enabled: false, Interface: "awg-rb0", Subnet: "10.10.0.0/24", ListenPort: 51820, MTU: 1420, DNS: []string{"1.1.1.1"}, ObfPreset: "off", IPv6Broker: true},
+		Mtproto: MtprotoSettings{
+			Enabled: false,
+			// Neither 443 nor 8443. A reverse proxy usually owns 443, and 8443
+			// is the panel's own port in the Docker image (EXPOSE 8443), so
+			// both would collide the first time this is enabled.
+			Listen: "0.0.0.0:9443",
+			// No default masking domain — it has to be a real host that
+			// plausibly receives HTTPS from your users, and guessing one would
+			// bake a wrong guess into every issued secret.
+			MaskingDomain: "",
+			// mtglib's own defaults, restated so the panel can show them.
+			Concurrency:        4096,
+			IdleTimeoutSec:     300,
+			DomainFrontingPort: 443,
+		},
 	}
 }
 
@@ -873,6 +917,64 @@ func (m *Manager) Update(updates map[string]interface{}) error {
 				return fmt.Errorf("setting %s: %w", key, err)
 			}
 			staged.Awg.Obf = obf
+
+		// Telegram MTProto proxy runtime settings. Malformed values are an
+		// error rather than a silent no-op: the panel would otherwise report a
+		// successful save for a setting that never changed.
+		case "mtproto.enabled":
+			v, ok := value.(bool)
+			if !ok {
+				return fmt.Errorf("setting %s: value must be a boolean", key)
+			}
+			staged.Mtproto.Enabled = v
+		case "mtproto.listen":
+			v, ok := value.(string)
+			if !ok {
+				return fmt.Errorf("setting %s: value must be a string", key)
+			}
+			staged.Mtproto.Listen = v
+		case "mtproto.masking_domain":
+			v, ok := value.(string)
+			if !ok {
+				return fmt.Errorf("setting %s: value must be a string", key)
+			}
+			staged.Mtproto.MaskingDomain = v
+		case "mtproto.public_host":
+			v, ok := value.(string)
+			if !ok {
+				return fmt.Errorf("setting %s: value must be a string", key)
+			}
+			staged.Mtproto.PublicHost = v
+		case "mtproto.public_port":
+			v, ok := toInt(value)
+			if !ok {
+				return fmt.Errorf("setting %s: value must be a whole number", key)
+			}
+			staged.Mtproto.PublicPort = v
+		case "mtproto.concurrency":
+			v, ok := toInt(value)
+			if !ok {
+				return fmt.Errorf("setting %s: value must be a whole number", key)
+			}
+			staged.Mtproto.Concurrency = v
+		case "mtproto.idle_timeout_sec":
+			v, ok := toInt(value)
+			if !ok {
+				return fmt.Errorf("setting %s: value must be a whole number", key)
+			}
+			staged.Mtproto.IdleTimeoutSec = v
+		case "mtproto.prefer_ip":
+			v, ok := value.(string)
+			if !ok {
+				return fmt.Errorf("setting %s: value must be a string", key)
+			}
+			staged.Mtproto.PreferIP = v
+		case "mtproto.domain_fronting_port":
+			v, ok := toInt(value)
+			if !ok {
+				return fmt.Errorf("setting %s: value must be a whole number", key)
+			}
+			staged.Mtproto.DomainFrontingPort = v
 
 		default:
 			return fmt.Errorf("unknown or non-runtime setting: %s", key)
