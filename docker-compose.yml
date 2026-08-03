@@ -39,6 +39,9 @@ services:
       # amnezia-box inbounds are user-configured in the panel — map each one
       # you create, e.g. an inbound on container port 443:
       # - "443:443"
+      # The AmneziaWG server's own UDP port, if you enable it. It is not HTTP,
+      # so no reverse proxy can carry it; publish it here.
+      # - "51820:51820/udp"
       # Panel and inbounds run as the PUID/PGID user, but Docker sets
       # net.ipv4.ip_unprivileged_port_start=0 in containers, so ports below 1024
       # (including the :80 ACME listener) bind without root or NET_BIND_SERVICE.
@@ -48,21 +51,26 @@ services:
       # to match for the challenge listener.
     volumes:
       - ./config:/config
-    # cap_add:
-    #   - NET_BIND_SERVICE
+      # Kernel AmneziaWG backend only: the panel reads the module's version
+      # with modinfo, which needs this. Without it AWG 3.0 cannot be detected
+      # and is treated as unsupported on that backend.
+      # - /lib/modules:/lib/modules:ro
 
-    # ---- kernel AmneziaWG backend (optional) --------------------------------
-    # The default singbox backend needs none of this. For the kernel one the
-    # host must have the amneziawg module loaded (modprobe amneziawg), and the
-    # server's UDP port has to be published — it is not HTTP, so no reverse
-    # proxy can carry it. The panel refuses the backend, naming what is missing,
-    # rather than failing later at Enable.
+    # Capabilities, if you need either of them:
+    #   NET_ADMIN        — the kernel AmneziaWG backend (see below)
+    #   NET_BIND_SERVICE — only on a runtime that refuses unprivileged ports
+    #                      below 1024; Docker allows them, see the note above
     # cap_add:
     #   - NET_ADMIN
+
+    # ---- kernel AmneziaWG backend (optional) --------------------------------
+    # The default singbox backend needs none of this. For the kernel one: load
+    # the amneziawg module on the HOST (modprobe amneziawg), then uncomment
+    # NET_ADMIN above, the UDP port in `ports`, the /lib/modules mount, and the
+    # sysctl below. The panel checks the pieces and refuses the backend naming
+    # what is missing, rather than failing later at Enable.
     # sysctls:
     #   - net.ipv4.ip_forward=1
-    # ports:
-    #   - "51820:51820/udp"
 
 # ---- Behind a reverse proxy -------------------------------------------------
 # Replace the environment/ports above with the following when nginx, Caddy or
@@ -97,6 +105,16 @@ services:
 #                           # container network, so the panel is not exposed
 #    expose:
 #      - "8443"
+#
+# proxynet is the network the proxy is on: without it the two sit on different
+# bridges and the proxy cannot reach the panel at all. When the proxy lives in
+# another compose project, declare that project's network instead of the block
+# below, at the top level:
+#
+#  networks:
+#    proxynet:
+#      external: true
+#      name: <that project>_<its network>
 #
 # The proxy service gets the fixed address, on a network whose subnet is
 # pinned so the address survives network recreation:
