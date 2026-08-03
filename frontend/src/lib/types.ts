@@ -1135,3 +1135,62 @@ export interface AwgServerSettings {
 	backend: string; // may be "" on fresh deploy; status.backend is authoritative
 	server_host: string; // client-facing AWG address; falls back to server.public_host when empty
 }
+
+// ---- Telegram MTProto proxy (panel/vps mode) --------------------------------
+
+export interface MtprotoSettings {
+	enabled: boolean;
+	listen: string;
+	/** The site FakeTLS impersonates. Encoded into every secret, so changing it
+	 *  invalidates every link already handed out. */
+	masking_domain: string;
+	/** Empty falls back to the panel's own public address, as subscriptions do. */
+	public_host: string;
+	public_port: number;
+	concurrency: number;
+	idle_timeout_sec: number;
+	prefer_ip: string;
+	domain_fronting_port: number;
+}
+
+export interface MtprotoStatus {
+	running: boolean;
+	listen: string;
+	clients: number;
+	connected: number;
+	started_at: string;
+}
+
+/** GET /api/mtproto — status plus everything the page needs in one round trip. */
+export interface MtprotoState {
+	status: MtprotoStatus;
+	settings: MtprotoSettings;
+	/** Resolved public address, so the page need not duplicate the fallback. */
+	public_host: string;
+	public_port: number;
+	/** False when a masking domain or public host is missing — a link built
+	 *  without them is well-formed and then fails silently inside Telegram. */
+	can_issue_link: boolean;
+	read_only: boolean;
+}
+
+/** One roster entry. The secret is deliberately absent: this is polled. */
+export interface MtprotoClient {
+	name: string;
+	enabled: boolean;
+	created_at: number;
+	expires_at: number; // unix seconds; 0 = never
+	online: boolean;
+}
+
+export interface MtprotoConnection {
+	stream_id: string;
+	client: string;
+	client_ip: string;
+	started_at: string;
+}
+
+export interface MtprotoLink {
+	tg: string;
+	web: string;
+}
