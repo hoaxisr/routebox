@@ -65,3 +65,11 @@ var KernelBackendUnsupported = func() string {
 	}
 	return ""
 }
+
+// SetKernelSupportsAWG3 wires the kernel backend's awg3 capability gate. nil
+// (unset) = unsupported.
+func (m *Manager) SetKernelSupportsAWG3(fn func() bool) {
+	m.mu.Lock()
+	m.kernelSupports3Fn = fn
+	m.mu.Unlock()
+}

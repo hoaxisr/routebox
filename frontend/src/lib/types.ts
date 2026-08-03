@@ -1062,6 +1062,9 @@ export interface AwgStatus {
 	backend: string; // "kernel" | "singbox" — authoritative (always set by the backend)
 	last_error?: string;
 	ipv6_active?: boolean; // broker desired AND egress preflight passed
+	// True when the kernel backend's host has a confirmed awg3-capable module +
+	// awg-quick/tools pairing (always false/omitted on the singbox backend).
+	kernel_awg3_available?: boolean;
 }
 
 export interface AwgPeer {

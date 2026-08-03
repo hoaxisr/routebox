@@ -16,6 +16,10 @@ type ServerConf struct {
 	WAN        string // validated iface
 	Subnet     string // canonical CIDR for MASQUERADE -s
 	Iface      string // "awg-rb0"
+	// HeaderProtectionKey is the AWG3 shared secret ("" = off); only ever
+	// non-empty when the kernel backend has confirmed awg3 capability
+	// (KernelSupportsAWG3) — a pre-awg3 awg-quick hard-fails on the key.
+	HeaderProtectionKey string
 }
 
 // PeerLine is one [Peer] block's renderable fields. Name is the display name as
@@ -40,6 +44,9 @@ func RenderServer(s ServerConf, peers []PeerLine) string {
 		fmt.Fprintf(&b, "MTU = %d\n", s.MTU)
 	}
 	writeObf(&b, s.Obf) // reuse the single obfuscation renderer (shared with BuildClient)
+	if s.HeaderProtectionKey != "" {
+		fmt.Fprintf(&b, "HeaderProtectionKey = %s\n", s.HeaderProtectionKey)
+	}
 	b.WriteString(postUp(s))
 	b.WriteString(postDown(s))
 	for _, p := range peers {

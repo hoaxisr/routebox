@@ -90,6 +90,14 @@ type Manager struct {
 	headerKey        string
 	headerProtection bool
 
+	// kernelSupports3Fn gates the kernel backend's own awg3 fields (CPA/RAT,
+	// the four device-timers, and HeaderProtectionKey) on the host's kernel
+	// module + awg-quick/tools capability (KernelSupportsAWG3). nil (unset) =
+	// unsupported, fail-closed like KernelBackendUnsupported elsewhere — a
+	// pre-awg3 awg-quick hard-fails on unknown [Interface] keys, so guessing
+	// "supported" is the wrong default.
+	kernelSupports3Fn func() bool
+
 	// IPv6-broker wiring (dual-stack NAT-free AWG): ipv6Broker is the operator's
 	// desire (from settings); v6Active is desire AND a passed egress preflight AND
 	// mtu>=1280; ulaPrefix is the persisted /64 used to derive every v6 address
@@ -309,14 +317,33 @@ func (m *Manager) Rehydrate(ctx context.Context, in EnableInput) {
 	if err != nil {
 		return
 	}
-	// awg3 obfuscation (CPA/RAT + the four device-timers) is a sing-box-backend
-	// feature; the kernel awg-quick path must never restore it into m.obf, or
-	// RenderClientConf/RenderServer would emit unknown [Interface] keys that a
-	// pre-awg3 awg-quick hard-fails on. Strip them here exactly as kernel-Enable
-	// does (RehydrateSingbox deliberately KEEPS them).
-	obf.stripAwg3()
+	kAwg3 := m.kernelSupports3Fn != nil && m.kernelSupports3Fn()
+	if !kAwg3 {
+		// CPA/RAT + the four device-timers never render into the awg-quick conf on
+		// an awg3-incapable host — restoring them into m.obf would make
+		// RenderClientConf/RenderServer emit unknown [Interface] keys that a
+		// pre-awg3 awg-quick hard-fails on. Strip them here exactly as kernel-Enable
+		// does (RehydrateSingbox deliberately KEEPS them; so does this one once the
+		// host is awg3-capable).
+		obf.stripAwg3()
+	}
 	mtu, _ := ValidateMTU(in.MTU) // non-critical for render; 0 -> omitted
 	dns, _ := ValidateDNS(in.DNS) // empty stays empty; the client conf omits the line
+
+	// Restore the header key alongside the server key so a restart keeps
+	// exporting the SAME HPK — but only when both header protection is desired
+	// AND the host is awg3-capable (Enable with either false sets m.headerKey="",
+	// and rehydrate must not resurrect it). Same S>=12 gate as kernel-Enable
+	// (settings persist BEFORE Enable validates, so an invalid combo can be on
+	// disk); mirrors RehydrateSingbox's Bug M1 fix.
+	hpk := ""
+	if kAwg3 && in.HeaderProtection {
+		if err := validateHPKConstraint(obf, true); err == nil {
+			hpk = m.store.HeaderKey()
+		} else {
+			log.Printf("awg: rehydrate: header protection is enabled in settings but %v — dropping the header key (degraded, loadable config)", err)
+		}
+	}
 
 	up := false
 	if out, _, e := m.run.Run(ctx, "awg", "show", m.iface); e == nil && strings.Contains(out, "listening port") {
@@ -327,6 +354,7 @@ func (m *Manager) Rehydrate(ctx context.Context, in EnableInput) {
 	m.serverPriv, m.subnet, m.serverIP, m.listenPort, m.mtu, m.dns, m.obf, m.wan =
 		priv, subnet, serverIP, port, mtu, dns, obf, in.WANIface
 	m.obfPreset = in.ObfPreset
+	m.headerKey, m.headerProtection = hpk, kAwg3 && in.HeaderProtection
 	m.enabled = up
 	if up {
 		m.phase = PhaseReady
@@ -447,16 +475,24 @@ func (m *Manager) clientConfFor(pub, host string) (ClientConf, Peer, error) {
 	}
 	m.mu.Lock()
 	serverPriv, dns, mtu, obf, port, preset, headerKey := m.serverPriv, m.dns, m.mtu, m.obf, m.listenPort, m.obfPreset, m.headerKey
-	broker, ula, s3fn := m.v6Active, m.ulaPrefix, m.supports3Fn
+	broker, ula, s3fn, kernelS3fn, backend := m.v6Active, m.ulaPrefix, m.supports3Fn, m.kernelSupports3Fn, m.backend
 	m.mu.Unlock()
 	serverPub, err := PublicFromPrivate(serverPriv)
 	if err != nil {
 		return ClientConf{}, Peer{}, err
 	}
-	// Same awg3 gate as renderServerSpec and ClientEndpoint: on a pre-awg3 binary
-	// the server is not running these, so promising them to a client cannot work.
-	// A nil s3fn means "supported", matching both of those call sites.
-	if s3fn != nil && !s3fn() {
+	// Gate on the ACTIVE backend's own capability signal, not the other one's:
+	// supports3Fn probes the sing-box amnezia-box binary and is meaningless for a
+	// kernel peer, kernelSupports3Fn probes the kernel module+tools and is
+	// meaningless for a singbox peer. Same gate as renderServerSpec/ClientEndpoint
+	// (singbox) and kernel-Enable/Rehydrate (kernel) respectively. A nil s3fn means
+	// "supported" (legacy singbox stance); a nil kernelS3fn means "unsupported"
+	// (fail-closed, matching KernelBackendUnsupported's stance elsewhere).
+	supported := s3fn == nil || s3fn()
+	if backend == "kernel" {
+		supported = kernelS3fn != nil && kernelS3fn()
+	}
+	if !supported {
 		obf.stripAwg3()
 		headerKey = ""
 	}
