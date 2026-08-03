@@ -70,6 +70,10 @@ type Manager struct {
 	lis    net.Listener
 	events *EventStream
 
+	// logs outlives any single proxy: a viewer opened before the last restart
+	// should still see what led up to it.
+	logs *LogBuffer
+
 	// served closes when the accept loop has returned, so Stop can order
 	// itself against it.
 	served chan struct{}
@@ -80,8 +84,12 @@ type Manager struct {
 
 // NewManager constructs a stopped manager over a roster.
 func NewManager(store *Store) *Manager {
-	return &Manager{store: store}
+	return &Manager{store: store, logs: NewLogBuffer(DefaultLogBufferSize)}
 }
+
+// Logs exposes the proxy's recent log lines, so the panel can show what the
+// proxy is doing without the operator reaching for `docker logs`.
+func (m *Manager) Logs() *LogBuffer { return m.logs }
 
 // Store exposes the roster to the API layer, mirroring awg.Manager.Store.
 func (m *Manager) Store() *Store { return m.store }
@@ -143,7 +151,7 @@ func (m *Manager) startLocked(cfg Config) error {
 		IPBlocklist:        ipblocklist.NewNoop(),
 		IPAllowlist:        allowAll{},
 		EventStream:        events,
-		Logger:             newLogger(),
+		Logger:             newBufferedLogger(m.logs),
 		Concurrency:        cfg.Concurrency,
 		IdleTimeout:        cfg.IdleTimeout,
 		PreferIP:           cfg.PreferIP,

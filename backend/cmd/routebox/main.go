@@ -738,6 +738,9 @@ func main() {
 				r.Post("/enable", apiHandler.EnableMtproto)
 				r.Post("/disable", apiHandler.DisableMtproto)
 				r.Get("/connections", apiHandler.GetMtprotoConnections)
+				// WebSocket: the proxy's own log. Not part of amnezia-box, so
+				// the Clash log stream never carries it.
+				r.Get("/logs", apiHandler.StreamMtprotoLogs)
 				r.Get("/clients", apiHandler.ListMtprotoClients)
 				r.Post("/clients", apiHandler.CreateMtprotoClient)
 				// Static segment, so chi matches it before /clients/{name} —
