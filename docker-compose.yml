@@ -42,6 +42,12 @@ services:
       # The AmneziaWG server's own UDP port, if you enable it. It is not HTTP,
       # so no reverse proxy can carry it; publish it here.
       # - "51820:51820/udp"
+      # The Telegram MTProto proxy, if you enable it on the Telegram page.
+      # Its default port is 9443 — not 8443, which the panel itself uses.
+      # Publish it, or route it by SNI from a proxy that already holds :443
+      # (see the README); either way the port here must match the one in the
+      # panel's Telegram settings.
+      # - "9443:9443"
       # Panel and inbounds run as the PUID/PGID user, but Docker sets
       # net.ipv4.ip_unprivileged_port_start=0 in containers, so ports below 1024
       # (including the :80 ACME listener) bind without root or NET_BIND_SERVICE.
