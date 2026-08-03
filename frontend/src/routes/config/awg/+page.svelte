@@ -24,6 +24,10 @@
 	const formDirty = $derived(!!form && !!settings && JSON.stringify(form) !== JSON.stringify(settings));
 	const isSingbox = $derived((status?.backend ?? settings?.backend) === 'singbox');
 	const backendValue = $derived<'kernel' | 'singbox'>(isSingbox ? 'singbox' : 'kernel');
+	// AWG3 controls (header protection, CPA/RAT) are available on singbox always,
+	// and on the kernel backend only when the host's module + awg-quick/tools have
+	// both confirmed awg3 capability (status.kernel_awg3_available).
+	const awg3Available = $derived(isSingbox || !!status?.kernel_awg3_available);
 
 	// Live "traffic flowing" LED for singbox peers: the kernel backend has real
 	// handshakes, but sing-box exposes none — so we light a peer green when the Clash
@@ -310,7 +314,7 @@
 			</button>
 			{#if settingsOpen}
 				<div class="disclosure-body">
-					<ServerSettingsForm bind:form saving={saving || enabling} {isSingbox} applied={status.enabled} dirty={formDirty} ipv6Active={status.ipv6_active} onSave={saveOrApply} onReset={onResetClick} />
+					<ServerSettingsForm bind:form saving={saving || enabling} {awg3Available} {isSingbox} applied={status.enabled} dirty={formDirty} ipv6Active={status.ipv6_active} onSave={saveOrApply} onReset={onResetClick} />
 				</div>
 			{/if}
 		</div>
@@ -381,7 +385,7 @@
 						</div>
 					</div>
 					<p class="step-desc">{$t('awg.stepConfigureDesc')}</p>
-					<ServerSettingsForm bind:form saving={saving || enabling} {isSingbox} applied={status.enabled} dirty={formDirty} ipv6Active={status.ipv6_active} onSave={saveOrApply} onReset={onResetClick} />
+					<ServerSettingsForm bind:form saving={saving || enabling} {awg3Available} {isSingbox} applied={status.enabled} dirty={formDirty} ipv6Active={status.ipv6_active} onSave={saveOrApply} onReset={onResetClick} />
 				</div>
 			</section>
 
