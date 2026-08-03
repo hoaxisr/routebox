@@ -8,6 +8,11 @@ import ru from './locales/ru.json';
 // show up as literal text.
 const REQUIRED_KEYS = [
 	'nav.telegram',
+	// Outside the telegram block, so nothing else pins them. These landed in
+	// the wrong block once already, which is what this list is for.
+	'logs.sourceSingbox',
+	'logs.sourceMtproto',
+	'monitor.usageMtprotoClient',
 	'telegram.title',
 	'telegram.description',
 	'telegram.loadFailed',
