@@ -107,130 +107,11 @@ curl -fsSL https://raw.githubusercontent.com/hoaxisr/routebox/main/vps-install.s
 
 Панель доступна на `https://panel.example.com:8443` — открывайте по домену, не по IP. Логин `admin`, пароль генерируется при первом старте и сохраняется в `/etc/routebox/routebox-initial-password` (также виден в `journalctl -u routebox`). Смените его после входа в разделе App Settings → Security.
 
+Этот же режим поднимается и в Docker — раздел «Docker: панель на VPS» в конце README.
+
 ![Сервер AmneziaWG: клиенты, выдача QR-кода, .conf и JSON, сроки действия](assets/05-awg.png)
 
 ![Пользователи панели: состояние, срок действия, ссылка-подписка и учёт трафика](assets/06-users.png)
-
-## Docker (панель на VPS)
-
-Образ собран на [base image LinuxServer.io](https://docs.linuxserver.io/general/containers-101/) и умеет только режим панели на VPS. Режим роутера в Docker не поддерживается: ему нужен TUN и роль шлюза локальной сети — для него есть `install.sh` на голом железе.
-
-```bash
-curl -fsSLO https://raw.githubusercontent.com/hoaxisr/routebox/main/docker-compose.yml
-# отредактируйте PUBLIC_HOST и ACME_EMAIL в docker-compose.yml
-docker compose up -d
-```
-
-- `/config` — единственный volume: `routebox.toml`, конфиг amnezia-box, сам бинарник amnezia-box (`/config/bin`), GeoIP-база, `traffic.db`, ACME-кэш, данные сервера AmneziaWG. Внутри контейнера `/etc/routebox` и `/etc/amnezia/amneziawg` — симлинки сюда же, так что всё состояние панели лежит в одном месте.
-- Если `routebox.toml` в `/config` ещё нет, контейнер пишет минимальный конфиг из переменных окружения — то же самое, что спрашивает `vps-install.sh`. Пароль администратора панель генерирует сама при первом старте и кладёт в `/config/routebox-initial-password`; он же виден в `docker compose logs routebox`.
-- **Переменные окружения читаются только в этот момент.** Дальше правит файл, его же меняет панель — поэтому новый `PUBLIC_HOST` в `docker-compose.yml` после первого запуска уже ничего не изменит, о чём контейнер предупредит в логе. Домен меняйте в `/config/routebox.toml`. Контейнер понимает `PUBLIC_HOST`, `ACME_EMAIL`, `ACME_STAGING`, `ACME_ENABLED`, `ACME_HTTP_ADDR` и `LISTEN`. Пример `PUBLIC_HOST=panel.example.com` считается незаполненным: просить у Let's Encrypt сертификат на чужой домен бессмысленно, а неудачные проверки идут в счёт лимитов.
-- amnezia-box контейнер копирует из образа в `/config/bin/amnezia-box` при первом запуске, дальше бинарник живёт на volume. Поэтому обновление из панели работает (файлом владеет пользователь `PUID`) и переживает пересоздание контейнера. Уже установленный бинарник образ не трогает; если он старше, чем в образе, контейнер скажет об этом в логе. Нужна версия из образа — удалите файл и перезапустите контейнер.
-- systemd в контейнере нет, поэтому amnezia-box запускает сам RouteBox — при каждом старте, если конфиг и бинарник на месте. Start/Stop/Restart в панели работают как обычно.
-- Наружу отданы `8443` (панель) и `80` (ACME HTTP-01; его нужно держать открытым и ради продлений). Инбаунды amnezia-box вы настраиваете в панели и публикуете сами через `ports:`. Панель и инбаунды работают не под root, но Docker выставляет в контейнерах `net.ipv4.ip_unprivileged_port_start=0`, так что порт <1024 занимается и без `NET_BIND_SERVICE`. Если ваш runtime так не умеет — добавьте `cap_add: [NET_BIND_SERVICE]` или дайте инбаунду порт ≥1024 внутри контейнера и пробросьте его на нужный (`"443:8444"`), а для ACME задайте `ACME_HTTP_ADDR`.
-- `PUID`/`PGID` — как в любом образе LinuxServer.io: задают владельца файлов в `/config`. Состояние контейнера показывает `HEALTHCHECK`: он опрашивает `/api/health`.
-- Сервер AmneziaWG по умолчанию работает на бэкенде `singbox`: ему не нужны ни модуль ядра, ни права, ни лишние настройки — с ним контейнер запускается как есть.
-- Бэкенд `kernel` в образе тоже работает, но его нужно включить осознанно. Нужны три вещи: модуль `amneziawg`, загруженный **на хосте** (`modprobe amneziawg`; DKMS-пакет `amneziawg-dkms` плюс заголовки ядра), `cap_add: [NET_ADMIN]` у контейнера и проброшенный UDP-порт сервера — он не HTTP и через обратный прокси не пойдёт. amneziawg-tools уже в образе. Панель проверяет и инструменты, и capability, и отказывает с указанием, чего именно не хватает, а не падает потом на включении.
-- AWG 3.0 (защита заголовков, CPA/RAT) на бэкенде `kernel` доступна, если и модуль ядра, и amneziawg-tools на хосте — версии 3.x (панель проверяет `modinfo amneziawg` и `awg --version` независимо: расхождение версий, например свежий модуль со старыми инструментами, считается неподдерживаемым). На бэкенде `singbox` это всегда доступно и от версии модуля ядра не зависит.
-
-```yaml
-cap_add:
-  - NET_ADMIN
-sysctls:
-  - net.ipv4.ip_forward=1
-ports:
-  - "51820:51820/udp"   # порт сервера AmneziaWG из настроек панели
-```
-
-  Без `cap_add` панель работает ровно как раньше — без привилегий, на бэкенде `singbox`. Capability выдаётся через ambient set, поэтому её видят и `awg-quick`, и запускаемые им `ip`/`iptables`, а сам процесс панели остаётся под пользователем `PUID`, не под root. Ambient-права наследуют все дочерние процессы панели, включая amnezia-box, — поэтому включать бэкенд `kernel` стоит только если он вам действительно нужен.
-- Версию amnezia-box можно зафиксировать при сборке: `docker build --build-arg AMNEZIA_BOX_VERSION=1.14.0-beta.4-awgm.5 .`. По умолчанию берётся последний релиз, а какой именно — записано в `/defaults/amnezia-box.version`.
-
-### За обратным прокси
-
-Если TLS уже держит nginx, Caddy или Traefik, встроенный ACME не нужен: RouteBox отдаёт панель по обычному HTTP, сертификат остаётся заботой прокси. Порт `80` наружу не публикуется, `ACME_EMAIL` можно не задавать.
-
-```yaml
-environment:
-  - PUID=1000
-  - PGID=1000
-  # Публичный адрес панели: он попадает в ссылки-подписки, поэтому это адрес
-  # прокси, а не контейнера.
-  - PUBLIC_HOST=panel.example.com
-  - PUBLIC_PORT=443
-  - ACME_ENABLED=false
-  # Чьему X-Forwarded-For верить: только фиксированный адрес самого прокси.
-  - TRUSTED_PROXIES=172.28.0.2/32
-networks: [proxynet]
-ports: []
-expose:
-  - "8443"
-```
-
-Прокси при этом закрепляется фиксированный адрес в той же сети:
-
-```yaml
-<сервис прокси>:
-  networks:
-    proxynet:
-      ipv4_address: 172.28.0.2
-
-networks:
-  proxynet:
-    ipam:
-      config:
-        - subnet: 172.28.0.0/24
-```
-
-**Доверяйте только адресу прокси, не всей подсети docker-сети.** Подсеть — это каждый контейнер в ней: любой скомпрометированный сосед сможет прислать панели поддельный `X-Forwarded-For` напрямую и обойти блокировку перебора пароля. Поэтому у прокси фиксированный `ipv4_address`, а в `TRUSTED_PROXIES` — ровно он, /32. Если в сети включён IPv6, Docker отвечает на DNS-запрос сначала AAAA и прокси придёт по ULA-адресу — закрепите ему и `ipv6_address` и добавьте в список: незаписанный адрес просто не считается доверенным, молча. Если RouteBox видит `X-Forwarded-For` с адреса не из списка, он пишет об этом в лог один раз на адрес.
-
-`TRUSTED_PROXIES` стоит задать сразу. На адресе клиента завязаны блокировка перебора пароля и лимит запросов к публичному `/sub/{token}`, а из-за прокси все клиенты приходят с одного адреса и считаются за одного: лимит подписок срабатывает через несколько запросов и накрывает всех разом. Заголовку RouteBox верит только от перечисленных адресов, с остальных смотрит на реальный адрес соединения — подделать не выйдет. Из цепочки берётся самый правый адрес, которого нет в списке: это то, что видел ваш собственный прокси.
-
-Прокси должен пробрасывать WebSocket-соединения — по ним на дашборд идут трафик, логи и список соединений — и передавать `X-Forwarded-Proto`, иначе cookie сессии останется без флага `Secure`.
-
-nginx:
-
-```nginx
-server {
-    listen 443 ssl http2;
-    server_name panel.example.com;
-
-    ssl_certificate     /etc/letsencrypt/live/panel.example.com/fullchain.pem;
-    ssl_certificate_key /etc/letsencrypt/live/panel.example.com/privkey.pem;
-
-    location / {
-        proxy_pass http://routebox:8443;
-        proxy_http_version 1.1;
-        proxy_set_header Upgrade $http_upgrade;
-        proxy_set_header Connection $connection_upgrade;
-        proxy_set_header Host $host;
-        proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
-        proxy_set_header X-Forwarded-Proto $scheme;
-        # Дашборд держит WebSocket открытым, с дефолтным таймаутом он рвётся.
-        proxy_read_timeout 3600s;
-        proxy_buffering off;
-    }
-}
-
-# в http-блоке:
-# map $http_upgrade $connection_upgrade { default upgrade; "" close; }
-```
-
-Caddy — `X-Forwarded-*` и WebSocket из коробки:
-
-```caddy
-panel.example.com {
-    reverse_proxy routebox:8443
-}
-```
-
-Инбаунды amnezia-box через прокси не пойдут: это не HTTP. Их порты контейнер публикует сам через `ports:`. Через прокси ходят панель и подписки, VPN-трафик — мимо.
-
-Обновление образа:
-
-```bash
-docker compose pull && docker compose up -d
-```
-
-Раздел Updates работает и здесь: amnezia-box ставится прямо из панели, и обновление никуда не денется после `docker compose up -d` — бинарник лежит на volume. Для самого RouteBox панель вместо кнопки показывает команду выше: свой бинарник он берёт из образа.
 
 ## Обновление
 
@@ -405,6 +286,152 @@ go build -ldflags "-X main.Version=$(sed -n 's/.*"version": "\(.*\)".*/\1/p' fro
 
 sudo ./routebox
 ```
+
+</details>
+
+<details>
+<summary><b>Docker: панель на VPS</b></summary>
+
+Образ собран на [base image LinuxServer.io](https://docs.linuxserver.io/general/containers-101/) и поддерживает только режим панели. Роутеру нужны TUN и роль шлюза локальной сети — в контейнере этого нет, для него есть `install.sh`.
+
+```bash
+curl -fsSLO https://raw.githubusercontent.com/hoaxisr/routebox/main/docker-compose.yml
+# впишите свой домен в PUBLIC_HOST и почту в ACME_EMAIL
+docker compose up -d
+```
+
+Панель поднимется на `https://ваш-домен:8443` и сама выпустит сертификат. Пароль администратора она генерирует при первом старте и кладёт в `/config/routebox-initial-password`; он же виден в `docker compose logs routebox`.
+
+Всё состояние лежит в одном volume `/config`: `routebox.toml`, конфиг и бинарник amnezia-box, база GeoIP, `traffic.db`, кэш ACME, ключи сервера AmneziaWG. Внутри контейнера `/etc/routebox` и `/etc/amnezia/amneziawg` — симлинки туда же.
+
+Переменные окружения контейнер читает один раз, когда создаёт `routebox.toml`. Дальше настройки живут в файле, и панель правит его же, так что домен после первого запуска меняйте в `/config/routebox.toml`. Если значения разойдутся, контейнер напишет об этом в лог.
+
+| Переменная | Назначение |
+|---|---|
+| `PUBLIC_HOST` | домен панели; попадает в ссылки-подписки |
+| `PUBLIC_PORT` | порт, по которому панель видят клиенты (по умолчанию — из `LISTEN`) |
+| `ACME_EMAIL` | контакт для Let's Encrypt |
+| `ACME_ENABLED` | `false`, если TLS терминирует прокси |
+| `ACME_STAGING` | тестовый CA Let's Encrypt на время проверки |
+| `ACME_HTTP_ADDR` | адрес слушателя HTTP-01, если `:80` внутри контейнера занят |
+| `LISTEN` | адрес и порт панели внутри контейнера |
+| `TRUSTED_PROXIES` | адреса прокси, чьему `X-Forwarded-For` можно верить |
+| `PUID` / `PGID` | владелец файлов в `/config` |
+
+Домен `panel.example.com` из примера контейнер игнорирует: сертификат на чужой домен всё равно не выпустится, а неудачные проверки расходуют лимит Let's Encrypt.
+
+Бинарник amnezia-box контейнер копирует из образа в `/config/bin` при первом запуске. Дальше он живёт на volume, поэтому обновление из панели работает и переживает пересоздание контейнера; уже установленный бинарник образ не трогает. systemd в контейнере нет, процесс запускает сам RouteBox при каждом старте — если конфиг и бинарник на месте. Start/Stop/Restart в панели работают как обычно.
+
+Наружу открыты `8443` (панель) и `80`: по нему Let's Encrypt проверяет домен, в том числе при продлении. Инбаунды amnezia-box вы настраиваете в панели и публикуете сами через `ports:`. Панель работает не под root, но Docker выставляет в контейнерах `net.ipv4.ip_unprivileged_port_start=0`, так что порт меньше 1024 занимается и без `NET_BIND_SERVICE`. Если ваш runtime так не умеет, добавьте `cap_add: [NET_BIND_SERVICE]` или дайте инбаунду порт от 1024 и пробросьте его на нужный (`"443:8444"`).
+
+Обновление образа:
+
+```bash
+docker compose pull && docker compose up -d
+```
+
+Раздел Updates работает и здесь: amnezia-box ставится прямо из панели, и обновление остаётся после `docker compose up -d`, потому что бинарник лежит на volume. Свой бинарник RouteBox берёт из образа, поэтому вместо кнопки показывает команду выше.
+
+### За обратным прокси
+
+Если TLS уже держит nginx, Caddy или Traefik, встроенный ACME не нужен: RouteBox отдаёт панель по обычному HTTP, а сертификат остаётся заботой прокси. Порт `80` наружу не публикуется, `ACME_EMAIL` можно не задавать.
+
+```yaml
+environment:
+  - PUID=1000
+  - PGID=1000
+  # Адрес, по которому панель видят клиенты: адрес прокси, а не контейнера.
+  - PUBLIC_HOST=panel.example.com
+  - PUBLIC_PORT=443
+  - ACME_ENABLED=false
+  # Чьему X-Forwarded-For верить: только адрес самого прокси.
+  - TRUSTED_PROXIES=172.28.0.2/32
+networks: [proxynet]
+ports: []
+expose:
+  - "8443"
+```
+
+Адрес прокси в той же сети при этом закрепляется:
+
+```yaml
+<сервис прокси>:
+  networks:
+    proxynet:
+      ipv4_address: 172.28.0.2
+
+networks:
+  proxynet:
+    ipam:
+      config:
+        - subnet: 172.28.0.0/24
+          # Docker раздаёт адреса с начала подсети и статику не резервирует,
+          # так что динамический диапазон лучше увести от закреплённого .2.
+          ip_range: 172.28.0.128/25
+```
+
+`TRUSTED_PROXIES` лучше задать сразу. На адресе клиента держатся блокировка перебора пароля и лимит запросов к публичному `/sub/{token}`, а из-за прокси все клиенты приходят с одного адреса и считаются за одного: лимит подписок срабатывает через несколько запросов и накрывает всех. Заголовку RouteBox верит только с перечисленных адресов, с остальных смотрит на реальный адрес соединения — подделать не выйдет. Из цепочки он берёт самый правый адрес, которого нет в списке.
+
+**В списке должен быть адрес прокси, а не подсеть docker-сети.** Подсеть — это все контейнеры в ней: скомпрометированный сосед пришлёт панели поддельный `X-Forwarded-For` напрямую и обойдёт блокировку перебора пароля. Отсюда и фиксированный `ipv4_address` у прокси, и /32 в списке. Если в сети включён IPv6, закрепите и `ipv6_address` и добавьте его тоже: Docker отвечает на DNS-запрос сначала AAAA, прокси придёт по ULA-адресу, а незаписанный адрес молча не считается доверенным. Про `X-Forwarded-For` с неизвестного адреса RouteBox пишет в лог один раз на адрес.
+
+Прокси должен пробрасывать WebSocket — по ним на дашборд идут трафик, логи и список соединений — и передавать `X-Forwarded-Proto`, иначе cookie сессии останется без флага `Secure`.
+
+nginx:
+
+```nginx
+server {
+    listen 443 ssl http2;
+    server_name panel.example.com;
+
+    ssl_certificate     /etc/letsencrypt/live/panel.example.com/fullchain.pem;
+    ssl_certificate_key /etc/letsencrypt/live/panel.example.com/privkey.pem;
+
+    location / {
+        proxy_pass http://routebox:8443;
+        proxy_http_version 1.1;
+        proxy_set_header Upgrade $http_upgrade;
+        proxy_set_header Connection $connection_upgrade;
+        proxy_set_header Host $host;
+        proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+        proxy_set_header X-Forwarded-Proto $scheme;
+        # Дашборд держит WebSocket открытым, с таймаутом по умолчанию он рвётся.
+        proxy_read_timeout 3600s;
+        proxy_buffering off;
+    }
+}
+
+# в http-блоке:
+# map $http_upgrade $connection_upgrade { default upgrade; "" close; }
+```
+
+Caddy — `X-Forwarded-*` и WebSocket из коробки:
+
+```caddy
+panel.example.com {
+    reverse_proxy routebox:8443
+}
+```
+
+Инбаунды amnezia-box через прокси не пойдут: это не HTTP, их порты публикует сам контейнер. Через прокси идут только панель и подписки.
+
+### Бэкенд kernel для AmneziaWG
+
+Бэкенд `kernel` в образе работает, но включать его нужно осознанно. По умолчанию сервер AmneziaWG поднимается на `singbox`: ему не нужны ни модуль ядра, ни особые права.
+
+Для `kernel` понадобятся модуль `amneziawg`, загруженный **на хосте** (пакет `amneziawg-dkms` с заголовками ядра, затем `modprobe amneziawg`), права `NET_ADMIN` у контейнера и проброшенный UDP-порт сервера — он не HTTP и через обратный прокси не пойдёт. amneziawg-tools уже в образе. Панель проверяет и инструменты, и права, и отказывает с указанием, чего не хватает, а не падает потом при включении.
+
+```yaml
+cap_add:
+  - NET_ADMIN
+sysctls:
+  - net.ipv4.ip_forward=1
+ports:
+  - "51820:51820/udp"   # порт сервера AmneziaWG из настроек панели
+```
+
+RouteBox передаёт права через ambient set, поэтому их видят `awg-quick` и запускаемые им `ip` и `iptables`, а сам процесс панели остаётся под пользователем `PUID`. Их же наследуют все дочерние процессы, включая amnezia-box, так что без нужды бэкенд `kernel` включать не стоит. Без `cap_add` панель работает как раньше, без привилегий.
+
+AWG 3.0 (защита заголовков, CPA/RAT) на этом бэкенде доступна, если и модуль ядра, и amneziawg-tools на хосте версии 3.x. Панель проверяет их независимо, так что свежий модуль со старыми инструментами тоже считается неподдерживаемым. На бэкенде `singbox` AWG 3.0 доступна всегда и от версии модуля не зависит.
 
 </details>
 
