@@ -740,6 +740,9 @@ func main() {
 				r.Get("/connections", apiHandler.GetMtprotoConnections)
 				r.Get("/clients", apiHandler.ListMtprotoClients)
 				r.Post("/clients", apiHandler.CreateMtprotoClient)
+				// Static segment, so chi matches it before /clients/{name} —
+				// "traffic" is a legal client name.
+				r.Get("/clients/traffic", apiHandler.GetMtprotoClientsTraffic)
 				r.Delete("/clients/{name}", apiHandler.DeleteMtprotoClient)
 				r.Patch("/clients/{name}", apiHandler.UpdateMtprotoClient)
 				r.Get("/clients/{name}/link", apiHandler.GetMtprotoClientLink)
