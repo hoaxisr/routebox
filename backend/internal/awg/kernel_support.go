@@ -10,6 +10,18 @@ import (
 // lookPath is the exec.LookPath seam (tests substitute it).
 var lookPath = exec.LookPath
 
+// systemdRunning reports whether systemd is the running init (tests substitute
+// it — the withSystemd/withoutSystemd pins). The canonical probe is the
+// existence of the /run/systemd/system directory, which systemd creates at
+// boot (it is what sd_booted(3) stats); lookPath("systemctl") was wrong here
+// because containers/chroots ship the binary without systemd being PID 1, and
+// then `systemctl enable/restart` can only fail where the direct awg-quick
+// path would have worked.
+var systemdRunning = func() bool {
+	fi, err := os.Stat("/run/systemd/system")
+	return err == nil && fi.IsDir()
+}
+
 // capEffective reads the process's effective capability set. Overridable in
 // tests; "" means unknown, which is treated as "do not block".
 var capEffective = func() string {

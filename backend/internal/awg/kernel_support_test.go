@@ -2,6 +2,7 @@ package awg
 
 import (
 	"errors"
+	"os"
 	"os/exec"
 	"strings"
 	"testing"
@@ -78,6 +79,19 @@ func TestKernelBackendUnsupported(t *testing.T) {
 			t.Fatalf("an unreadable /proc must not invent a refusal, got %q", reason)
 		}
 	})
+}
+
+// The production seam must probe /run/systemd/system, not PATH: a systemctl
+// binary on disk does not mean systemd is PID 1 (containers/chroots ship the
+// binary without the init), and keying bring-up on lookPath("systemctl") sent
+// iface_Up down the `systemctl enable/restart` path where those calls can only
+// fail. The directory is the canonical sd_booted(3) probe.
+func TestSystemdRunningDefaultProbesRunDir(t *testing.T) {
+	fi, err := os.Stat("/run/systemd/system")
+	want := err == nil && fi.IsDir()
+	if got := systemdRunning(); got != want {
+		t.Fatalf("systemdRunning() = %v, want %v (per /run/systemd/system on this machine)", got, want)
+	}
 }
 
 // The production seam must be the real thing.

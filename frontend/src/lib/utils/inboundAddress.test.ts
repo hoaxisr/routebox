@@ -1,5 +1,19 @@
 import { describe, it, expect } from 'vitest';
-import { inboundDisplayAddress } from './inboundAddress';
+import { inboundDisplayAddress, isWildcardListen } from './inboundAddress';
+
+// Exported for the server-inbound forms: a wildcard bind gets a "clients
+// connect to <public_host>:<port>" hint under the Listen Address field (#37).
+describe('isWildcardListen', () => {
+	it.each(['', '::', '[::]', '::0', '0.0.0.0', '*', ' :: '])(
+		'treats %p as a wildcard',
+		(v) => expect(isWildcardListen(v)).toBe(true)
+	);
+
+	it.each(['127.0.0.1', '10.0.0.5', '2001:db8::1', 'fe80::1'])(
+		'treats a specific bind %p as non-wildcard',
+		(v) => expect(isWildcardListen(v)).toBe(false)
+	);
+});
 
 // Issue #37: server inbounds bind the wildcard, so the inbound list rendered
 // ":::443" — the one address no client can ever dial — for mieru, naive,

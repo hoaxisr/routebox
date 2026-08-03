@@ -83,16 +83,38 @@ services:
 #      # proxy's address, and they throttle as one: login lockout and the
 #      # subscription rate limiter are both keyed on the client address.
 #      #
-#      # List BOTH families of the shared network. Docker's DNS answers AAAA
-#      # first, so on an IPv6-enabled network the proxy reaches this container
-#      # over the ULA even though you configured IPv4 — and an address that is
-#      # not listed is simply not trusted, silently. Find the subnets with:
-#      #   docker network inspect <network> -f '{{range .IPAM.Config}}{{.Subnet}} {{end}}'
-#      - TRUSTED_PROXIES=172.18.0.0/16,fd00:dead:beef::/64
+#      # Trust ONLY the proxy's own address, never the whole docker subnet:
+#      # a subnet is every container on that network, so any compromised
+#      # neighbour could send the panel a forged X-Forwarded-For directly and
+#      # sidestep the login lockout. Pin the proxy to a fixed IP on a shared
+#      # network (see the ipam block below) and list exactly that /32. On an
+#      # IPv6-enabled network also pin an ipv6_address and list it too —
+#      # Docker's DNS answers AAAA first, so the proxy may arrive over the
+#      # ULA, and an address that is not listed is simply not trusted, silently.
+#      - TRUSTED_PROXIES=172.28.0.2/32
+#    networks: [proxynet]
 #    ports: []              # nothing published: the proxy reaches it over the
 #                           # container network, so the panel is not exposed
 #    expose:
 #      - "8443"
+#
+# The proxy service gets the fixed address, on a network whose subnet is
+# pinned so the address survives network recreation:
+#
+#  <your proxy service>:
+#    networks:
+#      proxynet:
+#        ipv4_address: 172.28.0.2
+#
+# networks:
+#   proxynet:
+#     ipam:
+#       config:
+#         - subnet: 172.28.0.0/24
+#           # Keep dynamic assignment away from the pinned .2: docker hands out
+#           # addresses from the start of the subnet and does not reserve
+#           # statics, so without this a container starting first can grab .2.
+#           ip_range: 172.28.0.128/25
 #
 # The proxy must forward WebSocket upgrades (the dashboard streams traffic,
 # logs and connections over them) and set X-Forwarded-Proto so the session

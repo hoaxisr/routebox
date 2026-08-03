@@ -15,9 +15,11 @@
 		inbound?: Inbound;
 		onSave: (inbound: Inbound) => void;
 		onCancel: () => void;
+		/** server.public_host — shown as the connect hint under wildcard binds (#37). */
+		publicHost?: string;
 	}
 
-	let { inbound, onSave, onCancel }: Props = $props();
+	let { inbound, onSave, onCancel, publicHost = '' }: Props = $props();
 
 	// Form state
 	let tag = $state(inbound?.tag ?? '');
@@ -353,15 +355,15 @@
 	{/if}
 
 	{#if type === 'vless'}
-		<ServerVlessInbound bind:state={serverState} {errors} />
+		<ServerVlessInbound bind:state={serverState} {errors} {publicHost} />
 	{:else if type === 'trojan'}
-		<ServerTrojanInbound bind:state={serverState} {errors} />
+		<ServerTrojanInbound bind:state={serverState} {errors} {publicHost} />
 	{:else if type === 'naive'}
-		<ServerNaiveInbound bind:state={serverState} {errors} />
+		<ServerNaiveInbound bind:state={serverState} {errors} {publicHost} />
 	{:else if type === 'hysteria2'}
-		<ServerHysteria2Inbound bind:state={serverState} {errors} />
+		<ServerHysteria2Inbound bind:state={serverState} {errors} {publicHost} />
 	{:else if type === 'mieru'}
-		<ServerMieruInbound bind:state={serverState} {errors} />
+		<ServerMieruInbound bind:state={serverState} {errors} {publicHost} />
 	{/if}
 
 	<!-- Actions -->

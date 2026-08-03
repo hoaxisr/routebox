@@ -7,6 +7,15 @@
 const WILDCARDS = new Set(['', '::', '[::]', '::0', '0.0.0.0', '*']);
 
 /**
+ * Whether a listen VALUE (present, possibly padded — e.g. a form field) is a
+ * wildcard bind. An absent listen is a different thing entirely (see above);
+ * callers with `listen?: string` must handle undefined themselves.
+ */
+export function isWildcardListen(listen: string): boolean {
+	return WILDCARDS.has(listen.trim());
+}
+
+/**
  * The address to SHOW for an inbound. A server inbound binds the wildcard, so
  * its listen value ("::") is the one address no client can dial — substitute the
  * public host, which is what clients actually connect to (#37). A specific bind
@@ -26,7 +35,7 @@ export function inboundDisplayAddress(
 	];
 	const port = specs.length > 0 ? specs.join(',') : 1080;
 	const listen = inbound.listen;
-	if (listen !== undefined && WILDCARDS.has(listen)) {
+	if (listen !== undefined && isWildcardListen(listen)) {
 		if (!publicHost) return `*:${port}`;
 		// Bracket a bare IPv6 literal so the result stays an unambiguous host:port.
 		const host = publicHost.includes(':') && !publicHost.startsWith('[')

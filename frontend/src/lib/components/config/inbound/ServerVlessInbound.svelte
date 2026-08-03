@@ -3,29 +3,19 @@
 	import ServerTlsConfig from './ServerTlsConfig.svelte';
 	import ServerUsers from './ServerUsers.svelte';
 	import TransportSection from './TransportSection.svelte';
+	import ListenAddressFields from './ListenAddressFields.svelte';
 	import type { ServerFormState } from '$lib/utils/serverInbound';
 
 	interface Props {
 		state: ServerFormState;
 		errors?: Record<string, string>;
+		publicHost?: string;
 	}
-	let { state = $bindable(), errors = {} }: Props = $props();
+	let { state = $bindable(), errors = {}, publicHost = '' }: Props = $props();
 </script>
 
 <div class="space-y-4">
-	<div class="grid grid-cols-3 gap-4">
-		<div class="col-span-2">
-			<label for="listen" class="block text-sm font-medium text-[var(--ctp-subtext1)] mb-1">{$t('inbounds.listenAddress')} *</label>
-			<input id="listen" type="text" bind:value={state.listen} placeholder="::"
-				class="w-full px-3 py-2 bg-[var(--ctp-surface0)] border border-[var(--ctp-surface2)] rounded-lg text-[var(--ctp-text)] focus:outline-none focus:ring-2 focus:ring-[var(--ctp-primary)]" />
-		</div>
-		<div>
-			<label for="listenPort" class="block text-sm font-medium text-[var(--ctp-subtext1)] mb-1">{$t('inbounds.listenPort')} *</label>
-			<input id="listenPort" type="number" bind:value={state.listenPort} min="1" max="65535"
-				class="w-full px-3 py-2 bg-[var(--ctp-surface0)] border rounded-lg text-[var(--ctp-text)] focus:outline-none focus:ring-2 focus:ring-[var(--ctp-primary)] {errors['port'] ? 'border-[var(--ctp-red)]' : 'border-[var(--ctp-surface2)]'}" />
-			{#if errors['port']}<p class="mt-1 text-sm text-[var(--ctp-red)]">{errors['port']}</p>{/if}
-		</div>
-	</div>
+	<ListenAddressFields bind:listen={state.listen} bind:listenPort={state.listenPort} {errors} {publicHost} />
 
 	<ServerTlsConfig
 		bind:tlsMode={state.tlsMode}

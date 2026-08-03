@@ -199,5 +199,5 @@
 
 <!-- Modal -->
 <Modal open={showModal} title={editingInbound ? $t('inbounds.editInbound') : $t('inbounds.addInbound')} size="lg" onClose={closeModal}>
-	<InboundForm inbound={editingInbound} onSave={handleSave} onCancel={closeModal} />
+	<InboundForm inbound={editingInbound} onSave={handleSave} onCancel={closeModal} {publicHost} />
 </Modal>

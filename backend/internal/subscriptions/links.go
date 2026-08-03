@@ -4,6 +4,7 @@ import (
 	"encoding/base64"
 	"fmt"
 	"net/url"
+	"regexp"
 	"strconv"
 	"strings"
 
@@ -374,6 +375,191 @@ func parseNaive(uri string) (map[string]interface{}, string, error) {
 	return ob, name, nil
 }
 
+// mieru limits mirrored from the frontend parser (parsers.ts parseMieruLink)
+// so paste-import and subscription refresh accept and reject the same links.
+const (
+	mieruMaxPorts = 64
+	mieruTPMax    = 64 * 1024
+)
+
+var mieruMuxModes = map[string]bool{
+	"MULTIPLEXING_DEFAULT": true, "MULTIPLEXING_OFF": true,
+	"MULTIPLEXING_LOW": true, "MULTIPLEXING_MIDDLE": true, "MULTIPLEXING_HIGH": true,
+}
+
+// mieruStdBase64Re matches Go base64.StdEncoding exactly: strict alphabet,
+// length % 4 == 0 (guaranteed by the group structure), correct '=' padding.
+// A pattern that passes here must never fail Go-side at apply.
+var mieruStdBase64Re = regexp.MustCompile(`^(?:[A-Za-z0-9+/]{4})*(?:[A-Za-z0-9+/]{2}==|[A-Za-z0-9+/]{3}=)?$`)
+
+// normalizeMieruPort canonicalizes "443" | "9000-9010" (digits only, 1-65535,
+// lo <= hi); ok is false on anything else.
+func normalizeMieruPort(spec string) (string, bool) {
+	parts := strings.Split(spec, "-")
+	if len(parts) > 2 {
+		return "", false
+	}
+	nums := make([]int, len(parts))
+	for i, p := range parts {
+		if p == "" || strings.TrimLeft(p, "0123456789") != "" {
+			return "", false
+		}
+		n, err := strconv.Atoi(p)
+		if err != nil || n < 1 || n > 65535 {
+			return "", false
+		}
+		nums[i] = n
+	}
+	if len(nums) == 2 {
+		if nums[0] > nums[1] {
+			return "", false
+		}
+		return fmt.Sprintf("%d-%d", nums[0], nums[1]), true
+	}
+	return strconv.Itoa(nums[0]), true
+}
+
+// parseMieru parses a mierus:// link into a mieru outbound. Port/protocol
+// pairs live in the QUERY (?port=&protocol=), NOT the authority — the fork's
+// grammar (serverlinks.buildMieru is the emitter). There is no #fragment; the
+// display name comes from profile=, like the frontend. When a link mixes TCP
+// and UDP ports the frontend asks the user which to keep; a background
+// subscription refresh cannot, so TCP is preferred deterministically and the
+// other transport's ports are dropped.
+func parseMieru(uri string) (map[string]interface{}, string, error) {
+	if !strings.HasPrefix(uri, "mierus://") {
+		return nil, "", fmt.Errorf("invalid mieru uri")
+	}
+	u, err := url.Parse(uri)
+	if err != nil {
+		// FIXED message: url.Error echoes the whole URL, password included.
+		return nil, "", fmt.Errorf("mieru: malformed link")
+	}
+	if u.User == nil {
+		return nil, "", fmt.Errorf("mieru: username and password are required")
+	}
+	username := u.User.Username()
+	password, _ := u.User.Password()
+	if username == "" || password == "" {
+		return nil, "", fmt.Errorf("mieru: username and password are required")
+	}
+	if u.Port() != "" {
+		return nil, "", fmt.Errorf("mieru: port must be in the query (?port=), not the host")
+	}
+	host := u.Hostname() // brackets already stripped for IPv6
+	if host == "" {
+		return nil, "", fmt.Errorf("mieru: missing host")
+	}
+	q := u.Query()
+	profile := q.Get("profile")
+	if profile == "" {
+		return nil, "", fmt.Errorf("mieru: profile is required")
+	}
+
+	ports := q["port"]
+	if len(ports) == 0 {
+		return nil, "", fmt.Errorf("mieru: at least one port is required")
+	}
+	// Cap BEFORE any per-element work (hostile-link guard).
+	if len(ports) > mieruMaxPorts {
+		return nil, "", fmt.Errorf("mieru: too many ports")
+	}
+	protocols := q["protocol"]
+	if len(protocols) == 0 {
+		return nil, "", fmt.Errorf("mieru: protocol is required (TCP or UDP)")
+	}
+	for i := range protocols {
+		protocols[i] = strings.ToUpper(protocols[i])
+	}
+	if len(protocols) == 1 && len(ports) > 1 { // single protocol broadcasts to every port
+		p := protocols[0]
+		protocols = make([]string, len(ports))
+		for i := range protocols {
+			protocols[i] = p
+		}
+	}
+	if len(protocols) != len(ports) {
+		return nil, "", fmt.Errorf("mieru: port/protocol count mismatch")
+	}
+	hasTCP := false
+	for _, p := range protocols {
+		switch p {
+		case "TCP":
+			hasTCP = true
+		case "UDP":
+		default:
+			return nil, "", fmt.Errorf("mieru: protocol must be TCP or UDP")
+		}
+	}
+	norm := make([]string, len(ports))
+	for i, p := range ports {
+		n, ok := normalizeMieruPort(p)
+		if !ok {
+			return nil, "", fmt.Errorf("mieru: invalid port (want N or N-N, 1-65535)")
+		}
+		norm[i] = n
+	}
+
+	// Deterministic transport choice: TCP whenever present (mixed or not).
+	transport := "UDP"
+	if hasTCP {
+		transport = "TCP"
+	}
+	// Keep only ports of the chosen transport, de-duplicating identical specs
+	// (element order in server_ports is not spec-significant).
+	seen := make(map[string]bool, len(norm))
+	var chosen []string
+	for i, n := range norm {
+		if protocols[i] == transport && !seen[n] {
+			seen[n] = true
+			chosen = append(chosen, n)
+		}
+	}
+
+	ob := map[string]interface{}{
+		"type": "mieru", "server": host, "transport": transport,
+		"username": username, "password": password,
+	}
+	// First single port → server_port; extra singles become degenerate ranges
+	// ("N-N", never bare — the fork rejects bare numbers inside server_ports).
+	var ranges, extraSingles []string
+	first := 0
+	for _, spec := range chosen {
+		if strings.Contains(spec, "-") {
+			ranges = append(ranges, spec)
+		} else if first == 0 {
+			first, _ = strconv.Atoi(spec)
+		} else {
+			extraSingles = append(extraSingles, spec+"-"+spec)
+		}
+	}
+	if first > 0 {
+		ob["server_port"] = first
+	}
+	if sp := append(ranges, extraSingles...); len(sp) > 0 {
+		ob["server_ports"] = sp
+	}
+
+	if mux := q.Get("multiplexing"); mux != "" {
+		if !mieruMuxModes[mux] {
+			return nil, "", fmt.Errorf("mieru: invalid multiplexing %s", mux)
+		}
+		ob["multiplexing"] = mux
+	}
+	if tpRaw := q.Get("traffic-pattern"); tpRaw != "" {
+		tp := strings.ReplaceAll(tpRaw, " ", "+") // query decoding turned + into space
+		// Size cap BEFORE the alphabet check (never regex a 90 KB hostile blob).
+		if len(tp) > mieruTPMax {
+			return nil, "", fmt.Errorf("mieru: traffic-pattern too large")
+		}
+		if len(tp)%4 != 0 || !mieruStdBase64Re.MatchString(tp) {
+			return nil, "", fmt.Errorf("mieru: traffic-pattern is not valid base64")
+		}
+		ob["traffic_pattern"] = tp
+	}
+	return ob, profile, nil
+}
+
 func orElse(v, fallback string) string {
 	if v == "" {
 		return fallback
@@ -443,6 +629,8 @@ func ParseLinks(lines []string) (outbounds []ParsedNode, skipped int) {
 			ob, name, err = parseShadowsocks(line)
 		case strings.HasPrefix(line, "naive+https://"), strings.HasPrefix(line, "naive+quic://"):
 			ob, name, err = parseNaive(line)
+		case strings.HasPrefix(line, "mierus://"):
+			ob, name, err = parseMieru(line)
 		default:
 			skipped++
 			continue

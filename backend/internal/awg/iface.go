@@ -15,7 +15,7 @@ import (
 // Apply/re-enable change unapplied to the live interface (conf on disk updated, but
 // awg-quick never re-read it).
 func (m *Manager) iface_Up(ctx context.Context) error {
-	if _, err := lookPath("systemctl"); err == nil {
+	if systemdRunning() {
 		if _, _, err := m.run.Run(ctx, "systemctl", "enable", "awg-quick@"+m.iface); err != nil {
 			return err
 		}
@@ -53,7 +53,7 @@ func (m *Manager) RestoreKernelIface(ctx context.Context, desiredEnabled bool) e
 	if !desiredEnabled {
 		return nil
 	}
-	if _, err := lookPath("systemctl"); err == nil {
+	if systemdRunning() {
 		return nil
 	}
 	if m.kernelIfacePresent(ctx) {

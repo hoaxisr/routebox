@@ -102,6 +102,55 @@ func TestClientIPThroughTrustedProxy(t *testing.T) {
 			want:    "172.18.0.5",
 		},
 		{
+			// The rightmost hop is the one value the trusted proxy itself wrote,
+			// so its ip:port spelling (Azure App Gateway style) is tolerated —
+			// the client observed by the proxy wins, never 6.6.6.6 to its left.
+			name:    "ip:port rightmost hop resolves to the proxy-observed client",
+			peer:    "172.18.0.5:40000",
+			headers: map[string][]string{"X-Forwarded-For": {"6.6.6.6, 198.51.100.9:443"}},
+			want:    "198.51.100.9",
+		},
+		{
+			// Left of the rightmost hop is client-written: an ip:port there is
+			// NOT tolerated. The walk fails closed at the unverifiable hop.
+			name:    "ip:port hop left of the rightmost stops the walk at the peer",
+			peer:    "172.18.0.5:40000",
+			headers: map[string][]string{"X-Forwarded-For": {"6.6.6.6, 9.9.9.9:443, 172.18.0.9"}},
+			want:    "172.18.0.5",
+		},
+		{
+			// The RFC 7239 "unknown" placeholder is not an address in any
+			// spelling, so nothing to its left is vouched for.
+			name:    "unknown hop stops the walk at the peer",
+			peer:    "172.18.0.5:40000",
+			headers: map[string][]string{"X-Forwarded-For": {"6.6.6.6, unknown"}},
+			want:    "172.18.0.5",
+		},
+		{
+			// An empty entry is as unverifiable as "unknown": fail closed, do
+			// not skip it.
+			name:    "empty hop stops the walk at the peer",
+			peer:    "172.18.0.5:40000",
+			headers: map[string][]string{"X-Forwarded-For": {"1.2.3.4, , 172.18.0.9"}},
+			want:    "172.18.0.5",
+		},
+		{
+			// A whitespace-only header is a failed walk, not an absent one, so
+			// it must not fall through to X-Real-IP either.
+			name:    "whitespace-only XFF does not fall through to X-Real-IP",
+			peer:    "172.18.0.5:40000",
+			headers: map[string][]string{"X-Forwarded-For": {" , , "}, "X-Real-IP": {"6.6.6.6"}},
+			want:    "172.18.0.5",
+		},
+		{
+			// Zoned IPv6 can neither match a trusted prefix nor serve as a
+			// stable limiter key: the zone is stripped before both.
+			name:    "IPv6 zone is stripped from the returned key",
+			peer:    "172.18.0.5:40000",
+			headers: map[string][]string{"X-Forwarded-For": {"fe80::1%eth0"}},
+			want:    "fe80::1",
+		},
+		{
 			name:    "no header at all",
 			peer:    "172.18.0.5:40000",
 			headers: nil,
@@ -118,6 +167,44 @@ func TestClientIPThroughTrustedProxy(t *testing.T) {
 			peer:    "172.18.0.5:40000",
 			headers: map[string][]string{"X-Forwarded-For": {"2001:db8::1"}},
 			want:    "2001:db8::1",
+		},
+		{
+			// Fail-closed means closed: an unverifiable X-Forwarded-For must not
+			// fall through to X-Real-IP either — both headers travelled the same
+			// untrusted path, so the peer is the only thing still vouched for.
+			name:    "unparseable hop does not fall through to X-Real-IP",
+			peer:    "172.18.0.5:40000",
+			headers: map[string][]string{"X-Forwarded-For": {"not-an-ip"}, "X-Real-IP": {"5.5.5.5"}},
+			want:    "172.18.0.5",
+		},
+		{
+			// The XFF result must be Unmapped like the trust-check side already
+			// is, or ::ffff:a.b.c.d and a.b.c.d would be two limiter keys for one
+			// client — a free second identity.
+			name:    "IPv4-mapped forwarded address collapses to plain IPv4",
+			peer:    "172.18.0.5:40000",
+			headers: map[string][]string{"X-Forwarded-For": {"::ffff:198.51.100.9"}},
+			want:    "198.51.100.9",
+		},
+		{
+			name:    "garbage X-Real-IP falls back to the peer",
+			peer:    "172.18.0.5:40000",
+			headers: map[string][]string{"X-Real-IP": {"not-an-ip"}},
+			want:    "172.18.0.5",
+		},
+		{
+			// A trusted proxy naming another trusted address is self-attribution,
+			// not a client; believing it would key the limiter on infrastructure.
+			name:    "X-Real-IP naming a trusted proxy falls back to the peer",
+			peer:    "172.18.0.5:40000",
+			headers: map[string][]string{"X-Real-IP": {"10.0.0.1"}},
+			want:    "172.18.0.5",
+		},
+		{
+			name:    "IPv4-mapped X-Real-IP collapses to plain IPv4",
+			peer:    "172.18.0.5:40000",
+			headers: map[string][]string{"X-Real-IP": {"::ffff:1.2.3.4"}},
+			want:    "1.2.3.4",
 		},
 	}
 

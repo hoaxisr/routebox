@@ -65,9 +65,16 @@ func Refresh(sub Subscription, cfg ConfigMerger) (nodeCount, skipped int, err er
 	if err != nil {
 		return 0, 0, err
 	}
-	parsed, skipped := ParseLinks(decodeSubscription(body))
+	lines := decodeSubscription(body)
+	// Distinguish the two zero-node shapes: an empty body is what an
+	// inactive/empty panel user serves; a non-empty body with nothing parsed
+	// means every line was an unsupported scheme or malformed (issue #50).
+	if len(lines) == 0 {
+		return 0, 0, fmt.Errorf("subscription is empty")
+	}
+	parsed, skipped := ParseLinks(lines)
 	if len(parsed) == 0 {
-		return 0, skipped, fmt.Errorf("no usable nodes")
+		return 0, skipped, fmt.Errorf("no usable nodes (%d link(s) skipped: unsupported or malformed)", skipped)
 	}
 	groupTag := Sanitize(sub.Name)
 	nodePrefix := groupTag + tagSeparator
