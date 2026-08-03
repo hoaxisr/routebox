@@ -70,6 +70,10 @@ type Manager struct {
 	lis    net.Listener
 	events *EventStream
 
+	// served closes when the accept loop has returned, so Stop can order
+	// itself against it.
+	served chan struct{}
+
 	startedAt time.Time
 	clients   int
 }
@@ -158,14 +162,19 @@ func (m *Manager) startLocked(cfg Config) error {
 		return fmt.Errorf("cannot listen on %s: %w", cfg.Listen, err)
 	}
 
+	served := make(chan struct{})
+
 	m.proxy = proxy
 	m.lis = lis
 	m.events = events
 	m.cfg = cfg
 	m.clients = len(secrets)
 	m.startedAt = time.Now()
+	m.served = served
 
 	go func() {
+		defer close(served)
+
 		// Serve returns when the listener closes, which is what Stop does.
 		_ = proxy.Serve(lis)
 	}()
@@ -189,10 +198,22 @@ func (m *Manager) stopLocked() error {
 	// The listener closes first: Shutdown explicitly does not close it, and
 	// leaving it open would make the next Start fail on a busy port.
 	err := m.lis.Close()
+
+	// Then wait for the accept loop to actually be gone before shutting down.
+	//
+	// Serve registers itself with the proxy's internal wait group on entry, and
+	// Shutdown waits on that group. Stopping a proxy whose serve goroutine has
+	// not been scheduled yet would have Shutdown wait on a counter that is
+	// about to be incremented — a real race, and one the detector flags. With
+	// the listener already closed, Accept fails immediately, so this returns
+	// promptly whether or not Serve had started.
+	<-m.served
+
 	m.proxy.Shutdown()
 
 	m.proxy = nil
 	m.lis = nil
+	m.served = nil
 	m.clients = 0
 
 	return err
