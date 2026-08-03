@@ -3,6 +3,7 @@ package awg
 import (
 	"context"
 	"crypto/rand"
+	"encoding/base64"
 	"fmt"
 	"log"
 	"net/netip"
@@ -43,7 +44,11 @@ type AWGStatus struct {
 	NATOrphan   bool        `json:"nat_orphan"`
 	ConfigDirty bool        `json:"config_dirty"` // enabled & saved settings differ from running -> needs Apply
 	IPv6Active  bool        `json:"ipv6_active"`  // broker desired AND egress preflight passed
-	LastError   string      `json:"last_error,omitempty"`
+	// KernelAWG3Available reports whether the kernel backend's host has a
+	// confirmed awg3-capable module + awg-quick/tools pairing (always false on
+	// the singbox backend, which has its own supports3Fn gate).
+	KernelAWG3Available bool   `json:"kernel_awg3_available,omitempty"`
+	LastError           string `json:"last_error,omitempty"`
 }
 
 // EnableInput is the RAW operator submission; Enable canonicalises every field.
@@ -186,15 +191,37 @@ func (m *Manager) Enable(ctx context.Context, in EnableInput) error {
 	// wan<-ValidateWANIface, port<-ValidateListenPort, mtu<-ValidateMTU,
 	// obf<-validateObf. Raw in.* is never threaded into the conf.
 	m.setPhase(PhaseRendering)
-	// awg3 obfuscation (content padding / rekey) is a sing-box-backend feature;
-	// the kernel awg-quick path must never emit it into the server or client conf
-	// (a pre-awg3 awg-quick hard-fails on unknown [Interface] keys). The AWG3
-	// device-timers (RekeyTimeout/RejectAfterTime/KeepaliveTimeout/MaxHandshakeAttempts)
-	// are singbox-only for the same reason — strip them alongside CPA/RAT.
-	obf.stripAwg3()
+	// awg3 (content padding / rekey / header protection) only renders on the
+	// kernel path when the host's module + awg-quick/tools have both confirmed
+	// awg3 capability (KernelSupportsAWG3) — a pre-awg3 awg-quick hard-fails on
+	// unknown [Interface] keys, so an unsupported host gets the same silent
+	// strip this path always used.
+	kAwg3 := m.kernelSupports3Fn != nil && m.kernelSupports3Fn()
+	hpk := ""
+	if in.HeaderProtection {
+		if !kAwg3 {
+			return m.enableFail("header protection requires an awg3-capable kernel module + tools (v3.x)")
+		}
+		if err := validateHPKConstraint(obf, true); err != nil {
+			return m.enableFail(err.Error())
+		}
+		if hpk = m.store.HeaderKey(); hpk == "" {
+			raw := make([]byte, 32)
+			if _, err := rand.Read(raw); err != nil {
+				return m.enableFail(err.Error())
+			}
+			hpk = base64.StdEncoding.EncodeToString(raw)
+			if err := m.store.SetHeaderKey(hpk); err != nil {
+				return m.enableFail(err.Error())
+			}
+		}
+	}
+	if !kAwg3 {
+		obf.stripAwg3()
+	}
 	sc := ServerConf{
 		PrivateKey: priv, Address: serverIP + maskSuffix(subnet), ListenPort: port, MTU: mtu,
-		Subnet: subnet, WAN: wan, Iface: m.iface, Obf: obf,
+		Subnet: subnet, WAN: wan, Iface: m.iface, Obf: obf, HeaderProtectionKey: hpk,
 	}
 	// The full rewrite and the commit of what it rendered from go under addMu,
 	// together. AddPeer holds that lock around a read-modify-write of the SAME
@@ -220,7 +247,7 @@ func (m *Manager) Enable(ctx context.Context, in EnableInput) error {
 		m.subnet, m.serverIP, m.listenPort, m.mtu, m.wan, m.dns, m.serverPriv, m.obf =
 			subnet, serverIP, port, mtu, wan, dns, priv, obf
 		m.obfPreset = in.ObfPreset
-		m.headerKey, m.headerProtection = "", false // awg3 header protection is sing-box-only; never on the kernel path
+		m.headerKey, m.headerProtection = hpk, in.HeaderProtection
 		return nil
 	}(); err != nil {
 		return m.enableFail(err.Error())
@@ -358,26 +385,32 @@ func (m *Manager) Status(ctx context.Context) AWGStatus {
 	m.mu.Lock()
 	enabled, lastErr, port, phase, wan := m.enabled, m.lastErr, m.listenPort, m.phase, m.wan
 	subnet, mtu, obf, desired, obfPreset := m.subnet, m.mtu, m.obf, m.desired, m.obfPreset
+	hp, kernelSupports3Fn := m.headerProtection, m.kernelSupports3Fn
 	m.mu.Unlock()
 	if phase == "" {
 		phase = PhaseIdle
 	}
+	kAwg3 := kernelSupports3Fn != nil && kernelSupports3Fn()
 	// ConfigDirty = enabled and the saved settings differ from what is running, on
 	// any field that needs an interface restart (subnet/port/mtu/wan/obf). DNS is
 	// client-only (regenerated at config download), so it never marks dirty.
 	configDirty := false
 	if enabled && desired != nil {
 		d := desired()
-		// CPA/RAT are singbox-only awg3 strings the kernel path never renders into
-		// the awg-quick conf — a difference there must NOT flag dirty here, or the
-		// Apply banner becomes permanent (a kernel restart is a no-op for them).
-		// Zero them on both operands before the struct compare. The singbox dirty
-		// compare (statusSingbox) deliberately KEEPS them.
 		dObf, runObf := d.Obf, obf
-		dObf.stripAwg3()
-		runObf.stripAwg3()
+		if !kAwg3 {
+			// CPA/RAT + device-timers never render into the awg-quick conf on an
+			// awg3-incapable host — a difference there must NOT flag dirty here, or
+			// the Apply banner becomes permanent (a kernel restart is a no-op for
+			// them). Zero them on both operands before the struct compare. The
+			// singbox dirty compare (statusSingbox) deliberately KEEPS them, as does
+			// this one once the host is awg3-capable.
+			dObf.stripAwg3()
+			runObf.stripAwg3()
+		}
 		configDirty = d.Subnet != subnet || d.ListenPort != port || d.MTU != mtu ||
-			(d.WANIface != "" && d.WANIface != wan) || dObf != runObf || d.ObfPreset != obfPreset
+			(d.WANIface != "" && d.WANIface != wan) || dObf != runObf || d.ObfPreset != obfPreset ||
+			(kAwg3 && d.HeaderProtection != hp)
 	}
 	ifaceUp := false
 	if out, _, err := m.run.Run(ctx, "awg", "show", m.iface); err == nil && strings.Contains(out, "listening port") {
@@ -421,6 +454,7 @@ func (m *Manager) Status(ctx context.Context) AWGStatus {
 		Module:  mod, Enabled: enabled, Phase: phase, IfaceUp: ifaceUp, ListenPort: port,
 		PublicHost: m.publicHost, PeerCount: len(peers), Online: online, Rx: rx, Tx: tx, WANIface: wan,
 		NATOrphan: rulesPresent && !ifaceUp, ConfigDirty: configDirty, LastError: lastErr,
+		KernelAWG3Available: kAwg3,
 	}
 }
 

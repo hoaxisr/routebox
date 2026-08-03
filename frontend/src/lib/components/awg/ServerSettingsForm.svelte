@@ -9,7 +9,11 @@
 		form: AwgServerSettings;
 		pubkey?: string;
 		saving?: boolean;
-		/** Active backend is sing-box: shows awg3-only controls (header protection, CPA/RAT). */
+		/** Shows awg3-only controls (header protection, CPA/RAT): true on sing-box always,
+		 * true on the kernel backend only when the host confirms awg3 capability. */
+		awg3Available?: boolean;
+		/** Active backend is sing-box: shows sing-box-only controls unrelated to awg3
+		 * (currently just the IPv6 broker toggle). */
 		isSingbox?: boolean;
 		/** Server is running: the primary button saves AND applies (restarts the interface). */
 		applied?: boolean;
@@ -21,7 +25,7 @@
 		onReset: () => void;
 	}
 
-	let { form = $bindable(), pubkey = '', saving = false, isSingbox = false, applied = false, dirty = true, ipv6Active = false, onSave, onReset }: Props = $props();
+	let { form = $bindable(), pubkey = '', saving = false, awg3Available = false, isSingbox = false, applied = false, dirty = true, ipv6Active = false, onSave, onReset }: Props = $props();
 
 	// DNS is stored as string[]; edit it as a comma-separated field and write back.
 	let dnsText = $state((form.dns ?? []).join(', '));
@@ -89,9 +93,9 @@
 
 <div class="settings-divider"></div>
 
-<ObfuscationControl bind:obf={form.obf} bind:preset={form.obf_preset} {isSingbox} />
+<ObfuscationControl bind:obf={form.obf} bind:preset={form.obf_preset} {awg3Available} />
 
-{#if isSingbox}
+{#if awg3Available}
 	<div class="hp-row">
 		<button
 			type="button"
@@ -103,6 +107,8 @@
 		</button>
 		<span class="hint">{$t('awg.headerProtectionHint')}</span>
 	</div>
+{/if}
+{#if isSingbox}
 	<div class="hp-row">
 		<button
 			type="button"
