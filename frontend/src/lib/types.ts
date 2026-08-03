@@ -1194,3 +1194,12 @@ export interface MtprotoLink {
 	tg: string;
 	web: string;
 }
+
+/** One Telegram proxy client's traffic over a range, in the same shape
+ *  /monitor/users renders for panel users and AWG peers. */
+export interface MtprotoClientTraffic {
+	name: string;
+	upload: number;
+	download: number;
+	history: UserTrafficPoint[];
+}

@@ -1,4 +1,4 @@
-import type { ApiResponse, ProcessStatus, SingboxConfig, Endpoint, Outbound, Inbound, RuleSet, RuleSetUsage, RouteRule, RouteSettings, DnsServer, DnsRule, DnsSettings, LogSettings, ExperimentalSettings, ConnectionsResponse, ProxiesResponse, ClashProxy, TestRouteResponse, ConnectTestResponse, SettingsResponse, RouteBoxSettings, SingBoxVersion, DomainSetInfo, RuleSetSource, ClientEntry, TrafficHistoryResponse, TrafficRange, UpdatesStatus, UpdateProgress, UpdateTargetName, Subscription, SubscriptionInput, PanelUser, UserTrafficResponse, AwgStatus, AwgPeer, AwgPeerTraffic, MtprotoState, MtprotoStatus, MtprotoSettings, MtprotoClient, MtprotoConnection, MtprotoLink } from '$lib/types';
+import type { ApiResponse, ProcessStatus, SingboxConfig, Endpoint, Outbound, Inbound, RuleSet, RuleSetUsage, RouteRule, RouteSettings, DnsServer, DnsRule, DnsSettings, LogSettings, ExperimentalSettings, ConnectionsResponse, ProxiesResponse, ClashProxy, TestRouteResponse, ConnectTestResponse, SettingsResponse, RouteBoxSettings, SingBoxVersion, DomainSetInfo, RuleSetSource, ClientEntry, TrafficHistoryResponse, TrafficRange, UpdatesStatus, UpdateProgress, UpdateTargetName, Subscription, SubscriptionInput, PanelUser, UserTrafficResponse, AwgStatus, AwgPeer, AwgPeerTraffic, MtprotoState, MtprotoStatus, MtprotoSettings, MtprotoClient, MtprotoConnection, MtprotoLink, MtprotoClientTraffic } from '$lib/types';
 
 const API_BASE = '/api';
 
@@ -318,6 +318,8 @@ export const api = {
 		request<MtprotoSettings>('/mtproto', { method: 'PUT', body: JSON.stringify(patch) }),
 	getMtprotoClients: () => request<MtprotoClient[]>('/mtproto/clients'),
 	getMtprotoConnections: () => request<MtprotoConnection[]>('/mtproto/connections'),
+	getMtprotoClientsTraffic: (range: TrafficRange = '24h') =>
+		request<MtprotoClientTraffic[]>(`/mtproto/clients/traffic?range=${encodeURIComponent(range)}`),
 	createMtprotoClient: (name: string) =>
 		request<{ name: string }>('/mtproto/clients', { method: 'POST', body: JSON.stringify({ name }) }),
 	deleteMtprotoClient: (name: string) =>

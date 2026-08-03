@@ -1,6 +1,7 @@
-import type { AwgPeerTraffic, UserTrafficPoint } from '$lib/types';
+import type { AwgPeerTraffic, MtprotoClientTraffic, UserTrafficPoint } from '$lib/types';
 
-/** One line of the per-user monitor: a panel user or an AWG peer (#40). */
+/** One line of the per-user monitor: a panel user, an AWG peer (#40), or a
+ *  Telegram proxy client. */
 export type MonitorRow = {
 	id: string;
 	name: string;
@@ -9,9 +10,10 @@ export type MonitorRow = {
 	total: number;
 	series: UserTrafficPoint[];
 	active: boolean;
-	// Panel users are counted by sing-box per-user stats, peers by their tunnel
-	// IP — same presentation, different accounting source.
-	kind: 'user' | 'peer';
+	// Same presentation, three accounting sources: panel users come from
+	// sing-box per-user stats, peers from their tunnel IP, and Telegram clients
+	// from the proxy's own relay.
+	kind: 'user' | 'peer' | 'mtproto';
 };
 
 /**
@@ -33,7 +35,39 @@ export function peersToRows(peers: AwgPeerTraffic[]): MonitorRow[] {
 	}));
 }
 
-/** Users and peers in one list, heaviest first — what the page renders. */
-export function mergeMonitorRows(users: MonitorRow[], peers: MonitorRow[]): MonitorRow[] {
-	return [...users, ...peers].sort((a, b) => b.total - a.total);
+/**
+ * Telegram proxy clients as monitor rows. Ids are namespaced the same way peers
+ * are, so a client can never collide with a panel user of the same name — which
+ * is the same reason the backend stores their bytes under an mtproto: prefix.
+ *
+ * Liveness is inferred from recent buckets rather than read from a flag: this
+ * endpoint reports traffic, and whether a client is connected right now is the
+ * Telegram page's business.
+ */
+export function mtprotoClientsToRows(clients: MtprotoClientTraffic[]): MonitorRow[] {
+	const cutoff = Math.floor(Date.now() / 1000) - 600;
+
+	return clients.map((c) => {
+		const series = c.history ?? [];
+
+		return {
+			id: `mtproto:${c.name}`,
+			name: c.name,
+			upload: c.upload,
+			download: c.download,
+			total: c.upload + c.download,
+			series,
+			active: series.some((p) => p.ts >= cutoff && p.upload + p.download > 0),
+			kind: 'mtproto' as const
+		};
+	});
+}
+
+/** Every source in one list, heaviest first — what the page renders. */
+export function mergeMonitorRows(
+	users: MonitorRow[],
+	peers: MonitorRow[],
+	mtproto: MonitorRow[] = []
+): MonitorRow[] {
+	return [...users, ...peers, ...mtproto].sort((a, b) => b.total - a.total);
 }

@@ -1,5 +1,6 @@
 import { describe, it, expect } from 'vitest';
-import { peersToRows, mergeMonitorRows, type MonitorRow } from './monitorRows';
+import { peersToRows, mtprotoClientsToRows, mergeMonitorRows, type MonitorRow } from './monitorRows';
+import type { MtprotoClientTraffic } from '$lib/types';
 import type { AwgPeerTraffic } from '$lib/types';
 
 const peer = (over: Partial<AwgPeerTraffic> = {}): AwgPeerTraffic => ({
@@ -74,5 +75,68 @@ describe('mergeMonitorRows', () => {
 	it('is a plain pass-through when there are no peers', () => {
 		const users = [user()];
 		expect(mergeMonitorRows(users, [])).toEqual(users);
+	});
+});
+
+// MTProto clients join the same list (their traffic is per-client, same as a
+// panel user's), but they are counted by the proxy's own relay rather than by
+// sing-box, so they carry their own kind.
+describe('mtprotoClientsToRows', () => {
+	const client = (over: Partial<MtprotoClientTraffic> = {}): MtprotoClientTraffic => ({
+		name: 'phone',
+		upload: 10,
+		download: 20,
+		history: [],
+		...over
+	});
+
+	it('namespaces the id so a client cannot collide with a panel user of the same name', () => {
+		expect(mtprotoClientsToRows([client({ name: 'alice' })])[0].id).toBe('mtproto:alice');
+	});
+
+	it('carries the totals through', () => {
+		const [row] = mtprotoClientsToRows([client({ upload: 3, download: 4 })]);
+		expect(row.upload).toBe(3);
+		expect(row.download).toBe(4);
+		expect(row.total).toBe(7);
+	});
+
+	it('marks the row as an mtproto client', () => {
+		expect(mtprotoClientsToRows([client()])[0].kind).toBe('mtproto');
+	});
+
+	it('tolerates a missing history', () => {
+		const [row] = mtprotoClientsToRows([{ name: 'x', upload: 0, download: 0 } as MtprotoClientTraffic]);
+		expect(row.series).toEqual([]);
+	});
+
+	it('infers liveness from recent buckets, since the endpoint reports no online flag', () => {
+		const now = Math.floor(Date.now() / 1000);
+		const live = mtprotoClientsToRows([client({ history: [{ ts: now - 30, upload: 1, download: 1 }] })]);
+		const stale = mtprotoClientsToRows([client({ history: [{ ts: now - 7200, upload: 1, download: 1 }] })]);
+		expect(live[0].active).toBe(true);
+		expect(stale[0].active).toBe(false);
+	});
+});
+
+describe('mergeMonitorRows with three sources', () => {
+	const row = (id: string, total: number): MonitorRow => ({
+		id,
+		name: id,
+		upload: total,
+		download: 0,
+		total,
+		series: [],
+		active: false,
+		kind: 'user'
+	});
+
+	it('orders every source together, heaviest first', () => {
+		const merged = mergeMonitorRows([row('u', 5)], [row('p', 50)], [row('m', 500)]);
+		expect(merged.map((r) => r.id)).toEqual(['m', 'p', 'u']);
+	});
+
+	it('still works when the third source is absent', () => {
+		expect(mergeMonitorRows([row('u', 1)], [row('p', 2)]).map((r) => r.id)).toEqual(['p', 'u']);
 	});
 });
