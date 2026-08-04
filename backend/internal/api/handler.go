@@ -6,6 +6,7 @@ import (
 	"routebox/backend/internal/clients"
 	"routebox/backend/internal/config"
 	"routebox/backend/internal/geoip"
+	"routebox/backend/internal/mtproto"
 	"routebox/backend/internal/process"
 	"routebox/backend/internal/settings"
 	"routebox/backend/internal/subscriptions"
@@ -33,6 +34,7 @@ type Handler struct {
 	panelUsers      *users.Manager
 	subLimiter      *auth.Limiter
 	awg             *awg.Manager
+	mtproto         *mtproto.Manager
 
 	// panelMode is the effective operating mode ("router" or "vps"), as resolved
 	// at startup — the CLI flag can override what the settings file says, so it
@@ -113,6 +115,12 @@ func (h *Handler) SetUsers(mgr *users.Manager) {
 // SetAWG wires the AmneziaWG server-interface manager into the API.
 func (h *Handler) SetAWG(m *awg.Manager) {
 	h.awg = m
+}
+
+// SetMtproto wires the Telegram MTProto proxy manager into the API. Leaving it
+// nil — which router mode does — makes every /api/mtproto route report 503.
+func (h *Handler) SetMtproto(m *mtproto.Manager) {
+	h.mtproto = m
 }
 
 // SetSubLimiter wires the dedicated per-IP rate limiter for the public /sub

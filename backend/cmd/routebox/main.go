@@ -32,6 +32,7 @@ import (
 	"routebox/backend/internal/config"
 	"routebox/backend/internal/embedded"
 	"routebox/backend/internal/geoip"
+	"routebox/backend/internal/mtproto"
 	"routebox/backend/internal/panelcert"
 	"routebox/backend/internal/process"
 	"routebox/backend/internal/settings"
@@ -465,6 +466,53 @@ func main() {
 	stopAwgSweep := make(chan struct{})
 	go awg.RunSweepLoop(func() { awgMgr.SweepExpired(context.Background()) }, 30*time.Second, stopAwgSweep)
 
+	// Telegram MTProto proxy (vps mode). Client secrets sit beside users.toml,
+	// the directory every other RouteBox-owned credential file lives in.
+	var mtprotoPath string
+	if sp := settingsMgr.GetPath(); sp != "" {
+		mtprotoPath = filepath.Join(filepath.Dir(sp), "mtproto.toml")
+	}
+	mtprotoStore := mtproto.NewStore(mtprotoPath)
+	if mtprotoPath != "" {
+		if err := mtprotoStore.Load(); err != nil {
+			log.Printf("Warning: failed to load mtproto.toml: %v", err)
+		}
+	}
+	mtprotoMgr := mtproto.NewManager(mtprotoStore)
+	apiHandler.SetMtproto(mtprotoMgr)
+
+	mtprotoConfig := func() mtproto.Config {
+		s := settingsMgr.Get().Mtproto
+		return mtproto.Config{
+			Listen:             s.Listen,
+			MaskingDomain:      s.MaskingDomain,
+			Concurrency:        uint(s.Concurrency),
+			IdleTimeout:        time.Duration(s.IdleTimeoutSec) * time.Second,
+			PreferIP:           s.PreferIP,
+			DomainFrontingPort: uint(s.DomainFrontingPort),
+		}
+	}
+
+	if effectiveMode == "vps" && settingsMgr.Get().Mtproto.Enabled {
+		// Not fatal: the panel has to come up for an operator to fix whatever
+		// setting caused this — a busy port or a roster emptied by expiry.
+		if err := mtprotoMgr.Start(mtprotoConfig()); err != nil {
+			log.Printf("WARNING: the Telegram proxy did not start: %v", err)
+		}
+	}
+
+	// Both loops run regardless of whether the proxy is up: the flusher reads a
+	// stream that only exists after Start, and the sweep is a no-op on an empty
+	// roster. Starting them here means a proxy enabled later is covered without
+	// a second wiring path.
+	stopMtproto := make(chan struct{})
+	mtprotoFlushDone := make(chan struct{})
+	go func() {
+		defer close(mtprotoFlushDone)
+		mtproto.RunFlushLoop(mtprotoMgr, trafficStore, time.Minute, stopMtproto)
+	}()
+	go mtproto.RunExpiryLoop(mtprotoStore, mtprotoMgr.Rebuild, 30*time.Second, stopMtproto)
+
 	// Bring amnezia-box up when nothing else will. Done here rather than before
 	// the AWG wiring above so the process starts on the config those steps may
 	// have just synced, and before SyncRejectRuleAndReload so user lifecycle
@@ -679,6 +727,29 @@ func main() {
 				r.Get("/peers/{publicKey}/vpn-link", apiHandler.GetAWGPeerVPNLink)
 				r.Get("/peers/{publicKey}/singbox", apiHandler.GetAWGPeerSingbox)
 				r.Patch("/peers/{publicKey}/expiry", apiHandler.SetAWGPeerExpiry)
+			})
+
+			// Telegram MTProto proxy (vps mode). Inside the auth group, like
+			// /awg: the SameSite=Strict cookie plus AuthMiddleware is the CSRF
+			// defense for the mutating routes.
+			r.Route("/mtproto", func(r chi.Router) {
+				r.Get("/", apiHandler.GetMtprotoStatus)
+				r.Put("/", apiHandler.UpdateMtprotoSettings)
+				r.Post("/enable", apiHandler.EnableMtproto)
+				r.Post("/disable", apiHandler.DisableMtproto)
+				r.Get("/connections", apiHandler.GetMtprotoConnections)
+				// WebSocket: the proxy's own log. Not part of amnezia-box, so
+				// the Clash log stream never carries it.
+				r.Get("/logs", apiHandler.StreamMtprotoLogs)
+				r.Get("/clients", apiHandler.ListMtprotoClients)
+				r.Post("/clients", apiHandler.CreateMtprotoClient)
+				// Static segment, so chi matches it before /clients/{name} —
+				// "traffic" is a legal client name.
+				r.Get("/clients/traffic", apiHandler.GetMtprotoClientsTraffic)
+				r.Delete("/clients/{name}", apiHandler.DeleteMtprotoClient)
+				r.Patch("/clients/{name}", apiHandler.UpdateMtprotoClient)
+				r.Get("/clients/{name}/link", apiHandler.GetMtprotoClientLink)
+				r.Post("/clients/{name}/rotate", apiHandler.RotateMtprotoClient)
 			})
 
 			// Route Rules CRUD
@@ -947,6 +1018,14 @@ func main() {
 	close(stopSubs)
 	close(stopExpiry)
 	close(stopAwgSweep)
+	// The proxy stops first so no further traffic events arrive, then the loop
+	// is told to make its final flush, and only once that has returned is the
+	// store it writes to safe to close.
+	if err := mtprotoMgr.Stop(); err != nil {
+		log.Printf("mtproto: stop: %v", err)
+	}
+	close(stopMtproto)
+	<-mtprotoFlushDone
 	if trafficStore != nil {
 		trafficStore.Close()
 	}

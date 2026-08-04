@@ -95,6 +95,9 @@ func (h *Handler) readOnlyPaths() []string {
 	if h.awg != nil {
 		stores = append(stores, h.awg.Store())
 	}
+	if h.mtproto != nil {
+		stores = append(stores, h.mtproto.Store())
+	}
 
 	var paths []string
 	for _, s := range stores {
