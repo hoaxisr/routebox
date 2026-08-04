@@ -57,9 +57,9 @@ services:
       # to match for the challenge listener.
     volumes:
       - ./config:/config
-      # Kernel AmneziaWG backend only: the panel reads the module's version
-      # with modinfo, which needs this. Without it AWG 3.0 cannot be detected
-      # and is treated as unsupported on that backend.
+      # Kernel AmneziaWG backend only: a loaded module's version comes from
+      # sysfs, but an unloaded one is read with modinfo, which needs this.
+      # Without it AWG 3.0 stays undetected and counts as unsupported there.
       # - /lib/modules:/lib/modules:ro
 
     # Capabilities, if you need either of them:
