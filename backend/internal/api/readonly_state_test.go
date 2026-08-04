@@ -15,6 +15,7 @@ import (
 	"routebox/backend/internal/awg"
 	"routebox/backend/internal/clients"
 	"routebox/backend/internal/config"
+	"routebox/backend/internal/mtproto"
 	"routebox/backend/internal/process"
 	"routebox/backend/internal/settings"
 	"routebox/backend/internal/subscriptions"
@@ -307,5 +308,39 @@ func TestStatusReportsReadOnlySettings(t *testing.T) {
 	_, paths := statusPaths(t, h)
 	if !slices.Contains(paths, sm.GetPath()) {
 		t.Fatalf("read_only_paths %v must name %q", paths, sm.GetPath())
+	}
+}
+
+// The Telegram proxy's roster is another file RouteBox persists, so an
+// unwritable mtproto.toml has to reach the same badge as the others. Without
+// this the Telegram page reports it locally while the panel-wide badge stays
+// green, which is exactly the split this suite exists to prevent.
+func TestStatusReportsAnUnwritableMtprotoStore(t *testing.T) {
+	dir := readOnlyDir(t)
+	path := filepath.Join(dir, "mtproto.toml")
+
+	mgr := mtproto.NewManager(mtproto.NewStore(path))
+	if err := mgr.Store().Put(mtproto.Client{Name: "x", Secret: testSecret}); err == nil {
+		t.Fatal("harness: writing into a 0500 directory should have failed")
+	}
+
+	h := &Handler{config: writableConfig(t), mtproto: mgr, statusSource: func() process.Status { return process.Status{} }}
+
+	_, paths := statusPaths(t, h)
+	if !slices.Contains(paths, path) {
+		t.Errorf("read_only_paths = %v, want it to name %s", paths, path)
+	}
+}
+
+func TestStatusIgnoresAWritableMtprotoStore(t *testing.T) {
+	mgr := mtproto.NewManager(mtproto.NewStore(filepath.Join(t.TempDir(), "mtproto.toml")))
+	if err := mgr.Store().Put(mtproto.Client{Name: "x", Secret: testSecret}); err != nil {
+		t.Fatal(err)
+	}
+
+	h := &Handler{config: writableConfig(t), mtproto: mgr, statusSource: func() process.Status { return process.Status{} }}
+
+	if _, paths := statusPaths(t, h); len(paths) != 0 {
+		t.Errorf("read_only_paths = %v, want none", paths)
 	}
 }

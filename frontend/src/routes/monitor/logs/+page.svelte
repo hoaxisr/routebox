@@ -2,7 +2,8 @@
 	import { onMount } from 'svelte';
 	import { browser } from '$app/environment';
 	import { t } from 'svelte-i18n';
-	import { createLogsStream } from '$lib/api/client';
+	import { createLogsStream, createMtprotoLogsStream } from '$lib/api/client';
+	import { panelMode } from '$lib/stores';
 
 	interface LogEntry {
 		id: number;
@@ -16,6 +17,10 @@
 	let connected = $state(false);
 	let logId = 0;
 	let filter = $state(browser ? (localStorage.getItem('logs.level') ?? 'all') : 'all');
+	// Which process we are watching. amnezia-box comes over the Clash API; the
+	// Telegram proxy runs inside RouteBox and has its own stream.
+	type Source = 'singbox' | 'mtproto';
+	let source = $state<Source>(browser ? ((localStorage.getItem('logs.source') as Source) ?? 'singbox') : 'singbox');
 	let search = $state('');
 	let autoScroll = $state(true);
 	let paused = $state(false);
@@ -76,23 +81,27 @@
 
 	function startStream(level = 'info') {
 		stopStream();
-		stream = createLogsStream(
-			(data) => {
-				const entry: LogEntry = {
-					id: ++logId,
-					type: data.type,
-					payload: data.payload,
-					time: new Date()
-				};
-				pendingLogs.push(entry);
-			},
-			level,
-			undefined,
-			(status) => {
-				connected = status === 'connected';
-			}
-		);
+		const push = (data: { type: string; payload: string }) => {
+			pendingLogs.push({ id: ++logId, type: data.type, payload: data.payload, time: new Date() });
+		};
+		const onStatus = (status: string) => {
+			connected = status === 'connected';
+		};
+		stream =
+			source === 'mtproto'
+				? createMtprotoLogsStream(push, undefined, onStatus)
+				: createLogsStream(push, level, undefined, onStatus);
 		startFlushTimer();
+	}
+
+	// Switching source starts a different stream against a different process, so
+	// the old process's lines are cleared rather than interleaved.
+	function setSource(next: Source) {
+		if (next === source) return;
+		source = next;
+		if (browser) localStorage.setItem('logs.source', next);
+		clearLogs();
+		startStream(filter === 'all' ? 'info' : filter);
 	}
 
 	function stopStream() {
@@ -146,7 +155,9 @@
 		if (filter !== prevFilter) {
 			prevFilter = filter;
 			if (browser) localStorage.setItem('logs.level', filter);
-			startStream(filter === 'all' ? 'info' : filter);
+			// Only the Clash stream takes a level server-side; for the proxy the
+			// filter is applied to what has already arrived.
+			if (source !== 'mtproto') startStream(filter === 'all' ? 'info' : filter);
 		}
 	});
 
@@ -160,7 +171,19 @@
 
 <div class="space-y-4 h-full flex flex-col min-w-0">
 	<div class="flex items-center justify-between">
-		<h1 class="text-2xl font-bold text-[var(--ctp-text)]">{$t('logs.title')}</h1>
+		<div class="flex items-center gap-4 min-w-0">
+			<h1 class="text-2xl font-bold text-[var(--ctp-text)]">{$t('logs.title')}</h1>
+			{#if $panelMode}
+				<div class="src-tabs">
+					<button type="button" class="src-tab" class:active={source === 'singbox'} onclick={() => setSource('singbox')}>
+						{$t('logs.sourceSingbox')}
+					</button>
+					<button type="button" class="src-tab" class:active={source === 'mtproto'} onclick={() => setSource('mtproto')}>
+						{$t('logs.sourceMtproto')}
+					</button>
+				</div>
+			{/if}
+		</div>
 		<div class="flex items-center gap-2">
 			<span
 				class="w-2 h-2 rounded-full"
@@ -242,3 +265,34 @@
 		{/if}
 	</div>
 </div>
+
+<style>
+	/* Segmented control, matching the range picker on the traffic pages. */
+	.src-tabs {
+		display: inline-flex;
+		background: var(--ctp-surface0);
+		border: 1px solid var(--ctp-surface2);
+		border-radius: 0.5rem;
+		padding: 2px;
+		gap: 2px;
+	}
+	.src-tab {
+		padding: 0.3rem 0.7rem;
+		border: none;
+		background: transparent;
+		border-radius: 0.375rem;
+		color: var(--ctp-subtext0);
+		font-size: 0.8125rem;
+		font-weight: 500;
+		cursor: pointer;
+		white-space: nowrap;
+		transition: all 0.15s ease;
+	}
+	.src-tab:hover:not(.active) {
+		color: var(--ctp-text);
+	}
+	.src-tab.active {
+		background: var(--ctp-primary);
+		color: #1a1a1a;
+	}
+</style>

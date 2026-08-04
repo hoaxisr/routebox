@@ -1,4 +1,4 @@
-import type { ApiResponse, ProcessStatus, SingboxConfig, Endpoint, Outbound, Inbound, RuleSet, RuleSetUsage, RouteRule, RouteSettings, DnsServer, DnsRule, DnsSettings, LogSettings, ExperimentalSettings, ConnectionsResponse, ProxiesResponse, ClashProxy, TestRouteResponse, ConnectTestResponse, SettingsResponse, RouteBoxSettings, SingBoxVersion, DomainSetInfo, RuleSetSource, ClientEntry, TrafficHistoryResponse, TrafficRange, UpdatesStatus, UpdateProgress, UpdateTargetName, Subscription, SubscriptionInput, PanelUser, UserTrafficResponse, AwgStatus, AwgPeer, AwgPeerTraffic } from '$lib/types';
+import type { ApiResponse, ProcessStatus, SingboxConfig, Endpoint, Outbound, Inbound, RuleSet, RuleSetUsage, RouteRule, RouteSettings, DnsServer, DnsRule, DnsSettings, LogSettings, ExperimentalSettings, ConnectionsResponse, ProxiesResponse, ClashProxy, TestRouteResponse, ConnectTestResponse, SettingsResponse, RouteBoxSettings, SingBoxVersion, DomainSetInfo, RuleSetSource, ClientEntry, TrafficHistoryResponse, TrafficRange, UpdatesStatus, UpdateProgress, UpdateTargetName, Subscription, SubscriptionInput, PanelUser, UserTrafficResponse, AwgStatus, AwgPeer, AwgPeerTraffic, MtprotoState, MtprotoStatus, MtprotoSettings, MtprotoClient, MtprotoConnection, MtprotoLink, MtprotoClientTraffic } from '$lib/types';
 
 const API_BASE = '/api';
 
@@ -309,6 +309,32 @@ export const api = {
 			method: 'PATCH',
 			body: JSON.stringify({ expires_at: expiresAt })
 		}),
+
+	// Telegram MTProto proxy (panel/vps mode)
+	mtprotoStatus: () => request<MtprotoState>('/mtproto'),
+	mtprotoEnable: () => request<MtprotoStatus>('/mtproto/enable', { method: 'POST' }),
+	mtprotoDisable: () => request<MtprotoStatus>('/mtproto/disable', { method: 'POST' }),
+	updateMtprotoSettings: (patch: Partial<MtprotoSettings>) =>
+		request<MtprotoSettings>('/mtproto', { method: 'PUT', body: JSON.stringify(patch) }),
+	getMtprotoClients: () => request<MtprotoClient[]>('/mtproto/clients'),
+	getMtprotoConnections: () => request<MtprotoConnection[]>('/mtproto/connections'),
+	getMtprotoClientsTraffic: (range: TrafficRange = '24h') =>
+		request<MtprotoClientTraffic[]>(`/mtproto/clients/traffic?range=${encodeURIComponent(range)}`),
+	createMtprotoClient: (name: string) =>
+		request<{ name: string }>('/mtproto/clients', { method: 'POST', body: JSON.stringify({ name }) }),
+	deleteMtprotoClient: (name: string) =>
+		request<{ deleted: string }>(`/mtproto/clients/${encodeURIComponent(name)}`, { method: 'DELETE' }),
+	rotateMtprotoClient: (name: string) =>
+		request<{ name: string }>(`/mtproto/clients/${encodeURIComponent(name)}/rotate`, { method: 'POST' }),
+	updateMtprotoClient: (name: string, patch: { enabled?: boolean; expires_at?: number }) =>
+		request<{ name: string }>(`/mtproto/clients/${encodeURIComponent(name)}`, {
+			method: 'PATCH',
+			body: JSON.stringify(patch)
+		}),
+	// The only endpoint that discloses a secret, so it is fetched per share
+	// action rather than with the roster.
+	getMtprotoClientLink: (name: string) =>
+		request<MtprotoLink>(`/mtproto/clients/${encodeURIComponent(name)}/link`),
 
 	// Rule Sets CRUD
 	listRuleSets: () => request<RuleSet[]>('/route/rule-sets'),
@@ -741,6 +767,25 @@ export function createLogsStream(
 ): StreamHandle {
 	return createReconnectingStream({
 		path: `/api/clash/logs?level=${encodeURIComponent(level)}`,
+		onMessage: (data) => onMessage(data as { type: string; payload: string }),
+		onError,
+		onStatus
+	});
+}
+
+/**
+ * The Telegram proxy's own log. Separate from createLogsStream because it is a
+ * different process: the proxy runs inside RouteBox, not inside amnezia-box, so
+ * the Clash stream never carries its lines. Same frame shape, so the log view
+ * renders both with one code path.
+ */
+export function createMtprotoLogsStream(
+	onMessage: (data: { type: string; payload: string }) => void,
+	onError?: (error: string) => void,
+	onStatus?: (status: StreamStatus) => void
+): StreamHandle {
+	return createReconnectingStream({
+		path: '/api/mtproto/logs',
 		onMessage: (data) => onMessage(data as { type: string; payload: string }),
 		onError,
 		onStatus
