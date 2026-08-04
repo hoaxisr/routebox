@@ -17,4 +17,10 @@ curl -fsSL https://raw.githubusercontent.com/hoaxisr/routebox/main/vps-install.s
   | sudo bash -s -- --domain panel.example.com --email you@example.com --staging
 ```
 
+Установка панели на VPS в Docker (интерактивно, спрашивает домен и порты, встраивается в имеющийся nginx):
+
+```bash
+curl -fsSL https://raw.githubusercontent.com/hoaxisr/routebox/main/docker-install.sh | sudo bash
+```
+
 Бинарники — в [релизах](https://github.com/hoaxisr/routebox/releases). Лицензия MIT.
