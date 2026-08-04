@@ -405,6 +405,21 @@ func main() {
 	}
 	// Status.ConfigDirty compares the running config against the live saved settings.
 	awgMgr.SetDesired(awgDesired)
+	// Peer liveness on the singbox backend. There is no interface to ask for a
+	// handshake there, so the roster reads "when did this tunnel IP last move
+	// bytes" out of the same traffic history the per-peer byte counts come from.
+	// Without a store (monitoring off) it stays nil and peers read offline, which
+	// is what they did before.
+	if trafficStore != nil {
+		awgMgr.SetPeerLiveness(func(since int64) map[string]int64 {
+			seen, err := trafficStore.LastSeenBySource(since)
+			if err != nil {
+				log.Printf("awg: peer liveness lookup failed: %v", err)
+				return nil
+			}
+			return seen
+		})
+	}
 	// Resolve the AWG backend: explicit setting wins; otherwise default to singbox
 	// (no kernel module required). Kernel is opt-in only — a router/VPS never runs
 	// the kernel-module install path unless the operator explicitly selects it.

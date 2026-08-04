@@ -18,9 +18,10 @@ export type MonitorRow = {
 
 /**
  * AWG peers as monitor rows. Ids are namespaced so a peer can never collide with
- * a panel user in the row key or the expand map, and liveness comes from the
- * peer's real handshake instead of being guessed from recent buckets. A peer
- * that was never named falls back to its tunnel IP.
+ * a panel user in the row key or the expand map, and liveness is whatever the
+ * server computed — a real handshake on the kernel backend, recent recorded
+ * traffic on sing-box, which has no handshake to expose. A peer that was never
+ * named falls back to its tunnel IP.
  */
 export function peersToRows(peers: AwgPeerTraffic[]): MonitorRow[] {
 	return peers.map((p) => ({
