@@ -10,17 +10,18 @@
 
 ## Два режима
 
-| | Роутер дома | Панель на VPS |
+| | Сервер: панель на VPS | Клиент: роутер дома |
 |---|---|---|
-| Что делает | Направляет трафик домашней сети через VPN: целиком или только выбранные сайты | Управляет VPN-сервером: протоколы, пользователи, подписки |
-| Установка | [`install.sh`](https://github.com/hoaxisr/routebox/blob/main/install.sh) | [`vps-install.sh`](https://github.com/hoaxisr/routebox/blob/main/vps-install.sh) |
-| Доступ | `http://IP-роутера:8080` | `https://домен:8443`, TLS-сертификат Let's Encrypt выпускается автоматически |
-| Авторизация | Опциональна | Обязательна, пароль администратора генерируется при установке |
-| Что подключается | AmneziaWG / WireGuard, VLESS, Hysteria2, NaiveProxy, Mieru — по ссылке или файлу | Клиенты пользователей — по ссылке-подписке, QR-коду или файлу конфигурации |
+| Что делает | Управляет VPN-сервером: протоколы, пользователи, подписки | Направляет трафик домашней сети через VPN: целиком или только выбранные сайты |
+| Установка | [`vps-install.sh`](https://github.com/hoaxisr/routebox/blob/main/vps-install.sh) или Docker | [`install.sh`](https://github.com/hoaxisr/routebox/blob/main/install.sh) |
+| Доступ | `https://домен:8443`, TLS-сертификат Let's Encrypt выпускается автоматически | `http://IP-роутера:8080` |
+| Авторизация | Обязательна, пароль администратора генерируется при установке | Опциональна |
+| Что подключается | Клиенты пользователей — по ссылке-подписке, QR-коду или файлу конфигурации | AmneziaWG / WireGuard, VLESS, Hysteria2, NaiveProxy, Mieru — по ссылке или файлу |
 
 Режим задаётся ключом `mode` в настройках; интерфейс показывает только разделы своего режима.
 
-## Возможности
+<details>
+<summary><b>Возможности</b></summary>
 
 **Маршрутизация**
 - Готовые списки: Antizapret, geosite/geoip rule-sets; свои списки доменов
@@ -48,9 +49,246 @@
 - Проверка и установка обновлений RouteBox и amnezia-box из панели
 - Валидация конфигурации перед применением, черновики и откат изменений
 
-## Быстрый старт: роутер дома
+</details>
 
-Требования: Linux (amd64 или arm64) с systemd, права root.
+## Установка: сервер (панель на VPS)
+
+Требования:
+
+- VPS на Linux (amd64 или arm64), права root. Для установки на голое железо — systemd.
+- **Домен с A/AAAA-записью на IP сервера** — обязателен: по нему выпускается TLS-сертификат панели. По «голому» IP панель не откроется (TLS-сертификату нужен SNI домена).
+- Порты `8443/tcp` (панель) и `80/tcp` (HTTP-01 проверка Let's Encrypt; должен оставаться открытым — продления идут по нему же).
+
+Два способа: скрипт на голое железо и Docker. Оба поднимают одну и ту же панель, состояние и настройки совместимы.
+
+<details>
+<summary><b>Скрипт: vps-install.sh</b></summary>
+
+Первый запуск лучше делать с флагом `--staging` — он использует тестовый каталог Let's Encrypt и не расходует лимит выпуска сертификатов:
+
+```bash
+curl -fsSL https://raw.githubusercontent.com/hoaxisr/routebox/main/vps-install.sh \
+  | sudo bash -s -- --domain panel.example.com --email you@example.com --staging
+```
+
+Когда всё работает, повторный запуск без `--staging` переключает панель на боевой сертификат:
+
+```bash
+curl -fsSL https://raw.githubusercontent.com/hoaxisr/routebox/main/vps-install.sh \
+  | sudo bash -s -- --domain panel.example.com --email you@example.com
+```
+
+Флаги:
+
+- `--domain` — домен панели (без него установщик спросит интерактивно);
+- `--email` — контакт для Let's Encrypt;
+- `--port <n>` — порт панели (по умолчанию `8443`);
+- `--staging` — тестовый CA Let's Encrypt.
+
+Скрипт проверяет DNS, ставит оба бинарника с проверкой sha256, настраивает systemd и firewall. Порты `8443/tcp` и `80/tcp` он откроет в ufw, если тот активен; порты 443 и 22 не трогает. Сертификат RouteBox выпускает и продлевает сам — nginx и certbot не нужны.
+
+Панель доступна на `https://panel.example.com:8443` — открывайте по домену, не по IP. Логин `admin`, пароль генерируется при первом старте и сохраняется в `/etc/routebox/routebox-initial-password` (также виден в `journalctl -u routebox`). Смените его после входа в разделе App Settings → Security.
+
+</details>
+
+<details>
+<summary><b>Docker Compose</b></summary>
+
+Образ собран на [base image LinuxServer.io](https://docs.linuxserver.io/general/containers-101/) и поддерживает только режим панели. Роутеру нужны TUN и роль шлюза локальной сети — в контейнере этого нет, для него есть `install.sh`.
+
+```bash
+curl -fsSLO https://raw.githubusercontent.com/hoaxisr/routebox/main/docker-compose.yml
+# впишите свой домен в PUBLIC_HOST и почту в ACME_EMAIL
+docker compose up -d
+```
+
+Панель поднимется на `https://ваш-домен:8443` и сама выпустит сертификат. Пароль администратора она генерирует при первом старте и кладёт в `/config/routebox-initial-password`; он же виден в `docker compose logs routebox`.
+
+Всё состояние лежит в одном volume `/config`: `routebox.toml`, конфиг и бинарник amnezia-box, база GeoIP, `traffic.db`, кэш ACME, ключи сервера AmneziaWG. Внутри контейнера `/etc/routebox` и `/etc/amnezia/amneziawg` — симлинки туда же.
+
+Переменные окружения контейнер читает один раз, когда создаёт `routebox.toml`. Дальше настройки живут в файле, и панель правит его же, так что домен после первого запуска меняйте в `/config/routebox.toml`. Если значения разойдутся, контейнер напишет об этом в лог.
+
+| Переменная | Назначение |
+|---|---|
+| `PUBLIC_HOST` | домен панели; попадает в ссылки-подписки |
+| `PUBLIC_PORT` | порт, по которому панель видят клиенты (по умолчанию — из `LISTEN`) |
+| `ACME_EMAIL` | контакт для Let's Encrypt |
+| `ACME_ENABLED` | `false`, если TLS терминирует прокси |
+| `ACME_STAGING` | тестовый CA Let's Encrypt на время проверки |
+| `ACME_HTTP_ADDR` | адрес слушателя HTTP-01, если `:80` внутри контейнера занят |
+| `LISTEN` | адрес и порт панели внутри контейнера |
+| `TRUSTED_PROXIES` | адреса прокси, чьему `X-Forwarded-For` можно верить |
+| `PUID` / `PGID` | владелец файлов в `/config` |
+
+Домен `panel.example.com` из примера контейнер игнорирует: сертификат на чужой домен всё равно не выпустится, а неудачные проверки расходуют лимит Let's Encrypt.
+
+Бинарник amnezia-box контейнер копирует из образа в `/config/bin` при первом запуске. Дальше он живёт на volume, поэтому обновление из панели работает и переживает пересоздание контейнера; уже установленный бинарник образ не трогает. systemd в контейнере нет, процесс запускает сам RouteBox при каждом старте — если конфиг и бинарник на месте. Start/Stop/Restart в панели работают как обычно.
+
+Наружу открыты `8443` (панель) и `80`: по нему Let's Encrypt проверяет домен, в том числе при продлении. Инбаунды amnezia-box вы настраиваете в панели и публикуете сами через `ports:`. Панель работает не под root, но Docker выставляет в контейнерах `net.ipv4.ip_unprivileged_port_start=0`, так что порт меньше 1024 занимается и без `NET_BIND_SERVICE`. Если ваш runtime так не умеет, добавьте `cap_add: [NET_BIND_SERVICE]` или дайте инбаунду порт от 1024 и пробросьте его на нужный (`"443:8444"`).
+
+Обновление образа:
+
+```bash
+docker compose pull && docker compose up -d
+```
+
+Раздел Updates работает и здесь: amnezia-box ставится прямо из панели, и обновление остаётся после `docker compose up -d`, потому что бинарник лежит на volume. Свой бинарник RouteBox берёт из образа, поэтому вместо кнопки показывает команду выше.
+
+</details>
+
+<details>
+<summary><b>За обратным прокси: nginx, Caddy, Traefik</b></summary>
+
+Если TLS уже держит nginx, Caddy или Traefik, встроенный ACME не нужен: RouteBox отдаёт панель по обычному HTTP, а сертификат остаётся заботой прокси. Порт `80` наружу не публикуется, `ACME_EMAIL` можно не задавать.
+
+```yaml
+environment:
+  - PUID=1000
+  - PGID=1000
+  # Адрес, по которому панель видят клиенты: адрес прокси, а не контейнера.
+  - PUBLIC_HOST=panel.example.com
+  - PUBLIC_PORT=443
+  - ACME_ENABLED=false
+  # Чьему X-Forwarded-For верить: только адрес самого прокси.
+  - TRUSTED_PROXIES=172.28.0.2/32
+networks: [proxynet]
+ports: []
+expose:
+  - "8443"
+```
+
+Адрес прокси в той же сети при этом закрепляется:
+
+```yaml
+<сервис прокси>:
+  networks:
+    proxynet:
+      ipv4_address: 172.28.0.2
+
+networks:
+  proxynet:
+    ipam:
+      config:
+        - subnet: 172.28.0.0/24
+          # Docker раздаёт адреса с начала подсети и статику не резервирует,
+          # так что динамический диапазон лучше увести от закреплённого .2.
+          ip_range: 172.28.0.128/25
+```
+
+`TRUSTED_PROXIES` лучше задать сразу. На адресе клиента держатся блокировка перебора пароля и лимит запросов к публичному `/sub/{token}`, а из-за прокси все клиенты приходят с одного адреса и считаются за одного: лимит подписок срабатывает через несколько запросов и накрывает всех. Заголовку RouteBox верит только с перечисленных адресов, с остальных смотрит на реальный адрес соединения — подделать не выйдет. Из цепочки он берёт самый правый адрес, которого нет в списке.
+
+**В списке должен быть адрес прокси, а не подсеть docker-сети.** Подсеть — это все контейнеры в ней: скомпрометированный сосед пришлёт панели поддельный `X-Forwarded-For` напрямую и обойдёт блокировку перебора пароля. Отсюда и фиксированный `ipv4_address` у прокси, и /32 в списке. Если в сети включён IPv6, закрепите и `ipv6_address` и добавьте его тоже: Docker отвечает на DNS-запрос сначала AAAA, прокси придёт по ULA-адресу, а незаписанный адрес молча не считается доверенным. Про `X-Forwarded-For` с неизвестного адреса RouteBox пишет в лог один раз на адрес.
+
+Прокси должен пробрасывать WebSocket — по ним на дашборд идут трафик, логи и список соединений — и передавать `X-Forwarded-Proto`, иначе cookie сессии останется без флага `Secure`.
+
+nginx:
+
+```nginx
+server {
+    listen 443 ssl http2;
+    server_name panel.example.com;
+
+    ssl_certificate     /etc/letsencrypt/live/panel.example.com/fullchain.pem;
+    ssl_certificate_key /etc/letsencrypt/live/panel.example.com/privkey.pem;
+
+    location / {
+        proxy_pass http://routebox:8443;
+        proxy_http_version 1.1;
+        proxy_set_header Upgrade $http_upgrade;
+        proxy_set_header Connection $connection_upgrade;
+        proxy_set_header Host $host;
+        proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+        proxy_set_header X-Forwarded-Proto $scheme;
+        # Дашборд держит WebSocket открытым, с таймаутом по умолчанию он рвётся.
+        proxy_read_timeout 3600s;
+        proxy_buffering off;
+    }
+}
+
+# в http-блоке:
+# map $http_upgrade $connection_upgrade { default upgrade; "" close; }
+```
+
+Caddy — `X-Forwarded-*` и WebSocket из коробки:
+
+```caddy
+panel.example.com {
+    reverse_proxy routebox:8443
+}
+```
+
+Инбаунды amnezia-box через прокси не пойдут: это не HTTP, их порты публикует сам контейнер. Через прокси идут только панель и подписки.
+
+</details>
+
+<details>
+<summary><b>Telegram-прокси (MTProto)</b></summary>
+
+Прокси поднимает сама панель, отдельного контейнера и второго бинарника не нужно. Страница «Telegram» есть только в режиме VPS.
+
+У каждого клиента свой секрет. Отсюда и возможность отозвать одну ссылку, не задевая остальных, и учёт трафика по клиентам, а не общей кучей.
+
+Порт по умолчанию — `9443`. Не 443, который обычно занимает обратный прокси, и не 8443: это порт самой панели. При первом включении он ни с чем не конфликтует. В Docker опубликуйте его:
+
+```yaml
+ports:
+  - "9443:9443"   # порт из настроек панели
+```
+
+Если 443 уже держит nginx с `ssl_preread`, прокси можно завести за ним по SNI и не открывать отдельный порт. Клиенты Telegram отправляют домен маскировки в SNI — по нему и маршрутизируем:
+
+```nginx
+stream {
+    map $ssl_preread_server_name $backend {
+        www.microsoft.com   routebox:9443;   # домен маскировки -> MTProto
+        default             panel_backend;
+    }
+
+    server {
+        listen 443;
+        ssl_preread on;
+        proxy_pass $backend;
+    }
+}
+```
+
+**Домен маскировки входит в секрет каждого клиента.** Прокси притворяется этим сайтом, и туда же уходит всё, что не прошло проверку. Менять домен после раздачи ссылок нельзя: перестанут работать все выданные. Панель предупреждает об этом перед сохранением. Берите сайт, куда ваши пользователи и так ходят по HTTPS.
+
+В ссылки идут «Внешний хост» и «Внешний порт» из настроек страницы, а не адрес прослушивания: за обратным прокси или SNI-маршрутизатором это разные вещи. Пока хост или домен не заданы, кнопки ссылки и QR неактивны. Ссылка без них выглядит правильной, но в Telegram не сработает.
+
+Рекламных каналов (adtag) нет: mtglib их не поддерживает.
+
+</details>
+
+<details>
+<summary><b>Бэкенд kernel для AmneziaWG в Docker</b></summary>
+
+Бэкенд `kernel` в образе работает, но включать его нужно осознанно. По умолчанию сервер AmneziaWG поднимается на `singbox`: ему не нужны ни модуль ядра, ни особые права.
+
+Для `kernel` понадобятся модуль `amneziawg`, загруженный **на хосте** (пакет `amneziawg-dkms` с заголовками ядра, затем `modprobe amneziawg`), права `NET_ADMIN` у контейнера и проброшенный UDP-порт сервера — он не HTTP и через обратный прокси не пойдёт. amneziawg-tools уже в образе. Панель проверяет и инструменты, и права, и отказывает с указанием, чего не хватает, а не падает потом при включении.
+
+```yaml
+cap_add:
+  - NET_ADMIN
+sysctls:
+  - net.ipv4.ip_forward=1
+ports:
+  - "51820:51820/udp"   # порт сервера AmneziaWG из настроек панели
+```
+
+RouteBox передаёт права через ambient set, поэтому их видят `awg-quick` и запускаемые им `ip` и `iptables`, а сам процесс панели остаётся под пользователем `PUID`. Их же наследуют все дочерние процессы, включая amnezia-box, так что без нужды бэкенд `kernel` включать не стоит. Без `cap_add` панель работает как раньше, без привилегий.
+
+AWG 3.0 (защита заголовков, CPA/RAT) на этом бэкенде доступна, если и модуль ядра, и amneziawg-tools на хосте версии 3.x. Версию модуля панель читает через `modinfo`, поэтому в контейнер нужно смонтировать `/lib/modules:/lib/modules:ro` — без него версия неизвестна и AWG 3.0 считается недоступной. Панель проверяет их независимо, так что свежий модуль со старыми инструментами тоже считается неподдерживаемым. На бэкенде `singbox` AWG 3.0 доступна всегда и от версии модуля не зависит.
+
+</details>
+
+![Сервер AmneziaWG: клиенты, выдача QR-кода, .conf и JSON, сроки действия](assets/05-awg.png)
+
+![Пользователи панели: состояние, срок действия, ссылка-подписка и учёт трафика](assets/06-users.png)
+
+## Установка: клиент (роутер дома)
+
+Требования: Linux (amd64 или arm64) с systemd, права root. В Docker этот режим не поднимается — ему нужны TUN и роль шлюза локальной сети.
 
 ```bash
 curl -fsSL https://raw.githubusercontent.com/hoaxisr/routebox/main/install.sh | sudo bash
@@ -75,45 +313,6 @@ sudo systemctl start routebox
 
 ![Монитор трафика: история за 60 секунд и разбивка по исходящим узлам](assets/04-traffic.png)
 
-## Быстрый старт: панель на VPS
-
-Требования:
-
-- VPS на Linux (amd64 или arm64) с systemd, права root.
-- **Домен с A/AAAA-записью на IP сервера** — обязателен: по нему встроенный ACME выпускает TLS-сертификат панели. По «голому» IP панель не откроется (TLS-сертификату нужен SNI домена).
-- Порты `8443/tcp` (панель) и `80/tcp` (HTTP-01 проверка Let's Encrypt; должен оставаться открытым — продления идут по нему же). Установщик откроет их в ufw, если он активен. Порты 443 и 22 скрипт не трогает.
-
-Первый запуск лучше делать с флагом `--staging` — он использует тестовый каталог Let's Encrypt и не расходует лимит выпуска сертификатов:
-
-```bash
-curl -fsSL https://raw.githubusercontent.com/hoaxisr/routebox/main/vps-install.sh \
-  | sudo bash -s -- --domain panel.example.com --email you@example.com --staging
-```
-
-Когда всё работает, повторный запуск без `--staging` переключает панель на боевой сертификат:
-
-```bash
-curl -fsSL https://raw.githubusercontent.com/hoaxisr/routebox/main/vps-install.sh \
-  | sudo bash -s -- --domain panel.example.com --email you@example.com
-```
-
-Флаги:
-
-- `--domain` — домен панели (без него установщик спросит интерактивно);
-- `--email` — контакт для Let's Encrypt;
-- `--port <n>` — порт панели (по умолчанию `8443`);
-- `--staging` — тестовый CA Let's Encrypt.
-
-Скрипт проверяет DNS, ставит оба бинарника с проверкой sha256, настраивает systemd и firewall. Сертификат RouteBox выпускает и продлевает сам — nginx и certbot не нужны.
-
-Панель доступна на `https://panel.example.com:8443` — открывайте по домену, не по IP. Логин `admin`, пароль генерируется при первом старте и сохраняется в `/etc/routebox/routebox-initial-password` (также виден в `journalctl -u routebox`). Смените его после входа в разделе App Settings → Security.
-
-Этот же режим поднимается и в Docker — раздел «Docker: панель на VPS» в конце README.
-
-![Сервер AmneziaWG: клиенты, выдача QR-кода, .conf и JSON, сроки действия](assets/05-awg.png)
-
-![Пользователи панели: состояние, срок действия, ссылка-подписка и учёт трафика](assets/06-users.png)
-
 ## Обновление
 
 В обоих режимах: раздел Updates в панели проверяет и ставит новые версии RouteBox и amnezia-box. Список изменений — в [CHANGELOG.md](CHANGELOG.md).
@@ -121,22 +320,30 @@ curl -fsSL https://raw.githubusercontent.com/hoaxisr/routebox/main/vps-install.s
 Из консоли:
 
 ```bash
-# Роутер: повторный запуск установщика обновляет бинарники, настройки не трогает
-curl -fsSL https://raw.githubusercontent.com/hoaxisr/routebox/main/install.sh | sudo bash
-
-# VPS: конфигурация и сертификат сохраняются
+# Сервер: конфигурация и сертификат сохраняются
 sudo bash vps-install.sh --update
+
+# Сервер в Docker
+docker compose pull && docker compose up -d
+
+# Клиент: повторный запуск установщика обновляет бинарники, настройки не трогает
+curl -fsSL https://raw.githubusercontent.com/hoaxisr/routebox/main/install.sh | sudo bash
 ```
 
 ## Удаление
 
 ```bash
-# Роутер (каталоги настроек остаются)
-curl -fsSL https://raw.githubusercontent.com/hoaxisr/routebox/main/install.sh | sudo bash -s -- --uninstall
-
-# VPS; --purge дополнительно удаляет /etc/routebox и /etc/amnezia-box
+# Сервер; --purge дополнительно удаляет /etc/routebox и /etc/amnezia-box
 sudo bash vps-install.sh --uninstall
+
+# Сервер в Docker; данные остаются в ./config
+docker compose down
+
+# Клиент (каталоги настроек остаются)
+curl -fsSL https://raw.githubusercontent.com/hoaxisr/routebox/main/install.sh | sudo bash -s -- --uninstall
 ```
+
+## Справочник
 
 <details>
 <summary><b>Конфигурация: routebox.toml и GeoIP</b></summary>
@@ -219,6 +426,8 @@ RouteBox требует запуска от root — он создаёт TUN-и�
 <details>
 <summary><b>Ручная установка и systemd</b></summary>
 
+Подходит для обоих режимов: разница только в `mode` в `routebox.toml`.
+
 Бинарники публикуются в [GitHub Releases](https://github.com/hoaxisr/routebox/releases):
 
 ```bash
@@ -287,188 +496,6 @@ go build -ldflags "-X main.Version=$(sed -n 's/.*"version": "\(.*\)".*/\1/p' fro
 
 sudo ./routebox
 ```
-
-</details>
-
-<details>
-<summary><b>Docker: панель на VPS</b></summary>
-
-Образ собран на [base image LinuxServer.io](https://docs.linuxserver.io/general/containers-101/) и поддерживает только режим панели. Роутеру нужны TUN и роль шлюза локальной сети — в контейнере этого нет, для него есть `install.sh`.
-
-```bash
-curl -fsSLO https://raw.githubusercontent.com/hoaxisr/routebox/main/docker-compose.yml
-# впишите свой домен в PUBLIC_HOST и почту в ACME_EMAIL
-docker compose up -d
-```
-
-Панель поднимется на `https://ваш-домен:8443` и сама выпустит сертификат. Пароль администратора она генерирует при первом старте и кладёт в `/config/routebox-initial-password`; он же виден в `docker compose logs routebox`.
-
-Всё состояние лежит в одном volume `/config`: `routebox.toml`, конфиг и бинарник amnezia-box, база GeoIP, `traffic.db`, кэш ACME, ключи сервера AmneziaWG. Внутри контейнера `/etc/routebox` и `/etc/amnezia/amneziawg` — симлинки туда же.
-
-Переменные окружения контейнер читает один раз, когда создаёт `routebox.toml`. Дальше настройки живут в файле, и панель правит его же, так что домен после первого запуска меняйте в `/config/routebox.toml`. Если значения разойдутся, контейнер напишет об этом в лог.
-
-| Переменная | Назначение |
-|---|---|
-| `PUBLIC_HOST` | домен панели; попадает в ссылки-подписки |
-| `PUBLIC_PORT` | порт, по которому панель видят клиенты (по умолчанию — из `LISTEN`) |
-| `ACME_EMAIL` | контакт для Let's Encrypt |
-| `ACME_ENABLED` | `false`, если TLS терминирует прокси |
-| `ACME_STAGING` | тестовый CA Let's Encrypt на время проверки |
-| `ACME_HTTP_ADDR` | адрес слушателя HTTP-01, если `:80` внутри контейнера занят |
-| `LISTEN` | адрес и порт панели внутри контейнера |
-| `TRUSTED_PROXIES` | адреса прокси, чьему `X-Forwarded-For` можно верить |
-| `PUID` / `PGID` | владелец файлов в `/config` |
-
-Домен `panel.example.com` из примера контейнер игнорирует: сертификат на чужой домен всё равно не выпустится, а неудачные проверки расходуют лимит Let's Encrypt.
-
-Бинарник amnezia-box контейнер копирует из образа в `/config/bin` при первом запуске. Дальше он живёт на volume, поэтому обновление из панели работает и переживает пересоздание контейнера; уже установленный бинарник образ не трогает. systemd в контейнере нет, процесс запускает сам RouteBox при каждом старте — если конфиг и бинарник на месте. Start/Stop/Restart в панели работают как обычно.
-
-Наружу открыты `8443` (панель) и `80`: по нему Let's Encrypt проверяет домен, в том числе при продлении. Инбаунды amnezia-box вы настраиваете в панели и публикуете сами через `ports:`. Панель работает не под root, но Docker выставляет в контейнерах `net.ipv4.ip_unprivileged_port_start=0`, так что порт меньше 1024 занимается и без `NET_BIND_SERVICE`. Если ваш runtime так не умеет, добавьте `cap_add: [NET_BIND_SERVICE]` или дайте инбаунду порт от 1024 и пробросьте его на нужный (`"443:8444"`).
-
-Обновление образа:
-
-```bash
-docker compose pull && docker compose up -d
-```
-
-Раздел Updates работает и здесь: amnezia-box ставится прямо из панели, и обновление остаётся после `docker compose up -d`, потому что бинарник лежит на volume. Свой бинарник RouteBox берёт из образа, поэтому вместо кнопки показывает команду выше.
-
-### За обратным прокси
-
-Если TLS уже держит nginx, Caddy или Traefik, встроенный ACME не нужен: RouteBox отдаёт панель по обычному HTTP, а сертификат остаётся заботой прокси. Порт `80` наружу не публикуется, `ACME_EMAIL` можно не задавать.
-
-```yaml
-environment:
-  - PUID=1000
-  - PGID=1000
-  # Адрес, по которому панель видят клиенты: адрес прокси, а не контейнера.
-  - PUBLIC_HOST=panel.example.com
-  - PUBLIC_PORT=443
-  - ACME_ENABLED=false
-  # Чьему X-Forwarded-For верить: только адрес самого прокси.
-  - TRUSTED_PROXIES=172.28.0.2/32
-networks: [proxynet]
-ports: []
-expose:
-  - "8443"
-```
-
-Адрес прокси в той же сети при этом закрепляется:
-
-```yaml
-<сервис прокси>:
-  networks:
-    proxynet:
-      ipv4_address: 172.28.0.2
-
-networks:
-  proxynet:
-    ipam:
-      config:
-        - subnet: 172.28.0.0/24
-          # Docker раздаёт адреса с начала подсети и статику не резервирует,
-          # так что динамический диапазон лучше увести от закреплённого .2.
-          ip_range: 172.28.0.128/25
-```
-
-`TRUSTED_PROXIES` лучше задать сразу. На адресе клиента держатся блокировка перебора пароля и лимит запросов к публичному `/sub/{token}`, а из-за прокси все клиенты приходят с одного адреса и считаются за одного: лимит подписок срабатывает через несколько запросов и накрывает всех. Заголовку RouteBox верит только с перечисленных адресов, с остальных смотрит на реальный адрес соединения — подделать не выйдет. Из цепочки он берёт самый правый адрес, которого нет в списке.
-
-**В списке должен быть адрес прокси, а не подсеть docker-сети.** Подсеть — это все контейнеры в ней: скомпрометированный сосед пришлёт панели поддельный `X-Forwarded-For` напрямую и обойдёт блокировку перебора пароля. Отсюда и фиксированный `ipv4_address` у прокси, и /32 в списке. Если в сети включён IPv6, закрепите и `ipv6_address` и добавьте его тоже: Docker отвечает на DNS-запрос сначала AAAA, прокси придёт по ULA-адресу, а незаписанный адрес молча не считается доверенным. Про `X-Forwarded-For` с неизвестного адреса RouteBox пишет в лог один раз на адрес.
-
-Прокси должен пробрасывать WebSocket — по ним на дашборд идут трафик, логи и список соединений — и передавать `X-Forwarded-Proto`, иначе cookie сессии останется без флага `Secure`.
-
-nginx:
-
-```nginx
-server {
-    listen 443 ssl http2;
-    server_name panel.example.com;
-
-    ssl_certificate     /etc/letsencrypt/live/panel.example.com/fullchain.pem;
-    ssl_certificate_key /etc/letsencrypt/live/panel.example.com/privkey.pem;
-
-    location / {
-        proxy_pass http://routebox:8443;
-        proxy_http_version 1.1;
-        proxy_set_header Upgrade $http_upgrade;
-        proxy_set_header Connection $connection_upgrade;
-        proxy_set_header Host $host;
-        proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
-        proxy_set_header X-Forwarded-Proto $scheme;
-        # Дашборд держит WebSocket открытым, с таймаутом по умолчанию он рвётся.
-        proxy_read_timeout 3600s;
-        proxy_buffering off;
-    }
-}
-
-# в http-блоке:
-# map $http_upgrade $connection_upgrade { default upgrade; "" close; }
-```
-
-Caddy — `X-Forwarded-*` и WebSocket из коробки:
-
-```caddy
-panel.example.com {
-    reverse_proxy routebox:8443
-}
-```
-
-Инбаунды amnezia-box через прокси не пойдут: это не HTTP, их порты публикует сам контейнер. Через прокси идут только панель и подписки.
-
-### Telegram-прокси (MTProto)
-
-Прокси поднимает сама панель, отдельного контейнера и второго бинарника не нужно. Страница «Telegram» есть только в режиме VPS.
-
-У каждого клиента свой секрет. Отсюда и возможность отозвать одну ссылку, не задевая остальных, и учёт трафика по клиентам, а не общей кучей.
-
-Порт по умолчанию — `9443`. Не 443, который обычно занимает обратный прокси, и не 8443: это порт самой панели. При первом включении он ни с чем не конфликтует. Опубликуйте его:
-
-```yaml
-ports:
-  - "9443:9443"   # порт из настроек панели
-```
-
-Если 443 уже держит nginx с `ssl_preread`, прокси можно завести за ним по SNI и не открывать отдельный порт. Клиенты Telegram отправляют домен маскировки в SNI — по нему и маршрутизируем:
-
-```nginx
-stream {
-    map $ssl_preread_server_name $backend {
-        www.microsoft.com   routebox:9443;   # домен маскировки -> MTProto
-        default             panel_backend;
-    }
-
-    server {
-        listen 443;
-        ssl_preread on;
-        proxy_pass $backend;
-    }
-}
-```
-
-**Домен маскировки входит в секрет каждого клиента.** Прокси притворяется этим сайтом, и туда же уходит всё, что не прошло проверку. Менять домен после раздачи ссылок нельзя: перестанут работать все выданные. Панель предупреждает об этом перед сохранением. Берите сайт, куда ваши пользователи и так ходят по HTTPS.
-
-В ссылки идут «Внешний хост» и «Внешний порт» из настроек страницы, а не адрес прослушивания: за обратным прокси или SNI-маршрутизатором это разные вещи. Пока хост или домен не заданы, кнопки ссылки и QR неактивны. Ссылка без них выглядит правильной, но в Telegram не сработает.
-
-Рекламных каналов (adtag) нет: mtglib их не поддерживает.
-
-### Бэкенд kernel для AmneziaWG
-
-Бэкенд `kernel` в образе работает, но включать его нужно осознанно. По умолчанию сервер AmneziaWG поднимается на `singbox`: ему не нужны ни модуль ядра, ни особые права.
-
-Для `kernel` понадобятся модуль `amneziawg`, загруженный **на хосте** (пакет `amneziawg-dkms` с заголовками ядра, затем `modprobe amneziawg`), права `NET_ADMIN` у контейнера и проброшенный UDP-порт сервера — он не HTTP и через обратный прокси не пойдёт. amneziawg-tools уже в образе. Панель проверяет и инструменты, и права, и отказывает с указанием, чего не хватает, а не падает потом при включении.
-
-```yaml
-cap_add:
-  - NET_ADMIN
-sysctls:
-  - net.ipv4.ip_forward=1
-ports:
-  - "51820:51820/udp"   # порт сервера AmneziaWG из настроек панели
-```
-
-RouteBox передаёт права через ambient set, поэтому их видят `awg-quick` и запускаемые им `ip` и `iptables`, а сам процесс панели остаётся под пользователем `PUID`. Их же наследуют все дочерние процессы, включая amnezia-box, так что без нужды бэкенд `kernel` включать не стоит. Без `cap_add` панель работает как раньше, без привилегий.
-
-AWG 3.0 (защита заголовков, CPA/RAT) на этом бэкенде доступна, если и модуль ядра, и amneziawg-tools на хосте версии 3.x. Версию модуля панель читает через `modinfo`, поэтому в контейнер нужно смонтировать `/lib/modules:/lib/modules:ro` — без него версия неизвестна и AWG 3.0 считается недоступной. Панель проверяет их независимо, так что свежий модуль со старыми инструментами тоже считается неподдерживаемым. На бэкенде `singbox` AWG 3.0 доступна всегда и от версии модуля не зависит.
 
 </details>
 
