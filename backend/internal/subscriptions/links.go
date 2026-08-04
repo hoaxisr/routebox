@@ -251,7 +251,18 @@ func parseHysteria2(uri string) (map[string]interface{}, string, error) {
 		"tls": map[string]interface{}{"enabled": true, "server_name": orElse(params.Get("sni"), host), "insecure": params.Get("insecure") == "1"},
 	}
 	if obfs := params.Get("obfs"); obfs != "" {
-		ob["obfs"] = map[string]interface{}{"type": obfs, "password": params.Get("obfs-password")}
+		o := map[string]interface{}{"type": obfs, "password": params.Get("obfs-password")}
+		// gecko sizes must match the server's, so take them from the link when
+		// present and otherwise leave hysteria's defaults alone (#48).
+		if obfs == "gecko" {
+			if n, err := strconv.Atoi(params.Get("obfs-min-packet-size")); err == nil && n > 0 {
+				o["min_packet_size"] = n
+			}
+			if n, err := strconv.Atoi(params.Get("obfs-max-packet-size")); err == nil && n > 0 {
+				o["max_packet_size"] = n
+			}
+		}
+		ob["obfs"] = o
 	}
 	return ob, name, nil
 }

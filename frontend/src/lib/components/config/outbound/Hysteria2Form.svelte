@@ -1,5 +1,5 @@
 <script lang="ts">
-	import type { TLSConfig, ObfsConfig, DnsServer } from '$lib/types';
+	import type { TLSConfig, ObfsConfig, ObfsType, DnsServer } from '$lib/types';
 	import { t } from 'svelte-i18n';
 	import ServerConfig from './ServerConfig.svelte';
 	import DomainResolverField from './DomainResolverField.svelte';
@@ -42,12 +42,20 @@
 
 	// Initialize obfs if needed
 	let obfsEnabled = $state(!!obfs?.type);
-	let obfsType = $state(obfs?.type ?? '');
+	let obfsType = $state<string>(obfs?.type ?? '');
 	let obfsPassword = $state(obfs?.password ?? '');
+	// gecko only; 0 = leave hysteria's defaults (512 / 1200) on both ends.
+	let obfsMinPacketSize = $state(obfs?.min_packet_size ?? 0);
+	let obfsMaxPacketSize = $state(obfs?.max_packet_size ?? 0);
 
 	$effect(() => {
 		if (obfsEnabled && obfsType) {
-			obfs = { type: obfsType as 'salamander', password: obfsPassword };
+			const next: ObfsConfig = { type: obfsType as ObfsType, password: obfsPassword };
+			if (obfsType === 'gecko') {
+				if (obfsMinPacketSize > 0) next.min_packet_size = obfsMinPacketSize;
+				if (obfsMaxPacketSize > 0) next.max_packet_size = obfsMaxPacketSize;
+			}
+			obfs = next;
 		} else {
 			obfs = undefined;
 		}
@@ -213,7 +221,12 @@
 		<label class="flex items-center gap-2 text-sm font-medium text-[var(--ctp-subtext1)]">
 			<input
 				type="checkbox"
-				bind:checked={obfsEnabled}
+				checked={obfsEnabled}
+				onchange={(e) => {
+					obfsEnabled = e.currentTarget.checked;
+					// Enabling with no type stored would emit obfs without a type.
+					if (obfsEnabled && !obfsType) obfsType = 'salamander';
+				}}
 				class="w-4 h-4 rounded border-[var(--ctp-surface2)] text-[var(--ctp-primary)] focus:ring-[var(--ctp-primary)]"
 			/>
 			{$t('outbounds.obfuscationType')}
@@ -222,16 +235,15 @@
 		{#if obfsEnabled}
 			<div class="grid grid-cols-1 sm:grid-cols-2 gap-4">
 				<div>
-					<label for="hy2-obfs-type" class="block text-sm font-medium text-[var(--ctp-subtext1)] mb-1">
+					<span class="block text-sm font-medium text-[var(--ctp-subtext1)] mb-1">
 						{$t('common.type')}
-					</label>
-					<select
-						id="hy2-obfs-type"
-						bind:value={obfsType}
-						class="w-full px-3 py-2 bg-[var(--ctp-mantle)] border border-[var(--ctp-surface2)] rounded-lg text-[var(--ctp-text)] focus:outline-none focus:ring-2 focus:ring-[var(--ctp-primary)]"
-					>
-						<option value="salamander">salamander</option>
-					</select>
+					</span>
+					<div class="flex gap-2" role="group" aria-label={$t('common.type')}>
+						<button type="button" class="toggle-btn {obfsType === 'salamander' ? 'selected' : ''}"
+							onclick={() => (obfsType = 'salamander')}>Salamander</button>
+						<button type="button" class="toggle-btn {obfsType === 'gecko' ? 'selected' : ''}"
+							onclick={() => (obfsType = 'gecko')}>Gecko</button>
+					</div>
 				</div>
 				<div>
 					<label for="hy2-obfs-pw" class="block text-sm font-medium text-[var(--ctp-subtext1)] mb-1">
@@ -246,6 +258,36 @@
 					/>
 				</div>
 			</div>
+
+			{#if obfsType === 'gecko'}
+				<div class="grid grid-cols-1 sm:grid-cols-2 gap-4">
+					<div>
+						<label for="hy2-obfs-min" class="block text-sm font-medium text-[var(--ctp-subtext1)] mb-1">
+							{$t('inbounds.server.obfsMinPacketSize')}
+						</label>
+						<input
+							id="hy2-obfs-min"
+							type="number"
+							min="0"
+							bind:value={obfsMinPacketSize}
+							class="w-full px-3 py-2 bg-[var(--ctp-mantle)] border border-[var(--ctp-surface2)] rounded-lg text-[var(--ctp-text)] focus:outline-none focus:ring-2 focus:ring-[var(--ctp-primary)]"
+						/>
+					</div>
+					<div>
+						<label for="hy2-obfs-max" class="block text-sm font-medium text-[var(--ctp-subtext1)] mb-1">
+							{$t('inbounds.server.obfsMaxPacketSize')}
+						</label>
+						<input
+							id="hy2-obfs-max"
+							type="number"
+							min="0"
+							bind:value={obfsMaxPacketSize}
+							class="w-full px-3 py-2 bg-[var(--ctp-mantle)] border border-[var(--ctp-surface2)] rounded-lg text-[var(--ctp-text)] focus:outline-none focus:ring-2 focus:ring-[var(--ctp-primary)]"
+						/>
+					</div>
+				</div>
+				<p class="text-xs text-[var(--ctp-overlay0)]">{$t('inbounds.server.obfsPacketSizeHint')}</p>
+			{/if}
 		{/if}
 	</div>
 </div>

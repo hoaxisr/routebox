@@ -216,6 +216,58 @@ func TestBuildShareLinkHysteria2(t *testing.T) {
 	}
 }
 
+func TestBuildShareLinkHysteria2Gecko(t *testing.T) {
+	// gecko packet sizes only work when client and server agree, so the link has
+	// to carry them through the round-trip (#48).
+	inbound := map[string]interface{}{
+		"type": "hysteria2", "tag": "hy2-in", "listen_port": float64(8443),
+		"tls": map[string]interface{}{"enabled": true, "server_name": "vpn.example.com"},
+		"obfs": map[string]interface{}{
+			"type": "gecko", "password": "obfspw",
+			"min_packet_size": float64(700), "max_packet_size": float64(1300),
+		},
+	}
+	user := map[string]interface{}{"name": "phone", "password": "hunter2"}
+
+	link, err := BuildShareLink(inbound, user, "vpn.example.com")
+	if err != nil {
+		t.Fatalf("BuildShareLink: %v", err)
+	}
+	ob := parseBack(t, link)
+	obfs := ob["obfs"].(map[string]interface{})
+	if obfs["type"] != "gecko" || obfs["password"] != "obfspw" {
+		t.Fatalf("obfs mismatch: %v", obfs)
+	}
+	if obfs["min_packet_size"] != 700 || obfs["max_packet_size"] != 1300 {
+		t.Fatalf("gecko packet sizes lost: %v", obfs)
+	}
+}
+
+func TestBuildShareLinkHysteria2GeckoDefaultSizes(t *testing.T) {
+	// Unset sizes stay unset: hysteria's own defaults are the agreement.
+	inbound := map[string]interface{}{
+		"type": "hysteria2", "listen_port": float64(8443),
+		"tls":  map[string]interface{}{"enabled": true, "server_name": "vpn.example.com"},
+		"obfs": map[string]interface{}{"type": "gecko", "password": "obfspw"},
+	}
+	user := map[string]interface{}{"name": "phone", "password": "hunter2"}
+
+	link, err := BuildShareLink(inbound, user, "vpn.example.com")
+	if err != nil {
+		t.Fatalf("BuildShareLink: %v", err)
+	}
+	if strings.Contains(link, "packet-size") {
+		t.Fatalf("unset sizes should not appear in the link: %s", link)
+	}
+	obfs := parseBack(t, link)["obfs"].(map[string]interface{})
+	if _, ok := obfs["min_packet_size"]; ok {
+		t.Fatalf("min_packet_size invented: %v", obfs)
+	}
+	if _, ok := obfs["max_packet_size"]; ok {
+		t.Fatalf("max_packet_size invented: %v", obfs)
+	}
+}
+
 func TestBuildShareLinkHysteria2NoObfs(t *testing.T) {
 	inbound := map[string]interface{}{
 		"type": "hysteria2", "listen_port": float64(8443),

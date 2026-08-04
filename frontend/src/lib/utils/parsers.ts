@@ -55,6 +55,9 @@ export interface ParsedHysteria2 {
 	insecure?: boolean;
 	obfs?: string;
 	obfsPassword?: string;
+	// gecko only: packet size bounds both ends must agree on (#48).
+	obfsMinPacketSize?: number;
+	obfsMaxPacketSize?: number;
 }
 
 export interface ParsedShadowsocks {
@@ -326,6 +329,12 @@ export function parseHysteria2(uri: string): ParseResult {
 		if (params.get('insecure') === '1') config.insecure = true;
 		if (params.get('obfs')) config.obfs = params.get('obfs')!;
 		if (params.get('obfs-password')) config.obfsPassword = params.get('obfs-password')!;
+		if (config.obfs === 'gecko') {
+			const min = Number(params.get('obfs-min-packet-size'));
+			const max = Number(params.get('obfs-max-packet-size'));
+			if (Number.isFinite(min) && min > 0) config.obfsMinPacketSize = min;
+			if (Number.isFinite(max) && max > 0) config.obfsMaxPacketSize = max;
+		}
 
 		return { success: true, config };
 	} catch (err) {
@@ -939,10 +948,13 @@ export function toSingboxConfig(parsed: ParsedConfig): { endpoint?: Endpoint; ou
 
 			// Obfuscation
 			if (parsed.obfs) {
-				outbound.obfs = {
+				const obfs: Record<string, unknown> = {
 					type: parsed.obfs,
 					password: parsed.obfsPassword || '',
 				};
+				if (parsed.obfsMinPacketSize) obfs.min_packet_size = parsed.obfsMinPacketSize;
+				if (parsed.obfsMaxPacketSize) obfs.max_packet_size = parsed.obfsMaxPacketSize;
+				outbound.obfs = obfs;
 			}
 
 			return { outbound: outbound as unknown as OutboundTyped, outboundTag: outbound.tag as string };

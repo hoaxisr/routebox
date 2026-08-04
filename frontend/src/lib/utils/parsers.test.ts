@@ -663,3 +663,51 @@ describe('keepalive', () => {
 		}
 	});
 });
+
+describe('hysteria2 gecko obfuscation (#48)', () => {
+	it('parses obfs type, password and gecko packet sizes', () => {
+		const r = parseHysteria2(
+			'hy2://pass@srv:8443?obfs=gecko&obfs-password=xyz&obfs-min-packet-size=700&obfs-max-packet-size=1300#g'
+		);
+		expect(r.success).toBe(true);
+		expect(r.config).toMatchObject({
+			obfs: 'gecko',
+			obfsPassword: 'xyz',
+			obfsMinPacketSize: 700,
+			obfsMaxPacketSize: 1300
+		});
+	});
+
+	it('leaves gecko sizes unset when the link omits them', () => {
+		const r = parseHysteria2('hy2://pass@srv:8443?obfs=gecko&obfs-password=xyz#g');
+		expect(r.config?.obfsMinPacketSize).toBeUndefined();
+		expect(r.config?.obfsMaxPacketSize).toBeUndefined();
+	});
+
+	it('ignores packet sizes on salamander, which has no such fields', () => {
+		const r = parseHysteria2(
+			'hy2://pass@srv:8443?obfs=salamander&obfs-password=xyz&obfs-min-packet-size=700#s'
+		);
+		expect(r.config?.obfsMinPacketSize).toBeUndefined();
+	});
+
+	it('carries gecko sizes into the outbound', () => {
+		const { outbound } = toSingboxConfig({
+			type: 'hy2',
+			name: 'g',
+			server: 'srv',
+			port: 8443,
+			password: 'pass',
+			obfs: 'gecko',
+			obfsPassword: 'xyz',
+			obfsMinPacketSize: 700,
+			obfsMaxPacketSize: 1300
+		});
+		expect(outbound?.obfs).toEqual({
+			type: 'gecko',
+			password: 'xyz',
+			min_packet_size: 700,
+			max_packet_size: 1300
+		});
+	});
+});

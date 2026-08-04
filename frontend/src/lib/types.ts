@@ -223,7 +223,7 @@ export interface Inbound {
 	tls?: ServerTlsConfig;
 	up_mbps?: number;     // hysteria2
 	down_mbps?: number;   // hysteria2
-	obfs?: { type: string; password?: string }; // hysteria2
+	obfs?: { type: string; password?: string; min_packet_size?: number; max_packet_size?: number }; // hysteria2
 	transport?: TransportConfig | string; // vless/trojan stream transport object; mieru emits a "TCP"/"UDP" string
 	traffic_pattern?: string;           // mieru
 	user_hint_is_mandatory?: boolean;   // mieru
@@ -346,9 +346,14 @@ export interface TransportConfig {
 }
 
 // Obfuscation configuration for Hysteria2
+export type ObfsType = 'salamander' | 'gecko';
 export interface ObfsConfig {
-	type: 'salamander';
+	type: ObfsType;
 	password: string;
+	// gecko only: packet size bounds. Both ends must use the same values;
+	// unset means hysteria's own defaults (512 / 1200).
+	min_packet_size?: number;
+	max_packet_size?: number;
 }
 
 // Base outbound interface (all outbounds share these)
