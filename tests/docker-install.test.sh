@@ -109,6 +109,37 @@ assert_eq "0" "$(subnet_taken 172.29.0.0/24; echo $?)" "подсеть из та
 assert_eq "172.30.0.0/24" "$(pick_free_subnet)" "берётся первая свободная"
 assert_eq "172.30.0.1" "$(gateway_of 172.30.0.0/24)" "шлюз подсети"
 
+# Пересечения, которых не видно строковым сравнением: docker раздаёт сетям /16,
+# а VPN может держать маршрут /12 поверх всех кандидатов сразу.
+assert_eq "0" "$(cidr_overlap 172.28.0.0/24 172.28.0.0/16; echo $?)" "/16 накрывает кандидата /24"
+assert_eq "0" "$(cidr_overlap 172.28.0.0/24 172.16.0.0/12; echo $?)" "/12 накрывает кандидата /24"
+assert_fails 'cidr_overlap 172.28.0.0/24 172.29.0.0/24' "соседние /24 не пересекаются"
+assert_fails 'cidr_overlap 172.28.0.0/24 10.0.0.0/8'    "чужой блок адресов не пересекается"
+assert_fails 'cidr_overlap 172.28.0.0/24 fd00::/64'     "IPv6 не ломает сравнение"
+
+cat >"$STUBS/docker" <<'EOF'
+#!/bin/bash
+case "$1" in
+	ps)      echo '0.0.0.0:8444->8444/tcp, [::]:8555->8555/tcp, 0.0.0.0:18666->18666/tcp' ;;
+	network) echo '172.28.0.0/16' ;;
+	compose) exit 0 ;;
+esac
+exit 0
+EOF
+chmod +x "$STUBS/docker"
+assert_eq "0" "$(subnet_taken 172.28.0.0/24; echo $?)" "существующая /16 делает кандидата /24 занятым"
+# Возвращаем стаб к /24, чтобы дальнейшие проверки шли в прежних условиях.
+cat >"$STUBS/docker" <<'EOF'
+#!/bin/bash
+case "$1" in
+	ps)      echo '0.0.0.0:8444->8444/tcp, [::]:8555->8555/tcp, 0.0.0.0:18666->18666/tcp' ;;
+	network) echo '172.28.0.0/24' ;;
+	compose) exit 0 ;;
+esac
+exit 0
+EOF
+chmod +x "$STUBS/docker"
+
 echo
 echo "генератор compose"
 C_STANDALONE="$(gen_compose standalone panel.example.com you@example.com 9443 9443 172.28.0.0/24 true "")"
@@ -226,7 +257,61 @@ assert_eq "1" "$CODE_80" "занятый 80 в standalone -> ненулевой 
 assert_contains "$OUT_80" "порт 80 занят" "занятый 80 -> названа причина"
 assert_not_contains "$OUT_80" "PUBLIC_HOST=" "занятый 80 -> compose не печатается"
 
-rm -rf "$WORK"
+# Сценарий без nginx: панель держит TLS сама. Нужен отдельный набор стабов —
+# общий ss держит 80 занятым, и standalone-путь в нём не доходит до конца.
+BARE="$(mktemp -d)"
+cat >"$BARE/ss" <<'EOF'
+#!/bin/bash
+echo 'LISTEN 0 128 0.0.0.0:22 0.0.0.0:* users:(("sshd",pid=1,fd=3))'
+EOF
+cat >"$BARE/docker" <<'EOF'
+#!/bin/bash
+case "$1" in
+	ps)      echo '' ;;
+	network) echo '10.0.0.0/24' ;;
+	compose) exit 0 ;;
+esac
+exit 0
+EOF
+printf '#!/bin/bash\necho "203.0.113.10"\n' > "$BARE/curl"
+printf '#!/bin/bash\necho "203.0.113.10 STREAM panel.example.com"\n' > "$BARE/getent"
+chmod +x "$BARE"/*
+# Ответы: каталог, домен, почта, тестовый сертификат — да, порт панели (дефолт).
+printf '%s\n' "$WORK/rb" "panel.example.com" "you@example.com" "y" "" > "$WORK/answers-bare"
+OUT_BARE="$(RB_TTY_IN="$WORK/answers-bare" RB_NGINX_T_CMD="true" \
+	PATH="$BARE:$PATH" bash "$HERE/../docker-install.sh" --dry-run 2>&1 || true)"
+assert_contains "$OUT_BARE" "ACME_EMAIL=you@example.com" "без nginx: панель выпускает сертификат сама"
+assert_contains "$OUT_BARE" "ACME_STAGING=true"          "без nginx: выбран тестовый CA"
+assert_contains "$OUT_BARE" '"8443:8443"'                "без nginx: панель проброшена наружу"
+assert_contains "$OUT_BARE" '"80:80"'                    "без nginx: порт 80 под HTTP-01"
+assert_contains "$OUT_BARE" "PUBLIC_PORT=8443"           "без nginx: PUBLIC_PORT равен внешнему порту"
+assert_not_contains "$OUT_BARE" "TRUSTED_PROXIES"        "без nginx: доверенных прокси нет"
+assert_not_contains "$OUT_BARE" "server_name"            "без nginx: vhost не печатается"
+rm -rf "$BARE" "$WORK"
+
+# Если nginx на машине есть, сгенерированные конфигурации проверяются им самим.
+if command -v nginx >/dev/null 2>&1; then
+	echo
+	echo "nginx -t на сгенерированном"
+	NG="$(mktemp -d)"
+	gen_vhost panel.example.com 8445 "443 ssl http2" > "$NG/vhost.conf"
+	gen_stream_conf panel.example.com 8444 vpn.example.com 8446 8447 > "$NG/stream.conf"
+	cat > "$NG/nginx.conf" <<EOF
+events {}
+http {
+    include ${NG}/vhost.conf;
+}
+$(cat "$NG/stream.conf")
+EOF
+	# Сертификата нет, поэтому смотрим только на синтаксические ошибки.
+	NG_OUT="$(nginx -t -c "$NG/nginx.conf" -p "$NG" 2>&1 || true)"
+	assert_not_contains "$NG_OUT" "unknown directive"  "nginx не знает лишних директив"
+	assert_not_contains "$NG_OUT" "unexpected"         "структура блоков верна"
+	rm -rf "$NG"
+else
+	echo
+	echo "nginx -t на сгенерированном: пропущено, nginx не установлен"
+fi
 
 echo
 if [ "$FAILS" -gt 0 ]; then printf '%d проверок упало\n' "$FAILS"; exit 1; fi

@@ -56,6 +56,10 @@ parse_args() {
 		esac
 		shift
 	done
+	if [ "$PURGE" = "true" ] && [ "$ACTION" != "uninstall" ]; then
+		err "--purge имеет смысл только вместе с --uninstall"
+		return 1
+	fi
 	return 0
 }
 
@@ -85,6 +89,20 @@ port_owner() {
 		fi
 	fi
 	return 1
+}
+
+# busy_note START CHOSEN -> " (8443 занят nginx, 8444 занят docker)" или пусто.
+# Молчаливый выбор порта выглядит как произвол; строка объясняет, почему не
+# взят ожидаемый 8443.
+busy_note() {
+	local p="$1" chosen="$2" owner note=""
+	while [ "$p" -lt "$chosen" ]; do
+		owner="$(port_owner "$p" || true)"
+		note="${note:+${note}, }${p} занят ${owner:-кем-то}"
+		p=$((p + 1))
+	done
+	[ -n "$note" ] && echo " (${note})"
+	return 0
 }
 
 # pick_free_port START -> первый свободный порт, начиная со START.
@@ -172,18 +190,46 @@ stream_module_available() {
 # subnet_taken CIDR -> 0, если подсеть уже занята docker-сетью или маршрутом
 # хоста. Фиксированная 172.28.0.0/24 без такой проверки роняет compose или,
 # хуже, перетягивает на себя чужой маршрут.
+# ip_to_int A.B.C.D -> целое. Нужно для проверки пересечения диапазонов.
+ip_to_int() {
+	local a b c d
+	IFS=. read -r a b c d <<<"$1"
+	echo $(((a << 24) + (b << 16) + (c << 8) + d))
+}
+
+# cidr_overlap A/N B/M -> 0, если диапазоны пересекаются.
+# Строкового сравнения мало: docker раздаёт сетям /16, и существующая
+# 172.28.0.0/16 не совпадает со строкой 172.28.0.0/24, хотя накрывает её
+# целиком — compose потом падает с «Pool overlaps». То же с маршрутом
+# 172.16.0.0/12 от VPN, который накрывает все кандидаты сразу.
+cidr_overlap() {
+	local a="${1%%/*}" alen="${1##*/}" b="${2%%/*}" blen="${2##*/}"
+	case "$a$b" in *:*) return 1 ;; esac   # IPv6 не сравниваем
+	case "$1$2" in *[!0-9./]*) return 1 ;; esac
+	local astart bstart amask bmask aend bend
+	astart="$(ip_to_int "$a")"; bstart="$(ip_to_int "$b")"
+	amask=$(( alen == 0 ? 0 : (0xFFFFFFFF << (32 - alen)) & 0xFFFFFFFF ))
+	bmask=$(( blen == 0 ? 0 : (0xFFFFFFFF << (32 - blen)) & 0xFFFFFFFF ))
+	astart=$((astart & amask)); bstart=$((bstart & bmask))
+	aend=$((astart + (0xFFFFFFFF & ~amask)))
+	bend=$((bstart + (0xFFFFFFFF & ~bmask)))
+	[ "$astart" -le "$bend" ] && [ "$bstart" -le "$aend" ]
+}
+
 subnet_taken() {
-	local cidr="$1" nets="" routes=""
+	local cidr="$1" existing="" one=""
 	if command -v docker >/dev/null 2>&1; then
 		# shellcheck disable=SC2046  # список сетей — именно несколько аргументов
-		nets="$(docker network inspect $(docker network ls -q 2>/dev/null) \
+		existing="$(docker network inspect $(docker network ls -q 2>/dev/null) \
 			--format '{{range .IPAM.Config}}{{.Subnet}} {{end}}' 2>/dev/null || true)"
-		case "$nets" in *"$cidr"*) return 0 ;; esac
 	fi
 	if command -v ip >/dev/null 2>&1; then
-		routes="$(ip -o route 2>/dev/null | awk '{print $1}' || true)"
-		case "$routes" in *"$cidr"*) return 0 ;; esac
+		existing="${existing} $(ip -o route 2>/dev/null | awk '{print $1}' || true)"
 	fi
+	for one in $existing; do
+		case "$one" in */*) ;; *) continue ;; esac
+		if cidr_overlap "$cidr" "$one"; then return 0; fi
+	done
 	return 1
 }
 
@@ -480,12 +526,16 @@ ask_all() {
 		info "nginx на хосте нет — панель будет держать TLS сама (встроенный ACME)"
 	fi
 
-	EMAIL="$(ask "Контакт для Let's Encrypt" "")"
-	[ -n "$EMAIL" ] || { err "почта обязательна"; exit 1; }
-	if ask_yn "Использовать тестовый сертификат Let's Encrypt для первого прогона?"; then
-		STAGING="true"
-	else
-		STAGING="false"
+	# За чужим прокси сертификат выпускает он сам: ни почта, ни выбор CA нам
+	# не нужны — не спрашиваем то, что некуда положить.
+	if [ "$TLS_MODE" != "proxy" ]; then
+		EMAIL="$(ask "Контакт для Let's Encrypt" "")"
+		[ -n "$EMAIL" ] || { err "почта обязательна"; exit 1; }
+		if ask_yn "Использовать тестовый сертификат Let's Encrypt для первого прогона?"; then
+			STAGING="true"
+		else
+			STAGING="false"
+		fi
 	fi
 
 	SUBNET="$(pick_free_subnet)"
@@ -507,6 +557,7 @@ ask_all() {
 		fi
 		HOST_PORT="$(pick_free_port 8443)"
 		PUBLIC_PORT="443"
+		info "панель → 127.0.0.1:${HOST_PORT}$(busy_note 8443 "$HOST_PORT")"
 		if sni_offer_allowed && ask_yn "Отдавать инбаунды на 443 через SNI-роутер nginx?"; then
 			WANT_SNI="true"
 			INBOUND_DOMAIN="$(ask "Домен для инбаунда (отдельный от панельного)" "")"
@@ -514,6 +565,7 @@ ask_all() {
 			PANEL_HTTPS_PORT="$(pick_free_port $((HOST_PORT + 1)))"
 			INBOUND_PORT="$(pick_free_port $((PANEL_HTTPS_PORT + 1)))"
 			PP_PORT="$(pick_free_port $((INBOUND_PORT + 1)))"
+			info "https-слушатель nginx → 127.0.0.1:${PANEL_HTTPS_PORT}, инбаунд → 127.0.0.1:${INBOUND_PORT}, PROXY-протокол → 127.0.0.1:${PP_PORT}"
 		fi
 	else
 		local owner80; owner80="$(port_owner 80 || true)"
@@ -603,6 +655,14 @@ install_nginx_files() {
 	local dir vhost listen_spec upstream="$HOST_PORT"
 	dir="$(nginx_conf_dir)"
 	vhost="${dir}/${NGINX_VHOST_NAME}"
+
+	# Согласие на правку nginx.conf спрашивается ДО того, как что-то записано:
+	# иначе отказ на этом шаге оставлял бы vhost, слушающий внутренний порт, и
+	# stream-файл, который никто не включает, — панель снаружи недоступна,
+	# и выяснится это на ближайшем reload от продления сертификата.
+	if [ "$WANT_SNI" = "true" ]; then
+		confirm_stream_include
+	fi
 	backup_nginx
 
 	if [ "$WANT_SNI" = "true" ]; then
@@ -634,17 +694,39 @@ install_nginx_files() {
 	info "nginx перечитал конфигурацию"
 }
 
-# ensure_stream_include — единственная правка чужого файла, и та по маркеру.
-ensure_stream_include() {
+# confirm_stream_include — только спрашивает и проверяет, ничего не пишет.
+# Вызывается до записи любых файлов, чтобы отказ не оставлял полуконфигурации.
+confirm_stream_include() {
 	if grep -qF "$MARKER" /etc/nginx/nginx.conf; then return 0; fi
 	if grep -qE '^[[:space:]]*stream[[:space:]]*\{' /etc/nginx/nginx.conf; then
 		err "в nginx.conf уже есть блок stream — добавьте в него строку вручную:"
 		err "    include ${NGINX_STREAM_DIR}/*.conf;"
+		err "затем запустите установщик снова"
 		exit 1
 	fi
-	ask_yn "Добавить в /etc/nginx/nginx.conf строку с include для stream-конфигурации?" ||
-		{ err "без неё SNI-роутер не заработает; прервано"; exit 1; }
+	if ! ask_yn "Добавить в /etc/nginx/nginx.conf строку с include для stream-конфигурации?"; then
+		err "без неё SNI-роутер не заработает; ничего не изменено"
+		exit 1
+	fi
+}
+
+# ensure_stream_include — единственная правка чужого файла, и та по маркеру.
+ensure_stream_include() {
+	if grep -qF "$MARKER" /etc/nginx/nginx.conf; then return 0; fi
 	stream_include_line >> /etc/nginx/nginx.conf
+}
+
+# remove_if_ours PATH — удаляет файл, только если он начинается нашим маркером.
+# Совпадения имени мало: routebox.conf в conf.d мог написать и человек.
+remove_if_ours() {
+	local f="$1"
+	[ -f "$f" ] || return 0
+	if head -1 "$f" | grep -qF "$MARKER"; then
+		rm -f "$f"
+		info "Удалён ${f}"
+	else
+		warn "${f} писали не мы (нет маркера) — оставляю как есть"
+	fi
 }
 
 remove_stream_include() {
@@ -789,12 +871,23 @@ do_uninstall() {
 	require_root
 	detect
 	ask_install_dir
+	# Опечатка в пути не должна класть чужой стек: сносим только свой compose.
 	if [ -f "${INSTALL_DIR}/docker-compose.yml" ]; then
-		(cd "$INSTALL_DIR" && docker compose down) || true
+		if existing_install "$INSTALL_DIR"; then
+			(cd "$INSTALL_DIR" && docker compose down) || true
+		else
+			err "в ${INSTALL_DIR} лежит чужой docker-compose.yml — не трогаю его"
+			exit 1
+		fi
 	fi
 	local dir="/etc/nginx/conf.d"
 	if [ "$HAS_NGINX_HOST" = "true" ]; then dir="$(nginx_conf_dir)"; fi
-	rm -f "${dir}/${NGINX_VHOST_NAME}" "/etc/nginx/sites-enabled/${NGINX_VHOST_NAME}" "$NGINX_STREAM_FILE"
+	remove_if_ours "${dir}/${NGINX_VHOST_NAME}"
+	remove_if_ours "$NGINX_STREAM_FILE"
+	# Симлинк удаляем только вместе с целью, которую сами и создавали.
+	if [ -L "/etc/nginx/sites-enabled/${NGINX_VHOST_NAME}" ] && [ ! -e "${dir}/${NGINX_VHOST_NAME}" ]; then
+		rm -f "/etc/nginx/sites-enabled/${NGINX_VHOST_NAME}"
+	fi
 	remove_stream_include
 	if [ "$HAS_NGINX_HOST" = "true" ] && nginx -t >/dev/null 2>&1; then
 		systemctl reload nginx || true
