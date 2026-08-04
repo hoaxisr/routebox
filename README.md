@@ -104,11 +104,13 @@ curl -fsSL https://raw.githubusercontent.com/hoaxisr/routebox/main/docker-instal
 
 С nginx на хосте панель уходит на loopback, а наружу смотрит nginx: скрипт выпускает сертификат через certbot, пишет свой vhost и перечитывает конфигурацию. Чужие файлы он не правит, а если домен уже кем-то занят — останавливается и просит другой поддомен.
 
-Если на 443 никто, кроме nginx, не сидит, скрипт предложит SNI-роутер: тогда на 443 живут и панель, и инбаунд — nginx разводит их по домену из TLS-приветствия. Инбаунд после этого создаётся в панели с портом 443, порт под него уже проброшен. Hysteria2, Mieru и AmneziaWG так не отдать: это UDP, им нужен свой порт.
+Для nginx-ветки нужен certbot: если его нет и готового сертификата тоже, скрипт остановится и предложит либо поставить certbot, либо вернуться к встроенному ACME.
+
+Если на 443 никто, кроме nginx, не сидит, а модуль stream доступен, скрипт предложит SNI-роутер: тогда на 443 живут и панель, и инбаунд — nginx разводит их по домену из TLS-приветствия. Инбаунд после этого создаётся в панели с портом 443, порт под него уже проброшен. Hysteria2, Mieru и AmneziaWG так не отдать: это UDP, им нужен свой порт.
 
 Если TLS держит Caddy, Traefik или nginx в контейнере, скрипт ставит панель на loopback и печатает готовую конфигурацию для вашего прокси — сам он её не применяет.
 
-Повторный запуск обновляет образ и ничего не переспрашивает. Удаление — `sudo bash docker-install.sh --uninstall`, данные при этом остаются (`--purge` удаляет и их). Посмотреть, что получится, ничего не трогая: `--dry-run`.
+Повторный запуск спрашивает только каталог и дальше обновляет образ. Удаление — `sudo bash docker-install.sh --uninstall`, данные при этом остаются (`--purge` удаляет и их); файлы nginx скрипт сносит только свои, по маркеру в первой строке. Посмотреть, что получится, ничего не трогая: `--dry-run`.
 
 </details>
 
@@ -118,7 +120,7 @@ curl -fsSL https://raw.githubusercontent.com/hoaxisr/routebox/main/docker-instal
 Образ собран на [базовом образе LinuxServer.io](https://docs.linuxserver.io/general/containers-101/) и поддерживает только режим панели. Роутеру нужны TUN и роль шлюза локальной сети — в контейнере этого нет, для него есть `install.sh`.
 
 ```bash
-curl -fsSLO https://raw.githubusercontent.com/hoaxisr/routebox/main/docker-compose.yml
+curl -fsSLO https://raw.githubusercontent.com/hoaxisr/routebox/source/docker-compose.yml
 # впишите свой домен в PUBLIC_HOST и почту в ACME_EMAIL
 docker compose up -d
 ```
