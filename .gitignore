@@ -4,6 +4,9 @@
 !README.md
 !install.sh
 !vps-install.sh
+!docker-install.sh
+!tests/
+!tests/**
 
 
 !LICENSE
