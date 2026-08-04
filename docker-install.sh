@@ -16,6 +16,9 @@ MARKER="# managed by routebox"
 NGINX_VHOST_NAME="routebox.conf"
 NGINX_STREAM_DIR="/etc/nginx/stream-enabled"
 NGINX_STREAM_FILE="${NGINX_STREAM_DIR}/routebox.conf"
+# Путь вынесен в переменную ради тестов: правка nginx.conf — единственное, что
+# скрипт делает с чужим файлом, и проверять это надо на копии, а не на системном.
+NGINX_CONF="${RB_NGINX_CONF:-/etc/nginx/nginx.conf}"
 CONTAINER_PANEL_PORT="8443"
 
 ACTION="install"; PURGE="false"
@@ -87,6 +90,17 @@ port_owner() {
 			echo "docker"
 			return 0
 		fi
+		# Диапазон `0.0.0.0:8440-8450->8440-8450/tcp` занимает всё, что внутри.
+		local spec lo hi
+		for spec in $(docker ps --format '{{.Ports}}' 2>/dev/null |
+				grep -oE ':[0-9]+-[0-9]+->' || true); do
+			spec="${spec#:}"; spec="${spec%->}"
+			lo="${spec%%-*}"; hi="${spec##*-}"
+			if [ "$port" -ge "$lo" ] && [ "$port" -le "$hi" ]; then
+				echo "docker"
+				return 0
+			fi
+		done
 	fi
 	return 1
 }
@@ -151,6 +165,7 @@ domain_taken() {
 	nginx_dump | awk -v d="$domain" -v marker="$MARKER" '
 		/^# configuration file/ { ours = 0 }
 		index($0, marker) { ours = 1 }
+		/^[[:space:]]*#/ { next }
 		/server_name/ && !ours {
 			for (i = 2; i <= NF; i++) {
 				gsub(/;/, "", $i)
@@ -187,9 +202,6 @@ stream_module_available() {
 
 # --- подсеть -----------------------------------------------------------------
 
-# subnet_taken CIDR -> 0, если подсеть уже занята docker-сетью или маршрутом
-# хоста. Фиксированная 172.28.0.0/24 без такой проверки роняет compose или,
-# хуже, перетягивает на себя чужой маршрут.
 # ip_to_int A.B.C.D -> целое. Нужно для проверки пересечения диапазонов.
 ip_to_int() {
 	local a b c d
@@ -413,8 +425,11 @@ detect() {
 	if command -v nginx >/dev/null 2>&1 && systemctl is-active nginx >/dev/null 2>&1; then
 		HAS_NGINX_HOST="true"
 	fi
+	# Имя образа, а не подстрока: иначе nginx-prometheus-exporter сойдёт за
+	# обратный прокси и панель молча уедет на loopback без того, кто её отдаёт.
 	if command -v docker >/dev/null 2>&1 &&
-	   docker ps --format '{{.Image}}' 2>/dev/null | grep -qi nginx; then
+	   docker ps --format '{{.Image}}' 2>/dev/null |
+	   grep -qiE '(^|/)(nginx|openresty|jc21/nginx-proxy-manager|jwilder/nginx-proxy|linuxserver/swag)(:|$)'; then
 		HAS_NGINX_CONTAINER="true"
 	fi
 
@@ -498,15 +513,34 @@ ask_port() {
 		p="$(ask "$prompt" "$default")"
 		case "$p" in ''|*[!0-9]*) err "порт должен быть числом"; continue ;; esac
 		if [ "$p" -lt 1 ] || [ "$p" -gt 65535 ]; then err "порт вне диапазона 1..65535"; continue; fi
-		owner="$(port_owner "$p" || true)"
-		if [ -n "$owner" ]; then err "порт ${p} занят: ${owner:-кто-то}"; continue; fi
+		# Решает код возврата, а не наличие имени: `ss` без root показывает
+		# чужие сокеты без владельца, и проверка по имени приняла бы занятый
+		# порт за свободный.
+		if owner="$(port_owner "$p")"; then
+			err "порт ${p} занят${owner:+: $owner}"; continue
+		fi
 		echo "$p"; return 0
 	done
 }
 
+# valid_domain NAME -> 0, если это похоже на доменное имя. Пробел или `;` в
+# ответе иначе уезжает в server_name и в пути сертификата, а ломается всё это
+# позже и с невнятной диагностикой.
+valid_domain() {
+	case "$1" in
+		''|*[!A-Za-z0-9.-]*) return 1 ;;
+		.*|-*|*-|*.) return 1 ;;
+		*.*) return 0 ;;
+		*) return 1 ;;
+	esac
+}
+
 ask_all() {
 	DOMAIN="$(ask "Домен панели (A-запись должна вести сюда)" "")"
-	[ -n "$DOMAIN" ] || { err "домен обязателен"; exit 1; }
+	if ! valid_domain "$DOMAIN"; then
+		err "нужно доменное имя вида panel.example.com"
+		exit 1
+	fi
 	check_dns "$DOMAIN"
 
 	if [ "$HAS_NGINX_HOST" = "true" ]; then
@@ -543,16 +577,19 @@ ask_all() {
 
 	if [ "$TLS_MODE" = "proxy" ]; then
 		HOST_PORT="$(pick_free_port 8443)"
-		PUBLIC_PORT="$(ask "Порт, на котором ваш прокси отдаёт панель клиентам" "443")"
+		while :; do
+			PUBLIC_PORT="$(ask "Порт, на котором ваш прокси отдаёт панель клиентам" "443")"
+			case "$PUBLIC_PORT" in ''|*[!0-9]*) err "порт должен быть числом" ;; *) break ;; esac
+		done
 	elif [ "$TLS_MODE" = "nginx" ]; then
 		if domain_taken "$DOMAIN"; then
 			err "домен ${DOMAIN} уже обслуживается другим блоком nginx"
 			err "укажите другой поддомен, ведущий на этот сервер, и запустите снова"
 			exit 1
 		fi
-		local owner443; owner443="$(port_owner 443 || true)"
-		if [ -n "$owner443" ] && [ "$owner443" != "nginx" ]; then
-			err "порт 443 занят: ${owner443}. Освободите его или выберите режим со встроенным ACME."
+		local owner443=""
+		if owner443="$(port_owner 443)" && [ "$owner443" != "nginx" ]; then
+			err "порт 443 занят${owner443:+: $owner443}. Освободите его или выберите режим со встроенным ACME."
 			exit 1
 		fi
 		HOST_PORT="$(pick_free_port 8443)"
@@ -561,16 +598,19 @@ ask_all() {
 		if sni_offer_allowed && ask_yn "Отдавать инбаунды на 443 через SNI-роутер nginx?"; then
 			WANT_SNI="true"
 			INBOUND_DOMAIN="$(ask "Домен для инбаунда (отдельный от панельного)" "")"
-			[ -n "$INBOUND_DOMAIN" ] || { err "домен инбаунда обязателен"; exit 1; }
+			if ! valid_domain "$INBOUND_DOMAIN"; then
+				err "нужно доменное имя вида vpn.example.com"
+				exit 1
+			fi
 			PANEL_HTTPS_PORT="$(pick_free_port $((HOST_PORT + 1)))"
 			INBOUND_PORT="$(pick_free_port $((PANEL_HTTPS_PORT + 1)))"
 			PP_PORT="$(pick_free_port $((INBOUND_PORT + 1)))"
 			info "https-слушатель nginx → 127.0.0.1:${PANEL_HTTPS_PORT}, инбаунд → 127.0.0.1:${INBOUND_PORT}, PROXY-протокол → 127.0.0.1:${PP_PORT}"
 		fi
 	else
-		local owner80; owner80="$(port_owner 80 || true)"
-		if [ -n "$owner80" ]; then
-			err "порт 80 занят: ${owner80}. Встроенному ACME он нужен именно снаружи —"
+		local owner80=""
+		if owner80="$(port_owner 80)"; then
+			err "порт 80 занят${owner80:+: $owner80}. Встроенному ACME он нужен именно снаружи —"
 			err "HTTP-01 всегда приходит на 80, пробросом это не лечится."
 			if [ "$owner80" = "nginx" ]; then
 				err "Раз 80 держит nginx, его и стоит сделать держателем TLS: запустите снова и выберите этот режим."
@@ -697,14 +737,14 @@ install_nginx_files() {
 # confirm_stream_include — только спрашивает и проверяет, ничего не пишет.
 # Вызывается до записи любых файлов, чтобы отказ не оставлял полуконфигурации.
 confirm_stream_include() {
-	if grep -qF "$MARKER" /etc/nginx/nginx.conf; then return 0; fi
-	if grep -qE '^[[:space:]]*stream[[:space:]]*\{' /etc/nginx/nginx.conf; then
+	if grep -qF "$MARKER" "$NGINX_CONF"; then return 0; fi
+	if grep -qE '^[[:space:]]*stream[[:space:]]*\{' "$NGINX_CONF"; then
 		err "в nginx.conf уже есть блок stream — добавьте в него строку вручную:"
 		err "    include ${NGINX_STREAM_DIR}/*.conf;"
 		err "затем запустите установщик снова"
 		exit 1
 	fi
-	if ! ask_yn "Добавить в /etc/nginx/nginx.conf строку с include для stream-конфигурации?"; then
+	if ! ask_yn "Добавить в ${NGINX_CONF} строку с include для stream-конфигурации?"; then
 		err "без неё SNI-роутер не заработает; ничего не изменено"
 		exit 1
 	fi
@@ -712,8 +752,12 @@ confirm_stream_include() {
 
 # ensure_stream_include — единственная правка чужого файла, и та по маркеру.
 ensure_stream_include() {
-	if grep -qF "$MARKER" /etc/nginx/nginx.conf; then return 0; fi
-	stream_include_line >> /etc/nginx/nginx.conf
+	if grep -qF "$MARKER" "$NGINX_CONF"; then return 0; fi
+	# Ведущий перевод строки обязателен: если файл не заканчивается переводом,
+	# наша строка приклеится к последней — к чужой закрывающей `}`. Тогда откат
+	# по маркеру снёс бы эту `}` вместе с нашей строкой и оставил nginx.conf
+	# сломанным навсегда, с сообщением «оно и до нас было сломано».
+	printf '\n%s\n' "$(stream_include_line)" >> "$NGINX_CONF"
 }
 
 # remove_if_ours PATH — удаляет файл, только если он начинается нашим маркером.
@@ -730,7 +774,7 @@ remove_if_ours() {
 }
 
 remove_stream_include() {
-	sed -i "\|${MARKER}|d" /etc/nginx/nginx.conf 2>/dev/null || true
+	sed -i "\|${MARKER}|d" "$NGINX_CONF" 2>/dev/null || true
 }
 
 # Останавливаемся сразу, если сертификат взять негде: vhost ссылается на
@@ -750,28 +794,78 @@ issue_cert() {
 	fi
 	local staging_flag=""
 	if [ "$STAGING" = "true" ]; then staging_flag="--test-cert"; fi
-	certbot certonly --nginx $staging_flag -d "$DOMAIN" -m "$EMAIL" --agree-tos -n ||
-		certbot certonly --webroot -w /var/www/html $staging_flag -d "$DOMAIN" -m "$EMAIL" --agree-tos -n ||
+	prepare_challenge_vhost
+	# webroot первым, а не --nginx: после prepare_challenge_vhost каталог
+	# проверки гарантированно отдаётся именно для нашего домена, тогда как
+	# --nginx полагается на то, что подходящий server-блок уже есть.
+	# shellcheck disable=SC2086  # staging_flag — либо пусто, либо один флаг
+	certbot certonly --webroot -w /var/www/html $staging_flag \
+			-d "$DOMAIN" -m "$EMAIL" --agree-tos -n ||
+		certbot certonly --nginx $staging_flag -d "$DOMAIN" -m "$EMAIL" --agree-tos -n ||
 		{ err "certbot не выпустил сертификат для ${DOMAIN}"; exit 1; }
 }
 
+# prepare_challenge_vhost — минимальный :80-блок под HTTP-01, до выпуска
+# сертификата. Без него certbot нечем проверить домен: ssl-части настоящего
+# vhost'а ссылаются на сертификат, которого ещё нет, а `--nginx` на хосте без
+# подходящего server-блока (conf.d-раскладки, CentOS) просто падает.
+# Файл потом перезапишется полным vhost'ом — путь тот же, мусора не остаётся.
+prepare_challenge_vhost() {
+	local dir vhost
+	dir="$(nginx_conf_dir)"
+	vhost="${dir}/${NGINX_VHOST_NAME}"
+	mkdir -p /var/www/html
+	backup_nginx
+	cat > "$vhost" <<EOF
+${MARKER}
+server {
+    listen 80;
+    server_name ${DOMAIN};
+    location /.well-known/acme-challenge/ { root /var/www/html; }
+    location / { return 404; }
+}
+EOF
+	if [ "$dir" = "/etc/nginx/sites-available" ]; then
+		ln -sf "$vhost" "/etc/nginx/sites-enabled/${NGINX_VHOST_NAME}"
+	fi
+	if ! nginx -t >/dev/null 2>&1; then
+		err "nginx -t не прошёл на блоке для проверки домена — откатываю"
+		rm -f "$vhost" "/etc/nginx/sites-enabled/${NGINX_VHOST_NAME}"
+		exit 1
+	fi
+	systemctl reload nginx
+}
+
 compose_up() {
-	(cd "$INSTALL_DIR" && docker compose pull && docker compose up -d)
+	if ! (cd "$INSTALL_DIR" && docker compose pull && docker compose up -d); then
+		err "docker compose не поднял контейнер. Конфигурация записана в ${INSTALL_DIR},"
+		err "так что можно поправить её и повторить: cd ${INSTALL_DIR} && docker compose up -d"
+		exit 1
+	fi
 }
 
 # Ждём, пока панель ответит на /api/health, а не просто появится файл пароля:
 # на повторной установке файла нет вовсе, и цикл по нему тратил бы полминуты
 # впустую, чтобы потом сказать невнятное.
+# Обращаться нужно по имени домена, а не по 127.0.0.1: в standalone панель
+# держит TLS через autocert с белым списком доменов, и запрос по IP не несёт
+# SNI — рукопожатие не состоится никогда, сколько ни жди. `--resolve` даёт
+# нужное имя в TLS и при этом идёт на локальный адрес. Первый такой запрос
+# заодно запускает выпуск сертификата, поэтому ждём до двух минут.
 wait_healthy() {
 	local i=0
-	while [ "$i" -lt 60 ]; do
-		if curl -fsS --max-time 2 "http://127.0.0.1:${HOST_PORT}/api/health" >/dev/null 2>&1 ||
-		   curl -fsSk --max-time 2 "https://127.0.0.1:${HOST_PORT}/api/health" >/dev/null 2>&1; then
+	while [ "$i" -lt 120 ]; do
+		if curl -fsSk --max-time 3 --resolve "${DOMAIN}:${HOST_PORT}:127.0.0.1" \
+			"https://${DOMAIN}:${HOST_PORT}/api/health" >/dev/null 2>&1 ||
+		   curl -fsS --max-time 3 "http://127.0.0.1:${HOST_PORT}/api/health" >/dev/null 2>&1; then
 			return 0
+		fi
+		if [ "$i" = "20" ] && [ "$TLS_MODE" = "standalone" ]; then
+			info "Ждём выпуск сертификата Let's Encrypt, это занимает до минуты..."
 		fi
 		sleep 1; i=$((i + 1))
 	done
-	warn "Панель не ответила за минуту — смотрите docker compose logs routebox"
+	warn "Панель не ответила за две минуты — смотрите docker compose logs routebox"
 	return 1
 }
 
@@ -817,12 +911,22 @@ do_install() {
 		do_update
 		exit 0
 	fi
+	# Чужой compose ловим здесь, а не в write_compose: иначе можно было бы
+	# выпустить сертификат и настроить nginx, чтобы упереться в это в конце.
+	if [ -f "${INSTALL_DIR}/docker-compose.yml" ]; then
+		err "в ${INSTALL_DIR} уже лежит чужой docker-compose.yml — выберите другой каталог"
+		exit 1
+	fi
 	ask_all
-	write_compose
+	# Сначала nginx и сертификат, и только потом compose. Обратный порядок
+	# оставлял бы после любого провала каталог с нашим compose, который при
+	# повторном запуске опознаётся как готовая установка и уводит в do_update —
+	# то есть настройку уже не доделать, только сносить и начинать заново.
 	if [ "$TLS_MODE" = "nginx" ]; then
 		issue_cert
 		install_nginx_files
 	fi
+	write_compose
 	compose_up
 	wait_healthy || true
 	show_password
@@ -903,9 +1007,15 @@ do_uninstall() {
 main() {
 	parse_args "$@" || exit 1
 	set -euo pipefail
+	# --help терминала не требует: открывать дескриптор до него значило бы
+	# падать с «/dev/tty: No such device» в CI и в ssh без -t.
+	if [ "$ACTION" = "help" ]; then usage; exit 0; fi
 	# Дескриптор для ответов пользователя открывается один раз: stdin занят
 	# пайпом от curl. RB_TTY_IN подменяется в тестах файлом с ответами.
-	exec 3<"${RB_TTY_IN:-/dev/tty}"
+	exec 3<"${RB_TTY_IN:-/dev/tty}" || {
+		err "нет терминала для вопросов: запустите скрипт из интерактивной сессии"
+		exit 1
+	}
 	case "$ACTION" in
 		help)      usage; exit 0 ;;
 		dry-run)   do_dry_run ;;

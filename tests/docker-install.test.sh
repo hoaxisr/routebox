@@ -86,6 +86,69 @@ assert_contains "$(port_owner 8444)" "docker" "порт из docker ps опоз�
 assert_contains "$(port_owner 8555)" "docker" "порт в IPv6-форме [::]:8555-> опознаётся"
 assert_fails 'port_owner 8666' "18666 не принимается за 8666"
 
+# Порт, занятый чужим процессом, `ss` без root показывает без имени владельца.
+# Решать должен код возврата, иначе занятый порт сойдёт за свободный.
+cat >"$STUBS/ss" <<'EOF'
+#!/bin/bash
+echo 'LISTEN 0 511 0.0.0.0:8443 0.0.0.0:* users:(("nginx",pid=1,fd=6))'
+echo 'LISTEN 0 511 0.0.0.0:80 0.0.0.0:* users:(("nginx",pid=1,fd=7))'
+echo 'LISTEN 0 128 0.0.0.0:2049 0.0.0.0:*'
+EOF
+chmod +x "$STUBS/ss"
+assert_eq "0" "$(port_owner 2049 >/dev/null; echo $?)" "порт без имени владельца всё равно занят"
+assert_eq ""  "$(port_owner 2049)" "имени владельца при этом нет"
+
+# Диапазон портов из docker ps занимает всё, что внутри него.
+cat >"$STUBS/docker" <<'EOF'
+#!/bin/bash
+case "$1" in
+	ps)      echo '0.0.0.0:8444->8444/tcp, [::]:8555->8555/tcp, 0.0.0.0:18666->18666/tcp, 0.0.0.0:9100-9110->9100-9110/tcp' ;;
+	network) echo '172.28.0.0/24' ;;
+	compose) exit 0 ;;
+esac
+exit 0
+EOF
+chmod +x "$STUBS/docker"
+assert_eq "0" "$(port_owner 9105 >/dev/null; echo $?)" "порт внутри диапазона 9100-9110 занят"
+assert_fails 'port_owner 9111' "порт за границей диапазона свободен"
+
+# ask_port должен отвергать занятый порт даже тогда, когда имя владельца
+# неизвестно, и спрашивать снова. Ответы подаются тем же дескриптором 3.
+ANS="$(mktemp)"
+printf '2049\nне-число\n9111\n' > "$ANS"
+exec 3<"$ANS"
+assert_eq "9111" "$(ask_port "порт" "9111" 2>/dev/null)" "занятый порт без владельца и мусор отвергаются, спрашивается снова"
+exec 3<&-
+rm -f "$ANS"
+
+echo
+echo "проверка доменных имён"
+assert_eq "0" "$(valid_domain panel.example.com; echo $?)" "обычный домен принимается"
+assert_fails 'valid_domain "panel.example.com; rm -rf /"' "точка с запятой отвергается"
+assert_fails 'valid_domain "panel example.com"'           "пробел отвергается"
+assert_fails 'valid_domain localhost'                     "имя без точки отвергается"
+assert_fails 'valid_domain ""'                            "пустой ответ отвергается"
+
+echo
+echo "строка include в nginx.conf"
+# Файл без завершающего перевода строки: наша строка не должна приклеиться к
+# чужой закрывающей скобке, иначе откат по маркеру унесёт её с собой.
+NCONF="$(mktemp -d)"
+NGINX_CONF="$NCONF/nginx.conf"
+printf 'events {}\nhttp {\n    server { listen 80; }\n}' > "$NGINX_CONF"   # без перевода строки в конце
+ensure_stream_include
+# Точное сравнение, а не поиск подстроки: приклеенная строка вида
+# `}stream { include ...` содержит и то и другое и прошла бы мягкую проверку.
+assert_eq "$(stream_include_line)" "$(tail -1 "$NGINX_CONF")" "наша строка — отдельная последняя строка"
+assert_eq "}" "$(tail -2 "$NGINX_CONF" | head -1)" "чужая закрывающая скобка осталась целой строкой"
+ensure_stream_include
+assert_eq "1" "$(grep -c 'stream { include' "$NGINX_CONF")" "повторный вызов не дублирует строку"
+remove_stream_include
+assert_eq "}" "$(tail -1 "$NGINX_CONF")" "после отката чужая скобка на месте"
+assert_eq "0" "$(grep -c "$MARKER" "$NGINX_CONF")" "после отката нашей строки не осталось"
+rm -rf "$NCONF"
+NGINX_CONF="/etc/nginx/nginx.conf"
+
 echo
 echo "разбор nginx"
 export RB_NGINX_T_CMD="cat $FIXTURES/nginx-clean.conf"
@@ -100,6 +163,10 @@ assert_eq "/etc/nginx/sites-available" "$(nginx_conf_dir)" "раскладка s
 export RB_NGINX_T_CMD="cat $FIXTURES/nginx-domain-taken.conf"
 assert_eq "0" "$(domain_taken panel.example.com; echo $?)" "занятый домен найден"
 assert_fails 'domain_taken other.example.com' "чужой домен не считается занятым"
+
+export RB_NGINX_T_CMD="cat $FIXTURES/nginx-commented.conf"
+assert_fails 'domain_taken panel.example.com' "закомментированный server_name не блокирует установку"
+assert_eq "0" "$(domain_taken other.example.com; echo $?)" "живой server_name в том же файле находится"
 unset RB_NGINX_T_CMD
 
 echo
