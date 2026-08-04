@@ -16,6 +16,35 @@ func (s *Store) QuerySourceTotals(startTs, endTs int64, source string) (upload, 
 	return
 }
 
+// LastSeenBySource returns, for every source with a bucket at or after `since`,
+// the newest bucket it appears in. One query for the whole roster, because its
+// caller (the AWG peer list on the sing-box backend) needs a timestamp per peer
+// and would otherwise run a query per row.
+//
+// This is the closest thing to a handshake that backend has: sing-box serves AWG
+// from a userspace endpoint, so there is no interface to ask and the only
+// evidence a peer is there is that its tunnel IP moved bytes.
+func (s *Store) LastSeenBySource(since int64) (map[string]int64, error) {
+	rows, err := s.db.Query(`
+		SELECT source, MAX(bucket_ts) FROM traffic_minute
+		WHERE bucket_ts >= ? GROUP BY source
+	`, since)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	out := map[string]int64{}
+	for rows.Next() {
+		var source string
+		var ts int64
+		if err := rows.Scan(&source, &ts); err != nil {
+			return nil, err
+		}
+		out[source] = ts
+	}
+	return out, rows.Err()
+}
+
 // maxHistoryPoints caps one source's series. 1440 = a full day at minute
 // resolution, so the default 24h view is unchanged and only longer ranges
 // coarsen. Uncapped, a month of an always-on peer is ~43k points (~2 MB of

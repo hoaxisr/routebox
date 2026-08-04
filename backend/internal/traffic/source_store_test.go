@@ -71,6 +71,56 @@ func TestQuerySourceTotalsAndHistory(t *testing.T) {
 	}
 }
 
+// The sing-box AWG backend has no interface to ask for a handshake, so the peer
+// roster reads liveness from here instead: the newest bucket each tunnel IP
+// moved bytes in.
+func TestLastSeenBySource(t *testing.T) {
+	s, err := OpenStore(filepath.Join(t.TempDir(), "t.db"))
+	if err != nil {
+		t.Fatalf("OpenStore: %v", err)
+	}
+	defer s.Close()
+
+	const live, stale = "10.10.64.2", "10.10.64.3"
+	for _, r := range []struct {
+		bucket int64
+		source string
+	}{
+		{600, live}, {900, live}, // the newest of several buckets wins
+		{120, stale}, // before the cutoff: must not appear at all
+	} {
+		if err := s.Upsert(r.bucket, r.source, "a.example", "direct", 1, 1); err != nil {
+			t.Fatal(err)
+		}
+	}
+
+	got, err := s.LastSeenBySource(300)
+	if err != nil {
+		t.Fatalf("LastSeenBySource: %v", err)
+	}
+	if got[live] != 900 {
+		t.Errorf("last seen for %s = %d, want its newest bucket 900", live, got[live])
+	}
+	if _, ok := got[stale]; ok {
+		t.Errorf("%s is older than the cutoff and must be absent, got %+v", stale, got)
+	}
+}
+
+func TestLastSeenBySourceOnAnEmptyStore(t *testing.T) {
+	s, err := OpenStore(filepath.Join(t.TempDir(), "t.db"))
+	if err != nil {
+		t.Fatalf("OpenStore: %v", err)
+	}
+	defer s.Close()
+
+	// A panel that has never sampled must report an empty map, not an error —
+	// the roster still has to render.
+	got, err := s.LastSeenBySource(0)
+	if err != nil || len(got) != 0 {
+		t.Fatalf("got %+v, err=%v; want an empty map and no error", got, err)
+	}
+}
+
 func TestHistoryStep(t *testing.T) {
 	const day = int64(86400)
 	cases := []struct {

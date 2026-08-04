@@ -29,10 +29,11 @@
 	// both confirmed awg3 capability (status.kernel_awg3_available).
 	const awg3Available = $derived(isSingbox || !!status?.kernel_awg3_available);
 
-	// Live "traffic flowing" LED for singbox peers: the kernel backend has real
-	// handshakes, but sing-box exposes none — so we light a peer green when the Clash
-	// connections stream shows a live connection from its tunnel IP. Set of active
-	// source IPs, refreshed from the stream while a singbox server is enabled.
+	// Instant "traffic flowing" overlay for singbox peers. The server already
+	// reports liveness on this backend, but from per-minute traffic buckets, so a
+	// peer that just connected takes up to a minute to light up. The Clash
+	// connections stream shows the same thing immediately. Set of active source
+	// IPs, refreshed from the stream while a singbox server is enabled.
 	let activeSources = $state<Set<string>>(new Set());
 	const streamOn = $derived(isSingbox && !!status?.enabled);
 	$effect(() => {

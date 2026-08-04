@@ -21,12 +21,17 @@ import (
 )
 
 // PeerSummary is the secret-free API/UI view of a peer.
+//
+// The liveness pair means slightly different things per backend, because the
+// backends expose different things: on kernel it is a real handshake off the
+// interface, on singbox the last minute the peer's tunnel IP moved bytes (see
+// listPeersSingbox). Rx/Tx are interface counters and stay zero on singbox.
 type PeerSummary struct {
 	Name          string `json:"name"`
 	PublicKey     string `json:"public_key"`
 	Address       string `json:"address"`
-	LastHandshake int64  `json:"last_handshake"` // unix seconds; 0 = never handshaked
-	Online        bool   `json:"online"`         // handshake within onlineWindowSec
+	LastHandshake int64  `json:"last_handshake"` // unix seconds; 0 = never seen
+	Online        bool   `json:"online"`         // last seen within onlineWindowSec
 	Rx            int64  `json:"rx"`             // cumulative bytes received (since iface up)
 	Tx            int64  `json:"tx"`             // cumulative bytes sent (since iface up)
 	ExpiresAt     int64  `json:"expires_at"`     // unix sec; 0 = never expires
@@ -36,6 +41,11 @@ type PeerSummary struct {
 // this. WireGuard rekeys roughly every ~120s while a tunnel is active, so 180s is a
 // forgiving liveness window.
 const onlineWindowSec = 180
+
+// lastSeenLookbackSec bounds the singbox backend's liveness query. The roster
+// shows "last seen 5h ago" for anything inside it and "never" beyond, so a day
+// is the useful horizon — and it keeps the query off a month of history.
+const lastSeenLookbackSec = 86400
 
 // isOnline reports whether a last-handshake unix ts is recent enough to be "online".
 func isOnline(ts, now int64) bool {
@@ -97,6 +107,11 @@ type Manager struct {
 	// pre-awg3 awg-quick hard-fails on unknown [Interface] keys, so guessing
 	// "supported" is the wrong default.
 	kernelSupports3Fn func() bool
+
+	// livenessFn answers "when did this tunnel IP last move bytes", and exists
+	// for the singbox backend only (see SetPeerLiveness). nil = nothing wired,
+	// and every peer reads offline — what the roster did before this existed.
+	livenessFn func(since int64) map[string]int64
 
 	// IPv6-broker wiring (dual-stack NAT-free AWG): ipv6Broker is the operator's
 	// desire (from settings); v6Active is desire AND a passed egress preflight AND
@@ -434,9 +449,33 @@ func (m *Manager) AddPeer(ctx context.Context, rawName string) (PeerSummary, err
 	return PeerSummary{Name: name, PublicKey: pub, Address: allowedIP}, nil
 }
 
+// SetPeerLiveness wires the singbox backend's substitute for a handshake: a
+// lookup of tunnel IP -> the unix second it was last seen moving bytes, over
+// everything at or after `since`. Wired from the traffic store in main; nil in
+// tests and on panels with no monitoring.
+func (m *Manager) SetPeerLiveness(fn func(since int64) map[string]int64) {
+	m.mu.Lock()
+	m.livenessFn = fn
+	m.mu.Unlock()
+}
+
+// tunnelIP strips the mask from a stored peer address ("10.10.0.2/32" ->
+// "10.10.0.2"), yielding the key traffic is recorded under. An unparseable
+// address is returned unchanged — it cannot match anything, which is the right
+// answer for a value that should not be in the store.
+func tunnelIP(addr string) string {
+	if pfx, err := netip.ParsePrefix(addr); err == nil {
+		return pfx.Addr().String()
+	}
+	return addr
+}
+
 // ListPeers returns secret-free summaries from the store (sorted by PublicKey via
 // the store's List). The PeerSummary type CANNOT serialise private/preshared keys.
 func (m *Manager) ListPeers(ctx context.Context) []PeerSummary {
+	if m.backendIs("singbox") {
+		return m.listPeersSingbox()
+	}
 	hs := m.iface_Handshakes(ctx)
 	xf := m.iface_Transfer(ctx)
 	now := time.Now().Unix()
@@ -447,6 +486,46 @@ func (m *Manager) ListPeers(ctx context.Context) []PeerSummary {
 		out = append(out, PeerSummary{
 			Name: p.Name, PublicKey: p.PublicKey, Address: p.Address,
 			LastHandshake: ts, Online: isOnline(ts, now), Rx: x.rx, Tx: x.tx,
+			ExpiresAt: p.ExpiresAt,
+		})
+	}
+	return out
+}
+
+// listPeersSingbox fills the roster's liveness from recorded traffic instead of
+// from the interface.
+//
+// sing-box serves AWG from a userspace endpoint: there is no awg-rb0, `awg show`
+// has nothing to report, and the kernel path above therefore marked every peer
+// never-handshaked. The roster and the per-user monitor both read that as
+// "offline", permanently, for peers that were connected and working.
+//
+// The stand-in is the newest per-minute traffic bucket for the peer's tunnel IP
+// — the same rows /api/awg/peers/traffic already reports bytes from. Two honest
+// differences from a real handshake, both inherent to what sing-box exposes:
+// it is a minute coarse (the sampler ticks once a minute), and a peer that is
+// connected but silent drops offline after onlineWindowSec where a kernel peer
+// would keep rekeying. It reports activity, not tunnel state.
+//
+// Rx/Tx stay zero: they mean "cumulative since the interface came up" and there
+// is no interface. The roster hides them on this backend for that reason, and
+// the traffic endpoint answers the question properly, over a chosen window.
+func (m *Manager) listPeersSingbox() []PeerSummary {
+	m.mu.Lock()
+	fn := m.livenessFn
+	m.mu.Unlock()
+
+	now := time.Now().Unix()
+	var seen map[string]int64
+	if fn != nil {
+		seen = fn(now - lastSeenLookbackSec)
+	}
+	out := []PeerSummary{}
+	for _, p := range m.store.List() {
+		ts := seen[tunnelIP(p.Address)]
+		out = append(out, PeerSummary{
+			Name: p.Name, PublicKey: p.PublicKey, Address: p.Address,
+			LastHandshake: ts, Online: isOnline(ts, now),
 			ExpiresAt: p.ExpiresAt,
 		})
 	}
