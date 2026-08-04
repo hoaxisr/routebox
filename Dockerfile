@@ -144,15 +144,23 @@ EXPOSE 8443 80
 VOLUME /config
 
 # /api/health is unauthenticated and answers only once the panel is serving, so
-# it reports the thing worth reporting: whether the container is usable. Tries
-# HTTPS first (-k: the cert is issued for the public domain, not 127.0.0.1) and
-# falls back to HTTP for a panel running without TLS. The port comes from
-# /config/routebox.toml at probe time: LISTEN is consumed only on first boot to
-# scaffold that file, which is the source of truth from then on — the operator
-# (or the panel) can move the listen address in it and the probe must follow.
-# Falls back to LISTEN, then the 8443 default, when the file or key is absent.
+# it reports the thing worth reporting: whether the container is usable. The port
+# and the public host come from /config/routebox.toml at probe time: LISTEN is
+# consumed only on first boot to scaffold that file, which is the source of truth
+# from then on — the operator (or the panel) can move the listen address in it and
+# the probe must follow. Both fall back to the environment, then to the defaults.
+#
+# The domain has to be in the request, not just the URL. With the built-in ACME
+# the panel serves through autocert, which picks a certificate by SNI and has no
+# fallback: a probe to https://127.0.0.1 sends no SNI, so the handshake fails
+# (curl 35) and the HTTP retry then talks plaintext to a TLS port (curl 22). The
+# container stayed unhealthy forever while the panel answered the internet fine.
+# --resolve keeps the connection local while putting the domain in SNI and Host.
 HEALTHCHECK --interval=30s --timeout=6s --start-period=30s --retries=3 \
     CMD port=$(sed -n 's/^[[:space:]]*listen[[:space:]]*=[[:space:]]*"[^"]*:\([0-9]*\)".*/\1/p' /config/routebox.toml 2>/dev/null | head -n1); \
         port="${port:-${LISTEN##*:}}"; port="${port:-8443}"; \
-        curl -fsk --max-time 5 "https://127.0.0.1:$port/api/health" >/dev/null \
+        host=$(sed -n 's/^[[:space:]]*public_host[[:space:]]*=[[:space:]]*"\([^"]*\)".*/\1/p' /config/routebox.toml 2>/dev/null | head -n1); \
+        host="${host:-${PUBLIC_HOST:-}}"; \
+        { [ -n "$host" ] && curl -fsk --max-time 5 --resolve "$host:$port:127.0.0.1" "https://$host:$port/api/health" >/dev/null; } \
+        || curl -fsk --max-time 5 "https://127.0.0.1:$port/api/health" >/dev/null \
         || curl -fs --max-time 5 "http://127.0.0.1:$port/api/health" >/dev/null
