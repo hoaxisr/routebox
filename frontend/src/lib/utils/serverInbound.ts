@@ -39,6 +39,9 @@ export interface ServerFormState {
 	downMbps: number;
 	obfsType: string;
 	obfsPassword: string;
+	/** gecko only; 0 = leave hysteria's default (512 / 1200). */
+	obfsMinPacketSize: number;
+	obfsMaxPacketSize: number;
 	mieruTransport: 'TCP' | 'UDP';
 	/** Free-text "lo-hi" ranges the mieru server binds on top of listenPort (#37). */
 	mieruListenPorts: string;
@@ -135,7 +138,15 @@ export function buildServerInbound(s: ServerFormState): Inbound {
 	if (s.type === 'hysteria2') {
 		if (s.upMbps > 0) ib.up_mbps = s.upMbps;
 		if (s.downMbps > 0) ib.down_mbps = s.downMbps;
-		if (s.obfsType) ib.obfs = { type: s.obfsType, password: s.obfsPassword };
+		if (s.obfsType) {
+			ib.obfs = { type: s.obfsType, password: s.obfsPassword };
+			// gecko takes packet-size bounds; both ends must agree, so unset stays
+			// unset (hysteria then uses 512/1200 on both sides).
+			if (s.obfsType === 'gecko') {
+				if (s.obfsMinPacketSize > 0) ib.obfs.min_packet_size = s.obfsMinPacketSize;
+				if (s.obfsMaxPacketSize > 0) ib.obfs.max_packet_size = s.obfsMaxPacketSize;
+			}
+		}
 	}
 
 	return ib;
@@ -198,6 +209,18 @@ export function validateServerInbound(state: ServerFormState, t: Translator): Re
 	// binary accepts but no client can be pointed at intentionally (#48).
 	if (state.type === 'hysteria2' && state.obfsType && !state.obfsPassword.trim()) {
 		errors['obfsPassword'] = req(t('inbounds.server.obfsPassword'));
+	}
+
+	// gecko: a lone bound is the trap — the other end keeps hysteria's default
+	// for the missing one, the two sides disagree and the tunnel goes quiet.
+	if (state.type === 'hysteria2' && state.obfsType === 'gecko') {
+		const min = state.obfsMinPacketSize;
+		const max = state.obfsMaxPacketSize;
+		if ((min > 0) !== (max > 0)) {
+			errors['obfsPacketSize'] = t('inbounds.server.obfsPacketSizeBoth');
+		} else if (min > 0 && min > max) {
+			errors['obfsPacketSize'] = t('inbounds.server.obfsPacketSizeOrder');
+		}
 	}
 
 	// Per-user credential required fields
@@ -268,6 +291,8 @@ export function parseServerInbound(ib: Inbound): ServerFormState {
 		downMbps: ib.down_mbps ?? 0,
 		obfsType: ib.obfs?.type ?? '',
 		obfsPassword: ib.obfs?.password ?? '',
+		obfsMinPacketSize: ib.obfs?.min_packet_size ?? 0,
+		obfsMaxPacketSize: ib.obfs?.max_packet_size ?? 0,
 		mieruTransport: (ib.type === 'mieru' && (ib.transport === 'UDP' || ib.transport === 'TCP')) ? ib.transport : 'TCP',
 		mieruListenPorts: formatMieruListenPorts(
 			Array.isArray(ib.listen_ports) ? (ib.listen_ports as string[]) : undefined

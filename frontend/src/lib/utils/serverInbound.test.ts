@@ -25,6 +25,8 @@ const base: ServerFormState = {
 	downMbps: 0,
 	obfsType: '',
 	obfsPassword: '',
+	obfsMinPacketSize: 0,
+	obfsMaxPacketSize: 0,
 	transport: { type: 'raw' },
 	mieruTransport: 'TCP',
 	mieruListenPorts: '',
@@ -431,5 +433,70 @@ describe('mieru listen_ports round-trip', () => {
 		const t = (k: string) => k;
 		const errs = validateServerInbound(mieru({ mieruListenPorts: '25010-25012, nope' }), t);
 		expect(errs.mieruListenPorts).toBeDefined();
+	});
+});
+
+// #48: gecko is the second obfs type the fork speaks. Its packet-size bounds
+// only work when client and server carry the same numbers, so the form has to
+// round-trip them and refuse a half-configured pair.
+describe('hysteria2 gecko obfuscation', () => {
+	const trKey = (k: string) => k;
+	const geckoState = (over: Partial<ServerFormState> = {}): ServerFormState => ({
+		...base,
+		type: 'hysteria2',
+		tlsMode: 'acme',
+		tls: { ...base.tls, acme: { domain: 'd.example.com', email: 'a@b.c' } },
+		users: [{ name: 'u', password: 'p' }],
+		obfsType: 'gecko',
+		obfsPassword: 'pw',
+		...over
+	});
+
+	it('emits packet sizes only when set', () => {
+		expect(buildServerInbound(geckoState()).obfs).toEqual({ type: 'gecko', password: 'pw' });
+		const ib = buildServerInbound(geckoState({ obfsMinPacketSize: 700, obfsMaxPacketSize: 1300 }));
+		expect(ib.obfs).toEqual({
+			type: 'gecko',
+			password: 'pw',
+			min_packet_size: 700,
+			max_packet_size: 1300
+		});
+	});
+
+	it('never emits packet sizes for salamander', () => {
+		const ib = buildServerInbound(
+			geckoState({ obfsType: 'salamander', obfsMinPacketSize: 700, obfsMaxPacketSize: 1300 })
+		);
+		expect(ib.obfs).toEqual({ type: 'salamander', password: 'pw' });
+	});
+
+	it('round-trips through parseServerInbound', () => {
+		const state = geckoState({ obfsMinPacketSize: 700, obfsMaxPacketSize: 1300 });
+		const back = parseServerInbound(buildServerInbound(state));
+		expect(back.obfsType).toBe('gecko');
+		expect(back.obfsMinPacketSize).toBe(700);
+		expect(back.obfsMaxPacketSize).toBe(1300);
+	});
+
+	it('rejects one bound without the other', () => {
+		expect(validateServerInbound(geckoState({ obfsMinPacketSize: 700 }), trKey)['obfsPacketSize'])
+			.toBe('inbounds.server.obfsPacketSizeBoth');
+		expect(validateServerInbound(geckoState({ obfsMaxPacketSize: 1300 }), trKey)['obfsPacketSize'])
+			.toBe('inbounds.server.obfsPacketSizeBoth');
+	});
+
+	it('rejects min above max, accepts a valid pair and no pair at all', () => {
+		expect(
+			validateServerInbound(geckoState({ obfsMinPacketSize: 1400, obfsMaxPacketSize: 1300 }), trKey)[
+				'obfsPacketSize'
+			]
+		).toBe('inbounds.server.obfsPacketSizeOrder');
+		expect(validateServerInbound(geckoState({ obfsMinPacketSize: 700, obfsMaxPacketSize: 1300 }), trKey)).toEqual({});
+		expect(validateServerInbound(geckoState(), trKey)).toEqual({});
+	});
+
+	it('leaves salamander alone when only one size lingers in state', () => {
+		const s = geckoState({ obfsType: 'salamander', obfsMinPacketSize: 700 });
+		expect(validateServerInbound(s, trKey)['obfsPacketSize']).toBeUndefined();
 	});
 });

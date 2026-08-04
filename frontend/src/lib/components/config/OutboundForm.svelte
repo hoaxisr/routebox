@@ -1,5 +1,5 @@
 <script lang="ts">
-	import type { Outbound, Endpoint, DnsServer, TLSConfig, TransportConfig, MultiplexConfig, ObfsConfig } from '$lib/types';
+	import type { Outbound, Endpoint, DnsServer, TLSConfig, TransportConfig, MultiplexConfig, ObfsConfig, ObfsType } from '$lib/types';
 	import { notifications, configReadOnly } from '$lib/stores';
 	import { parsePortRanges, parseKeyValuePairs, formatKeyValuePairs, normalizeMieruPort } from '$lib/utils/parsers';
 	import type { ParsedVless, ParsedTrojan, ParsedHysteria2, ParsedShadowsocks, ParsedNaive, ParsedMieru } from '$lib/utils/parsers';
@@ -285,7 +285,10 @@
 			utls: { fingerprint: '' }
 		};
 		if (config.obfs) {
-			hy2Obfs = { type: config.obfs as 'salamander', password: config.obfsPassword || '' };
+			hy2Obfs = { type: config.obfs as ObfsType, password: config.obfsPassword || '' };
+			// gecko sizes only work when both ends agree, so keep whatever the link carried (#48).
+			if (config.obfsMinPacketSize) hy2Obfs.min_packet_size = config.obfsMinPacketSize;
+			if (config.obfsMaxPacketSize) hy2Obfs.max_packet_size = config.obfsMaxPacketSize;
 		}
 	}
 
@@ -545,6 +548,10 @@
 			};
 			if (hy2Obfs?.type) {
 				ob.obfs = { type: hy2Obfs.type, password: hy2Obfs.password || '' };
+				if (hy2Obfs.type === 'gecko') {
+					if (hy2Obfs.min_packet_size) ob.obfs.min_packet_size = hy2Obfs.min_packet_size;
+					if (hy2Obfs.max_packet_size) ob.obfs.max_packet_size = hy2Obfs.max_packet_size;
+				}
 			}
 		}
 

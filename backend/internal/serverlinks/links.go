@@ -89,6 +89,17 @@ func portOf(m map[string]interface{}) int {
 	return 0
 }
 
+// intOf reads a JSON number that may have decoded as float64 or int.
+func intOf(v interface{}) int {
+	switch n := v.(type) {
+	case float64:
+		return int(n)
+	case int:
+		return n
+	}
+	return 0
+}
+
 func mapOf(v interface{}) map[string]interface{} {
 	m, _ := v.(map[string]interface{})
 	return m
@@ -366,6 +377,16 @@ func buildHysteria2(inbound, user map[string]interface{}, host string, port int)
 			q.Set("obfs", t)
 			if p, _ := obfs["password"].(string); p != "" {
 				q.Set("obfs-password", p)
+			}
+			// gecko packet sizes have to match on both ends, so the link carries
+			// them; salamander has no such fields (#48).
+			if t == "gecko" {
+				if n := intOf(obfs["min_packet_size"]); n > 0 {
+					q.Set("obfs-min-packet-size", strconv.Itoa(n))
+				}
+				if n := intOf(obfs["max_packet_size"]); n > 0 {
+					q.Set("obfs-max-packet-size", strconv.Itoa(n))
+				}
 			}
 		}
 	}
