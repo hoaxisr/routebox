@@ -17,11 +17,21 @@ export function randH(): string[] {
 // inclusive random integer in [lo, hi]
 const r = (lo: number, hi: number) => lo + Math.floor(Math.random() * (hi - lo + 1));
 
+// Smallest S1-S4 padding the fork accepts with header protection (AWG 3.0) on.
+// Below it the endpoint is rejected outright, so a preset that draws under it is
+// one the operator simply cannot enable — the DNS preset drew S4 from 4-10 and
+// so could never be enabled with header protection at all.
+const S_MIN = 12;
+
+// rs draws an S padding, never below the floor. Every S value goes through it so
+// widening a range later cannot quietly reintroduce an unenablable preset.
+const rs = (lo: number, hi: number) => r(Math.max(lo, S_MIN), Math.max(hi, S_MIN));
+
 // regenerate S2 until S1+56 != S2 (mirrors the backend guard)
 function sPair(s1lo: number, s1hi: number, s2lo: number, s2hi: number): [number, number] {
-	const s1 = r(s1lo, s1hi);
-	let s2 = r(s2lo, s2hi);
-	while (s1 + 56 === s2) s2 = r(s2lo, s2hi);
+	const s1 = rs(s1lo, s1hi);
+	let s2 = rs(s2lo, s2hi);
+	while (s1 + 56 === s2) s2 = rs(s2lo, s2hi);
 	return [s1, s2];
 }
 
@@ -59,16 +69,16 @@ export const PRESETS: Record<string, () => AwgObf> = {
 	dns: () => {
 		const [h1, h2, h3, h4] = randH();
 		const [s1, s2] = sPair(97, 107, 17, 27);
-		return { jc: r(3, 5), jmin: r(5, 15), jmax: r(45, 55), s1, s2, s3: r(16, 26), s4: r(4, 10), h1, h2, h3, h4, ...awg3(48) };
+		return { jc: r(3, 5), jmin: r(5, 15), jmax: r(45, 55), s1, s2, s3: rs(16, 26), s4: rs(12, 22), h1, h2, h3, h4, ...awg3(48) };
 	},
 	web: () => {
 		const [h1, h2, h3, h4] = randH();
 		const [s1, s2] = sPair(30, 80, 30, 80);
-		return { jc: r(5, 8), jmin: r(30, 80), jmax: r(100, 250), s1, s2, s3: r(15, 32), s4: r(10, 20), h1, h2, h3, h4, ...awg3(64) };
+		return { jc: r(5, 8), jmin: r(30, 80), jmax: r(100, 250), s1, s2, s3: rs(15, 32), s4: rs(10, 20), h1, h2, h3, h4, ...awg3(64) };
 	},
 	stealth: () => {
 		const [h1, h2, h3, h4] = randH();
 		const [s1, s2] = sPair(15, 150, 15, 150);
-		return { jc: r(4, 16), jmin: r(50, 256), jmax: r(300, 1000), s1, s2, s3: r(8, 64), s4: r(6, 31), h1, h2, h3, h4, ...awg3(80) };
+		return { jc: r(4, 16), jmin: r(50, 256), jmax: r(300, 1000), s1, s2, s3: rs(8, 64), s4: rs(6, 31), h1, h2, h3, h4, ...awg3(80) };
 	}
 };
