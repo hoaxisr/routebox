@@ -28,6 +28,7 @@ import {
 	parseMieruLink,
 	normalizeMieruPort
 } from './parsers';
+import type { ParsedHysteria2 } from './parsers';
 
 describe('parseLines', () => {
 	it('parses multiline text into array', () => {
@@ -679,16 +680,17 @@ describe('hysteria2 gecko obfuscation (#48)', () => {
 	});
 
 	it('leaves gecko sizes unset when the link omits them', () => {
-		const r = parseHysteria2('hy2://pass@srv:8443?obfs=gecko&obfs-password=xyz#g');
-		expect(r.config?.obfsMinPacketSize).toBeUndefined();
-		expect(r.config?.obfsMaxPacketSize).toBeUndefined();
+		const cfg = parseHysteria2('hy2://pass@srv:8443?obfs=gecko&obfs-password=xyz#g')
+			.config as ParsedHysteria2;
+		expect(cfg.obfsMinPacketSize).toBeUndefined();
+		expect(cfg.obfsMaxPacketSize).toBeUndefined();
 	});
 
 	it('ignores packet sizes on salamander, which has no such fields', () => {
-		const r = parseHysteria2(
+		const cfg = parseHysteria2(
 			'hy2://pass@srv:8443?obfs=salamander&obfs-password=xyz&obfs-min-packet-size=700#s'
-		);
-		expect(r.config?.obfsMinPacketSize).toBeUndefined();
+		).config as ParsedHysteria2;
+		expect(cfg.obfsMinPacketSize).toBeUndefined();
 	});
 
 	it('carries gecko sizes into the outbound', () => {
