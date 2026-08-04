@@ -1071,10 +1071,12 @@ export interface AwgPeer {
 	name: string;
 	public_key: string;
 	address: string;
+	// On the kernel backend these are a real handshake; on sing-box, which has
+	// none to expose, they are when the peer's tunnel IP last moved bytes.
 	last_handshake: number; // unix seconds; 0 = never
-	online: boolean;        // handshake within the server's online window
-	rx: number;             // cumulative bytes received (since iface up)
-	tx: number;             // cumulative bytes sent (since iface up)
+	online: boolean;        // within the server's online window
+	rx: number;             // cumulative bytes received (since iface up; 0 on sing-box)
+	tx: number;             // cumulative bytes sent (since iface up; 0 on sing-box)
 	expires_at: number;     // unix seconds; 0 = never expires
 }
 
