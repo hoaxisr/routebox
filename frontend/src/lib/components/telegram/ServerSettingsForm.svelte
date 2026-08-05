@@ -2,6 +2,7 @@
 	import { t } from 'svelte-i18n';
 	import type { MtprotoSettings, RoutableTag } from '$lib/types';
 	import { configReadOnly } from '$lib/stores';
+	import { splitListen, joinListen } from './listenAddr';
 
 	interface Props {
 		form: MtprotoSettings;
@@ -42,12 +43,69 @@
 	// The loopback port only exists to carry traffic to that exit, so it has no
 	// meaning — and no reason to be editable — when Telegram goes out directly.
 	const routed = $derived(form.outbound !== '');
+
+	// The listen address is stored as one "host:port" string but edited as two
+	// fields, the way every other listener in the panel is (issue #62). These
+	// mirror form.listen rather than replacing it: the parent still saves one
+	// string, and a value typed into settings.toml by hand still renders.
+	let listenHost = $state('');
+	let listenPort = $state<number | null>(null);
+
+	// Re-seeded whenever the parent hands over a different address — a save, a
+	// Cancel, or the initial load — but NOT on every keystroke, which would
+	// fight the user as they type.
+	let mirrored = $state('');
+
+	$effect(() => {
+		if (form.listen !== mirrored) {
+			const parts = splitListen(form.listen);
+			listenHost = parts.host;
+			listenPort = parts.port;
+			mirrored = form.listen;
+		}
+	});
+
+	function pushListen() {
+		const joined = joinListen(listenHost, listenPort);
+		mirrored = joined;
+		form.listen = joined;
+	}
 </script>
 
 <div class="field-grid">
-	<div class="field">
-		<label for="mt-listen">{$t('telegram.listen')}</label>
-		<input id="mt-listen" type="text" bind:value={form.listen} placeholder="0.0.0.0:9443" />
+	<div class="field listen-pair">
+		<!-- value + oninput rather than bind:value: both halves have to be read
+		     AFTER the edit lands, and chaining a handler onto a binding leaves
+		     that ordering up to the framework. -->
+		<div class="field">
+			<label for="mt-listen">{$t('telegram.listenAddress')}</label>
+			<input
+				id="mt-listen"
+				type="text"
+				value={listenHost}
+				oninput={(e) => {
+					listenHost = e.currentTarget.value;
+					pushListen();
+				}}
+				placeholder="0.0.0.0"
+			/>
+		</div>
+		<div class="field">
+			<label for="mt-listen-port">{$t('telegram.listenPortField')}</label>
+			<input
+				id="mt-listen-port"
+				type="number"
+				min="1"
+				max="65535"
+				value={listenPort ?? ''}
+				oninput={(e) => {
+					const raw = e.currentTarget.value;
+					listenPort = raw === '' ? null : Number(raw);
+					pushListen();
+				}}
+				placeholder="9443"
+			/>
+		</div>
 		<span class="hint">{$t('telegram.listenHint')}</span>
 	</div>
 	<div class="field">
@@ -62,7 +120,17 @@
 	</div>
 	<div class="field">
 		<label for="mt-port">{$t('telegram.publicPort')}</label>
-		<input id="mt-port" type="number" bind:value={form.public_port} />
+		<!-- 0 is the stored "unset", and rendering it as a literal 0 reads like a
+		     real port nobody chose. Shown empty, saved back as 0. -->
+		<input
+			id="mt-port"
+			type="number"
+			min="1"
+			max="65535"
+			value={form.public_port === 0 ? '' : form.public_port}
+			oninput={(e) => (form.public_port = Number(e.currentTarget.value) || 0)}
+			placeholder={$t('telegram.publicPortPlaceholder')}
+		/>
 		<span class="hint">{$t('telegram.publicPortHint')}</span>
 	</div>
 	<div class="field">
@@ -75,13 +143,17 @@
 	</div>
 	<div class="field">
 		<label for="mt-preferip">{$t('telegram.preferIp')}</label>
+		<!-- The empty value is mtglib's own default, which happens to BE
+		     prefer-ipv6 — labelling it with that name listed the same choice
+		     twice (issue #62). It is the default, and says so. -->
 		<select id="mt-preferip" bind:value={form.prefer_ip}>
-			<option value="">prefer-ipv6</option>
-			<option value="prefer-ipv4">prefer-ipv4</option>
-			<option value="prefer-ipv6">prefer-ipv6</option>
-			<option value="only-ipv4">only-ipv4</option>
-			<option value="only-ipv6">only-ipv6</option>
+			<option value="">{$t('common.default')}</option>
+			<option value="prefer-ipv4">{$t('telegram.preferIpv4')}</option>
+			<option value="prefer-ipv6">{$t('telegram.preferIpv6')}</option>
+			<option value="only-ipv4">{$t('telegram.onlyIpv4')}</option>
+			<option value="only-ipv6">{$t('telegram.onlyIpv6')}</option>
 		</select>
+		<span class="hint">{$t('telegram.preferIpHint')}</span>
 	</div>
 	<div class="field">
 		<label for="mt-outbound">{$t('telegram.outbound')}</label>
@@ -165,6 +237,16 @@
 		color: var(--ctp-text);
 		font-size: 0.875rem;
 		transition: border-color 0.15s ease;
+	}
+	/* Address and port sit side by side, weighted the way the inbound form
+	   weights them — the address needs the room, the port never does. */
+	.listen-pair {
+		display: grid;
+		grid-template-columns: 2fr 1fr;
+		gap: 0.6rem;
+	}
+	.listen-pair > .hint {
+		grid-column: 1 / -1;
 	}
 	.field input:focus,
 	.field select:focus {
