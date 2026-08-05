@@ -1941,7 +1941,6 @@
     "serverSettings": "Server settings",
     "serverSettingsSub": "Port, masking domain, public address",
     "listen": "Listen address",
-    "listenAddress": "Listen address",
     "listenPortField": "Listen port",
     "listenHint": "Where the proxy binds. Not the panel's own port.",
     "maskingDomain": "Masking domain",
