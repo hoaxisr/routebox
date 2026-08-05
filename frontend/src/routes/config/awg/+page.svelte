@@ -1,5 +1,5 @@
 <script lang="ts">
-	import { onMount } from 'svelte';
+	import { onMount, onDestroy } from 'svelte';
 	import { t } from 'svelte-i18n';
 	import { api } from '$lib/api/client';
 	import { notifications, routerMode } from '$lib/stores';
@@ -71,6 +71,13 @@
 	async function refreshPeers() {
 		peers = status?.enabled ? await api.getAwgPeers() : [];
 	}
+
+	async function refreshLive() {
+		await refreshStatus();
+		await refreshPeers();
+	}
+
+	let poll: ReturnType<typeof setInterval> | null = null;
 
 	// Persist the visible form, then refresh status (picks up config_dirty).
 	async function save(): Promise<boolean> {
@@ -162,7 +169,18 @@
 		}
 	}
 
-	onMount(loadAll);
+	onMount(() => {
+		loadAll();
+		// The online dots and traffic figures are only meaningful live — poll while
+		// the tab is open, skipping a tick that would race a save/enable in flight.
+		poll = setInterval(() => {
+			if (!loading && !saving && !enabling) refreshLive();
+		}, 5000);
+	});
+
+	onDestroy(() => {
+		if (poll) clearInterval(poll);
+	});
 </script>
 
 <svelte:head><title>{$t('awg.title')} - RouteBox</title></svelte:head>
