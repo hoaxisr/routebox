@@ -420,6 +420,15 @@ func main() {
 			return seen
 		})
 	}
+	// Real per-peer handshake/tx/rx on the singbox backend, straight from the
+	// WireGuard device's own UAPI state (amnezia-box's GET /awg/{tag}/peers) —
+	// SetPeerLiveness above only runs as a fallback when this errors with
+	// errAwgPeerStatsUnsupported (an amnezia-box binary older than that route).
+	if resolvedClashAddr != "" {
+		awgMgr.SetPeerStats(func() (map[string]awg.PeerStat, error) {
+			return awg.FetchAwgPeerStats(resolvedClashAddr, resolvedClashSecret, config.ManagedAwgServerTag)
+		})
+	}
 	// Resolve the AWG backend: explicit setting wins; otherwise default to singbox
 	// (no kernel module required). Kernel is opt-in only — a router/VPS never runs
 	// the kernel-module install path unless the operator explicitly selects it.
