@@ -140,6 +140,10 @@ func listenPortConflict(arr []interface{}, inbound map[string]interface{}, selfT
 
 // CreateInbound adds new inbound to draft with validation
 func (m *Manager) CreateInbound(inbound map[string]interface{}) error {
+	if tag, _ := inbound["tag"].(string); tag == ManagedMtprotoSocksTag {
+		return ErrReservedMtprotoTag
+	}
+
 	// Validate inbound before adding
 	errs := validateInbound(inbound, 0)
 	if len(errs) > 0 {
@@ -173,6 +177,14 @@ func (m *Manager) CreateInbound(inbound map[string]interface{}) error {
 
 // UpdateInbound updates existing inbound in draft with validation
 func (m *Manager) UpdateInbound(tag string, inbound map[string]interface{}) error {
+	if tag == ManagedMtprotoSocksTag {
+		return ErrReservedMtprotoTag
+	}
+
+	if newTag, _ := inbound["tag"].(string); newTag == ManagedMtprotoSocksTag {
+		return ErrReservedMtprotoTag
+	}
+
 	// Validate inbound before updating
 	errs := validateInbound(inbound, 0)
 	if len(errs) > 0 {
@@ -253,6 +265,13 @@ func (m *Manager) MutateInbound(tag string, fn func(inbound map[string]interface
 
 // DeleteInbound removes inbound by tag from draft
 func (m *Manager) DeleteInbound(tag string) error {
+	if tag == ManagedMtprotoSocksTag {
+		// Deleting it by hand would leave the Telegram proxy dialing a listener
+		// that is not there. Switching the proxy back to a direct exit removes
+		// it — that is the supported way out.
+		return ErrReservedMtprotoTag
+	}
+
 	m.mu.Lock()
 	defer m.mu.Unlock()
 
