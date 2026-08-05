@@ -69,9 +69,21 @@ const REQUIRED_KEYS = [
 	'telegram.publicHostHint',
 	'telegram.publicPort',
 	'telegram.publicPortHint',
+	'telegram.listenAddress',
+	'telegram.listenPortField',
+	'telegram.publicPortPlaceholder',
 	'telegram.concurrency',
 	'telegram.idleTimeout',
 	'telegram.preferIp',
+	'telegram.preferIpHint',
+	'telegram.preferIpv4',
+	'telegram.preferIpv6',
+	'telegram.onlyIpv4',
+	'telegram.onlyIpv6',
+	// The option list must not name the same choice twice: the empty value IS
+	// mtglib's default (prefer-ipv6), so it is labelled as the default rather
+	// than repeating that name (issue #62).
+	'common.default',
 	'telegram.outbound',
 	'telegram.outboundHint',
 	'telegram.outboundDirect',
@@ -125,5 +137,27 @@ describe('telegram i18n keys', () => {
 				}
 			});
 		}
+
+		// The IP-preference select listed "prefer-ipv6" twice, because the empty
+		// option was labelled with the value it defaults to instead of being
+		// called the default. Two identical rows in a radio list is not a choice
+		// anyone can make (issue #62).
+		it(`${name} gives every IP-preference option a distinct label`, () => {
+			const labels = [
+				'common.default',
+				'telegram.preferIpv4',
+				'telegram.preferIpv6',
+				'telegram.onlyIpv4',
+				'telegram.onlyIpv6'
+			].map((k) => resolve(dict, k) as string);
+
+			expect(new Set(labels).size).toBe(labels.length);
+		});
+
+		// Three sections offer the same action and used two different words for
+		// it; the odd one out was the Telegram page (issue #62).
+		it(`${name} labels the expiry date button the way the rest of the panel does`, () => {
+			expect(resolve(dict, 'telegram.setDate')).toBe(resolve(dict, 'users.setDate'));
+		});
 	}
 });
