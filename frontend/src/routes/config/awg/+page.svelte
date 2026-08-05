@@ -1,7 +1,7 @@
 <script lang="ts">
 	import { onMount } from 'svelte';
 	import { t } from 'svelte-i18n';
-	import { api, createConnectionsStream } from '$lib/api/client';
+	import { api } from '$lib/api/client';
 	import { notifications, routerMode } from '$lib/stores';
 	import { formatBytes } from '$lib/stores/settings';
 	import type { AwgStatus, AwgPeer, AwgServerSettings } from '$lib/types';
@@ -28,28 +28,6 @@
 	// and on the kernel backend only when the host's module + awg-quick/tools have
 	// both confirmed awg3 capability (status.kernel_awg3_available).
 	const awg3Available = $derived(isSingbox || !!status?.kernel_awg3_available);
-
-	// Instant "traffic flowing" overlay for singbox peers. The server already
-	// reports liveness on this backend, but from per-minute traffic buckets, so a
-	// peer that just connected takes up to a minute to light up. The Clash
-	// connections stream shows the same thing immediately. Set of active source
-	// IPs, refreshed from the stream while a singbox server is enabled.
-	let activeSources = $state<Set<string>>(new Set());
-	const streamOn = $derived(isSingbox && !!status?.enabled);
-	$effect(() => {
-		if (!streamOn) {
-			activeSources = new Set();
-			return;
-		}
-		const handle = createConnectionsStream((data) => {
-			const next = new Set<string>();
-			for (const c of data.connections ?? []) {
-				if (c.metadata?.sourceIP) next.add(c.metadata.sourceIP);
-			}
-			activeSources = next;
-		});
-		return () => handle.close();
-	});
 
 	async function changeBackend(b: 'kernel' | 'singbox') {
 		try {
@@ -232,17 +210,15 @@
 				<span class="m-key">{$t('awg.listenPort')}</span>
 			</div>
 
-			{#if !isSingbox}
-				<div class="strip-metric">
-					<span class="m-val">{status.online} / {status.peer_count}</span>
-					<span class="m-key">{$t('awg.connected')}</span>
-				</div>
+			<div class="strip-metric">
+				<span class="m-val">{status.online} / {status.peer_count}</span>
+				<span class="m-key">{$t('awg.connected')}</span>
+			</div>
 
-				<div class="strip-metric">
-					<span class="m-val mono">↓ {formatBytes(status.rx)} &nbsp;↑ {formatBytes(status.tx)}</span>
-					<span class="m-key">{$t('awg.traffic')}</span>
-				</div>
-			{/if}
+			<div class="strip-metric">
+				<span class="m-val mono">↓ {formatBytes(status.rx)} &nbsp;↑ {formatBytes(status.tx)}</span>
+				<span class="m-key">{$t('awg.traffic')}</span>
+			</div>
 
 				{#if status.public_host}
 				<div class="strip-metric">
@@ -297,7 +273,7 @@
 			</div>
 			<div class="clients-body">
 				{#if status.enabled}
-					<PeerRoster {peers} {activeSources} subnet={form.subnet} singbox={isSingbox} onChange={async () => { await refreshStatus(); await refreshPeers(); }} />
+					<PeerRoster {peers} subnet={form.subnet} singbox={isSingbox} onChange={async () => { await refreshStatus(); await refreshPeers(); }} />
 				{:else}
 					<div class="locked-note">{$t('awg.shareLocked')}</div>
 				{/if}
@@ -457,7 +433,7 @@
 					<p class="step-desc">{$t('awg.stepShareDesc')}</p>
 
 					{#if status.enabled}
-						<PeerRoster {peers} {activeSources} subnet={form.subnet} singbox={isSingbox} onChange={async () => { await refreshStatus(); await refreshPeers(); }} />
+						<PeerRoster {peers} subnet={form.subnet} singbox={isSingbox} onChange={async () => { await refreshStatus(); await refreshPeers(); }} />
 					{:else}
 						<div class="locked-note">{$t('awg.shareLocked')}</div>
 					{/if}

@@ -1076,12 +1076,15 @@ export interface AwgPeer {
 	name: string;
 	public_key: string;
 	address: string;
-	// On the kernel backend these are a real handshake; on sing-box, which has
-	// none to expose, they are when the peer's tunnel IP last moved bytes.
+	// A real handshake either way — off the kernel interface on that backend,
+	// off sing-box's WireGuard device via its UAPI on the other (see
+	// backend/internal/awg/singbox_peers.go). Falls back to a traffic-derived
+	// approximation only on a sing-box install running an amnezia-box binary
+	// that predates that route.
 	last_handshake: number; // unix seconds; 0 = never
 	online: boolean;        // within the server's online window
-	rx: number;             // cumulative bytes received (since iface up; 0 on sing-box)
-	tx: number;             // cumulative bytes sent (since iface up; 0 on sing-box)
+	rx: number;             // cumulative bytes received; 0 on the traffic-fallback path
+	tx: number;             // cumulative bytes sent; 0 on the traffic-fallback path
 	expires_at: number;     // unix seconds; 0 = never expires
 }
 
