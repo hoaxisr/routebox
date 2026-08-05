@@ -13,24 +13,15 @@
 		peers: AwgPeer[];
 		subnet?: string;
 		singbox?: boolean;
-		/** Live source IPs from the connections stream — the freshest liveness signal on singbox. */
-		activeSources?: Set<string>;
 		onChange: () => void | Promise<void>;
 	}
 
-	let { peers, subnet = '', singbox = false, activeSources = new Set(), onChange }: Props = $props();
+	let { peers, subnet = '', singbox = false, onChange }: Props = $props();
 
-	// bare tunnel IP of a peer ("10.30.0.2/32" → "10.30.0.2").
-	const bareIP = (addr: string) => (addr || '').split('/')[0];
-	// A peer is "live" when the server says so — a recent handshake on the kernel
-	// backend, recent recorded traffic on singbox — or, on singbox, when the
-	// connections stream shows an open connection from its tunnel IP. The stream
-	// is the same signal a minute fresher: server-side liveness there comes from
-	// per-minute traffic buckets, so a peer that just connected lights up here
-	// first. Taking either keeps the LED from lying in both directions — it used
-	// to read the stream alone, and a peer connected but momentarily idle has no
-	// open connection and went dark.
-	const isLive = (p: AwgPeer) => p.online || (singbox && activeSources.has(bareIP(p.address)));
+	// A peer is "live" when the server says so — a real handshake either way,
+	// off the kernel interface on that backend and off sing-box's WireGuard
+	// device via its UAPI on the other (see backend/internal/awg/singbox_peers.go).
+	const isLive = (p: AwgPeer) => p.online;
 
 	let newName = $state('');
 	let adding = $state(false);
@@ -235,8 +226,10 @@
 					<div class="peer-meta">
 						<span class="addr">{p.address}</span>
 						<span class="dot-sep">·</span>
+						<span class="seen">{isLive(p) ? $t('awg.online') : lastSeen(p.last_handshake)}</span>
+						<span class="dot-sep">·</span>
+						<span class="xfer">↓ {formatBytes(p.rx)} &nbsp;↑ {formatBytes(p.tx)}</span>
 						{#if singbox}
-							<span class="seen">{isLive(p) ? $t('awg.online') : lastSeen(p.last_handshake)}</span>
 							<span class="dot-sep">·</span>
 							{#if !p.expires_at}
 								<span class="exp">{$t('awg.noExpiry')}</span>
@@ -245,14 +238,9 @@
 							{:else}
 								<span class="exp">{$t('awg.expiredLabel')}</span>
 							{/if}
-						{:else}
-							<span class="seen">{isLive(p) ? $t('awg.online') : lastSeen(p.last_handshake)}</span>
+						{:else if expiryStatus(p.expires_at, nowSec()) === 'active'}
 							<span class="dot-sep">·</span>
-							<span class="xfer">↓ {formatBytes(p.rx)} &nbsp;↑ {formatBytes(p.tx)}</span>
-							{#if expiryStatus(p.expires_at, nowSec()) === 'active'}
-								<span class="dot-sep">·</span>
-								<span class="exp">{$t('awg.expires', { values: { date: unixToDateInput(p.expires_at) } })}</span>
-							{/if}
+							<span class="exp">{$t('awg.expires', { values: { date: unixToDateInput(p.expires_at) } })}</span>
 						{/if}
 					</div>
 				</div>
