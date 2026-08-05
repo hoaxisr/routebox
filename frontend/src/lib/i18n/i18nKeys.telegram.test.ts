@@ -69,7 +69,8 @@ const REQUIRED_KEYS = [
 	'telegram.publicHostHint',
 	'telegram.publicPort',
 	'telegram.publicPortHint',
-	'telegram.listenAddress',
+	// listenPortField is its own key rather than a reuse of listenPort: that one
+	// is the status strip's caption ("порт"), not a form label.
 	'telegram.listenPortField',
 	'telegram.publicPortPlaceholder',
 	'telegram.concurrency',

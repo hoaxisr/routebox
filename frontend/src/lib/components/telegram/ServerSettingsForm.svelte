@@ -73,12 +73,14 @@
 </script>
 
 <div class="field-grid">
-	<div class="field listen-pair">
+	<!-- A row, not a field: `field` would fight this element's own grid, and
+	     which display wins would come down to stylesheet order. -->
+	<div class="listen-pair">
 		<!-- value + oninput rather than bind:value: both halves have to be read
 		     AFTER the edit lands, and chaining a handler onto a binding leaves
 		     that ordering up to the framework. -->
 		<div class="field">
-			<label for="mt-listen">{$t('telegram.listenAddress')}</label>
+			<label for="mt-listen">{$t('telegram.listen')}</label>
 			<input
 				id="mt-listen"
 				type="text"
@@ -160,7 +162,8 @@
 		<select id="mt-outbound" bind:value={form.outbound}>
 			<option value="">{$t('telegram.outboundDirect')}</option>
 			{#if missingOutbound}
-				<option value={form.outbound}>{form.outbound} — {$t('telegram.outboundMissing')}</option>
+				<!-- Same separator as the rows below it: one list, one idiom. -->
+				<option value={form.outbound}>{form.outbound} · {$t('telegram.outboundMissing')}</option>
 			{/if}
 			{#each outbounds as o (o.tag)}
 				<option value={o.tag}>{o.tag} · {o.type}</option>
@@ -171,7 +174,14 @@
 	{#if routed}
 		<div class="field">
 			<label for="mt-socksport">{$t('telegram.socksPort')}</label>
-			<input id="mt-socksport" type="number" bind:value={form.socks_port} placeholder="1080" />
+			<input
+				id="mt-socksport"
+				type="number"
+				min="1"
+				max="65535"
+				bind:value={form.socks_port}
+				placeholder="1080"
+			/>
 			<span class="hint">{$t('telegram.socksPortHint')}</span>
 		</div>
 	{/if}
@@ -239,14 +249,23 @@
 		transition: border-color 0.15s ease;
 	}
 	/* Address and port sit side by side, weighted the way the inbound form
-	   weights them — the address needs the room, the port never does. */
+	   weights them — the address needs the room, the port never does.
+	   The row gap matches .field's, so the shared hint sits the same distance
+	   below its inputs as every other hint on this form. */
 	.listen-pair {
 		display: grid;
 		grid-template-columns: 2fr 1fr;
-		gap: 0.6rem;
+		column-gap: 0.6rem;
+		row-gap: 0.35rem;
+		/* Without this the cell is stretched to match its taller neighbour and
+		   the slack is handed to the auto rows, floating the hint ~18px away
+		   from its inputs while every sibling hint sits 6px under. */
+		align-content: start;
 	}
 	.listen-pair > .hint {
 		grid-column: 1 / -1;
+		font-size: 0.75rem;
+		color: var(--ctp-overlay0);
 	}
 	.field input:focus,
 	.field select:focus {
