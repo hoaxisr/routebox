@@ -72,10 +72,15 @@
 	}
 </script>
 
-<div class="field-grid">
-	<!-- A row, not a field: `field` would fight this element's own grid, and
-	     which display wins would come down to stylesheet order. -->
-	<div class="listen-pair">
+<!-- Grouped because two numeric port fields in one flat grid read as a choice
+     between them. They are not: the listen port is the socket, the public port
+     is what goes into the link, and they differ only behind a reverse proxy. -->
+<section class="group">
+	<h4 class="group-title">{$t('telegram.groupListen')}</h4>
+	<div class="field-grid">
+		<!-- A row, not a field: `field` would fight this element's own grid, and
+		     which display wins would come down to stylesheet order. -->
+		<div class="listen-pair">
 		<!-- value + oninput rather than bind:value: both halves have to be read
 		     AFTER the edit lands, and chaining a handler onto a binding leaves
 		     that ordering up to the framework. -->
@@ -108,20 +113,27 @@
 				placeholder="9443"
 			/>
 		</div>
-		<span class="hint">{$t('telegram.listenHint')}</span>
+			<span class="hint">{$t('telegram.listenHint')}</span>
+		</div>
+		<div class="field">
+			<label for="mt-domain">{$t('telegram.maskingDomain')}</label>
+			<input id="mt-domain" type="text" bind:value={form.masking_domain} placeholder="storage.googleapis.com" />
+			<span class="hint">{$t('telegram.maskingDomainHint')}</span>
+		</div>
 	</div>
-	<div class="field">
-		<label for="mt-domain">{$t('telegram.maskingDomain')}</label>
-		<input id="mt-domain" type="text" bind:value={form.masking_domain} placeholder="storage.googleapis.com" />
-		<span class="hint">{$t('telegram.maskingDomainHint')}</span>
-	</div>
-	<div class="field">
-		<label for="mt-host">{$t('telegram.publicHost')}</label>
-		<input id="mt-host" type="text" bind:value={form.public_host} />
-		<span class="hint">{$t('telegram.publicHostHint')}</span>
-	</div>
-	<div class="field">
-		<label for="mt-port">{$t('telegram.publicPort')}</label>
+</section>
+
+<section class="group">
+	<h4 class="group-title">{$t('telegram.groupLinks')}</h4>
+	<p class="group-note">{$t('telegram.groupLinksNote')}</p>
+	<div class="field-grid">
+		<div class="field">
+			<label for="mt-host">{$t('telegram.publicHost')}</label>
+			<input id="mt-host" type="text" bind:value={form.public_host} />
+			<span class="hint">{$t('telegram.publicHostHint')}</span>
+		</div>
+		<div class="field">
+			<label for="mt-port">{$t('telegram.publicPort')}</label>
 		<!-- 0 is the stored "unset", and rendering it as a literal 0 reads like a
 		     real port nobody chose. Shown empty, saved back as 0. -->
 		<input
@@ -133,18 +145,24 @@
 			oninput={(e) => (form.public_port = Number(e.currentTarget.value) || 0)}
 			placeholder={$t('telegram.publicPortPlaceholder')}
 		/>
-		<span class="hint">{$t('telegram.publicPortHint')}</span>
+			<span class="hint">{$t('telegram.publicPortHint')}</span>
+		</div>
 	</div>
-	<div class="field">
-		<label for="mt-conc">{$t('telegram.concurrency')}</label>
-		<input id="mt-conc" type="number" bind:value={form.concurrency} />
-	</div>
-	<div class="field">
-		<label for="mt-idle">{$t('telegram.idleTimeout')}</label>
-		<input id="mt-idle" type="number" bind:value={form.idle_timeout_sec} />
-	</div>
-	<div class="field">
-		<label for="mt-preferip">{$t('telegram.preferIp')}</label>
+</section>
+
+<section class="group">
+	<h4 class="group-title">{$t('telegram.groupBehaviour')}</h4>
+	<div class="field-grid">
+		<div class="field">
+			<label for="mt-conc">{$t('telegram.concurrency')}</label>
+			<input id="mt-conc" type="number" bind:value={form.concurrency} />
+		</div>
+		<div class="field">
+			<label for="mt-idle">{$t('telegram.idleTimeout')}</label>
+			<input id="mt-idle" type="number" bind:value={form.idle_timeout_sec} />
+		</div>
+		<div class="field">
+			<label for="mt-preferip">{$t('telegram.preferIp')}</label>
 		<!-- The empty value is mtglib's own default, which happens to BE
 		     prefer-ipv6 — labelling it with that name listed the same choice
 		     twice (issue #62). It is the default, and says so. -->
@@ -171,21 +189,22 @@
 		</select>
 		<span class="hint">{$t('telegram.outboundHint')}</span>
 	</div>
-	{#if routed}
-		<div class="field">
-			<label for="mt-socksport">{$t('telegram.socksPort')}</label>
-			<input
-				id="mt-socksport"
-				type="number"
-				min="1"
-				max="65535"
-				bind:value={form.socks_port}
-				placeholder="1080"
-			/>
-			<span class="hint">{$t('telegram.socksPortHint')}</span>
-		</div>
-	{/if}
-</div>
+		{#if routed}
+			<div class="field">
+				<label for="mt-socksport">{$t('telegram.socksPort')}</label>
+				<input
+					id="mt-socksport"
+					type="number"
+					min="1"
+					max="65535"
+					bind:value={form.socks_port}
+					placeholder="1080"
+				/>
+				<span class="hint">{$t('telegram.socksPortHint')}</span>
+			</div>
+		{/if}
+	</div>
+</section>
 
 {#if missingOutbound}
 	<div class="domain-warn">
@@ -219,6 +238,28 @@
 </div>
 
 <style>
+	/* Section labels borrow the status strip's small-caps idiom rather than
+	   introducing a third heading style to this page. */
+	.group + .group {
+		margin-top: 1.5rem;
+		padding-top: 1.25rem;
+		border-top: 1px solid var(--ctp-surface0);
+	}
+	.group-title {
+		margin: 0 0 0.75rem;
+		color: var(--ctp-overlay0);
+		font-size: 0.6875rem;
+		font-weight: 600;
+		text-transform: uppercase;
+		letter-spacing: 0.05em;
+	}
+	.group-note {
+		margin: -0.35rem 0 0.85rem;
+		max-width: 62ch;
+		font-size: 0.75rem;
+		line-height: 1.45;
+		color: var(--ctp-overlay0);
+	}
 	.field-grid {
 		display: grid;
 		grid-template-columns: repeat(2, 1fr);
