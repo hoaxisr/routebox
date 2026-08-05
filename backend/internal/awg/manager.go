@@ -22,10 +22,12 @@ import (
 
 // PeerSummary is the secret-free API/UI view of a peer.
 //
-// The liveness pair means slightly different things per backend, because the
-// backends expose different things: on kernel it is a real handshake off the
-// interface, on singbox the last minute the peer's tunnel IP moved bytes (see
-// listPeersSingbox). Rx/Tx are interface counters and stay zero on singbox.
+// On kernel, the liveness pair and Rx/Tx come from a real handshake and
+// interface counters (awg show). On singbox they come from the WireGuard
+// device's own UAPI state via peerStatsFn — a real handshake too, just
+// reached over the Clash API instead of a kernel interface — falling back to
+// livenessFn's traffic-derived approximation (see listPeersSingbox) only on
+// an amnezia-box binary that predates that route.
 type PeerSummary struct {
 	Name          string `json:"name"`
 	PublicKey     string `json:"public_key"`
@@ -108,9 +110,23 @@ type Manager struct {
 	// "supported" is the wrong default.
 	kernelSupports3Fn func() bool
 
+	// peerStatsFn is the singbox backend's real handshake/tx/rx signal: the
+	// WireGuard device's own UAPI state via amnezia-box's /awg/{tag}/peers
+	// (see SetPeerStats). Returns ErrAwgPeerStatsUnsupported on a pre-patch
+	// amnezia-box binary (no such route) — listPeersSingbox falls back to
+	// livenessFn in that case, and to "everyone offline" if neither is wired.
+	peerStatsFn func() (map[string]PeerStat, error)
+
+	// lastPeerStatsErr dedupes fetch-error logging for peerStatsFn the same
+	// way traffic.Sampler dedupes its own: ListPeers can be polled every few
+	// seconds, and a persistent failure (secret rotated, amnezia-box down)
+	// must log once, not once per poll. Touched only under mu.
+	lastPeerStatsErr string
+
 	// livenessFn answers "when did this tunnel IP last move bytes", and exists
-	// for the singbox backend only (see SetPeerLiveness). nil = nothing wired,
-	// and every peer reads offline — what the roster did before this existed.
+	// for the singbox backend as a fallback for amnezia-box binaries that
+	// predate peerStatsFn (see SetPeerLiveness). nil = nothing wired, and
+	// every peer reads offline — what the roster did before either existed.
 	livenessFn func(since int64) map[string]int64
 
 	// IPv6-broker wiring (dual-stack NAT-free AWG): ipv6Broker is the operator's
@@ -452,10 +468,20 @@ func (m *Manager) AddPeer(ctx context.Context, rawName string) (PeerSummary, err
 // SetPeerLiveness wires the singbox backend's substitute for a handshake: a
 // lookup of tunnel IP -> the unix second it was last seen moving bytes, over
 // everything at or after `since`. Wired from the traffic store in main; nil in
-// tests and on panels with no monitoring.
+// tests and on panels with no monitoring. Used only as a fallback when
+// peerStatsFn is unset or reports ErrAwgPeerStatsUnsupported.
 func (m *Manager) SetPeerLiveness(fn func(since int64) map[string]int64) {
 	m.mu.Lock()
 	m.livenessFn = fn
+	m.mu.Unlock()
+}
+
+// SetPeerStats wires the singbox backend's real per-peer handshake/tx/rx
+// signal — see peerStatsFn. nil (unset) falls straight to the livenessFn
+// fallback.
+func (m *Manager) SetPeerStats(fn func() (map[string]PeerStat, error)) {
+	m.mu.Lock()
+	m.peerStatsFn = fn
 	m.mu.Unlock()
 }
 
@@ -492,40 +518,64 @@ func (m *Manager) ListPeers(ctx context.Context) []PeerSummary {
 	return out
 }
 
-// listPeersSingbox fills the roster's liveness from recorded traffic instead of
-// from the interface.
+// listPeersSingbox fills the roster's liveness from the WireGuard device's
+// own UAPI state (peerStatsFn) when available, falling back to recorded
+// traffic (livenessFn) only on an amnezia-box binary that predates that
+// route.
 //
-// sing-box serves AWG from a userspace endpoint: there is no awg-rb0, `awg show`
-// has nothing to report, and the kernel path above therefore marked every peer
-// never-handshaked. The roster and the per-user monitor both read that as
-// "offline", permanently, for peers that were connected and working.
+// sing-box serves AWG from a userspace endpoint: there is no awg-rb0 for
+// `awg show` to query, so the kernel path above cannot be reused directly.
+// amnezia-box (hoaxisr/amnezia-box) exposes the same handshake/tx/rx state
+// `wg show`/`awg show` would read off a kernel interface through its Clash
+// API instead (GET /awg/{tag}/peers) — see FetchAwgPeerStats — which is why
+// this can key straight off PublicKey exactly like the kernel path does.
 //
-// The stand-in is the newest per-minute traffic bucket for the peer's tunnel IP
-// — the same rows /api/awg/peers/traffic already reports bytes from. Two honest
-// differences from a real handshake, both inherent to what sing-box exposes:
-// it is a minute coarse (the sampler ticks once a minute), and a peer that is
-// connected but silent drops offline after onlineWindowSec where a kernel peer
-// would keep rekeying. It reports activity, not tunnel state.
-//
-// Rx/Tx stay zero: they mean "cumulative since the interface came up" and there
-// is no interface. The roster hides them on this backend for that reason, and
-// the traffic endpoint answers the question properly, over a chosen window.
+// The livenessFn fallback approximates liveness from the newest per-minute
+// traffic bucket for the peer's tunnel IP instead — coarser (minute
+// resolution) and prone to reading a connected-but-quiet peer as offline
+// after onlineWindowSec, where a real handshake would keep rekeying — used
+// only when peerStatsFn is unset or reports ErrAwgPeerStatsUnsupported.
 func (m *Manager) listPeersSingbox() []PeerSummary {
 	m.mu.Lock()
-	fn := m.livenessFn
+	statsFn, liveFn := m.peerStatsFn, m.livenessFn
+	lastErr := m.lastPeerStatsErr
 	m.mu.Unlock()
 
 	now := time.Now().Unix()
-	var seen map[string]int64
-	if fn != nil {
-		seen = fn(now - lastSeenLookbackSec)
+	var stats map[string]PeerStat
+	if statsFn != nil {
+		var err error
+		stats, err = statsFn()
+		errText := ""
+		if err != nil {
+			errText = err.Error()
+		}
+		if errText != lastErr {
+			if err != nil && !errors.Is(err, ErrAwgPeerStatsUnsupported) {
+				log.Printf("awg: singbox peer stats unavailable, falling back to traffic-based liveness: %v", err)
+			}
+			m.mu.Lock()
+			m.lastPeerStatsErr = errText
+			m.mu.Unlock()
+		}
 	}
+
+	var seen map[string]int64
+	if stats == nil && liveFn != nil {
+		seen = liveFn(now - lastSeenLookbackSec)
+	}
+
 	out := []PeerSummary{}
 	for _, p := range m.store.List() {
-		ts := seen[tunnelIP(p.Address)]
+		var ts, rx, tx int64
+		if stat, ok := stats[p.PublicKey]; ok {
+			ts, rx, tx = stat.LastHandshake, stat.RxBytes, stat.TxBytes
+		} else if stats == nil {
+			ts = seen[tunnelIP(p.Address)]
+		}
 		out = append(out, PeerSummary{
 			Name: p.Name, PublicKey: p.PublicKey, Address: p.Address,
-			LastHandshake: ts, Online: isOnline(ts, now),
+			LastHandshake: ts, Online: isOnline(ts, now), Rx: rx, Tx: tx,
 			ExpiresAt: p.ExpiresAt,
 		})
 	}

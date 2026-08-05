@@ -608,7 +608,9 @@ func (m *Manager) disableSingbox(ctx context.Context) error {
 }
 
 // statusSingbox reports a kernel-field-free status: running = we have a server key
-// (enabled) AND the process is alive. Liveness/NAT/module are not applicable.
+// (enabled) AND the process is alive. NAT/module are not applicable; Online/Rx/Tx
+// are aggregated from listPeersSingbox — the same real-handshake-or-fallback data
+// the roster renders, so the strip and the peer list never disagree.
 func (m *Manager) statusSingbox(ctx context.Context) AWGStatus {
 	m.mu.Lock()
 	enabled, lastErr, port, phase := m.enabled, m.lastErr, m.listenPort, m.phase
@@ -617,6 +619,16 @@ func (m *Manager) statusSingbox(ctx context.Context) AWGStatus {
 	m.mu.Unlock()
 	if phase == "" {
 		phase = PhaseIdle
+	}
+	peers := m.listPeersSingbox()
+	online := 0
+	var rx, tx int64
+	for _, p := range peers {
+		if p.Online {
+			online++
+		}
+		rx += p.Rx
+		tx += p.Tx
 	}
 	// ConfigDirty mirrors the kernel Status: enabled AND the saved settings differ
 	// from the running snapshot on any field that needs a re-apply — subnet, port,
@@ -636,7 +648,10 @@ func (m *Manager) statusSingbox(ctx context.Context) AWGStatus {
 		Phase:       phase,
 		ListenPort:  port,
 		PublicHost:  m.publicHost,
-		PeerCount:   len(m.store.List()),
+		PeerCount:   len(peers),
+		Online:      online,
+		Rx:          rx,
+		Tx:          tx,
 		Module:      StateReady, // module not applicable; report ready so UI doesn't warn
 		ConfigDirty: configDirty,
 		IPv6Active:  v6active,
