@@ -1,6 +1,6 @@
 <script lang="ts">
 	import { t } from 'svelte-i18n';
-	import type { MtprotoSettings } from '$lib/types';
+	import type { MtprotoSettings, RoutableTag } from '$lib/types';
 	import { configReadOnly } from '$lib/stores';
 
 	interface Props {
@@ -8,6 +8,8 @@
 		/** The masking domain as last saved, so the invalidation warning shows
 		 *  only when it is actually being changed. */
 		savedDomain: string;
+		/** Outbounds and endpoints Telegram traffic can be routed through. */
+		outbounds?: RoutableTag[];
 		saving?: boolean;
 		/** Form differs from the saved settings — enables the buttons. */
 		dirty?: boolean;
@@ -15,11 +17,31 @@
 		onReset: () => void;
 	}
 
-	let { form = $bindable(), savedDomain, saving = false, dirty = true, onSave, onReset }: Props = $props();
+	let {
+		form = $bindable(),
+		savedDomain,
+		outbounds = [],
+		saving = false,
+		dirty = true,
+		onSave,
+		onReset
+	}: Props = $props();
 
 	// Only warn when the domain is genuinely being changed, and only when there
 	// was one to invalidate — on first setup there are no links out yet.
 	const domainChanged = $derived(savedDomain !== '' && form.masking_domain.trim() !== savedDomain);
+
+	// The chosen tag may have been renamed or deleted elsewhere in the config
+	// since it was saved. Keeping it as an option rather than silently snapping
+	// the select back to Direct is the difference between "your exit is gone" and
+	// "your exit quietly became your own IP".
+	const missingOutbound = $derived(
+		form.outbound !== '' && !outbounds.some((o) => o.tag === form.outbound)
+	);
+
+	// The loopback port only exists to carry traffic to that exit, so it has no
+	// meaning — and no reason to be editable — when Telegram goes out directly.
+	const routed = $derived(form.outbound !== '');
 </script>
 
 <div class="field-grid">
@@ -61,7 +83,38 @@
 			<option value="only-ipv6">only-ipv6</option>
 		</select>
 	</div>
+	<div class="field">
+		<label for="mt-outbound">{$t('telegram.outbound')}</label>
+		<select id="mt-outbound" bind:value={form.outbound}>
+			<option value="">{$t('telegram.outboundDirect')}</option>
+			{#if missingOutbound}
+				<option value={form.outbound}>{form.outbound} — {$t('telegram.outboundMissing')}</option>
+			{/if}
+			{#each outbounds as o (o.tag)}
+				<option value={o.tag}>{o.tag} · {o.type}</option>
+			{/each}
+		</select>
+		<span class="hint">{$t('telegram.outboundHint')}</span>
+	</div>
+	{#if routed}
+		<div class="field">
+			<label for="mt-socksport">{$t('telegram.socksPort')}</label>
+			<input id="mt-socksport" type="number" bind:value={form.socks_port} placeholder="1080" />
+			<span class="hint">{$t('telegram.socksPortHint')}</span>
+		</div>
+	{/if}
 </div>
+
+{#if missingOutbound}
+	<div class="domain-warn">
+		<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 9v4" /><path d="M12 17h.01" /><path d="M10.29 3.86 1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z" /></svg>
+		<span>{$t('telegram.outboundMissingWarning')}</span>
+	</div>
+{/if}
+
+{#if outbounds.length === 0 && !missingOutbound}
+	<p class="no-outbounds">{$t('telegram.outboundNone')}</p>
+{/if}
 
 {#if domainChanged}
 	<div class="domain-warn">
@@ -138,6 +191,11 @@
 		flex: none;
 		margin-top: 1px;
 		color: var(--ctp-yellow, #e5c890);
+	}
+	.no-outbounds {
+		margin: 1rem 0 0;
+		font-size: 0.8125rem;
+		color: var(--ctp-overlay0);
 	}
 	.save-row {
 		display: flex;

@@ -1161,6 +1161,22 @@ export interface MtprotoSettings {
 	idle_timeout_sec: number;
 	prefer_ip: string;
 	domain_fronting_port: number;
+	/** sing-box outbound or endpoint tag the proxy's Telegram traffic leaves
+	 *  through. Empty — the default — dials Telegram directly. */
+	outbound: string;
+	/** Loopback port of the managed SOCKS inbound that carries it there. Only a
+	 *  setting so a collision with something else on the host is fixable. */
+	socks_port: number;
+}
+
+/** One exit the Telegram proxy can be routed through. Outbounds and endpoints
+ *  are interchangeable to a route rule, so they share one list. */
+export interface RoutableTag {
+	tag: string;
+	/** sing-box type ("wireguard", "selector", …) — shown beside the tag so two
+	 *  similarly named exits are tellable apart. */
+	type: string;
+	kind: 'outbound' | 'endpoint';
 }
 
 export interface MtprotoStatus {
@@ -1182,6 +1198,10 @@ export interface MtprotoState {
 	 *  without them is well-formed and then fails silently inside Telegram. */
 	can_issue_link: boolean;
 	read_only: boolean;
+	/** Every outbound and endpoint the proxy could be routed through. Rides along
+	 *  with the status so the picker's options and the chosen tag above can never
+	 *  disagree. Empty in router mode, where there is no sing-box config. */
+	outbounds: RoutableTag[];
 }
 
 /** One roster entry. The secret is deliberately absent: this is polled. */

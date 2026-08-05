@@ -11,6 +11,7 @@ import (
 	"time"
 
 	"routebox/backend/internal/config"
+	"routebox/backend/internal/mtproto"
 	"routebox/backend/internal/process"
 	"routebox/backend/internal/users"
 )
@@ -186,6 +187,19 @@ func (h *Handler) ApplyConfig(w http.ResponseWriter, r *http.Request) {
 		rejectNames := users.EffectiveRejectNames(h.panelUsers.List(), time.Now().Unix())
 		if _, err := h.config.SyncRejectRuleActive(rejectNames); err != nil {
 			log.Printf("users: reject-rule sync (apply) failed: %v", err)
+		}
+	}
+
+	// Re-assert the Telegram proxy's SOCKS inbound and route rule. An apply can
+	// carry a draft that predates them, or one an operator edited them out of,
+	// and the settings would still claim Telegram leaves through an outbound
+	// while the plumbing is gone. Same contract as the two syncs above: hasDraft
+	// is already false, and the apply's own reload (below) picks this up — do NOT
+	// call h.syncMtprotoSocks here, which would reload a second time.
+	if h.mtproto != nil {
+		mt := h.settings.Get().Mtproto
+		if _, err := h.config.SyncMtprotoSocksActive(mtproto.SocksPortOrDefault(mt.SocksPort), mt.Outbound); err != nil {
+			log.Printf("mtproto: socks routing sync (apply) failed: %v", err)
 		}
 	}
 

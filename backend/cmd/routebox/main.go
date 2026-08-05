@@ -514,8 +514,14 @@ func main() {
 			IdleTimeout:        time.Duration(s.IdleTimeoutSec) * time.Second,
 			PreferIP:           s.PreferIP,
 			DomainFrontingPort: uint(s.DomainFrontingPort),
+			SocksProxy:         mtproto.SocksProxyAddr(s.Outbound, s.SocksPort),
 		}
 	}
+
+	// Reconcile the managed SOCKS inbound before anything uses it. Ahead of the
+	// amnezia-box auto-start below, so the process comes up on the synced config
+	// rather than needing a reload it has not been asked for yet.
+	apiHandler.SyncMtprotoSocksOnStart()
 
 	if effectiveMode == "vps" && settingsMgr.Get().Mtproto.Enabled {
 		// Not fatal: the panel has to come up for an operator to fix whatever

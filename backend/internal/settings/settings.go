@@ -60,6 +60,20 @@ type MtprotoSettings struct {
 	IdleTimeoutSec     int    `toml:"idle_timeout_sec" json:"idle_timeout_sec"`
 	PreferIP           string `toml:"prefer_ip" json:"prefer_ip"` // ""|prefer-ipv4|prefer-ipv6|only-ipv4|only-ipv6
 	DomainFrontingPort int    `toml:"domain_fronting_port" json:"domain_fronting_port"`
+
+	// Outbound is the sing-box outbound or endpoint tag the proxy's Telegram
+	// connections leave through. Empty — the default — dials Telegram straight
+	// out of the box, which is what every install did before this existed.
+	//
+	// Anything else makes RouteBox manage a loopback SOCKS inbound in the
+	// sing-box config and a route rule pinning it to this tag; see
+	// config.SyncMtprotoSocksActive.
+	Outbound string `toml:"outbound" json:"outbound"`
+
+	// SocksPort is the loopback port that managed inbound binds. It is a
+	// setting only so a collision with something else on the host is fixable;
+	// nothing outside the box can reach it.
+	SocksPort int `toml:"socks_port" json:"socks_port"`
 }
 
 // AwgSettings configures the RouteBox-owned AmneziaWG server interface.
@@ -275,6 +289,11 @@ func Default() Settings {
 			Concurrency:        4096,
 			IdleTimeoutSec:     300,
 			DomainFrontingPort: 443,
+			// Telegram is reached directly until an operator picks an exit.
+			Outbound: "",
+			// Loopback-only, so the usual SOCKS port is free of the collision
+			// risk that makes 1080 a poor choice on a public interface.
+			SocksPort: 1080,
 		},
 	}
 }
@@ -975,6 +994,21 @@ func (m *Manager) Update(updates map[string]interface{}) error {
 				return fmt.Errorf("setting %s: value must be a whole number", key)
 			}
 			staged.Mtproto.DomainFrontingPort = v
+		case "mtproto.outbound":
+			v, ok := value.(string)
+			if !ok {
+				return fmt.Errorf("setting %s: value must be a string", key)
+			}
+			staged.Mtproto.Outbound = v
+		case "mtproto.socks_port":
+			v, ok := toInt(value)
+			if !ok {
+				return fmt.Errorf("setting %s: value must be a whole number", key)
+			}
+			if v != 0 && (v < 1 || v > 65535) {
+				return fmt.Errorf("setting %s: must be a port between 1 and 65535", key)
+			}
+			staged.Mtproto.SocksPort = v
 
 		default:
 			return fmt.Errorf("unknown or non-runtime setting: %s", key)
