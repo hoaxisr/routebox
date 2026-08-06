@@ -118,7 +118,9 @@
 				concurrency: form.concurrency,
 				idle_timeout_sec: form.idle_timeout_sec,
 				prefer_ip: form.prefer_ip,
-				domain_fronting_port: form.domain_fronting_port
+				domain_fronting_port: form.domain_fronting_port,
+				outbound: form.outbound,
+				socks_port: form.socks_port
 			});
 			notifications.success($t('telegram.settingsSaved'));
 			await refresh();
@@ -256,6 +258,7 @@
 					<ServerSettingsForm
 						bind:form
 						savedDomain={proxy.settings.masking_domain}
+						outbounds={proxy.outbounds ?? []}
 						{saving}
 						dirty={formDirty}
 						onSave={saveSettings}

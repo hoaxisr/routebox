@@ -49,6 +49,13 @@ type Config struct {
 	IdleTimeout        time.Duration
 	PreferIP           string
 	DomainFrontingPort uint
+
+	// SocksProxy routes the proxy's Telegram connections through a SOCKS5
+	// proxy — in RouteBox, the managed loopback inbound that sing-box pins to
+	// whichever outbound the operator chose. Empty means dial Telegram
+	// directly, which is the default and what every install did before this
+	// existed.
+	SocksProxy string
 }
 
 // Status is what the panel's header strip shows.
@@ -123,23 +130,10 @@ func (m *Manager) startLocked(cfg Config) error {
 
 	events := NewEventStream(names)
 
-	// network/v2 is what mtg's own cli uses; the non-v2 package exports no New.
-	// A nil URL asks for mtg's caching resolver.
-	resolver, err := network.GetDNS(nil)
+	ntw, err := buildNetwork(cfg)
 	if err != nil {
-		return fmt.Errorf("cannot build resolver: %w", err)
+		return err
 	}
-
-	// The zero timeouts mean "use mtg's defaults" rather than "no timeout".
-	ntw := network.New(
-		resolver,
-		"",
-		0,
-		0,
-		cfg.IdleTimeout,
-		net.KeepAliveConfig{Enable: true},
-		network.DefaultTCPNotSentLowat,
-	)
 
 	proxy, err := mtglib.NewProxy(mtglib.ProxyOpts{
 		Secrets: secrets,
@@ -188,6 +182,33 @@ func (m *Manager) startLocked(cfg Config) error {
 	}()
 
 	return nil
+}
+
+// buildNetwork picks how the proxy reaches Telegram: straight out of the box, or
+// through the managed SOCKS inbound and out whichever outbound the operator
+// chose on the Telegram page.
+func buildNetwork(cfg Config) (mtglib.Network, error) {
+	if cfg.SocksProxy != "" {
+		return newSocksNetwork(cfg.SocksProxy, cfg.IdleTimeout), nil
+	}
+
+	// network/v2 is what mtg's own cli uses; the non-v2 package exports no New.
+	// A nil URL asks for mtg's caching resolver.
+	resolver, err := network.GetDNS(nil)
+	if err != nil {
+		return nil, fmt.Errorf("cannot build resolver: %w", err)
+	}
+
+	// The zero timeouts mean "use mtg's defaults" rather than "no timeout".
+	return network.New(
+		resolver,
+		"",
+		0,
+		0,
+		cfg.IdleTimeout,
+		net.KeepAliveConfig{Enable: true},
+		network.DefaultTCPNotSentLowat,
+	), nil
 }
 
 // Stop shuts the proxy down and releases the port.
