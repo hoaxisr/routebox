@@ -3,6 +3,7 @@ package api
 import (
 	"encoding/json"
 	"errors"
+	"fmt"
 	"log"
 	"net"
 	"net/http"
@@ -12,6 +13,7 @@ import (
 
 	"github.com/go-chi/chi/v5"
 
+	"routebox/backend/internal/config"
 	"routebox/backend/internal/mtproto"
 )
 
@@ -52,7 +54,78 @@ func (h *Handler) mtprotoConfig() mtproto.Config {
 		IdleTimeout:        time.Duration(s.IdleTimeoutSec) * time.Second,
 		PreferIP:           s.PreferIP,
 		DomainFrontingPort: uint(s.DomainFrontingPort),
+		SocksProxy:         mtproto.SocksProxyAddr(s.Outbound, s.SocksPort),
 	}
+}
+
+// syncMtprotoSocks reconciles the managed SOCKS inbound and its route rule with
+// the persisted [mtproto] settings, reloading sing-box when either changed.
+//
+// Unlike syncRejectRule, this one reports its failures: it runs inside a settings
+// save whose success message would otherwise promise routing that was never
+// written, and the proxy is about to be pointed at a listener that does not
+// exist. Reload failure falls back to Restart, matching ApplyConfig.
+func (h *Handler) syncMtprotoSocks() error {
+	if h.config == nil {
+		return nil
+	}
+
+	s := h.settings.Get().Mtproto
+
+	changed, err := h.config.SyncMtprotoSocksActive(mtproto.SocksPortOrDefault(s.SocksPort), s.Outbound)
+	if err != nil {
+		return err
+	}
+
+	if !changed || !h.getProcessStatus().Running {
+		return nil
+	}
+
+	if err := h.process.Reload(); err != nil {
+		if err := h.process.Restart(h.config.GetPath()); err != nil {
+			return fmt.Errorf("the routing was written but sing-box could not pick it up: %w", err)
+		}
+	}
+
+	return nil
+}
+
+// SyncMtprotoSocksOnStart is the exported entry point for main.go. A settings
+// file that names an outbound has to have its plumbing in the sing-box config
+// before the proxy starts dialing it — which is not guaranteed when the file was
+// hand-edited, or when a config restore rolled the managed inbound back out.
+func (h *Handler) SyncMtprotoSocksOnStart() {
+	if err := h.syncMtprotoSocks(); err != nil {
+		log.Printf("mtproto: cannot set up routing through %q: %v",
+			h.settings.Get().Mtproto.Outbound, err)
+	}
+}
+
+// mtprotoOutboundExists reports whether tag is something a route rule may name.
+// Writing a rule pointing at a tag that is not there makes sing-box reject the
+// whole config on its next reload — taking the VPN down over a Telegram setting.
+func (h *Handler) mtprotoOutboundExists(tag string) bool {
+	if h.config == nil {
+		return false
+	}
+
+	for _, t := range h.config.ListRoutableTags() {
+		if t.Tag == tag {
+			return true
+		}
+	}
+
+	return false
+}
+
+// mtprotoOutbounds lists the exits the proxy can be routed through, for the
+// page's picker. Empty when there is no config manager (router mode).
+func (h *Handler) mtprotoOutbounds() []config.RoutableTag {
+	if h.config == nil {
+		return []config.RoutableTag{}
+	}
+
+	return h.config.ListRoutableTags()
 }
 
 // mtprotoPublic resolves the host and port that go into tg:// links: the
@@ -322,6 +395,10 @@ func (h *Handler) GetMtprotoStatus(w http.ResponseWriter, r *http.Request) {
 		"public_port":    port,
 		"can_issue_link": mtproto.CanIssueLink(settings.MaskingDomain, host),
 		"read_only":      h.mtproto.Store().IsReadOnly(),
+		// The exit picker's options ride along rather than coming from their own
+		// endpoint: they are a handful of tags, and a separate fetch could show
+		// a list that disagrees with the outbound the settings above name.
+		"outbounds": h.mtprotoOutbounds(),
 	})
 }
 
@@ -344,6 +421,7 @@ func (h *Handler) UpdateMtprotoSettings(w http.ResponseWriter, r *http.Request) 
 		"listen": true, "masking_domain": true, "public_host": true,
 		"public_port": true, "concurrency": true, "idle_timeout_sec": true,
 		"prefer_ip": true, "domain_fronting_port": true,
+		"outbound": true, "socks_port": true,
 	}
 
 	updates := map[string]any{}
@@ -360,8 +438,53 @@ func (h *Handler) UpdateMtprotoSettings(w http.ResponseWriter, r *http.Request) 
 		updates["mtproto."+key] = value
 	}
 
+	// Checked BEFORE anything is persisted. A rule naming a tag that is not
+	// there makes sing-box reject the whole config on its next reload, so this
+	// setting would take the VPN down rather than just fail to route Telegram.
+	if tag, ok := body["outbound"].(string); ok && tag != "" && !h.mtprotoOutboundExists(tag) {
+		writeError(w, http.StatusBadRequest,
+			"no outbound or endpoint is tagged "+strconv.Quote(tag))
+
+		return
+	}
+
+	// Either key edits the ACTIVE sing-box config, which SyncMtprotoSocksActive
+	// refuses to do mid-edit. Say so rather than saving a setting that silently
+	// does not take effect.
+	_, editsOutbound := body["outbound"]
+	_, editsPort := body["socks_port"]
+
+	if (editsOutbound || editsPort) && h.config != nil && h.config.HasDraft() {
+		writeError(w, http.StatusConflict, "apply or discard pending config changes first")
+
+		return
+	}
+
+	// Remembered before Update commits, so a routing change that cannot be
+	// applied can be undone below.
+	previous := h.settings.Get().Mtproto
+
 	if err := h.settings.Update(updates); err != nil {
 		writeError(w, http.StatusBadRequest, err.Error())
+
+		return
+	}
+
+	// Ahead of BOTH the disk write and the rebuild. A collision on the SOCKS
+	// port or a read-only config has to fail with the settings still describing
+	// what is actually running — persisting first and discovering the collision
+	// second would leave the proxy pointed at a listener that was never created.
+	if err := h.syncMtprotoSocks(); err != nil {
+		// Nothing has reached disk yet, so undoing the in-memory commit is all
+		// it takes to leave the panel and the config agreeing again.
+		if rollback := h.settings.Update(map[string]any{
+			"mtproto.outbound":   previous.Outbound,
+			"mtproto.socks_port": previous.SocksPort,
+		}); rollback != nil {
+			log.Printf("mtproto: cannot roll back the routing settings: %v", rollback)
+		}
+
+		writeError(w, http.StatusInternalServerError, err.Error())
 
 		return
 	}
@@ -372,8 +495,8 @@ func (h *Handler) UpdateMtprotoSettings(w http.ResponseWriter, r *http.Request) 
 		return
 	}
 
-	// A running proxy has to pick up the new listen address or masking domain;
-	// a stopped one has nothing to do.
+	// A running proxy has to pick up the new listen address, masking domain or
+	// outbound; a stopped one has nothing to do.
 	if h.mtproto.Status().Running {
 		if err := h.mtproto.Rebuild(); err != nil {
 			writeError(w, http.StatusInternalServerError, err.Error())
@@ -388,6 +511,14 @@ func (h *Handler) UpdateMtprotoSettings(w http.ResponseWriter, r *http.Request) 
 // EnableMtproto starts the proxy and persists the flag. PROTECTED.
 func (h *Handler) EnableMtproto(w http.ResponseWriter, r *http.Request) {
 	if !h.mtprotoReady(w) {
+		return
+	}
+
+	// The proxy is about to dial the managed inbound, so make sure sing-box is
+	// serving it. Idempotent, and a no-op when Telegram goes out directly.
+	if err := h.syncMtprotoSocks(); err != nil {
+		writeError(w, http.StatusInternalServerError, err.Error())
+
 		return
 	}
 
