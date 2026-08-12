@@ -286,7 +286,9 @@
 						/>
 					</div>
 				</div>
-				<p class="text-xs text-[var(--ctp-overlay0)]">{$t('inbounds.server.obfsPacketSizeHint')}</p>
+				<!-- The server's own hint says "must match on the client", which reads
+				     backwards here (#48) — this is the same sentence from the client side. -->
+				<p class="text-xs text-[var(--ctp-overlay0)]">{$t('outbounds.obfsPacketSizeHint')}</p>
 			{/if}
 		{/if}
 	</div>

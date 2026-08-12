@@ -625,6 +625,16 @@ func (m *Manager) clientConfFor(pub, host string) (ClientConf, Peer, error) {
 		obf.stripAwg3()
 		headerKey = ""
 	}
+	// No header key = header protection is off = the server is AWG 2.0 as far as a
+	// client can tell, so the export must carry no AWG3-only key. It used to keep
+	// the device-timers and the content padding whenever the BINARY could do awg3,
+	// which made every non-off obfuscation preset produce a config the iOS
+	// AmneziaWG refuses outright ("not an AmneziaWG configuration", #64) and AWGM
+	// labels 3.0 (#60). The server keeps its own timers and padding — both are
+	// sender-local, the peer never has to match them.
+	if headerKey == "" {
+		obf.stripAwg3()
+	}
 	// No fallback resolver: an empty field means the client keeps its own DNS.
 	// Inventing 1.1.1.1 here silently overrode routing that worked without it,
 	// and the UI never showed the value it was substituting (#45).

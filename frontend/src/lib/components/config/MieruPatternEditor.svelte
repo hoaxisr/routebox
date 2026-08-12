@@ -196,7 +196,7 @@
 
 			<button
 				type="button"
-				class="text-xs text-[var(--ctp-primary)] hover:underline"
+				class="toggle-btn text-xs"
 				onclick={() => (advanced = !advanced)}
 			>
 				{advanced ? $t('mieruPattern.hideAdvanced') : $t('mieruPattern.showAdvanced')}

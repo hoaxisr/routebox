@@ -29,7 +29,11 @@
 	let selectedRuleSets = $state<string[]>(rule?.rule_set ?? []);
 
 	// Action settings
-	let action = $state<'route' | 'reject' | 'predefined'>(rule?.action ?? 'route');
+	// evaluate/respond exist only in the generated fallback tail (#68), which this
+	// form never opens — anything else edits as a plain route rule.
+	let action = $state<'route' | 'reject' | 'predefined'>(
+		rule?.action === 'reject' || rule?.action === 'predefined' ? rule.action : 'route'
+	);
 	let server = $state(rule?.server ?? '');
 
 	// Reject action options

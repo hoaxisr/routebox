@@ -13,6 +13,17 @@
 	let dnsServers = $state<DnsServer[]>([]);
 	let dnsRules = $state<DnsRule[]>([]);
 	let settings = $state<DnsSettings>({});
+	// Optimistic caching has nothing to serve with the cache off, and nothing to
+	// refresh when entries never expire.
+	let optimisticDisabled = $derived(!!settings.disable_cache || !!settings.disable_expire);
+	// The generated DNS-fallback tail (#68) is managed by the switch in the settings
+	// card, not as ordinary rules — it is kept out of the rule list so nobody drags
+	// it apart. It always sits at the end, so the visible rules keep their indices.
+	let fallbackStart = $derived.by(() => {
+		const i = dnsRules.findIndex((r) => r.action === 'evaluate' || r.match_response !== undefined);
+		return i < 0 ? dnsRules.length : i;
+	});
+	let visibleRules = $derived(dnsRules.slice(0, fallbackStart));
 	let ruleSets = $state<RuleSet[]>([]);
 	let outbounds = $state<Outbound[]>([]);
 	let endpoints = $state<Endpoint[]>([]);
@@ -145,7 +156,8 @@
 		await runExclusive(async () => {
 			try {
 				await api.createDnsRule(rule);
-				dnsRules = [...dnsRules, rule];
+				// The backend slots a new rule in front of the fallback tail; mirror that.
+				dnsRules = [...dnsRules.slice(0, fallbackStart), rule, ...dnsRules.slice(fallbackStart)];
 				showRuleForm = false;
 				hasChanges = true;
 				unsavedChanges.markChanged('DNS', 'Created DNS rule');
@@ -224,6 +236,36 @@
 	}
 
 	// Settings handlers
+	// What the backend will accept as a fallback trigger.
+	const FALLBACK_RCODES = ['NXDOMAIN', 'SERVFAIL', 'REFUSED', 'NOTIMP', 'FORMERR'];
+
+	function toggleFallback(enabled: boolean) {
+		if (!enabled) {
+			settings.fallback = { enabled: false };
+		} else {
+			// Prefilled so the very first save is already valid — the backend rejects a
+			// half-filled fallback, and the panel saves on every change.
+			const primary = settings.final && dnsServers.some((s) => s.tag === settings.final)
+				? settings.final
+				: dnsServers[0].tag;
+			settings.fallback = {
+				enabled: true,
+				primary,
+				fallback: (dnsServers.find((s) => s.tag !== primary) ?? dnsServers[0]).tag,
+				rcodes: ['NXDOMAIN', 'SERVFAIL', 'REFUSED']
+			};
+		}
+		handleSettingsChange();
+	}
+
+	function toggleRcode(code: string) {
+		const current = settings.fallback?.rcodes ?? [];
+		const next = current.includes(code) ? current.filter((c) => c !== code) : [...current, code];
+		if (next.length === 0) return; // the block needs at least one code to mean anything
+		settings.fallback = { ...settings.fallback!, rcodes: next };
+		handleSettingsChange();
+	}
+
 	async function handleSettingsChange() {
 		try {
 			await api.updateDnsSettings(settings);
@@ -392,14 +434,18 @@
 					/>
 					<span class="text-sm text-[var(--ctp-text)]">{$t('dns.disableExpire')}</span>
 				</label>
-				<label class="flex items-center gap-2 cursor-pointer">
+				<!-- independent_cache is deprecated upstream (schema:"omit"); optimistic
+				     replaced it here (#65). It serves the stale answer and refreshes in
+				     the background, so it is meaningless with the cache off or expiry off. -->
+				<label class="flex items-center gap-2 {optimisticDisabled ? 'opacity-50 cursor-not-allowed' : 'cursor-pointer'}">
 					<input
 						type="checkbox"
-						bind:checked={settings.independent_cache}
+						bind:checked={settings.optimistic}
+						disabled={optimisticDisabled}
 						onchange={handleSettingsChange}
 						class="w-4 h-4 rounded border-[var(--ctp-surface2)] text-[var(--ctp-primary)] focus:ring-[var(--ctp-primary)]"
 					/>
-					<span class="text-sm text-[var(--ctp-text)]">{$t('dns.independentCache')}</span>
+					<span class="text-sm text-[var(--ctp-text)]">{$t('dns.optimistic')}</span>
 				</label>
 				<label class="flex items-center gap-2 cursor-pointer">
 					<input
@@ -411,6 +457,69 @@
 					<span class="text-sm text-[var(--ctp-text)]">{$t('dns.reverseMapping')}</span>
 					<span class="text-xs text-[var(--ctp-overlay0)]">(IP→domain)</span>
 				</label>
+			</div>
+
+			<!-- DNS fallback (#68). sing-box has no switch for it: it is a generated
+			     tail of dns.rules, so it is edited here and hidden from the rule list. -->
+			<div class="mt-4 pt-4 border-t border-[var(--ctp-surface2)]">
+				<label class="flex items-center gap-2 {dnsServers.length < 2 ? 'opacity-50 cursor-not-allowed' : 'cursor-pointer'}">
+					<input
+						type="checkbox"
+						checked={!!settings.fallback?.enabled}
+						disabled={dnsServers.length < 2}
+						onchange={(e) => toggleFallback(e.currentTarget.checked)}
+						class="w-4 h-4 rounded border-[var(--ctp-surface2)] text-[var(--ctp-primary)] focus:ring-[var(--ctp-primary)]"
+					/>
+					<span class="text-sm text-[var(--ctp-text)]">{$t('dns.fallback')}</span>
+				</label>
+				<p class="mt-1 text-xs text-[var(--ctp-overlay0)]">
+					{dnsServers.length < 2 ? $t('dns.fallbackNeedsTwoServers') : $t('dns.fallbackHint')}
+				</p>
+
+				{#if settings.fallback?.enabled}
+					<div class="mt-3 grid grid-cols-1 sm:grid-cols-2 gap-4">
+						<div>
+							<label for="fallback-primary" class="block text-sm text-[var(--ctp-overlay1)] mb-1">{$t('dns.fallbackPrimary')}</label>
+							<select
+								id="fallback-primary"
+								bind:value={settings.fallback.primary}
+								onchange={handleSettingsChange}
+								class="w-full px-3 py-2 bg-[var(--ctp-base)] border border-[var(--ctp-surface2)] rounded-lg text-[var(--ctp-text)] focus:outline-none focus:ring-2 focus:ring-[var(--ctp-primary)]"
+							>
+								{#each dnsServers as srv}
+									<option value={srv.tag} disabled={srv.tag === settings.fallback?.fallback}>{srv.tag}</option>
+								{/each}
+							</select>
+						</div>
+						<div>
+							<label for="fallback-secondary" class="block text-sm text-[var(--ctp-overlay1)] mb-1">{$t('dns.fallbackServer')}</label>
+							<select
+								id="fallback-secondary"
+								bind:value={settings.fallback.fallback}
+								onchange={handleSettingsChange}
+								class="w-full px-3 py-2 bg-[var(--ctp-base)] border border-[var(--ctp-surface2)] rounded-lg text-[var(--ctp-text)] focus:outline-none focus:ring-2 focus:ring-[var(--ctp-primary)]"
+							>
+								{#each dnsServers as srv}
+									<option value={srv.tag} disabled={srv.tag === settings.fallback?.primary}>{srv.tag}</option>
+								{/each}
+							</select>
+						</div>
+					</div>
+					<div class="mt-3">
+						<span class="block text-sm text-[var(--ctp-overlay1)] mb-2">{$t('dns.fallbackRcodes')}</span>
+						<div class="flex flex-wrap gap-2">
+							{#each FALLBACK_RCODES as code}
+								<button
+									type="button"
+									class="toggle-btn {settings.fallback?.rcodes?.includes(code) ? 'selected' : ''}"
+									onclick={() => toggleRcode(code)}
+								>
+									{code}
+								</button>
+							{/each}
+						</div>
+					</div>
+				{/if}
 			</div>
 		</div>
 
@@ -480,7 +589,7 @@
 			<div class="px-4 py-3 bg-[var(--ctp-surface1)] border-b border-[var(--ctp-surface2)] flex items-center justify-between">
 				<div>
 					<span class="font-medium text-[var(--ctp-subtext1)]">{$t('dns.rules')}</span>
-					<span class="ml-2 text-sm text-[var(--ctp-overlay0)]">({dnsRules.length} {$t('routes.rules').toLowerCase()})</span>
+					<span class="ml-2 text-sm text-[var(--ctp-overlay0)]">({visibleRules.length} {$t('routes.rules').toLowerCase()})</span>
 				</div>
 				<button
 					onclick={openAddRule}
@@ -491,14 +600,14 @@
 			</div>
 
 			<div class="p-4">
-				{#if dnsRules.length === 0}
+				{#if visibleRules.length === 0}
 					<div class="p-8 text-center text-[var(--ctp-overlay0)] bg-[var(--ctp-base)] rounded-lg border border-dashed border-[var(--ctp-surface2)]">
 						<p>{$t('dns.noRules')}</p>
 						<p class="text-sm mt-1">{$t('dns.noRulesHint')}</p>
 					</div>
 				{:else}
 					<div class="space-y-2">
-						{#each dnsRules as rule, index}
+						{#each visibleRules as rule, index}
 							<div
 								role="listitem"
 								draggable="true"
@@ -523,7 +632,7 @@
 									<svg class="w-5 h-5 hidden sm:block" fill="currentColor" viewBox="0 0 20 20">
 										<path d="M7 2a2 2 0 1 0 .001 4.001A2 2 0 0 0 7 2zm0 6a2 2 0 1 0 .001 4.001A2 2 0 0 0 7 8zm0 6a2 2 0 1 0 .001 4.001A2 2 0 0 0 7 14zm6-8a2 2 0 1 0-.001-4.001A2 2 0 0 0 13 6zm0 2a2 2 0 1 0 .001 4.001A2 2 0 0 0 13 8zm0 6a2 2 0 1 0 .001 4.001A2 2 0 0 0 13 14z" />
 									</svg>
-									<button type="button" draggable="false" class="step-btn" disabled={index === dnsRules.length - 1}
+									<button type="button" draggable="false" class="step-btn" disabled={index === visibleRules.length - 1}
 										title={$t('routes.moveDown')} aria-label={$t('routes.moveDown')}
 										onclick={() => handleReorder(index, index + 1)}>
 										<svg class="w-4 h-4" fill="none" stroke="currentColor" stroke-width="2.5" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M19 9l-7 7-7-7" /></svg>
@@ -590,7 +699,7 @@
 				{/if}
 			</div>
 
-			{#if dnsRules.length > 0}
+			{#if visibleRules.length > 0}
 				<div class="px-4 py-3 border-t border-[var(--ctp-surface2)] bg-[var(--ctp-surface1)]">
 					<div class="flex items-center gap-2 text-sm text-[var(--ctp-overlay1)]">
 						<svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -603,7 +712,7 @@
 		</div>
 
 		<!-- Final server indicator -->
-		{#if dnsRules.length > 0 && settings.final}
+		{#if visibleRules.length > 0 && settings.final}
 			<div class="flex items-center justify-center gap-3 py-2">
 				<div class="h-px flex-1 bg-[var(--ctp-surface2)]"></div>
 				<div class="info-banner">
