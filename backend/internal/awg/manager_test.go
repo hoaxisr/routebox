@@ -279,6 +279,47 @@ func TestRenderClientConfEmitsHeaderProtectionKey(t *testing.T) {
 	}
 }
 
+// With header protection off the server is AWG 2.0 to any client, so no AWG3-only
+// key may reach the export — the iOS AmneziaWG rejects the whole config over one
+// (#64) and AWGM mislabels it 3.0 (#60). Every obfuscation preset but "off" fills
+// these device-timers, so this used to fire for ordinary AWG 2.0 servers.
+func TestRenderClientConfStripsAwg3WhenHeaderProtectionOff(t *testing.T) {
+	awg3Obf := Obfuscation{
+		CPA: "0-48", RAT: "120-150", RekeyTimeout: "5",
+		RejectAfterTime: "180-210", KeepaliveTimeout: "10-25", MaxHandshakeAttempts: "18",
+	}
+	awg3Keys := []string{"ContentPaddingAddition", "RekeyAfterTime", "RekeyTimeout",
+		"RejectAfterTime", "KeepaliveTimeout", "MaxHandshakeAttempts"}
+
+	render := func(t *testing.T, headerKey string) string {
+		t.Helper()
+		m := newTestManager(t, newFakeRunner())
+		m.serverPriv = "AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAEs="
+		m.obf, m.headerKey = awg3Obf, headerKey
+		_ = m.store.Put(Peer{PublicKey: validPub, PrivateKey: "cpriv", Address: "10.10.0.2/32", Name: "bob"})
+		conf, err := m.RenderClientConf(validPub, "1.2.3.4")
+		if err != nil {
+			t.Fatalf("RenderClientConf: %v", err)
+		}
+		return conf
+	}
+
+	conf := render(t, "")
+	for _, k := range awg3Keys {
+		if strings.Contains(conf, k) {
+			t.Fatalf("header protection off, but %s leaked into the client conf:\n%s", k, conf)
+		}
+	}
+
+	// ...and they must still be there when it is on, or the fix broke awg3.
+	conf = render(t, "TESTHPK000000000000000000000000000000000000==")
+	for _, k := range awg3Keys {
+		if !strings.Contains(conf, k) {
+			t.Fatalf("header protection on, but %s is missing from the client conf:\n%s", k, conf)
+		}
+	}
+}
+
 // An empty DNS field means "the client keeps its own resolver", not "silently
 // hand it 1.1.1.1". The invented default overrode routing rules that worked
 // before the tunnel came up, and nothing in the UI admitted it was there (#45).

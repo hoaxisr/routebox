@@ -213,5 +213,8 @@
 
 	</div>
 
-	<MieruPatternEditor bind:value={trafficPattern} readonly={serverLocked} />
+	<!-- Not serverLocked: the fork decodes traffic_pattern on the outbound too
+	     (protocol/mieru/outbound.go), and the two sides shape their own egress
+	     independently — locking it to the server contradicted our own hint (#63). -->
+	<MieruPatternEditor bind:value={trafficPattern} />
 </div>

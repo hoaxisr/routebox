@@ -232,10 +232,15 @@ func (m *Manager) CreateDnsRule(rule map[string]interface{}) error {
 		return err
 	}
 
-	// Modify draft
+	// Modify draft. A new rule goes BEFORE the generated fallback tail (#68) —
+	// appended after it, past the terminal `respond`, it would never be reached.
 	dns := m.getDraftDns()
 	draftArr := m.getDraftDnsArray("rules")
-	dns["rules"] = append(draftArr, rule)
+	at := len(draftArr)
+	if start, _, _, _ := findFallbackBlock(draftArr); start >= 0 {
+		at = start
+	}
+	dns["rules"] = append(draftArr[:at:at], append([]interface{}{rule}, draftArr[at:]...)...)
 
 	return m.saveDraftToDisk()
 }
@@ -377,8 +382,15 @@ func (m *Manager) GetDnsSettings() map[string]interface{} {
 	if disableExpire, ok := dns["disable_expire"].(bool); ok {
 		result["disable_expire"] = disableExpire
 	}
-	if independentCache, ok := dns["independent_cache"].(bool); ok {
-		result["independent_cache"] = independentCache
+	// optimistic marshals as a bare bool ("enabled") or as {enabled, timeout}; the
+	// panel only offers the on/off half and reads the object form as its enabled
+	// flag, so a hand-written timeout survives a round-trip untouched below.
+	switch v := dns["optimistic"].(type) {
+	case bool:
+		result["optimistic"] = v
+	case map[string]interface{}:
+		enabled, _ := v["enabled"].(bool)
+		result["optimistic"] = enabled
 	}
 	// New fields
 	if cacheCapacity, ok := dns["cache_capacity"].(float64); ok {
@@ -390,6 +402,9 @@ func (m *Manager) GetDnsSettings() map[string]interface{} {
 	if clientSubnet, ok := dns["client_subnet"].(string); ok {
 		result["client_subnet"] = clientSubnet
 	}
+	// Not a dns.* field: a shaped tail of dns.rules. It rides on the settings
+	// payload so the panel edits it in one place with the rest of DNS (#68).
+	result["fallback"] = m.readDnsFallback()
 
 	return result
 }
@@ -419,7 +434,14 @@ func (m *Manager) UpdateDnsSettings(settings map[string]interface{}) error {
 		return err
 	}
 
-	// Modify draft
+	// Modify draft. Fallback first: it is the only step that can still fail, and
+	// bailing after the plain fields were written would leave the in-memory draft
+	// holding changes that never reached disk.
+	if fallback, ok := settings["fallback"].(map[string]interface{}); ok {
+		if err := m.applyDnsFallback(fallback); err != nil {
+			return err
+		}
+	}
 	dns := m.getDraftDns()
 
 	if final, ok := settings["final"].(string); ok && final != "" {
@@ -438,8 +460,15 @@ func (m *Manager) UpdateDnsSettings(settings map[string]interface{}) error {
 	if disableExpire, ok := settings["disable_expire"].(bool); ok {
 		dns["disable_expire"] = disableExpire
 	}
-	if independentCache, ok := settings["independent_cache"].(bool); ok {
-		dns["independent_cache"] = independentCache
+	if optimistic, ok := settings["optimistic"].(bool); ok {
+		switch obj, isObj := dns["optimistic"].(map[string]interface{}); {
+		case isObj:
+			obj["enabled"] = optimistic // keep a hand-written timeout
+		case optimistic:
+			dns["optimistic"] = true
+		default:
+			delete(dns, "optimistic")
+		}
 	}
 	// New fields
 	if cacheCapacity, ok := settings["cache_capacity"].(float64); ok {
@@ -459,6 +488,5 @@ func (m *Manager) UpdateDnsSettings(settings map[string]interface{}) error {
 			delete(dns, "client_subnet")
 		}
 	}
-
 	return m.saveDraftToDisk()
 }
