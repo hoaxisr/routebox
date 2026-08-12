@@ -37,6 +37,48 @@ func TestDnsSettingsOptimistic(t *testing.T) {
 		}
 	})
 
+	t.Run("turning it on from nothing writes the bool form", func(t *testing.T) {
+		m := load(t, `{}`)
+		if err := m.UpdateDnsSettings(map[string]interface{}{"optimistic": true}); err != nil {
+			t.Fatalf("UpdateDnsSettings: %v", err)
+		}
+		if got := m.getDns()["optimistic"]; got != true {
+			t.Fatalf("optimistic = %#v, want true", got)
+		}
+	})
+
+	// The fork REFUSES TO START on this combination ("`optimistic` is conflict with
+	// `disable_cache`"), so the panel must not be able to write it — greying the box
+	// out only covers one of the two orders the operator can click them in.
+	t.Run("never coexists with disable_cache or disable_expire", func(t *testing.T) {
+		for _, off := range []string{"disable_cache", "disable_expire"} {
+			m := load(t, `{"optimistic": true}`)
+			if err := m.UpdateDnsSettings(map[string]interface{}{off: true}); err != nil {
+				t.Fatalf("UpdateDnsSettings: %v", err)
+			}
+			if got, ok := m.getDns()["optimistic"]; ok {
+				t.Fatalf("%s is on but optimistic survived as %#v — the box will not start", off, got)
+			}
+		}
+	})
+
+	t.Run("the conflict clears the flag but keeps a hand-written timeout", func(t *testing.T) {
+		m := load(t, `{"optimistic": {"enabled": true, "timeout": "10s"}}`)
+		if err := m.UpdateDnsSettings(map[string]interface{}{"disable_cache": true}); err != nil {
+			t.Fatalf("UpdateDnsSettings: %v", err)
+		}
+		obj, ok := m.getDns()["optimistic"].(map[string]interface{})
+		if !ok {
+			t.Fatalf("optimistic = %#v", m.getDns()["optimistic"])
+		}
+		if enabled, set := obj["enabled"]; set && enabled == true {
+			t.Fatalf("optimistic still enabled alongside disable_cache: %#v", obj)
+		}
+		if obj["timeout"] != "10s" {
+			t.Fatalf("the timeout was thrown away: %#v", obj)
+		}
+	})
+
 	t.Run("turning it off drops the key", func(t *testing.T) {
 		m := load(t, `{"optimistic": true}`)
 		if err := m.UpdateDnsSettings(map[string]interface{}{"optimistic": false}); err != nil {

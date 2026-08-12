@@ -151,9 +151,15 @@ func (m *Manager) DeleteDnsServer(tag string) error {
 
 	// Check if any DNS rule references this server
 	rules := m.getDnsArray("rules")
+	fallbackStart, _, _, _ := findFallbackBlock(rules)
 	for i, rule := range rules {
 		if obj, ok := rule.(map[string]interface{}); ok {
 			if serverTag, ok := obj["server"].(string); ok && serverTag == tag {
+				// Pointing at dns.rules[N] is a dead end when N is inside the generated
+				// tail: the panel hides those rules, so there is nothing to go look at.
+				if fallbackStart >= 0 && i >= fallbackStart {
+					return fmt.Errorf("cannot delete DNS server '%s': the DNS fallback uses it — turn the fallback off first", tag)
+				}
 				return fmt.Errorf("cannot delete DNS server '%s': referenced by dns.rules[%d]", tag, i)
 			}
 		}
@@ -467,6 +473,23 @@ func (m *Manager) UpdateDnsSettings(settings map[string]interface{}) error {
 		case optimistic:
 			dns["optimistic"] = true
 		default:
+			delete(dns, "optimistic")
+		}
+	}
+	// The fork REFUSES TO START on optimistic together with either switch
+	// ("`optimistic` is conflict with `disable_cache`", dns/router.go). Greying the
+	// checkbox out is not enough: switching the cache off afterwards would leave
+	// both in the config, and on a host where the config check cannot run that
+	// lands as a box that will not come back up.
+	dc, _ := dns["disable_cache"].(bool)
+	de, _ := dns["disable_expire"].(bool)
+	if dc || de {
+		if obj, isObj := dns["optimistic"].(map[string]interface{}); isObj {
+			delete(obj, "enabled")
+			if len(obj) == 0 {
+				delete(dns, "optimistic")
+			}
+		} else {
 			delete(dns, "optimistic")
 		}
 	}

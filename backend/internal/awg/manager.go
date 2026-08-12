@@ -632,8 +632,13 @@ func (m *Manager) clientConfFor(pub, host string) (ClientConf, Peer, error) {
 	// AmneziaWG refuses outright ("not an AmneziaWG configuration", #64) and AWGM
 	// labels 3.0 (#60). The server keeps its own timers and padding — both are
 	// sender-local, the peer never has to match them.
+	// A "lo-hi" PersistentKeepalive is AWG 3.0-only too, and it is configured with
+	// no reference to header protection at all — so it leaked into "2.0" exports by
+	// the same route until it was collapsed here.
+	keepalive := m.clientKeepalive()
 	if headerKey == "" {
 		obf.stripAwg3()
+		keepalive = collapseRange(keepalive)
 	}
 	// No fallback resolver: an empty field means the client keeps its own DNS.
 	// Inventing 1.1.1.1 here silently overrode routing that worked without it,
@@ -658,7 +663,7 @@ func (m *Manager) clientConfFor(pub, host string) (ClientConf, Peer, error) {
 		ServerPub:           serverPub,
 		Endpoint:            joinHostPort(host, port),
 		AllowedIPs:          allowed,
-		Keepalive:           m.clientKeepalive(),
+		Keepalive:           keepalive,
 		PSK:                 p.PresharedKey,
 		HeaderProtectionKey: headerKey,
 	}, p, nil
