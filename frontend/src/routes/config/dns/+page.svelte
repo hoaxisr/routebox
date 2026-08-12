@@ -9,6 +9,7 @@
 	import HelpTooltip from '$lib/components/shared/HelpTooltip.svelte';
 	import { createSerialQueue } from '$lib/utils/serialQueue';
 	import { reorderArray } from '$lib/utils/routeRules';
+	import { fallbackStart, FALLBACK_RCODES } from '$lib/utils/dnsFallback';
 
 	let dnsServers = $state<DnsServer[]>([]);
 	let dnsRules = $state<DnsRule[]>([]);
@@ -19,11 +20,9 @@
 	// The generated DNS-fallback tail (#68) is managed by the switch in the settings
 	// card, not as ordinary rules — it is kept out of the rule list so nobody drags
 	// it apart. It always sits at the end, so the visible rules keep their indices.
-	let fallbackStart = $derived.by(() => {
-		const i = dnsRules.findIndex((r) => r.action === 'evaluate' || r.match_response !== undefined);
-		return i < 0 ? dnsRules.length : i;
-	});
-	let visibleRules = $derived(dnsRules.slice(0, fallbackStart));
+	// The detector mirrors the backend's exactly; see $lib/utils/dnsFallback.
+	let tailStart = $derived(fallbackStart(dnsRules));
+	let visibleRules = $derived(dnsRules.slice(0, tailStart));
 	let ruleSets = $state<RuleSet[]>([]);
 	let outbounds = $state<Outbound[]>([]);
 	let endpoints = $state<Endpoint[]>([]);
@@ -157,7 +156,7 @@
 			try {
 				await api.createDnsRule(rule);
 				// The backend slots a new rule in front of the fallback tail; mirror that.
-				dnsRules = [...dnsRules.slice(0, fallbackStart), rule, ...dnsRules.slice(fallbackStart)];
+				dnsRules = [...dnsRules.slice(0, tailStart), rule, ...dnsRules.slice(tailStart)];
 				showRuleForm = false;
 				hasChanges = true;
 				unsavedChanges.markChanged('DNS', 'Created DNS rule');
@@ -236,9 +235,6 @@
 	}
 
 	// Settings handlers
-	// What the backend will accept as a fallback trigger.
-	const FALLBACK_RCODES = ['NXDOMAIN', 'SERVFAIL', 'REFUSED', 'NOTIMP', 'FORMERR'];
-
 	function toggleFallback(enabled: boolean) {
 		if (!enabled) {
 			settings.fallback = { enabled: false };

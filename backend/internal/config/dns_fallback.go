@@ -50,6 +50,14 @@ func findFallbackBlock(rules []interface{}) (start int, primary, fallback string
 		if len(r) != 4 || r["match_response"] != true || r["action"] != "route" || code == "" || server == "" {
 			break
 		}
+		// Reading must accept no more than writing can reproduce. The fork matches
+		// on rcodes this panel does not offer, and a block carrying one used to read
+		// back as an ordinary fallback — which the panel then re-sent on every
+		// unrelated DNS change, and applyDnsFallback rejected every one of them.
+		// Every save on the page failed until the operator's own rules were deleted.
+		if !fallbackRcodes[code] {
+			return -1, "", "", nil
+		}
 		if fallback != "" && server != fallback {
 			return -1, "", "", nil
 		}
@@ -62,10 +70,18 @@ func findFallbackBlock(rules []interface{}) (start int, primary, fallback string
 	// head: the evaluate that fed them
 	r = asRule(rules[i])
 	primary, _ = r["server"].(string)
-	if len(r) != 2 || r["action"] != "evaluate" || primary == "" {
+	if len(r) != 2 || r["action"] != "evaluate" || primary == "" || primary == fallback {
 		return -1, "", "", nil
 	}
 	return i, primary, fallback, rcodes
+}
+
+// hasResponseRule reports whether a rule does response matching of its own. Used
+// to refuse ownership of a config that already hand-writes this machinery.
+func hasResponseRule(v interface{}) bool {
+	r := asRule(v)
+	_, matches := r["match_response"]
+	return matches || r["action"] == "evaluate" || r["action"] == "respond"
 }
 
 // stripFallbackBlock returns rules with the generated tail removed, if present.
@@ -114,6 +130,17 @@ func (m *Manager) applyDnsFallback(in map[string]interface{}) error {
 	if enabled, _ := in["enabled"].(bool); !enabled {
 		dns["rules"] = rules
 		return nil
+	}
+
+	// Whatever survived the strip is the operator's. If any of it already does
+	// response matching, this generated tail would land behind their terminal
+	// `respond` and never run, while the panel showed it as active — and the rule
+	// list hides it, so there would be nothing to see. Refuse instead.
+	for _, r := range rules {
+		if hasResponseRule(r) {
+			return fmt.Errorf("this config already has hand-written DNS response rules; " +
+				"the panel will not manage a fallback alongside them")
+		}
 	}
 
 	primary, _ := in["primary"].(string)

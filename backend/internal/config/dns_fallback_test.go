@@ -2,6 +2,7 @@ package config
 
 import (
 	"reflect"
+	"strings"
 	"testing"
 )
 
@@ -50,6 +51,95 @@ func TestDnsFallbackRoundTrip(t *testing.T) {
 	}
 	if rules := m.getDnsArray("rules"); len(rules) != 1 {
 		t.Fatalf("switching it off must leave only the operator's rule, got %#v", rules)
+	}
+}
+
+// The tail is a wire contract with the fork, not an internal shape: these exact
+// keys, one STRING response_rcode per rule (an array is rejected), evaluate first,
+// terminal respond last. Reading it back through our own parser proves nothing
+// about that, so pin the JSON.
+func TestDnsFallbackEmitsExactRuleShape(t *testing.T) {
+	m := fallbackManager(t, `{`+twoServers+`}`)
+	err := m.UpdateDnsSettings(map[string]interface{}{"fallback": map[string]interface{}{
+		"enabled": true, "primary": "primary", "fallback": "backup",
+		"rcodes": []interface{}{"NXDOMAIN", "SERVFAIL"},
+	}})
+	if err != nil {
+		t.Fatalf("UpdateDnsSettings: %v", err)
+	}
+	want := []interface{}{
+		map[string]interface{}{"action": "evaluate", "server": "primary"},
+		map[string]interface{}{"match_response": true, "response_rcode": "NXDOMAIN", "action": "route", "server": "backup"},
+		map[string]interface{}{"match_response": true, "response_rcode": "SERVFAIL", "action": "route", "server": "backup"},
+		map[string]interface{}{"match_response": true, "action": "respond"},
+	}
+	if got := m.getDnsArray("rules"); !reflect.DeepEqual(got, want) {
+		t.Fatalf("tail = %#v\nwant %#v", got, want)
+	}
+}
+
+// A block the panel cannot rewrite must not read back as one it owns. It used to:
+// the panel then re-sent it with every unrelated DNS change and the write side
+// rejected all of them, so nothing on the page could be saved at all.
+func TestDnsFallbackIgnoresBlocksItCannotRewrite(t *testing.T) {
+	cases := map[string]string{
+		"an rcode the panel does not offer": `[{"action": "evaluate", "server": "primary"},
+			{"match_response": true, "response_rcode": "NOERROR", "action": "route", "server": "backup"},
+			{"match_response": true, "action": "respond"}]`,
+		"primary and fallback are the same": `[{"action": "evaluate", "server": "backup"},
+			{"match_response": true, "response_rcode": "NXDOMAIN", "action": "route", "server": "backup"},
+			{"match_response": true, "action": "respond"}]`,
+	}
+	for name, rules := range cases {
+		t.Run(name, func(t *testing.T) {
+			m := fallbackManager(t, `{`+twoServers+`, "rules": `+rules+`}`)
+			got := m.GetDnsSettings()["fallback"].(map[string]interface{})
+			if got["enabled"] != false {
+				t.Fatalf("read back as ours: %#v", got)
+			}
+			// ...and an unrelated settings change must still save.
+			if err := m.UpdateDnsSettings(map[string]interface{}{"disable_cache": true, "fallback": got}); err != nil {
+				t.Fatalf("an unrelated DNS setting could not be saved: %v", err)
+			}
+		})
+	}
+}
+
+// Enabling on top of hand-written response rules would put the generated tail
+// behind somebody's terminal `respond` — active in the panel, dead at runtime,
+// and invisible because the rule list hides it.
+func TestDnsFallbackRefusesToShareWithHandWrittenRules(t *testing.T) {
+	m := fallbackManager(t, `{`+twoServers+`, "rules": [{"action": "evaluate", "server": "primary"}, {"domain": ["example.com"], "server": "backup"}]}`)
+	err := m.UpdateDnsSettings(map[string]interface{}{"fallback": map[string]interface{}{
+		"enabled": true, "primary": "primary", "fallback": "backup", "rcodes": []interface{}{"NXDOMAIN"},
+	}})
+	if err == nil {
+		t.Fatalf("want a refusal, got rules %#v", m.getDnsArray("rules"))
+	}
+	if n := len(m.getDnsArray("rules")); n != 2 {
+		t.Fatalf("the operator's rules were touched: %#v", m.getDnsArray("rules"))
+	}
+}
+
+// Deleting a server the tail points at must fail — today it does only because the
+// generic reference scan happens to see the generated rules.
+func TestDeleteDnsServerBlockedByFallbackTail(t *testing.T) {
+	m := fallbackManager(t, `{`+twoServers+`}`)
+	err := m.UpdateDnsSettings(map[string]interface{}{"fallback": map[string]interface{}{
+		"enabled": true, "primary": "primary", "fallback": "backup", "rcodes": []interface{}{"NXDOMAIN"},
+	}})
+	if err != nil {
+		t.Fatalf("UpdateDnsSettings: %v", err)
+	}
+	for _, tag := range []string{"primary", "backup"} {
+		err := m.DeleteDnsServer(tag)
+		if err == nil {
+			t.Fatalf("deleting %q, which the fallback uses, must fail", tag)
+		}
+		// The rule index is useless here: the panel hides those rules.
+		if !strings.Contains(err.Error(), "fallback") {
+			t.Fatalf("error should name the fallback, got: %v", err)
+		}
 	}
 }
 

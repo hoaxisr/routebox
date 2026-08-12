@@ -2,6 +2,7 @@ package awg
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"os"
@@ -316,6 +317,63 @@ func TestRenderClientConfStripsAwg3WhenHeaderProtectionOff(t *testing.T) {
 	for _, k := range awg3Keys {
 		if !strings.Contains(conf, k) {
 			t.Fatalf("header protection on, but %s is missing from the client conf:\n%s", k, conf)
+		}
+	}
+}
+
+// A "lo-hi" PersistentKeepalive is AWG 3.0-only as well, and nothing ties it to
+// header protection, so it went on leaking into 2.0 exports after the fields above
+// were dealt with — same rejection, one line further down the file.
+func TestRenderClientConfCollapsesKeepaliveRangeWhenHeaderProtectionOff(t *testing.T) {
+	render := func(t *testing.T, headerKey string) string {
+		t.Helper()
+		m := newTestManager(t, newFakeRunner())
+		m.serverPriv = "AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAEs="
+		m.headerKey = headerKey
+		m.desired = func() EnableInput { return EnableInput{ClientKeepalive: "20-30"} }
+		_ = m.store.Put(Peer{PublicKey: validPub, PrivateKey: "cpriv", Address: "10.10.0.2/32", Name: "bob"})
+		conf, err := m.RenderClientConf(validPub, "1.2.3.4")
+		if err != nil {
+			t.Fatalf("RenderClientConf: %v", err)
+		}
+		return conf
+	}
+
+	if conf := render(t, ""); !strings.Contains(conf, "PersistentKeepalive = 20\n") {
+		t.Fatalf("a ranged keepalive reached a non-awg3 export:\n%s", conf)
+	}
+	if conf := render(t, "TESTHPK000000000000000000000000000000000000=="); !strings.Contains(conf, "PersistentKeepalive = 20-30") {
+		t.Fatalf("header protection on, but the keepalive range was collapsed anyway:\n%s", conf)
+	}
+}
+
+// The vpn:// link is the other half of #60 — AWGM reads the link, not the .conf,
+// and hasAwg3() switches its schema on exactly the fields stripped above.
+func TestRenderVPNLinkCarriesNoAwg3WhenHeaderProtectionOff(t *testing.T) {
+	m := newTestManager(t, newFakeRunner())
+	m.serverPriv = "AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAEs="
+	m.obf = Obfuscation{
+		Jc: 4, Jmin: 40, Jmax: 70, S1: 15, S2: 20, S3: 16, S4: 12,
+		H1: "1-2000", H2: "700000-800000", H3: "1200000-1300000", H4: "1700000-1800000",
+		CPA: "0-48", RAT: "120-150", RekeyTimeout: "5",
+		RejectAfterTime: "180-210", KeepaliveTimeout: "10-25", MaxHandshakeAttempts: "18",
+	}
+	_ = m.store.Put(Peer{PublicKey: validPub, PrivateKey: "cpriv", Address: "10.10.0.2/32", Name: "bob"})
+
+	link, err := m.RenderVPNLink(validPub, "vpn.example.com")
+	if err != nil {
+		t.Fatalf("RenderVPNLink: %v", err)
+	}
+	// Flatten the whole payload — the awg3 values live both in the embedded .conf
+	// text and, for the key, in the container's own fields.
+	decoded, err := json.Marshal(decodeLink(t, link))
+	if err != nil {
+		t.Fatalf("re-marshal: %v", err)
+	}
+	for _, k := range []string{"ContentPaddingAddition", "RekeyAfterTime", "RekeyTimeout",
+		"RejectAfterTime", "KeepaliveTimeout", "MaxHandshakeAttempts", "HeaderProtectionKey"} {
+		if strings.Contains(string(decoded), k) {
+			t.Fatalf("header protection off, but %s reached the vpn:// link:\n%s", k, decoded)
 		}
 	}
 }

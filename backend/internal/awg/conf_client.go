@@ -30,6 +30,16 @@ func (o *Obfuscation) stripAwg3() {
 	o.RekeyTimeout, o.RejectAfterTime, o.KeepaliveTimeout, o.MaxHandshakeAttempts = "", "", "", ""
 }
 
+// collapseRange turns an AWG 3.0 "lo-hi" value into the plain number a pre-3.0
+// client can parse, keeping the low end (the more conservative timer). Anything
+// that is not a range comes back untouched.
+func collapseRange(s string) string {
+	if lo, _, isRange := strings.Cut(s, "-"); isRange {
+		return lo
+	}
+	return s
+}
+
 // ClientConf is the fully-assembled input to BuildClient. Pure — no FS/settings
 // reads inside the builder; the handler assembles this.
 type ClientConf struct {
