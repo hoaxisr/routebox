@@ -106,10 +106,32 @@ func buildFallbackBlock(primary, fallback string, rcodes []string) []interface{}
 	return append(block, map[string]interface{}{"match_response": true, "action": "respond"})
 }
 
+// dnsServerTags is the set of dns.servers[].tag. Caller holds the lock.
+func (m *Manager) dnsServerTags() map[string]bool {
+	tags := make(map[string]bool)
+	for _, s := range m.getDnsArray("servers") {
+		if obj := asRule(s); obj != nil {
+			if t, ok := obj["tag"].(string); ok {
+				tags[t] = true
+			}
+		}
+	}
+	return tags
+}
+
 // readDnsFallback describes the configured fallback for GetDnsSettings. Caller holds the lock.
 func (m *Manager) readDnsFallback() map[string]interface{} {
 	start, primary, fallback, rcodes := findFallbackBlock(m.getDnsArray("rules"))
 	if start < 0 {
+		return map[string]interface{}{"enabled": false}
+	}
+	// Renaming a DNS server leaves the tail pointing at a tag that is gone (nothing
+	// rewrites rule references on rename). Reporting that as a live fallback bricked
+	// the page: it goes back out with every unrelated DNS change and the write side
+	// rejects the unknown tag every time. A tail sing-box itself would refuse to
+	// load reads as "no fallback", and the next save clears it out.
+	tags := m.dnsServerTags()
+	if !tags[primary] || !tags[fallback] {
 		return map[string]interface{}{"enabled": false}
 	}
 	codes := make([]interface{}, len(rcodes))
@@ -151,14 +173,7 @@ func (m *Manager) applyDnsFallback(in map[string]interface{}) error {
 	if primary == fallback {
 		return fmt.Errorf("DNS fallback: the primary and the fallback server must differ")
 	}
-	tags := make(map[string]bool)
-	for _, s := range m.getDnsArray("servers") {
-		if obj := asRule(s); obj != nil {
-			if t, ok := obj["tag"].(string); ok {
-				tags[t] = true
-			}
-		}
-	}
+	tags := m.dnsServerTags()
 	for _, tag := range []string{primary, fallback} {
 		if !tags[tag] {
 			return fmt.Errorf("DNS server '%s' does not exist", tag)

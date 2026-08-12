@@ -105,6 +105,34 @@ func TestDnsFallbackIgnoresBlocksItCannotRewrite(t *testing.T) {
 	}
 }
 
+// Renaming a server the fallback uses is an ordinary panel action, and nothing
+// rewrites rule references. The dangling tail must not read back as live, or every
+// later DNS save is rejected for a tag the operator cannot see.
+func TestDnsFallbackSurvivesServerRename(t *testing.T) {
+	m := fallbackManager(t, `{`+twoServers+`}`)
+	err := m.UpdateDnsSettings(map[string]interface{}{"fallback": map[string]interface{}{
+		"enabled": true, "primary": "primary", "fallback": "backup", "rcodes": []interface{}{"NXDOMAIN"},
+	}})
+	if err != nil {
+		t.Fatalf("UpdateDnsSettings: %v", err)
+	}
+	if err := m.UpdateDnsServer("backup", map[string]interface{}{"tag": "renamed", "type": "udp", "server": "8.8.8.8"}); err != nil {
+		t.Fatalf("UpdateDnsServer: %v", err)
+	}
+
+	got := m.GetDnsSettings()["fallback"].(map[string]interface{})
+	if got["enabled"] != false {
+		t.Fatalf("a tail pointing at a deleted tag read back as live: %#v", got)
+	}
+	// The page sends the whole settings object back on the next change; it must land.
+	if err := m.UpdateDnsSettings(map[string]interface{}{"disable_expire": true, "fallback": got}); err != nil {
+		t.Fatalf("an unrelated DNS setting could not be saved after the rename: %v", err)
+	}
+	if rules := m.getDnsArray("rules"); len(rules) != 0 {
+		t.Fatalf("the dangling tail should have been cleared, got %#v", rules)
+	}
+}
+
 // Enabling on top of hand-written response rules would put the generated tail
 // behind somebody's terminal `respond` — active in the panel, dead at runtime,
 // and invisible because the rule list hides it.
