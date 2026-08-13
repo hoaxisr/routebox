@@ -1,6 +1,7 @@
 import { describe, it, expect } from 'vitest';
 import en from './locales/en.json';
 import ru from './locales/ru.json';
+import { BBR_PROFILES } from '$lib/utils/serverInbound';
 
 // Keys of the hysteria2 congestion-control controls (#59). Every one of these
 // sits on a toggle button, a checkbox label or the hint that explains what the
@@ -17,9 +18,10 @@ const REQUIRED_KEYS = [
 	'inbounds.server.ccBrutalOnly',
 	'inbounds.server.bbrProfile',
 	'inbounds.server.bbrProfileHint',
-	'inbounds.server.bbr.standard',
-	'inbounds.server.bbr.conservative',
-	'inbounds.server.bbr.aggressive'
+	// Derived, not listed: the forms render one button per entry of this list, so
+	// a profile added there without a label would otherwise ship as a raw dotted
+	// path on a button and no test would notice.
+	...BBR_PROFILES.map((p) => `inbounds.server.bbr.${p}`)
 ];
 
 function resolve(obj: unknown, path: string): unknown {

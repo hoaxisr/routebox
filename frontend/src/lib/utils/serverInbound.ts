@@ -7,6 +7,29 @@ export type ServerInboundType = 'vless' | 'trojan' | 'naive' | 'hysteria2' | 'mi
 
 export const PANEL_CERT_PATH = '/etc/routebox/panel-cert/fullchain.pem';
 export const PANEL_KEY_PATH = '/etc/routebox/panel-cert/key.pem';
+
+/** hysteria2 BBR profiles the fork accepts (option/hysteria2.go, enum tag). One
+ *  list for both forms and the locale files — a fourth profile added in one
+ *  place and forgotten in another would render as a raw dotted path. */
+export const BBR_PROFILES = ['standard', 'conservative', 'aggressive'] as const;
+
+/** Which congestion control a hysteria2 SERVER ends up imposing, as the i18n key
+ *  that describes it. Mirrors sing-quic hysteria2/service.go branch for branch:
+ *
+ *    ignore off                  -> the client decides; a client that announced
+ *                                   a rate gets Brutal, one that announced none
+ *                                   gets BBR
+ *    ignore on,  no Down limit   -> BBR forced on everyone
+ *    ignore on,  Down limit set  -> clients that announced no rate are REFUSED
+ *                                   (handed to the masquerade handler)
+ *
+ *  Extracted so the table can be pinned in tests: inverted, the panel would tell
+ *  the operator the opposite of what their server does.
+ */
+export function hy2CongestionSummary(ignoreClientBandwidth: boolean, downMbps: number): string {
+	if (!ignoreClientBandwidth) return 'ccClientDecides';
+	return downMbps > 0 ? 'ccBrutalOnly' : 'ccBbrOnly';
+}
 // xhttp is deliberately absent: it is an OUTBOUND-only transport in the fork.
 // Existing configs may still carry one, so parseServerInbound keeps reading it.
 export type TransportType = 'raw' | 'ws' | 'grpc' | 'httpupgrade' | 'xhttp';

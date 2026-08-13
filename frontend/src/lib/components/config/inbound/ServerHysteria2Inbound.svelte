@@ -3,7 +3,7 @@
 	import ServerTlsConfig from './ServerTlsConfig.svelte';
 	import ServerUsers from './ServerUsers.svelte';
 	import ListenAddressFields from './ListenAddressFields.svelte';
-	import type { ServerFormState } from '$lib/utils/serverInbound';
+	import { BBR_PROFILES, hy2CongestionSummary, type ServerFormState } from '$lib/utils/serverInbound';
 
 	interface Props {
 		state: ServerFormState;
@@ -20,19 +20,13 @@
 	let legacyObfsType = $derived(state.obfsType !== '' && !OBFS_TYPES.includes(state.obfsType));
 
 	// Congestion control (#59). Nothing here is a mode switch — the rates ARE the
-	// switch, and this only names what the combination does, in the fork's own
-	// terms (sing-quic hysteria2/service.go):
-	//   ignore off                   -> the client decides; announced rate = Brutal
-	//   ignore on,  no download cap  -> BBR forced on every client
-	//   ignore on,  download cap set -> BBR clients are turned away
-	const BBR_PROFILES = ['standard', 'conservative', 'aggressive'];
-	let ccSummary = $derived(
-		!state.ignoreClientBandwidth
-			? 'ccClientDecides'
-			: state.downMbps > 0
-				? 'ccBrutalOnly'
-				: 'ccBbrOnly'
-	);
+	// switch; this only names what the combination does. The table lives in
+	// serverInbound.ts so it can be pinned against sing-quic's own branches.
+	let ccSummary = $derived(hy2CongestionSummary(state.ignoreClientBandwidth, state.downMbps));
+	// One of the three states locks clients out rather than merely shaping them,
+	// and the panel's own share links are exactly the ones it locks out — that
+	// cannot read as ordinary grey hint text.
+	let ccLocksOut = $derived(ccSummary === 'ccBrutalOnly');
 </script>
 
 <div class="space-y-4">
@@ -58,7 +52,9 @@
 				class="w-4 h-4 rounded border-[var(--ctp-surface2)] text-[var(--ctp-primary)] focus:ring-[var(--ctp-primary)]" />
 			{$t('inbounds.server.ignoreClientBandwidth')}
 		</label>
-		<p class="mt-1 text-xs text-[var(--ctp-subtext0)]">{$t(`inbounds.server.${ccSummary}`)}</p>
+		<p class="mt-1 text-xs {ccLocksOut ? 'text-[var(--ctp-yellow)]' : 'text-[var(--ctp-subtext0)]'}">
+			{$t(`inbounds.server.${ccSummary}`)}
+		</p>
 	</div>
 
 	<div>

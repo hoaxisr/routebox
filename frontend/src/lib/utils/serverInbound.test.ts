@@ -1,5 +1,11 @@
 import { describe, it, expect } from 'vitest';
-import { buildServerInbound, parseServerInbound, validateServerInbound, type ServerFormState } from './serverInbound';
+import {
+	buildServerInbound,
+	parseServerInbound,
+	validateServerInbound,
+	hy2CongestionSummary,
+	type ServerFormState
+} from './serverInbound';
 
 // Mock translator: returns the i18n key so tests can assert on error KEYS while
 // still exercising the exact translation call sites the component uses.
@@ -137,6 +143,18 @@ describe('parseServerInbound', () => {
 			...base, type: 'hysteria2', tlsMode: 'manual',
 			tls: { ...base.tls, certificate_path: '/c.pem', key_path: '/k.pem' },
 			users: [{ name: 'p', password: 'pw' }]
+		});
+		expect(ib.bbr_profile).toBeUndefined();
+		expect(ib.ignore_client_bandwidth).toBeUndefined();
+	});
+
+	// The keys live behind `type === 'hysteria2'` and that guard is load-bearing:
+	// InboundForm keeps one state object across protocol switches, so a vless save
+	// after touching these toggles would carry them — and the fork rejects an
+	// unknown field at decode, before the VPN comes back up.
+	it('never emits the congestion-control keys on another protocol', () => {
+		const ib = buildServerInbound({
+			...base, type: 'vless', bbrProfile: 'aggressive', ignoreClientBandwidth: true
 		});
 		expect(ib.bbr_profile).toBeUndefined();
 		expect(ib.ignore_client_bandwidth).toBeUndefined();
@@ -528,5 +546,24 @@ describe('hysteria2 gecko obfuscation', () => {
 	it('leaves salamander alone when only one size lingers in state', () => {
 		const s = geckoState({ obfsType: 'salamander', obfsMinPacketSize: 700 });
 		expect(validateServerInbound(s, trKey)['obfsPacketSize']).toBeUndefined();
+	});
+});
+
+// The caption under the server's "decide for the client" checkbox. Inverted, the
+// panel tells the operator the opposite of what their server does — and one of
+// these three states refuses clients rather than shaping them. Pinned against
+// sing-quic hysteria2/service.go, which branches on exactly these two inputs.
+describe('hy2CongestionSummary', () => {
+	it('leaves the choice to the client while the switch is off', () => {
+		expect(hy2CongestionSummary(false, 0)).toBe('ccClientDecides');
+		expect(hy2CongestionSummary(false, 200)).toBe('ccClientDecides');
+	});
+
+	it('forces BBR on everyone when the switch is on and Down is open', () => {
+		expect(hy2CongestionSummary(true, 0)).toBe('ccBbrOnly');
+	});
+
+	it('refuses rate-less clients when the switch is on and Down is capped', () => {
+		expect(hy2CongestionSummary(true, 200)).toBe('ccBrutalOnly');
 	});
 });

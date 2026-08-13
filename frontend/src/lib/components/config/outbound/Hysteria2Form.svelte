@@ -3,6 +3,7 @@
 	import { t } from 'svelte-i18n';
 	import ServerConfig from './ServerConfig.svelte';
 	import DomainResolverField from './DomainResolverField.svelte';
+	import { BBR_PROFILES } from '$lib/utils/serverInbound';
 
 	interface Props {
 		server: string;
@@ -40,11 +41,12 @@
 		onImport
 	}: Props = $props();
 
-	// Congestion control (#59): the two rates above ARE the switch. Announce them
-	// and the server puts the connection on Brutal at that fixed rate; leave them
-	// empty and it is BBR, which measures the link instead — and then this profile
-	// says how hard BBR pushes. '' leaves the fork's default (standard).
-	const BBR_PROFILES = ['standard', 'conservative', 'aggressive'];
+	// Congestion control (#59): the two rates above ARE the switch, and they are
+	// two separate switches — Download is announced to the server and decides how
+	// the SERVER sends, Upload decides how this client sends (sing-quic
+	// client.go: sendBPS of 0 collapses actualTx to 0, so an empty Upload is
+	// always BBR outbound, whatever Download says). The profile below applies to
+	// whichever half ends up on BBR; '' leaves the fork's default (standard).
 
 	const fingerprints = ['chrome', 'firefox', 'safari', 'edge', 'ios', 'android', 'random', 'randomized'];
 
