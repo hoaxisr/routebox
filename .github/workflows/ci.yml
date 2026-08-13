@@ -34,6 +34,26 @@ jobs:
         with:
           go-version-file: go.mod
           cache: true
+      # Several tests hand a generated config to the real binary — the only way
+      # to catch what sing-box refuses to START on (deprecations turned fatal,
+      # rule shapes it rejects) rather than what our own validator knows about.
+      # They t.Skip without a binary, so before this step they never ran here and
+      # a config the panel produced but the box would not load shipped twice.
+      # Best-effort: a GitHub API hiccup must not turn the whole CI red, it just
+      # puts those tests back to skipping.
+      - name: Install amnezia-box for the config-check tests
+        continue-on-error: true
+        run: |
+          set -e
+          rel=$(curl -fsSL -H "Accept: application/vnd.github+json" \
+            https://api.github.com/repos/hoaxisr/amnezia-box/releases/latest)
+          url=$(echo "$rel" | jq -r '[.assets[] | select(.name | endswith("linux-amd64"))][0].browser_download_url')
+          sha=$(echo "$rel" | jq -r '[.assets[] | select(.name | endswith("linux-amd64.sha256"))][0].browser_download_url')
+          curl -fsSL -o /tmp/amnezia-box "$url"
+          curl -fsSL -o /tmp/amnezia-box.sha256 "$sha"
+          echo "$(cut -d' ' -f1 /tmp/amnezia-box.sha256)  /tmp/amnezia-box" | sha256sum -c -
+          install -m 0755 /tmp/amnezia-box /usr/local/bin/amnezia-box
+          amnezia-box version
       - name: Vet, test, build
         run: |
           go vet ./backend/...

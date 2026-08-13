@@ -795,6 +795,28 @@ func stripAnsi(s string) string {
 // binary predates mieru support — and appends a human explanation. Mirrors the
 // supportsV2RayAPI() capability-gate precedent (api/handler.go): name the
 // binary-capability gap instead of surfacing only the raw decoder error.
+// explainCheckErrors appends a human explanation to sing-box's raw check output
+// for the failures whose text names an internal field rather than the thing the
+// operator has to change.
+func explainCheckErrors(errs []string) []string {
+	return missingDomainResolverHint(mieruUnsupportedHint(errs))
+}
+
+// missingDomainResolverHint detects sing-box's `missing-domain-resolver`
+// deprecation FATAL — two or more dns.servers and no route.default_domain_resolver
+// (see domain_resolver.go) — which arrives as two lines of migration prose about
+// a JSON field the operator never typed, on configs the panel itself can produce.
+func missingDomainResolverHint(errs []string) []string {
+	for _, e := range errs {
+		if strings.Contains(e, "missing `route.default_domain_resolver`") {
+			return append(errs, "With two or more DNS servers, amnezia-box needs to be told which one resolves "+
+				"the addresses of outgoing connections, and refuses to start without it. Set Routing → Settings → "+
+				"Default domain resolver to one of your DNS servers, or go back to a single DNS server.")
+		}
+	}
+	return errs
+}
+
 func mieruUnsupportedHint(errs []string) []string {
 	for _, e := range errs {
 		if strings.Contains(e, "type: mieru") && strings.Contains(e, "unknown") {
@@ -851,7 +873,7 @@ func CheckConfigWith(binary, configPath string) (bool, []string) {
 		if len(checkErrs) == 0 {
 			checkErrs = append(checkErrs, err.Error())
 		}
-		return false, mieruUnsupportedHint(checkErrs)
+		return false, explainCheckErrors(checkErrs)
 	}
 
 	return true, nil

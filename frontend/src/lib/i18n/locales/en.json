@@ -559,7 +559,7 @@
     "defaultInterfaceHint": "Bind outbound connections to this network interface",
     "defaultMarkHint": "Set fwmark on outbound connections (0 = none)",
     "defaultDomainResolver": "Default Domain Resolver",
-    "defaultDomainResolverHint": "DNS server tag used for domain resolution in routing",
+    "defaultDomainResolverHint": "DNS server tag used to resolve the addresses of outgoing connections. Required once you have two or more DNS servers — amnezia-box refuses to start without it.",
     "defaultDomainStrategy": "Default Domain Strategy",
     "defaultFallbackDelay": "Fallback Delay",
     "noRoute": "no route",
