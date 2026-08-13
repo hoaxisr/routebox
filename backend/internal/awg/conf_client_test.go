@@ -184,3 +184,27 @@ func TestBuildClientEmptyOmitAndNoPSKAndV6(t *testing.T) {
 		t.Fatalf("IPv6 endpoint must pass through bracketed")
 	}
 }
+
+// TestStripAwg3ClearsAwg31Flags pins that a host without AWG3 at all also loses
+// the 3.1 flags: awg-quick below 3.0 hard-fails on an unknown [Interface] key,
+// so leaving them in would break the whole conf rather than degrade it.
+func TestStripAwg3ClearsAwg31Flags(t *testing.T) {
+	o := Obfuscation{RandomTrailers: true, DisableCookies: true, CPA: "16"}
+	o.stripAwg3()
+	if o.RandomTrailers || o.DisableCookies {
+		t.Fatalf("stripAwg3 left the 3.1 flags: %+v", o)
+	}
+}
+
+// TestStripAwg31KeepsAwg3Fields is the 3.0-capable-but-not-3.1 host: the AWG 3.0
+// params stay, only the two new flags go.
+func TestStripAwg31KeepsAwg3Fields(t *testing.T) {
+	o := Obfuscation{RandomTrailers: true, DisableCookies: true, CPA: "16", RAT: "120-150"}
+	o.stripAwg31()
+	if o.RandomTrailers || o.DisableCookies {
+		t.Fatalf("stripAwg31 left the 3.1 flags: %+v", o)
+	}
+	if o.CPA != "16" || o.RAT != "120-150" {
+		t.Fatalf("stripAwg31 must not touch the 3.0 params: %+v", o)
+	}
+}

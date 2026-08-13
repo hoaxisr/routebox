@@ -21,6 +21,7 @@ func EnableInputFromSettings(s settings.AwgSettings) EnableInput {
 			CPA: s.Obf.ContentPaddingAddition, RAT: s.Obf.RekeyAfterTime,
 			RekeyTimeout: s.Obf.RekeyTimeout, RejectAfterTime: s.Obf.RejectAfterTime,
 			KeepaliveTimeout: s.Obf.KeepaliveTimeout, MaxHandshakeAttempts: s.Obf.MaxHandshakeAttempts,
+			RandomTrailers: s.Obf.RandomTrailers, DisableCookies: s.Obf.DisableCookies,
 		},
 	}
 }

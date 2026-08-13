@@ -19,6 +19,11 @@ type Obfuscation struct {
 	CPA, RAT string
 	// AWG3 device-timers: UintRange strings ("N" or "lo-hi"), seconds/count.
 	RekeyTimeout, RejectAfterTime, KeepaliveTimeout, MaxHandshakeAttempts string
+	// AWG 3.1 device flags. RandomTrailers is symmetric — it is not negotiated
+	// on the wire, so a client below 3.1 drops the lengthened handshakes on its
+	// length check and the tunnel never comes up, silently. DisableCookies is
+	// responder-side policy and is never handed to a client.
+	RandomTrailers, DisableCookies bool
 }
 
 // stripAwg3 zeroes the six sing-box-only AWG3 obfuscation fields (CPA/RAT plus the
@@ -28,6 +33,16 @@ type Obfuscation struct {
 func (o *Obfuscation) stripAwg3() {
 	o.CPA, o.RAT = "", ""
 	o.RekeyTimeout, o.RejectAfterTime, o.KeepaliveTimeout, o.MaxHandshakeAttempts = "", "", "", ""
+	o.stripAwg31()
+}
+
+// stripAwg31 zeroes just the two AWG 3.1 device flags, for a host whose module
+// and tools clear AWG 3.0 but not 3.1. Such a host parses the 3.0 params fine
+// and hard-fails on these two — an unknown key aborts the whole conf, it is not
+// skipped. Also called from stripAwg3, since a host without awg3 at all cannot
+// take them either.
+func (o *Obfuscation) stripAwg31() {
+	o.RandomTrailers, o.DisableCookies = false, false
 }
 
 // collapseRange turns an AWG 3.0 "lo-hi" value into the plain number a pre-3.0
