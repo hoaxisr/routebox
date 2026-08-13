@@ -208,3 +208,37 @@ func TestStripAwg31KeepsAwg3Fields(t *testing.T) {
 		t.Fatalf("stripAwg31 must not touch the 3.0 params: %+v", o)
 	}
 }
+
+// TestClientConfCarriesRandomTrailers pins the symmetric half of the flag. The
+// server draws a random tail on handshakes and there is no negotiation on the
+// wire, so a client conf without the key means the client rejects those
+// handshakes on its length check and the tunnel never comes up — silently.
+//
+// The literal is `on`: a client .conf is read by awg's parse_bool, which takes
+// on/off or a number and rejects "true". The endpoint side is the opposite.
+func TestClientConfCarriesRandomTrailers(t *testing.T) {
+	var b strings.Builder
+	writeObf(&b, Obfuscation{RandomTrailers: true})
+	if !strings.Contains(b.String(), "RandomTrailers = on") {
+		t.Fatalf("expected RandomTrailers = on in:\n%s", b.String())
+	}
+}
+
+func TestClientConfOmitsRandomTrailersWhenOff(t *testing.T) {
+	var b strings.Builder
+	writeObf(&b, Obfuscation{})
+	if strings.Contains(b.String(), "RandomTrailers") {
+		t.Fatalf("expected no RandomTrailers when off:\n%s", b.String())
+	}
+}
+
+// TestClientConfOmitsDisableCookies keeps the responder-side flag out of the
+// shared obfuscation renderer: it is server policy, and an unknown key aborts a
+// client's whole parse rather than being skipped.
+func TestClientConfOmitsDisableCookies(t *testing.T) {
+	var b strings.Builder
+	writeObf(&b, Obfuscation{DisableCookies: true})
+	if strings.Contains(b.String(), "DisableCookies") {
+		t.Fatalf("DisableCookies must not reach a client conf:\n%s", b.String())
+	}
+}

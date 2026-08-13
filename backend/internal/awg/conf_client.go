@@ -133,6 +133,17 @@ func writeObf(b *strings.Builder, o Obfuscation) {
 			fmt.Fprintf(b, "%s = %s\n", f.k, f.v)
 		}
 	}
+	// AWG 3.1. RandomTrailers only: it is symmetric, so a client conf without
+	// it means the client drops the server's lengthened handshakes and the
+	// tunnel never comes up. DisableCookies is responder-side policy and is
+	// emitted by RenderServer alone, since this renderer is shared with
+	// BuildClient and an unknown key aborts a client's whole parse.
+	//
+	// The literal is `on`, not `true`: awg reads .conf with parse_bool, which
+	// takes on/off or a number and rejects "true" outright.
+	if o.RandomTrailers {
+		b.WriteString("RandomTrailers = on\n")
+	}
 }
 
 // writeMimic emits the client-only CPS fields (I1..I5). Empty Set -> nothing.
