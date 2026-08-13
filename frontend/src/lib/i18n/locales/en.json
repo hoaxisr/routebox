@@ -414,7 +414,7 @@
     "bandwidthLimits": "Bandwidth Limits",
     "uploadMbps": "Upload (Mbps)",
     "downloadMbps": "Download (Mbps)",
-    "bandwidthHint": "Download is the congestion-control switch: fill it in and the client announces that rate, which puts the connection on Hysteria Brutal — Upload then caps the rate the two ends settle on. Leave Download empty and the connection runs BBR, which measures the link itself and ignores both fields.",
+    "bandwidthHint": "These two fields select the algorithm, one direction each. Download is announced to the server and decides how the server sends to you; Upload decides how this client sends, and left empty it is always BBR no matter what Download says. A direction with a rate runs Hysteria Brutal at it, a direction without runs BBR, which measures the link itself.",
     "bbrProfile": "BBR profile",
     "bbrProfileHint": "Only applies to connections that end up on BBR. The default is Standard.",
     "obfuscationType": "Obfuscation Type",
@@ -919,7 +919,7 @@
       "ignoreClientBandwidth": "Decide the algorithm on the server",
       "ccClientDecides": "Off: each client decides. A client that announces its own rates gets Brutal, one that announces none gets BBR.",
       "ccBbrOnly": "On, with no Down limit: every client is put on BBR, whatever it asks for.",
-      "ccBrutalOnly": "On, with a Down limit: clients asking for BBR are turned away, the rest are held to the rates above.",
+      "ccBrutalOnly": "On, with a Down limit: clients that announce no rate of their own are REFUSED — they get an authentication failure and the server logs it at debug level only. Links issued by this panel carry no rates, so this turns away every client you handed out. Only clients configured with their own Up/Down get in, held to the rates above.",
       "bbrProfile": "BBR profile",
       "bbrProfileHint": "Only applies to connections that end up on BBR. The default is Standard.",
       "bbr": {
