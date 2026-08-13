@@ -294,6 +294,16 @@ func (m *Manager) renderServerSpec() *config.AwgServerSpec {
 		if obf.MaxHandshakeAttempts != "" {
 			obfMap["max_handshake_attempts"] = obf.MaxHandshakeAttempts
 		}
+		// AWG 3.1 flags. Booleans, not strings: BuildAwgServerEndpoint passes
+		// them straight into the endpoint, and the engine reads them from UAPI
+		// with strconv.ParseBool. Only the enabled state is set — off is the
+		// device default and would only churn the applied-config hash.
+		if obf.RandomTrailers {
+			obfMap["random_trailers"] = true
+		}
+		if obf.DisableCookies {
+			obfMap["disable_cookies"] = true
+		}
 	} else {
 		headerKey = ""
 	}
