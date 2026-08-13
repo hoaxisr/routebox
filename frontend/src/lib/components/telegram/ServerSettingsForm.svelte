@@ -177,15 +177,24 @@
 	</div>
 	<div class="field">
 		<label for="mt-outbound">{$t('telegram.outbound')}</label>
+		<!-- The config's own direct outbound is usually tagged `direct`, so it read
+		     as "direct · direct" one line under "Direct (this server)" and the two
+		     were impossible to tell apart (issue #69). The group header says which
+		     half of the list you are in, and a tag that already IS its type does not
+		     repeat itself. -->
 		<select id="mt-outbound" bind:value={form.outbound}>
 			<option value="">{$t('telegram.outboundDirect')}</option>
-			{#if missingOutbound}
-				<!-- Same separator as the rows below it: one list, one idiom. -->
-				<option value={form.outbound}>{form.outbound} · {$t('telegram.outboundMissing')}</option>
+			{#if missingOutbound || outbounds.length > 0}
+				<optgroup label={$t('telegram.outboundGroup')}>
+					{#if missingOutbound}
+						<!-- Same separator as the rows below it: one list, one idiom. -->
+						<option value={form.outbound}>{form.outbound} · {$t('telegram.outboundMissing')}</option>
+					{/if}
+					{#each outbounds as o (o.tag)}
+						<option value={o.tag}>{o.tag === o.type ? o.tag : `${o.tag} · ${o.type}`}</option>
+					{/each}
+				</optgroup>
 			{/if}
-			{#each outbounds as o (o.tag)}
-				<option value={o.tag}>{o.tag} · {o.type}</option>
-			{/each}
 		</select>
 		<span class="hint">{$t('telegram.outboundHint')}</span>
 	</div>
@@ -281,7 +290,10 @@
 	}
 	.field input,
 	.field select {
-		background: var(--ctp-base);
+		/* background-color, not the `background` shorthand: the shorthand also
+		   resets background-image, and that is where app.css draws the chevron
+		   that tells a select apart from a text input (issue #69). */
+		background-color: var(--ctp-base);
 		border: 1px solid var(--ctp-surface2);
 		border-radius: 0.375rem;
 		padding: 0.5rem 0.7rem;

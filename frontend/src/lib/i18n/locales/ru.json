@@ -1987,6 +1987,7 @@
     "outbound": "Выход в Telegram",
     "outboundHint": "Через какой outbound или endpoint прокси подключается к серверам Telegram. «Напрямую» — с адреса этого сервера.",
     "outboundDirect": "Напрямую (этот сервер)",
+    "outboundGroup": "Отправлять через",
     "outboundNone": "Outbound'ы и endpoint'ы ещё не настроены — добавьте их в разделе «Конфигурация», чтобы заворачивать туда трафик Telegram.",
     "outboundMissing": "не найден",
     "outboundMissingWarning": "Выбранного выхода больше нет в конфигурации sing-box. Подключения к Telegram будут падать, пока вы не выберете другой или не вернёте прежний.",

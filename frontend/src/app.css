@@ -188,6 +188,12 @@ select option {
 	color: var(--ctp-text);
 }
 
+/* Group headers otherwise render on the browser's own white in dark mode. */
+select optgroup {
+	background-color: var(--ctp-surface0);
+	color: var(--ctp-subtext1);
+}
+
 /* Custom checkbox styling */
 input[type="checkbox"] {
 	appearance: none;

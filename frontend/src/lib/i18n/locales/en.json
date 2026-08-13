@@ -1973,6 +1973,7 @@
     "outbound": "Telegram exit",
     "outboundHint": "Which outbound or endpoint the proxy reaches Telegram through. Direct uses this server's own address.",
     "outboundDirect": "Direct (this server)",
+    "outboundGroup": "Route through",
     "outboundNone": "No outbounds or endpoints are configured yet — add one under Configuration to route Telegram through it.",
     "outboundMissing": "missing",
     "outboundMissingWarning": "The chosen exit no longer exists in the sing-box config. Telegram connections will fail until you pick another one or restore it.",
