@@ -47,3 +47,14 @@ describe('awg3 preset timers', () => {
 		expect(o.max_handshake_attempts).toBe('');
 	});
 });
+
+// ponytail: source-text check, not a render test. The awg3.1 flags were invisible
+// in the panel for a release because ServerSettingsForm forgot to forward
+// awg31Available — Svelte drops an unpassed prop silently. Cheapest guard.
+describe('awg3.1 flag gating', () => {
+	it('ServerSettingsForm forwards awg31Available to ObfuscationControl', async () => {
+		const src = (await import('./ServerSettingsForm.svelte?raw')).default;
+		const tag = src.match(/<ObfuscationControl[^>]*>/)?.[0] ?? '';
+		expect(tag).toContain('awg31Available');
+	});
+});

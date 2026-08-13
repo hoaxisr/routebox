@@ -94,7 +94,7 @@
 
 <div class="settings-divider"></div>
 
-<ObfuscationControl bind:obf={form.obf} bind:preset={form.obf_preset} {awg3Available} />
+<ObfuscationControl bind:obf={form.obf} bind:preset={form.obf_preset} {awg3Available} {awg31Available} />
 
 {#if awg3Available}
 	<div class="hp-row">
