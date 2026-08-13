@@ -71,6 +71,38 @@ func awg3MajorAtLeast3(s string) bool {
 // FAIL-CLOSED throughout: any read/exec/parse error is "no", matching
 // KernelBackendUnsupported's stance of refusing rather than guessing.
 var KernelSupportsAWG3 = func() bool {
+	return kernelAndToolsClear(awg3MajorAtLeast3)
+}
+
+// awg3AtLeast reports whether s carries a "[v]X.Y..." version token at or above
+// the given major.minor. awg3MajorAtLeast3 above reads only the major component
+// and so cannot tell 3.0 from 3.1 — which matters because a 3.0 module ignores
+// the two AWG 3.1 device flags without an error, exactly the way a 2.x module
+// ignores the 3.0 params. PURE.
+func awg3AtLeast(s string, major, minor int) bool {
+	for _, tok := range strings.Fields(s) {
+		tok = strings.TrimPrefix(tok, "v")
+		var maj, min int
+		if _, err := fmt.Sscanf(tok, "%d.%d", &maj, &min); err == nil {
+			return maj > major || (maj == major && min >= minor)
+		}
+	}
+	return false
+}
+
+// KernelSupportsAWG31 is KernelSupportsAWG3 with the bar raised to 3.1, for the
+// two device flags that version added (RandomTrailers, DisableCookies). Same
+// sources, same loaded-vs-on-disk arbitration, same fail-closed stance.
+var KernelSupportsAWG31 = func() bool {
+	return kernelAndToolsClear(func(s string) bool { return awg3AtLeast(s, 3, 1) })
+}
+
+// kernelAndToolsClear holds the version arbitration both gates share: which
+// module version counts (see the comment on KernelSupportsAWG3), that the tools
+// binary has to clear the same bar independently, and that every read/exec/parse
+// error is a "no". Kept in one place so the two gates cannot drift apart on the
+// fail-closed rules — those are the subtle part, not the comparison.
+func kernelAndToolsClear(clears func(string) bool) bool {
 	modOut, err := sysfsModuleVersion()
 	if err != nil {
 		if !errors.Is(err, fs.ErrNotExist) {
@@ -80,11 +112,11 @@ var KernelSupportsAWG3 = func() bool {
 			return false
 		}
 	}
-	if !awg3MajorAtLeast3(modOut) {
+	if !clears(modOut) {
 		return false
 	}
 	toolsOut, err := kernelToolsVersion()
-	if err != nil || !awg3MajorAtLeast3(toolsOut) {
+	if err != nil || !clears(toolsOut) {
 		return false
 	}
 	return true
