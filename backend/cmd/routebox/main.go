@@ -459,6 +459,7 @@ func main() {
 	// Kernel backend's own awg3 gate: independent of the sing-box binary above —
 	// it checks the loaded amneziawg module + awg-quick/tools instead.
 	awgMgr.SetKernelSupportsAWG3(awg.KernelSupportsAWG3)
+	awgMgr.SetKernelSupportsAWG31(awg.KernelSupportsAWG31)
 	// Warm the Manager so client-config rendering works after a restart without a
 	// re-enable: singbox restores serverPriv/obf from settings + the store server key
 	// (no awg-quick); kernel reads the persisted .conf (iface keeps running via systemd).

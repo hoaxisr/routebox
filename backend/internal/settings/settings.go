@@ -119,6 +119,11 @@ type AwgObf struct {
 	RejectAfterTime      string `toml:"reject_after_time" json:"reject_after_time"`
 	KeepaliveTimeout     string `toml:"keepalive_timeout" json:"keepalive_timeout"`
 	MaxHandshakeAttempts string `toml:"max_handshake_attempts" json:"max_handshake_attempts"`
+	// AWG 3.1 device-флаги. RandomTrailers симметричен: по проводу не
+	// согласуется, и клиент ниже 3.1 молча не поднимет туннель. DisableCookies —
+	// политика ответчика, клиентам не выдаётся.
+	RandomTrailers bool `toml:"random_trailers" json:"random_trailers"`
+	DisableCookies bool `toml:"disable_cookies" json:"disable_cookies"`
 }
 
 // UpdatesSettings configures binary update checks
