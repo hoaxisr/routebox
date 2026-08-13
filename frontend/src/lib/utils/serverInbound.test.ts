@@ -23,6 +23,8 @@ const base: ServerFormState = {
 	users: [{ name: 'phone', uuid: 'U1', flow: 'xtls-rprx-vision' }],
 	upMbps: 0,
 	downMbps: 0,
+	bbrProfile: '',
+	ignoreClientBandwidth: false,
 	obfsType: '',
 	obfsPassword: '',
 	obfsMinPacketSize: 0,
@@ -124,6 +126,34 @@ describe('parseServerInbound', () => {
 		const state = parseServerInbound({ type: 'vless', tag: 'v', listen_port: 443, users: [] });
 		expect(state.tlsMode).toBe('manual');
 		expect(state.listenPort).toBe(443);
+	});
+
+	// #59: the congestion-control keys are absent unless asked for — an empty
+	// bbr_profile is not the same as "standard", the fork rejects unknown values
+	// and an unasked-for ignore_client_bandwidth would silently turn BBR clients
+	// away on every server the panel ever wrote.
+	it('omits the congestion-control keys when they are left alone', () => {
+		const ib = buildServerInbound({
+			...base, type: 'hysteria2', tlsMode: 'manual',
+			tls: { ...base.tls, certificate_path: '/c.pem', key_path: '/k.pem' },
+			users: [{ name: 'p', password: 'pw' }]
+		});
+		expect(ib.bbr_profile).toBeUndefined();
+		expect(ib.ignore_client_bandwidth).toBeUndefined();
+	});
+
+	it('round-trips the congestion-control keys', () => {
+		const ib = buildServerInbound({
+			...base, type: 'hysteria2', tlsMode: 'manual',
+			tls: { ...base.tls, certificate_path: '/c.pem', key_path: '/k.pem' },
+			users: [{ name: 'p', password: 'pw' }],
+			bbrProfile: 'aggressive', ignoreClientBandwidth: true
+		});
+		expect(ib.bbr_profile).toBe('aggressive');
+		expect(ib.ignore_client_bandwidth).toBe(true);
+		const state = parseServerInbound(ib);
+		expect(state.bbrProfile).toBe('aggressive');
+		expect(state.ignoreClientBandwidth).toBe(true);
 	});
 
 	it('round-trips hysteria2 obfs and bandwidth', () => {

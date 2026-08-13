@@ -18,6 +18,21 @@
 	// hand-edited config on the next save would be the wrong kind of helpful.
 	const OBFS_TYPES = ['salamander', 'gecko'];
 	let legacyObfsType = $derived(state.obfsType !== '' && !OBFS_TYPES.includes(state.obfsType));
+
+	// Congestion control (#59). Nothing here is a mode switch — the rates ARE the
+	// switch, and this only names what the combination does, in the fork's own
+	// terms (sing-quic hysteria2/service.go):
+	//   ignore off                   -> the client decides; announced rate = Brutal
+	//   ignore on,  no download cap  -> BBR forced on every client
+	//   ignore on,  download cap set -> BBR clients are turned away
+	const BBR_PROFILES = ['standard', 'conservative', 'aggressive'];
+	let ccSummary = $derived(
+		!state.ignoreClientBandwidth
+			? 'ccClientDecides'
+			: state.downMbps > 0
+				? 'ccBrutalOnly'
+				: 'ccBbrOnly'
+	);
 </script>
 
 <div class="space-y-4">
@@ -34,6 +49,29 @@
 			<input id="downMbps" type="number" bind:value={state.downMbps} min="0"
 				class="w-full px-3 py-2 bg-[var(--ctp-surface0)] border border-[var(--ctp-surface2)] rounded-lg text-[var(--ctp-text)] focus:outline-none focus:ring-2 focus:ring-[var(--ctp-primary)]" />
 		</div>
+	</div>
+	<p class="-mt-2 text-xs text-[var(--ctp-subtext0)]">{$t('inbounds.server.bandwidthHint')}</p>
+
+	<div>
+		<label class="flex items-center gap-2 text-sm font-medium text-[var(--ctp-subtext1)]">
+			<input type="checkbox" bind:checked={state.ignoreClientBandwidth}
+				class="w-4 h-4 rounded border-[var(--ctp-surface2)] text-[var(--ctp-primary)] focus:ring-[var(--ctp-primary)]" />
+			{$t('inbounds.server.ignoreClientBandwidth')}
+		</label>
+		<p class="mt-1 text-xs text-[var(--ctp-subtext0)]">{$t(`inbounds.server.${ccSummary}`)}</p>
+	</div>
+
+	<div>
+		<span class="block text-sm font-medium text-[var(--ctp-subtext1)] mb-1">{$t('inbounds.server.bbrProfile')}</span>
+		<div class="flex gap-2 flex-wrap" role="group" aria-label={$t('inbounds.server.bbrProfile')}>
+			<button type="button" class="toggle-btn {state.bbrProfile === '' ? 'selected' : ''}"
+				onclick={() => (state.bbrProfile = '')}>{$t('common.default')}</button>
+			{#each BBR_PROFILES as p (p)}
+				<button type="button" class="toggle-btn {state.bbrProfile === p ? 'selected' : ''}"
+					onclick={() => (state.bbrProfile = p)}>{$t(`inbounds.server.bbr.${p}`)}</button>
+			{/each}
+		</div>
+		<p class="mt-1 text-xs text-[var(--ctp-subtext0)]">{$t('inbounds.server.bbrProfileHint')}</p>
 	</div>
 	<div class="grid grid-cols-2 gap-4">
 		<div>
