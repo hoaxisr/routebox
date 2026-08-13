@@ -216,6 +216,9 @@ func (m *Manager) Enable(ctx context.Context, in EnableInput) error {
 			}
 		}
 	}
+	if kAwg3 && !(m.kernelSupports31Fn != nil && m.kernelSupports31Fn()) {
+		obf.stripAwg31()
+	}
 	if !kAwg3 {
 		obf.stripAwg3()
 	}
