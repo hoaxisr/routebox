@@ -2,6 +2,7 @@
 	import { t } from 'svelte-i18n';
 	import type { AwgObf } from '$lib/types';
 	import { PRESETS, OBF_J, OBF_S, OBF_STR } from './obf';
+	import Modal from '$lib/components/shared/Modal.svelte';
 
 	interface Props {
 		obf: AwgObf;
@@ -9,12 +10,36 @@
 		/** Shows the awg3-only fields (CPA/RAT): true on sing-box always, true on the
 		 * kernel backend only when the host confirms awg3 capability. */
 		awg3Available?: boolean;
+		/** Shows the AWG 3.1 device flags. A 3.0 module ignores them without an
+		 * error, so gating on awg3Available alone would leave the server looking
+		 * configured while running as before. */
+		awg31Available?: boolean;
 	}
 
 	// Bindable so the parent's form.obf / form.obf_preset stay in sync.
-	let { obf = $bindable(), preset = $bindable(), awg3Available = false }: Props = $props();
+	let { obf = $bindable(), preset = $bindable(), awg3Available = false, awg31Available = false }: Props = $props();
 
 	let advOpen = $state(false);
+	// Turning random trailers ON is confirmed explicitly: it drops every client
+	// below 3.1 with no error on their side, and every issued config has to be
+	// reissued. Turning it OFF needs no confirmation — that only restores
+	// compatibility.
+	let confirmTrailers = $state(false);
+
+	function onTrailersToggle(next: boolean) {
+		if (next) {
+			confirmTrailers = true;
+			return;
+		}
+		obf.random_trailers = false;
+		markCustom();
+	}
+
+	function acceptTrailers() {
+		obf.random_trailers = true;
+		confirmTrailers = false;
+		markCustom();
+	}
 
 	function pick(name: string) {
 		// Presets now carry the awg3 fields too (off clears them), so apply verbatim.
@@ -171,11 +196,99 @@
 				</div>
 			</div>
 			{/if}
+			{#if awg31Available}
+			<div class="flag-list">
+				<label class="flag">
+					<input
+						type="checkbox"
+						checked={obf.random_trailers ?? false}
+						onchange={(e) => onTrailersToggle(e.currentTarget.checked)}
+					/>
+					<span>
+						<span class="flag-name">{$t('awg.randomTrailers')}</span>
+						<span class="flag-hint">{$t('awg.randomTrailersHint')}</span>
+						<span class="flag-warn">{$t('awg.randomTrailersWarn')}</span>
+					</span>
+				</label>
+				<label class="flag">
+					<input
+						type="checkbox"
+						checked={obf.disable_cookies ?? false}
+						onchange={(e) => {
+							obf.disable_cookies = e.currentTarget.checked;
+							markCustom();
+						}}
+					/>
+					<span>
+						<span class="flag-name">{$t('awg.disableCookies')}</span>
+						<span class="flag-hint">{$t('awg.disableCookiesHint')}</span>
+					</span>
+				</label>
+			</div>
+			{/if}
 		</div>
 	{/if}
 </div>
 
+<Modal open={confirmTrailers} title={$t('awg.randomTrailersConfirmTitle')} size="sm" onClose={() => (confirmTrailers = false)}>
+	<p class="confirm-text">{$t('awg.randomTrailersConfirmBody')}</p>
+	<p class="confirm-text">{$t('awg.randomTrailersConfirmReissue')}</p>
+	{#snippet footer()}
+		<button type="button" class="preset-btn" onclick={() => (confirmTrailers = false)}>{$t('common.cancel')}</button>
+		<button type="button" class="preset-btn selected" onclick={acceptTrailers}>{$t('awg.randomTrailersConfirmAccept')}</button>
+	{/snippet}
+</Modal>
+
 <style>
+	.flag-list {
+		display: flex;
+		flex-direction: column;
+		gap: 1rem;
+		margin-top: 1rem;
+	}
+
+	.flag {
+		display: flex;
+		align-items: flex-start;
+		gap: 0.625rem;
+		cursor: pointer;
+	}
+
+	.flag input {
+		margin-top: 0.2rem;
+		flex: none;
+	}
+
+	.flag-name,
+	.flag-hint,
+	.flag-warn {
+		display: block;
+	}
+
+	.flag-name {
+		font-weight: 600;
+	}
+
+	.flag-hint,
+	.flag-warn {
+		font-size: 0.8125rem;
+		line-height: 1.45;
+	}
+
+	.flag-hint {
+		opacity: 0.75;
+	}
+
+	.flag-warn {
+		margin-top: 0.25rem;
+		color: var(--warn, #b45309);
+	}
+
+	.confirm-text {
+		margin: 0 0 0.75rem;
+		line-height: 1.5;
+	}
+
 	.obf-head {
 		display: flex;
 		align-items: center;

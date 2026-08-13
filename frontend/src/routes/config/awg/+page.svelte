@@ -28,6 +28,7 @@
 	// and on the kernel backend only when the host's module + awg-quick/tools have
 	// both confirmed awg3 capability (status.kernel_awg3_available).
 	const awg3Available = $derived(isSingbox || !!status?.kernel_awg3_available);
+	const awg31Available = $derived(isSingbox || !!status?.kernel_awg31_available);
 
 	async function changeBackend(b: 'kernel' | 'singbox') {
 		try {
@@ -309,7 +310,7 @@
 			</button>
 			{#if settingsOpen}
 				<div class="disclosure-body">
-					<ServerSettingsForm bind:form saving={saving || enabling} {awg3Available} {isSingbox} applied={status.enabled} dirty={formDirty} ipv6Active={status.ipv6_active} onSave={saveOrApply} onReset={onResetClick} />
+					<ServerSettingsForm bind:form saving={saving || enabling} {awg3Available} {awg31Available} {isSingbox} applied={status.enabled} dirty={formDirty} ipv6Active={status.ipv6_active} onSave={saveOrApply} onReset={onResetClick} />
 				</div>
 			{/if}
 		</div>
@@ -380,7 +381,7 @@
 						</div>
 					</div>
 					<p class="step-desc">{$t('awg.stepConfigureDesc')}</p>
-					<ServerSettingsForm bind:form saving={saving || enabling} {awg3Available} {isSingbox} applied={status.enabled} dirty={formDirty} ipv6Active={status.ipv6_active} onSave={saveOrApply} onReset={onResetClick} />
+					<ServerSettingsForm bind:form saving={saving || enabling} {awg3Available} {awg31Available} {isSingbox} applied={status.enabled} dirty={formDirty} ipv6Active={status.ipv6_active} onSave={saveOrApply} onReset={onResetClick} />
 				</div>
 			</section>
 
