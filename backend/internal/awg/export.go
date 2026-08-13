@@ -88,6 +88,13 @@ func BuildClientEndpoint(s ClientEndpointSpec) map[string]interface{} {
 	putObfStr("reject_after_time", s.Obf.RejectAfterTime)
 	putObfStr("keepalive_timeout", s.Obf.KeepaliveTimeout)
 	putObfStr("max_handshake_attempts", s.Obf.MaxHandshakeAttempts)
+	// AWG 3.1 flags: emitted only when on, as booleans (see singbox.go).
+	if s.Obf.RandomTrailers {
+		ep["random_trailers"] = true
+	}
+	if s.Obf.DisableCookies {
+		ep["disable_cookies"] = true
+	}
 	putObfStr("header_protection_key", s.HeaderProtectionKey)
 	putObfStr("i1", s.Mimic.I1)
 	putObfStr("i2", s.Mimic.I2)

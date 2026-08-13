@@ -136,3 +136,109 @@ func TestSysfsModuleVersionDefault(t *testing.T) {
 		t.Fatalf("sysfsModuleVersion must fail with fs.ErrNotExist when the module is not loaded, got %v", err)
 	}
 }
+
+func TestAwg3AtLeast(t *testing.T) {
+	cases := []struct {
+		name         string
+		in           string
+		major, minor int
+		want         bool
+	}{
+		{"3.1 clears the 3.1 bar", "3.1.20260812\n", 3, 1, true},
+		{"3.0 does not clear the 3.1 bar", "3.0.20260805\n", 3, 1, false},
+		{"3.0 clears the 3.0 bar", "3.0.20260731-04\n", 3, 0, true},
+		{"tools 3.1 line", "amneziawg-tools v3.1.20260812 - https://amnezia.org\n", 3, 1, true},
+		{"tools 3.0 line", "amneziawg-tools v3.0.20260730 - https://amnezia.org\n", 3, 1, false},
+		{"newer major clears it", "4.0.20270101\n", 3, 1, true},
+		{"newer minor clears it", "3.2.20270101\n", 3, 1, true},
+		{"v1 era", "1.0.20260725\n", 3, 1, false},
+		{"garbage", "not a version at all\n", 3, 1, false},
+		{"empty", "", 3, 1, false},
+	}
+	for _, c := range cases {
+		t.Run(c.name, func(t *testing.T) {
+			if got := awg3AtLeast(c.in, c.major, c.minor); got != c.want {
+				t.Fatalf("awg3AtLeast(%q, %d, %d) = %v, want %v", c.in, c.major, c.minor, got, c.want)
+			}
+		})
+	}
+}
+
+func TestKernelSupportsAWG31(t *testing.T) {
+	origSysfs, origMod, origTools := sysfsModuleVersion, kernelModuleVersion, kernelToolsVersion
+	t.Cleanup(func() {
+		sysfsModuleVersion, kernelModuleVersion, kernelToolsVersion = origSysfs, origMod, origTools
+	})
+
+	notLoaded := func() (string, error) { return "", fs.ErrNotExist }
+	toolsV31 := func() (string, error) { return "amneziawg-tools v3.1.20260812 - https://amnezia.org\n", nil }
+	toolsV30 := func() (string, error) { return "amneziawg-tools v3.0.20260730 - https://amnezia.org\n", nil }
+
+	// The whole point of the separate gate: a 3.0 pairing clears KernelSupportsAWG3
+	// and must NOT clear this one. A 3.0 module ignores the two 3.1 device flags
+	// without an error, so the tunnel would look configured and run as before.
+	t.Run("loaded 3.0 with 3.0 tools => not 3.1 (but is awg3)", func(t *testing.T) {
+		sysfsModuleVersion = func() (string, error) { return "3.0.20260805\n", nil }
+		kernelToolsVersion = toolsV30
+		if !KernelSupportsAWG3() {
+			t.Fatal("sanity: a 3.0 pairing must still clear the 3.0 gate")
+		}
+		if KernelSupportsAWG31() {
+			t.Fatal("a 3.0 pairing must not clear the 3.1 gate")
+		}
+	})
+
+	t.Run("loaded 3.1 with 3.1 tools => supported", func(t *testing.T) {
+		sysfsModuleVersion = func() (string, error) { return "3.1.20260812\n", nil }
+		kernelModuleVersion = func() (string, error) {
+			t.Error("modinfo must not be consulted when the module is loaded")
+			return "3.0.20260805\n", nil
+		}
+		kernelToolsVersion = toolsV31
+		if !KernelSupportsAWG31() {
+			t.Fatal("expected supported when the loaded module and tools both report 3.1")
+		}
+	})
+
+	// Both artefacts are versioned independently, so each has to clear the bar
+	// on its own — the same rule the 3.0 gate enforces.
+	t.Run("module 3.1, tools 3.0 => unsupported", func(t *testing.T) {
+		sysfsModuleVersion = func() (string, error) { return "3.1.20260812\n", nil }
+		kernelToolsVersion = toolsV30
+		if KernelSupportsAWG31() {
+			t.Fatal("3.1 module with 3.0 tools must not be trusted")
+		}
+	})
+
+	t.Run("module 3.0, tools 3.1 => unsupported", func(t *testing.T) {
+		sysfsModuleVersion = func() (string, error) { return "3.0.20260805\n", nil }
+		kernelToolsVersion = toolsV31
+		if KernelSupportsAWG31() {
+			t.Fatal("3.0 module with 3.1 tools must not be trusted")
+		}
+	})
+
+	t.Run("not loaded, disk 3.1, tools 3.1 => supported", func(t *testing.T) {
+		sysfsModuleVersion = notLoaded
+		kernelModuleVersion = func() (string, error) { return "3.1.20260812\n", nil }
+		kernelToolsVersion = toolsV31
+		if !KernelSupportsAWG31() {
+			t.Fatal("an unloaded 3.1 module on disk is what modprobe will load")
+		}
+	})
+
+	// Fail-closed: an unreadable sysfs that is not "not exists" may well mean a
+	// loaded module we cannot inspect, and guessing from disk is the same trap
+	// the 3.0 gate refuses.
+	t.Run("sysfs fails for another reason => unsupported, no disk fallback", func(t *testing.T) {
+		sysfsModuleVersion = func() (string, error) { return "", errors.New("permission denied") }
+		kernelModuleVersion = func() (string, error) {
+			t.Error("modinfo must not be consulted when sysfs failed for a non-notexist reason")
+			return "3.1.20260812\n", nil
+		}
+		kernelToolsVersion = toolsV31
+		if KernelSupportsAWG31() {
+			t.Fatal("expected fail-closed")
+		}
+	})
+}

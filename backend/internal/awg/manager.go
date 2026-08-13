@@ -110,6 +110,11 @@ type Manager struct {
 	// "supported" is the wrong default.
 	kernelSupports3Fn func() bool
 
+	// kernelSupports31Fn is the same gate raised to 3.1, for the two device
+	// flags that version added. Separate from kernelSupports3Fn because a 3.0
+	// module clears that one and still ignores these flags without an error.
+	kernelSupports31Fn func() bool
+
 	// peerStatsFn is the singbox backend's real handshake/tx/rx signal: the
 	// WireGuard device's own UAPI state via amnezia-box's /awg/{tag}/peers
 	// (see SetPeerStats). Returns ErrAwgPeerStatsUnsupported on a pre-patch
@@ -349,6 +354,11 @@ func (m *Manager) Rehydrate(ctx context.Context, in EnableInput) {
 		return
 	}
 	kAwg3 := m.kernelSupports3Fn != nil && m.kernelSupports3Fn()
+	if kAwg3 && !(m.kernelSupports31Fn != nil && m.kernelSupports31Fn()) {
+		// awg3-capable but not 3.1: the 3.0 params render fine, the two 3.1
+		// flags do not — same hard-fail on an unknown key.
+		obf.stripAwg31()
+	}
 	if !kAwg3 {
 		// CPA/RAT + the four device-timers never render into the awg-quick conf on
 		// an awg3-incapable host — restoring them into m.obf would make

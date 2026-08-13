@@ -85,3 +85,11 @@ func (m *Manager) SetKernelSupportsAWG3(fn func() bool) {
 	m.kernelSupports3Fn = fn
 	m.mu.Unlock()
 }
+
+// SetKernelSupportsAWG31 wires the AWG 3.1 capability gate (the two device
+// flags). nil (unset) = unsupported.
+func (m *Manager) SetKernelSupportsAWG31(fn func() bool) {
+	m.mu.Lock()
+	m.kernelSupports31Fn = fn
+	m.mu.Unlock()
+}

@@ -27,7 +27,7 @@ type AwgServerSpec struct {
 
 // obfKeyOrder fixes the emit order so the rendered map is deterministic (a stable
 // block => the change-gate in SyncAwgEndpointActive is a true no-op when unchanged).
-var obfKeyOrder = []string{"jc", "jmin", "jmax", "s1", "s2", "s3", "s4", "h1", "h2", "h3", "h4", "content_padding_addition", "rekey_after_time", "rekey_timeout", "reject_after_time", "keepalive_timeout", "max_handshake_attempts"}
+var obfKeyOrder = []string{"jc", "jmin", "jmax", "s1", "s2", "s3", "s4", "h1", "h2", "h3", "h4", "content_padding_addition", "rekey_after_time", "rekey_timeout", "reject_after_time", "keepalive_timeout", "max_handshake_attempts", "random_trailers", "disable_cookies"}
 
 // BuildAwgServerEndpoint renders the sing-box endpoints[] element for the fork's
 // AWG server: type "awg", listen_port set, peers without address/port. Zero/empty
@@ -60,6 +60,14 @@ func BuildAwgServerEndpoint(tag string, spec AwgServerSpec) map[string]interface
 		case string:
 			if vv != "" {
 				ep[k] = vv
+			}
+		case bool:
+			// AWG 3.1 flags. Only the enabled state is emitted: off is the
+			// device default, and the value stays a JSON boolean because the
+			// engine reads it from UAPI with strconv.ParseBool, which does not
+			// understand the on/off spelling the .conf side uses.
+			if vv {
+				ep[k] = true
 			}
 		}
 	}

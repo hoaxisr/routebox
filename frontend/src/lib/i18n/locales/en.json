@@ -1867,7 +1867,16 @@
     "keepaliveTimeout": "Keepalive timeout",
     "keepaliveTimeoutHint": "Seconds after last data before a passive keepalive is sent — \"N\" or \"lo-hi\" range.",
     "maxHandshakeAttempts": "Max handshake attempts",
-    "maxHandshakeAttemptsHint": "Handshake retries before giving up — \"N\" or \"lo-hi\" count."
+    "maxHandshakeAttemptsHint": "Handshake retries before giving up \u2014 \"N\" or \"lo-hi\" count.",
+    "randomTrailers": "Random trailers (RandomTrailers)",
+    "randomTrailersHint": "Pads every packet with a random number of extra bytes, removing recognisable lengths. Noticeably increases outbound traffic.",
+    "randomTrailersWarn": "Breaks every client that is not on AmneziaWG 3.1: there is no negotiation, and an older client fails to bring the tunnel up without any error. All client configs and links have to be reissued afterwards.",
+    "randomTrailersConfirmTitle": "Turn on random trailers?",
+    "randomTrailersConfirmBody": "Every client that is not on AmneziaWG 3.1 will lose connectivity. They will not show an error \u2014 the tunnel simply will not come up.",
+    "randomTrailersConfirmReissue": "Client configs and links will have to be reissued.",
+    "randomTrailersConfirmAccept": "Turn on",
+    "disableCookies": "Do not answer cookies (DisableCookies)",
+    "disableCookiesHint": "Stops the server answering the challenge packet it sends under load. One-sided, does not break compatibility."
   },
   "monitor": {
     "perUserTitle": "Per-User Traffic",

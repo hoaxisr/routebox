@@ -28,3 +28,53 @@ func TestBuildAwgServerEndpoint_AWG3(t *testing.T) {
 		}
 	}
 }
+
+func TestBuildAwgServerEndpointAwg31Flags(t *testing.T) {
+	base := AwgServerSpec{
+		PrivateKey: "SRVPRIVKEY",
+		Address:    "10.10.0.1/24",
+		ListenPort: 51820,
+		MTU:        1408,
+	}
+
+	t.Run("off omits both", func(t *testing.T) {
+		spec := base
+		spec.Obf = map[string]interface{}{"random_trailers": false, "disable_cookies": false}
+		ep := BuildAwgServerEndpoint("awg-server", spec)
+		for _, k := range []string{"random_trailers", "disable_cookies"} {
+			if _, ok := ep[k]; ok {
+				t.Fatalf("expected %q to be absent when off, got %#v", k, ep[k])
+			}
+		}
+	})
+
+	t.Run("absent omits both", func(t *testing.T) {
+		ep := BuildAwgServerEndpoint("awg-server", base)
+		for _, k := range []string{"random_trailers", "disable_cookies"} {
+			if _, ok := ep[k]; ok {
+				t.Fatalf("expected %q to be absent when unset", k)
+			}
+		}
+	})
+
+	// The literal matters: the endpoint hands the value to the engine over UAPI,
+	// where amneziawg-go parses it with strconv.ParseBool — which takes
+	// true/false/1/0 and does NOT take "on". The .conf side is the other way
+	// round (awg's parse_bool takes on/off and rejects "true"), so the two paths
+	// must not be made to share a literal.
+	t.Run("on emits boolean true", func(t *testing.T) {
+		spec := base
+		spec.Obf = map[string]interface{}{"random_trailers": true, "disable_cookies": true}
+		ep := BuildAwgServerEndpoint("awg-server", spec)
+		for _, k := range []string{"random_trailers", "disable_cookies"} {
+			v, ok := ep[k]
+			if !ok {
+				t.Fatalf("expected %q in the endpoint", k)
+			}
+			b, isBool := v.(bool)
+			if !isBool || !b {
+				t.Fatalf("%q = %#v (%T), want boolean true", k, v, v)
+			}
+		}
+	})
+}
