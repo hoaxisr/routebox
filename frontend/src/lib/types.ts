@@ -236,6 +236,11 @@ export interface Inbound {
 	tls?: ServerTlsConfig;
 	up_mbps?: number;     // hysteria2
 	down_mbps?: number;   // hysteria2
+	// hysteria2 congestion control. Rates set => Brutal at that fixed rate;
+	// unset => BBR, and then bbr_profile picks how hard it pushes.
+	// ignore_client_bandwidth makes the server decide instead of the client.
+	ignore_client_bandwidth?: boolean; // hysteria2
+	bbr_profile?: string;              // hysteria2: standard | conservative | aggressive
 	obfs?: { type: string; password?: string; min_packet_size?: number; max_packet_size?: number }; // hysteria2
 	transport?: TransportConfig | string; // vless/trojan stream transport object; mieru emits a "TCP"/"UDP" string
 	traffic_pattern?: string;           // mieru
@@ -392,6 +397,7 @@ export interface Outbound {
 	hop_interval?: string;  // Port hop interval (e.g., "30s")
 	up_mbps?: number;       // Upload limit
 	down_mbps?: number;     // Download limit
+	bbr_profile?: string;   // hysteria2: standard | conservative | aggressive
 	// Shadowsocks
 	method?: string;
 	password?: string;
@@ -476,6 +482,7 @@ export interface OutboundHysteria2 extends Outbound {
 	password: string;
 	up_mbps?: number;
 	down_mbps?: number;
+	bbr_profile?: string;
 	server_ports?: string[];
 	hop_interval?: string;
 	obfs?: ObfsConfig;

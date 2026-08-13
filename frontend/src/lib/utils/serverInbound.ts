@@ -37,6 +37,10 @@ export interface ServerFormState {
 	transport: ServerTransportState;
 	upMbps: number;
 	downMbps: number;
+	/** hysteria2: '' leaves the fork's default (standard). */
+	bbrProfile: string;
+	/** hysteria2: server decides the congestion control instead of the client. */
+	ignoreClientBandwidth: boolean;
 	obfsType: string;
 	obfsPassword: string;
 	/** gecko only; 0 = leave hysteria's default (512 / 1200). */
@@ -138,6 +142,14 @@ export function buildServerInbound(s: ServerFormState): Inbound {
 	if (s.type === 'hysteria2') {
 		if (s.upMbps > 0) ib.up_mbps = s.upMbps;
 		if (s.downMbps > 0) ib.down_mbps = s.downMbps;
+		// Congestion control (#59). The rates are what actually pick the algorithm:
+		// a client that announced a rate gets Brutal at it, one that announced none
+		// gets BBR. ignore_client_bandwidth takes that decision away from the client
+		// — with no down_mbps it forces BBR on everyone, with one it turns BBR
+		// clients away. bbr_profile only applies to the connections that end up on
+		// BBR; '' leaves the fork's default (standard).
+		if (s.ignoreClientBandwidth) ib.ignore_client_bandwidth = true;
+		if (s.bbrProfile) ib.bbr_profile = s.bbrProfile;
 		if (s.obfsType) {
 			ib.obfs = { type: s.obfsType, password: s.obfsPassword };
 			// gecko takes packet-size bounds; both ends must agree, so unset stays
@@ -289,6 +301,8 @@ export function parseServerInbound(ib: Inbound): ServerFormState {
 		transport,
 		upMbps: ib.up_mbps ?? 0,
 		downMbps: ib.down_mbps ?? 0,
+		bbrProfile: typeof ib.bbr_profile === 'string' ? ib.bbr_profile : '',
+		ignoreClientBandwidth: ib.ignore_client_bandwidth === true,
 		obfsType: ib.obfs?.type ?? '',
 		obfsPassword: ib.obfs?.password ?? '',
 		obfsMinPacketSize: ib.obfs?.min_packet_size ?? 0,

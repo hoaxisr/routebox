@@ -133,6 +133,7 @@
 	let hy2HopInterval = $state(outbound?.hop_interval ?? '');
 	let hy2UpMbps = $state(outbound?.up_mbps ?? 0);
 	let hy2DownMbps = $state(outbound?.down_mbps ?? 0);
+	let hy2BbrProfile = $state(outbound?.bbr_profile ?? '');
 
 	// Shadowsocks state
 	let ssMethod = $state(outbound?.method ?? '2022-blake3-aes-128-gcm');
@@ -541,6 +542,9 @@
 			if (hy2HopInterval.trim()) ob.hop_interval = hy2HopInterval.trim();
 			if (hy2UpMbps > 0) ob.up_mbps = hy2UpMbps;
 			if (hy2DownMbps > 0) ob.down_mbps = hy2DownMbps;
+			// Only reached when the connection ends up on BBR — which is what
+			// leaving the two rates empty asks for (#59). '' = the fork's default.
+			if (hy2BbrProfile) ob.bbr_profile = hy2BbrProfile;
 			ob.tls = {
 				enabled: true,
 				server_name: hy2Tls.server_name || server.trim(),
@@ -774,6 +778,7 @@
 			bind:obfs={hy2Obfs}
 			bind:serverPorts={hy2ServerPorts}
 			bind:hopInterval={hy2HopInterval}
+			bind:bbrProfile={hy2BbrProfile}
 			bind:upMbps={hy2UpMbps}
 			bind:downMbps={hy2DownMbps}
 			bind:domainResolver
