@@ -481,6 +481,24 @@ func (m *Manager) UpdateRouteSettings(settings map[string]interface{}) error {
 		}
 	}
 
+	// Clearing the domain resolver is the one edit on this form that can stop the
+	// VPN from starting at all: past two DNS servers sing-box exits without it
+	// (domain_resolver.go). Refuse instead of handing back a config the operator
+	// can no longer apply — which is exactly what issue #68 ran into.
+	if val, exists := settings[domainResolverKey]; exists {
+		tag, _ := val.(string)
+		switch {
+		case val == nil || tag == "":
+			if domainResolverRequired(m.getDnsArray("servers")) {
+				return errDomainResolverRequired("cannot clear the default domain resolver")
+			}
+		case findByTag(m.getDnsArray("servers"), tag) < 0:
+			// sing-box exits on "default domain resolver not found" just as readily
+			// as on a missing one — a typo here is the same brick.
+			return fmt.Errorf("DNS server '%s' does not exist", tag)
+		}
+	}
+
 	// Ensure draft exists before modifying
 	if err := m.ensureDraftUnlocked(); err != nil {
 		return err

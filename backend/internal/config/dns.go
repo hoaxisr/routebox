@@ -89,6 +89,10 @@ func (m *Manager) CreateDnsServer(server map[string]interface{}) error {
 	draftArr := m.getDraftDnsArray("servers")
 	dns["servers"] = append(draftArr, server)
 
+	// The second server is where sing-box starts demanding an explicit resolver
+	// for outgoing connections — see domain_resolver.go.
+	m.pinDomainResolver()
+
 	return m.saveDraftToDisk()
 }
 
@@ -134,6 +138,16 @@ func (m *Manager) UpdateDnsServer(tag string, server map[string]interface{}) err
 		dns["servers"] = draftArr
 	}
 
+	// A rename leaves the pin naming a server that no longer exists, and sing-box
+	// refuses to start on "default domain resolver not found" — the same trap the
+	// DNS rules hit on rename. Follow it.
+	if newTag != "" && newTag != tag {
+		route := m.getDraftRoute()
+		if domainResolverTag(route) == tag {
+			setDomainResolverTag(route, newTag)
+		}
+	}
+
 	return m.saveDraftToDisk()
 }
 
@@ -170,6 +184,14 @@ func (m *Manager) DeleteDnsServer(tag string) error {
 		return fmt.Errorf("cannot delete DNS server '%s': it is the default (final) server", tag)
 	}
 
+	// The pin must not be left naming a server that is gone. Two or more servers
+	// survive the delete => the pin is still mandatory and only the operator can
+	// say where it should point; drop to one and it is no longer needed at all,
+	// so the key goes with the server (handled after the mutation below).
+	if domainResolverTag(m.getRoute()) == tag && len(arr)-1 >= 2 {
+		return errDomainResolverRequired(fmt.Sprintf("cannot delete DNS server '%s': it is the default domain resolver", tag))
+	}
+
 	// Ensure draft exists before modifying
 	if err := m.ensureDraftUnlocked(); err != nil {
 		return err
@@ -181,6 +203,12 @@ func (m *Manager) DeleteDnsServer(tag string) error {
 	draftIdx := findByTag(draftArr, tag)
 	if draftIdx >= 0 {
 		draftDns["servers"] = append(draftArr[:draftIdx], draftArr[draftIdx+1:]...)
+	}
+
+	// Only reachable with one server left (the guard above refuses otherwise):
+	// the grace is back and a pin at the deleted tag would be a dangling reference.
+	if route := m.getDraftRoute(); domainResolverTag(route) == tag {
+		delete(route, domainResolverKey)
 	}
 
 	return m.saveDraftToDisk()

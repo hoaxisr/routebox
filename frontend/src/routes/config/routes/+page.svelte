@@ -320,6 +320,10 @@
 			hasChanges = true;
 		} catch (e) {
 			notifications.error(`${e}`);
+			// A refused edit (e.g. clearing the domain resolver with two DNS
+			// servers) stays on screen otherwise, so the form shows a value the
+			// config does not have and the next save sends it right back.
+			settings = await api.getRouteSettings();
 		}
 	}
 

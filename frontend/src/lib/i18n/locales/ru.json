@@ -559,7 +559,7 @@
     "defaultInterfaceHint": "Привязывать исходящие подключения к этому сетевому интерфейсу",
     "defaultMarkHint": "Устанавливать fwmark на исходящих подключениях (0 = нет)",
     "defaultDomainResolver": "Резолвер доменов по умолчанию",
-    "defaultDomainResolverHint": "Тег DNS-сервера для разрешения доменов при маршрутизации",
+    "defaultDomainResolverHint": "Тег DNS-сервера, через который резолвятся адреса исходящих соединений. Обязателен, когда DNS-серверов два и больше: без него amnezia-box не запускается.",
     "defaultDomainStrategy": "Стратегия доменов по умолчанию",
     "defaultFallbackDelay": "Задержка отката",
     "noRoute": "нет маршрута",
