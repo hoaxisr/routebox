@@ -12,6 +12,7 @@
 		/** Shows awg3-only controls (header protection, CPA/RAT): true on sing-box always,
 		 * true on the kernel backend only when the host confirms awg3 capability. */
 		awg3Available?: boolean;
+		awg31Available?: boolean;
 		/** Active backend is sing-box: shows sing-box-only controls unrelated to awg3
 		 * (currently just the IPv6 broker toggle). */
 		isSingbox?: boolean;
@@ -25,7 +26,7 @@
 		onReset: () => void;
 	}
 
-	let { form = $bindable(), pubkey = '', saving = false, awg3Available = false, isSingbox = false, applied = false, dirty = true, ipv6Active = false, onSave, onReset }: Props = $props();
+	let { form = $bindable(), pubkey = '', saving = false, awg3Available = false, awg31Available = false, isSingbox = false, applied = false, dirty = true, ipv6Active = false, onSave, onReset }: Props = $props();
 
 	// DNS is stored as string[]; edit it as a comma-separated field and write back.
 	let dnsText = $state((form.dns ?? []).join(', '));

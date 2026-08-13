@@ -47,8 +47,12 @@ type AWGStatus struct {
 	// KernelAWG3Available reports whether the kernel backend's host has a
 	// confirmed awg3-capable module + awg-quick/tools pairing (always false on
 	// the singbox backend, which has its own supports3Fn gate).
-	KernelAWG3Available bool   `json:"kernel_awg3_available,omitempty"`
-	LastError           string `json:"last_error,omitempty"`
+	KernelAWG3Available bool `json:"kernel_awg3_available,omitempty"`
+	// KernelAWG31Available is the same for AWG 3.1, which added the two device
+	// flags. Separate because a 3.0 pairing clears the field above and still
+	// ignores those flags without an error.
+	KernelAWG31Available bool   `json:"kernel_awg31_available,omitempty"`
+	LastError            string `json:"last_error,omitempty"`
 }
 
 // EnableInput is the RAW operator submission; Enable canonicalises every field.
@@ -457,7 +461,8 @@ func (m *Manager) Status(ctx context.Context) AWGStatus {
 		Module:  mod, Enabled: enabled, Phase: phase, IfaceUp: ifaceUp, ListenPort: port,
 		PublicHost: m.publicHost, PeerCount: len(peers), Online: online, Rx: rx, Tx: tx, WANIface: wan,
 		NATOrphan: rulesPresent && !ifaceUp, ConfigDirty: configDirty, LastError: lastErr,
-		KernelAWG3Available: kAwg3,
+		KernelAWG3Available:  kAwg3,
+		KernelAWG31Available: m.kernelSupports31Fn != nil && m.kernelSupports31Fn(),
 	}
 }
 

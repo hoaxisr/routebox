@@ -61,7 +61,11 @@ function awg3(cpaHi: number): Partial<AwgObf> {
 // off clears every AWG3 field so switching to it turns obfuscation fully off.
 const AWG3_OFF: Partial<AwgObf> = {
 	content_padding_addition: '', rekey_after_time: '', rekey_timeout: '',
-	reject_after_time: '', keepalive_timeout: '', max_handshake_attempts: ''
+	reject_after_time: '', keepalive_timeout: '', max_handshake_attempts: '',
+	// AWG 3.1 flags are opt-in, never turned ON by a preset — but "off" has to
+	// clear them, or switching the preset to off would leave obfuscation
+	// half-on and keep breaking pre-3.1 clients.
+	random_trailers: false, disable_cookies: false
 };
 
 export const PRESETS: Record<string, () => AwgObf> = {

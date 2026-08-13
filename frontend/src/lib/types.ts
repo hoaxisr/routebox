@@ -1090,6 +1090,7 @@ export interface AwgStatus {
 	// True when the kernel backend's host has a confirmed awg3-capable module +
 	// awg-quick/tools pairing (always false/omitted on the singbox backend).
 	kernel_awg3_available?: boolean;
+	kernel_awg31_available?: boolean;
 }
 
 export interface AwgPeer {
@@ -1144,6 +1145,10 @@ export interface AwgObf {
 	reject_after_time?: string;
 	keepalive_timeout?: string;
 	max_handshake_attempts?: string;
+	// AWG 3.1 device flags. random_trailers is symmetric — it is not negotiated
+	// on the wire, so every client below 3.1 loses the tunnel silently.
+	random_trailers?: boolean;
+	disable_cookies?: boolean;
 }
 
 export interface AwgServerSettings {
