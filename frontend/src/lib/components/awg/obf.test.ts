@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { PRESETS } from './obf';
+import { PRESETS, applyVersion, awgVersion } from './obf';
 
 // The obf presets randomise awg3 timers per call; the one invariant that MUST hold
 // on every draw is rekey_after < reject_after (a session must rekey before it is
@@ -48,6 +48,47 @@ describe('awg3 preset timers', () => {
 	});
 });
 
+describe('awg protocol version', () => {
+	// Header protection is the gate the BACKEND uses (manager.go clientConfFor
+	// strips every awg3 field when the header key is empty), so filled CPA/RAT
+	// with HP off is still a 2.0 config in the client's hands (#60, #64, #76).
+	it('reports 2.0 while header protection is off, whatever is filled in', () => {
+		const o = PRESETS.web();
+		expect(awgVersion(o, false)).toBe('2.0');
+		expect(awgVersion({ ...o, random_trailers: true }, false)).toBe('2.0');
+	});
+
+	it('reports 3.0 with header protection, 3.1 once trailers are on', () => {
+		const o = PRESETS.web();
+		expect(awgVersion(o, true)).toBe('3.0');
+		expect(awgVersion({ ...o, random_trailers: true }, true)).toBe('3.1');
+	});
+
+	it('2.0 clears the awg3 fields and both 3.1 flags', () => {
+		const o = applyVersion({ ...PRESETS.stealth(), random_trailers: true, disable_cookies: true }, '2.0', 'stealth');
+		expect(o.content_padding_addition).toBe('');
+		expect(o.reject_after_time).toBe('');
+		expect(o.random_trailers).toBe(false);
+		expect(o.disable_cookies).toBe(false);
+		expect(o.jc).toBeGreaterThan(0); // J/S/H survive — that is the 2.0 obfuscation
+	});
+
+	it('3.0 fills the awg3 fields and keeps the 3.1 flags off', () => {
+		const o = applyVersion({ ...PRESETS.off(), jc: 4 }, '3.0', 'web');
+		expect(o.content_padding_addition).not.toBe('');
+		expect(o.max_handshake_attempts).not.toBe('');
+		expect(o.random_trailers).toBe(false);
+		expect(awgVersion(o, true)).toBe('3.0');
+	});
+
+	it('3.1 turns trailers on without redrawing existing awg3 values', () => {
+		const base = PRESETS.dns();
+		const o = applyVersion(base, '3.1', 'dns');
+		expect(o.content_padding_addition).toBe(base.content_padding_addition);
+		expect(awgVersion(o, true)).toBe('3.1');
+	});
+});
+
 // ponytail: source-text check, not a render test. The awg3.1 flags were invisible
 // in the panel for a release because ServerSettingsForm forgot to forward
 // awg31Available — Svelte drops an unpassed prop silently. Cheapest guard.
@@ -56,5 +97,13 @@ describe('awg3.1 flag gating', () => {
 		const src = (await import('./ServerSettingsForm.svelte?raw')).default;
 		const tag = src.match(/<ObfuscationControl[^>]*>/)?.[0] ?? '';
 		expect(tag).toContain('awg31Available');
+	});
+
+	// The preset name is the ONLY key the backend has for the client's CPS mimicry
+	// (cps.Mimic(preset) — "custom" yields an empty set, so the .conf loses I1-I5).
+	// Detaching the preset on every keystroke silently dropped the mimicry (#76).
+	it('ObfuscationControl never rewrites the preset to "custom"', async () => {
+		const src = (await import('./ObfuscationControl.svelte?raw')).default;
+		expect(src).not.toContain("'custom'");
 	});
 });

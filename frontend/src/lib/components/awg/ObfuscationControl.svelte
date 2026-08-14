@@ -1,12 +1,15 @@
 <script lang="ts">
 	import { t } from 'svelte-i18n';
 	import type { AwgObf } from '$lib/types';
-	import { PRESETS, OBF_J, OBF_S, OBF_STR } from './obf';
+	import { PRESETS, OBF_J, OBF_S, OBF_STR, AWG_VERSIONS, applyVersion, awgVersion, type AwgVersion } from './obf';
 	import Modal from '$lib/components/shared/Modal.svelte';
 
 	interface Props {
 		obf: AwgObf;
 		preset: string;
+		/** AWG 3.0 header protection — the switch that decides which protocol
+		 * version the client's config actually is, so the version row owns it. */
+		headerProtection: boolean;
 		/** Shows the awg3-only fields (CPA/RAT): true on sing-box always, true on the
 		 * kernel backend only when the host confirms awg3 capability. */
 		awg3Available?: boolean;
@@ -16,40 +19,43 @@
 		awg31Available?: boolean;
 	}
 
-	// Bindable so the parent's form.obf / form.obf_preset stay in sync.
-	let { obf = $bindable(), preset = $bindable(), awg3Available = false, awg31Available = false }: Props = $props();
+	// Bindable so the parent's form.obf / form.obf_preset / form.header_protection stay in sync.
+	let { obf = $bindable(), preset = $bindable(), headerProtection = $bindable(false), awg3Available = false, awg31Available = false }: Props = $props();
 
 	let advOpen = $state(false);
-	// Turning random trailers ON is confirmed explicitly: it drops every client
+	// Moving up to 3.1 is confirmed explicitly: random trailers drop every client
 	// below 3.1 with no error on their side, and every issued config has to be
-	// reissued. Turning it OFF needs no confirmation — that only restores
+	// reissued. Moving back down needs no confirmation — that only restores
 	// compatibility.
 	let confirmTrailers = $state(false);
 
-	function onTrailersToggle(next: boolean) {
-		if (next) {
+	const version = $derived(awgVersion(obf, headerProtection));
+	const versions = $derived(AWG_VERSIONS.filter((v) => v !== '3.1' || awg31Available));
+
+	function pick(name: string) {
+		// The preset name is not just a UI label: the backend keys the client's CPS
+		// mimicry (I1-I5) off it, so it survives hand-editing the fields below and
+		// only ever changes here. Editing used to rewrite it to "custom", which
+		// silently emptied the mimicry set on every export (#76).
+		const v = name === 'off' ? '2.0' : version;
+		obf = applyVersion(PRESETS[name](), v, name);
+		preset = name;
+		headerProtection = v !== '2.0';
+	}
+
+	function setVersion(v: AwgVersion) {
+		if (v === '3.1' && !obf.random_trailers) {
 			confirmTrailers = true;
 			return;
 		}
-		obf.random_trailers = false;
-		markCustom();
+		obf = applyVersion(obf, v, preset);
+		headerProtection = v !== '2.0';
 	}
 
 	function acceptTrailers() {
-		obf.random_trailers = true;
+		obf = applyVersion(obf, '3.1', preset);
+		headerProtection = true;
 		confirmTrailers = false;
-		markCustom();
-	}
-
-	function pick(name: string) {
-		// Presets now carry the awg3 fields too (off clears them), so apply verbatim.
-		obf = PRESETS[name]();
-		preset = name;
-	}
-
-	// Editing any advanced field detaches from a named preset.
-	function markCustom() {
-		preset = 'custom';
 	}
 
 	const active = $derived(preset !== 'off');
@@ -69,8 +75,17 @@
 	{#each [['off', 'awg.obfOff'], ['dns', 'awg.obfDns'], ['web', 'awg.obfWeb'], ['stealth', 'awg.obfStealth']] as [key, label] (key)}
 		<button type="button" class="preset-btn {preset === key ? 'selected' : ''}" onclick={() => pick(key)}>{$t(label)}</button>
 	{/each}
-	{#if preset === 'custom'}<span class="status-badge info">{$t('awg.obfCustom')}</span>{/if}
 </div>
+
+{#if awg3Available}
+	<div class="ver-row">
+		<span class="ver-label">{$t('awg.protocolVersion')}</span>
+		{#each versions as v (v)}
+			<button type="button" class="toggle-btn" class:selected={version === v} onclick={() => setVersion(v)}>AWG {v}</button>
+		{/each}
+	</div>
+	<p class="ver-hint">{$t('awg.protocolVersionHint')}</p>
+{/if}
 
 <div class="adv" class:open={advOpen}>
 	<button type="button" class="adv-head" onclick={() => (advOpen = !advOpen)}>
@@ -79,7 +94,7 @@
 		</span>
 		{$t('awg.advanced')}
 		<span class="a-spacer"></span>
-		<span class="adv-keys">Jc · Jmin · Jmax · S1–S4 · H1–H4{awg3Available ? ' · CPA · RAT' : ''}</span>
+		<span class="adv-keys">Jc · Jmin · Jmax · S1–S4 · H1–H4{awg3Available && version !== '2.0' ? ' · CPA · RAT' : ''}</span>
 	</button>
 	{#if advOpen}
 		<div class="adv-body">
@@ -88,7 +103,7 @@
 				{#each OBF_J as k (k)}
 					<div class="mini-field">
 						<label for="obf-{k}">{k}</label>
-						<input id="obf-{k}" type="number" bind:value={obf[k]} oninput={markCustom} />
+						<input id="obf-{k}" type="number" bind:value={obf[k]} />
 					</div>
 				{/each}
 			</div>
@@ -96,7 +111,7 @@
 				{#each OBF_S as k (k)}
 					<div class="mini-field">
 						<label for="obf-{k}">{k}</label>
-						<input id="obf-{k}" type="number" bind:value={obf[k]} oninput={markCustom} />
+						<input id="obf-{k}" type="number" bind:value={obf[k]} />
 					</div>
 				{/each}
 			</div>
@@ -104,121 +119,52 @@
 				{#each OBF_STR as k (k)}
 					<div class="mini-field">
 						<label for="obf-{k}">{k}</label>
-						<input id="obf-{k}" type="text" bind:value={obf[k]} oninput={markCustom} />
+						<input id="obf-{k}" type="text" bind:value={obf[k]} />
 					</div>
 				{/each}
 			</div>
-			{#if awg3Available}
+			<!-- Version-gated: at AWG 2.0 these six are cleared and never reach a
+			     client, so showing them filled is the mismatch #76 reported. -->
+			{#if awg3Available && version !== '2.0'}
 			<div class="adv-grid two">
 				<div class="mini-field">
 					<label for="obf-cpa">{$t('awg.contentPadding')}</label>
-					<input
-						id="obf-cpa"
-						type="text"
-						placeholder="0-64"
-						value={obf.content_padding_addition ?? ''}
-						oninput={(e) => {
-							obf.content_padding_addition = e.currentTarget.value;
-							markCustom();
-						}}
-					/>
+					<input id="obf-cpa" type="text" placeholder="0-64" bind:value={obf.content_padding_addition} />
 					<span class="mini-hint">{$t('awg.contentPaddingHint')}</span>
 				</div>
 				<div class="mini-field">
 					<label for="obf-rat">{$t('awg.rekeyAfterTime')}</label>
-					<input
-						id="obf-rat"
-						type="text"
-						placeholder="120-180"
-						value={obf.rekey_after_time ?? ''}
-						oninput={(e) => {
-							obf.rekey_after_time = e.currentTarget.value;
-							markCustom();
-						}}
-					/>
+					<input id="obf-rat" type="text" placeholder="120-180" bind:value={obf.rekey_after_time} />
 					<span class="mini-hint">{$t('awg.rekeyAfterTimeHint')}</span>
 				</div>
 				<div class="mini-field">
 					<label for="obf-rkt">{$t('awg.rekeyTimeout')}</label>
-					<input
-						id="obf-rkt"
-						type="text"
-						placeholder="5"
-						value={obf.rekey_timeout ?? ''}
-						oninput={(e) => {
-							obf.rekey_timeout = e.currentTarget.value;
-							markCustom();
-						}}
-					/>
+					<input id="obf-rkt" type="text" placeholder="5" bind:value={obf.rekey_timeout} />
 					<span class="mini-hint">{$t('awg.rekeyTimeoutHint')}</span>
 				</div>
 				<div class="mini-field">
 					<label for="obf-rjt">{$t('awg.rejectAfterTime')}</label>
-					<input
-						id="obf-rjt"
-						type="text"
-						placeholder="180"
-						value={obf.reject_after_time ?? ''}
-						oninput={(e) => {
-							obf.reject_after_time = e.currentTarget.value;
-							markCustom();
-						}}
-					/>
+					<input id="obf-rjt" type="text" placeholder="180" bind:value={obf.reject_after_time} />
 					<span class="mini-hint">{$t('awg.rejectAfterTimeHint')}</span>
 				</div>
 				<div class="mini-field">
 					<label for="obf-kat">{$t('awg.keepaliveTimeout')}</label>
-					<input
-						id="obf-kat"
-						type="text"
-						placeholder="25"
-						value={obf.keepalive_timeout ?? ''}
-						oninput={(e) => {
-							obf.keepalive_timeout = e.currentTarget.value;
-							markCustom();
-						}}
-					/>
+					<input id="obf-kat" type="text" placeholder="25" bind:value={obf.keepalive_timeout} />
 					<span class="mini-hint">{$t('awg.keepaliveTimeoutHint')}</span>
 				</div>
 				<div class="mini-field">
 					<label for="obf-mha">{$t('awg.maxHandshakeAttempts')}</label>
-					<input
-						id="obf-mha"
-						type="text"
-						placeholder="18"
-						value={obf.max_handshake_attempts ?? ''}
-						oninput={(e) => {
-							obf.max_handshake_attempts = e.currentTarget.value;
-							markCustom();
-						}}
-					/>
+					<input id="obf-mha" type="text" placeholder="18" bind:value={obf.max_handshake_attempts} />
 					<span class="mini-hint">{$t('awg.maxHandshakeAttemptsHint')}</span>
 				</div>
 			</div>
 			{/if}
-			{#if awg31Available}
+			<!-- RandomTrailers is what AWG 3.1 IS here, so the version row owns it;
+			     DisableCookies is responder-side policy and stays a free choice. -->
+			{#if version === '3.1'}
 			<div class="flag-list">
 				<label class="flag">
-					<input
-						type="checkbox"
-						checked={obf.random_trailers ?? false}
-						onchange={(e) => onTrailersToggle(e.currentTarget.checked)}
-					/>
-					<span>
-						<span class="flag-name">{$t('awg.randomTrailers')}</span>
-						<span class="flag-hint">{$t('awg.randomTrailersHint')}</span>
-						<span class="flag-warn">{$t('awg.randomTrailersWarn')}</span>
-					</span>
-				</label>
-				<label class="flag">
-					<input
-						type="checkbox"
-						checked={obf.disable_cookies ?? false}
-						onchange={(e) => {
-							obf.disable_cookies = e.currentTarget.checked;
-							markCustom();
-						}}
-					/>
+					<input type="checkbox" checked={obf.disable_cookies ?? false} onchange={(e) => (obf.disable_cookies = e.currentTarget.checked)} />
 					<span>
 						<span class="flag-name">{$t('awg.disableCookies')}</span>
 						<span class="flag-hint">{$t('awg.disableCookiesHint')}</span>
@@ -260,8 +206,7 @@
 	}
 
 	.flag-name,
-	.flag-hint,
-	.flag-warn {
+	.flag-hint {
 		display: block;
 	}
 
@@ -269,19 +214,13 @@
 		font-weight: 600;
 	}
 
-	.flag-hint,
-	.flag-warn {
+	.flag-hint {
 		font-size: 0.8125rem;
 		line-height: 1.45;
 	}
 
 	.flag-hint {
 		opacity: 0.75;
-	}
-
-	.flag-warn {
-		margin-top: 0.25rem;
-		color: var(--warn, #b45309);
 	}
 
 	.confirm-text {
@@ -309,6 +248,37 @@
 		gap: 0.5rem;
 		margin-bottom: 1rem;
 		flex-wrap: wrap;
+	}
+	.ver-row {
+		display: flex;
+		align-items: center;
+		gap: 0.5rem;
+		flex-wrap: wrap;
+	}
+	/* .toggle-btn is flex:1 by default — three of them would each eat a third of a
+	   desktop row. These are short labels, so size them to their text. */
+	.ver-row .toggle-btn {
+		flex: 0 0 auto;
+		white-space: nowrap;
+	}
+	.ver-label {
+		font-size: 0.8125rem;
+		color: var(--ctp-subtext1);
+		margin-right: 0.25rem;
+	}
+	/* Phone: the label and three buttons do not share a 480px row — give the label
+	   its own line so the versions stay together. */
+	@media (max-width: 560px) {
+		.ver-label {
+			flex: 0 0 100%;
+			margin-right: 0;
+		}
+	}
+	.ver-hint {
+		margin: 0.4rem 0 1rem;
+		font-size: 0.75rem;
+		color: var(--ctp-overlay0);
+		max-width: 60ch;
 	}
 	.adv {
 		border: 1px dashed var(--ctp-surface2);
