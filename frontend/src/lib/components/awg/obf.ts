@@ -68,21 +68,52 @@ const AWG3_OFF: Partial<AwgObf> = {
 	random_trailers: false, disable_cookies: false
 };
 
+// Upper content-padding bound per preset — the louder the cover traffic, the more
+// padding it can hide behind.
+const CPA_HI: Record<string, number> = { dns: 48, web: 64, stealth: 80 };
+
 export const PRESETS: Record<string, () => AwgObf> = {
 	off: () => ({ jc: 0, jmin: 0, jmax: 0, s1: 0, s2: 0, s3: 0, s4: 0, h1: '', h2: '', h3: '', h4: '', ...AWG3_OFF }),
 	dns: () => {
 		const [h1, h2, h3, h4] = randH();
 		const [s1, s2] = sPair(97, 107, 17, 27);
-		return { jc: r(3, 5), jmin: r(5, 15), jmax: r(45, 55), s1, s2, s3: rs(16, 26), s4: rs(12, 22), h1, h2, h3, h4, ...awg3(48) };
+		return { jc: r(3, 5), jmin: r(5, 15), jmax: r(45, 55), s1, s2, s3: rs(16, 26), s4: rs(12, 22), h1, h2, h3, h4, ...awg3(CPA_HI.dns) };
 	},
 	web: () => {
 		const [h1, h2, h3, h4] = randH();
 		const [s1, s2] = sPair(30, 80, 30, 80);
-		return { jc: r(5, 8), jmin: r(30, 80), jmax: r(100, 250), s1, s2, s3: rs(15, 32), s4: rs(10, 20), h1, h2, h3, h4, ...awg3(64) };
+		return { jc: r(5, 8), jmin: r(30, 80), jmax: r(100, 250), s1, s2, s3: rs(15, 32), s4: rs(10, 20), h1, h2, h3, h4, ...awg3(CPA_HI.web) };
 	},
 	stealth: () => {
 		const [h1, h2, h3, h4] = randH();
 		const [s1, s2] = sPair(15, 150, 15, 150);
-		return { jc: r(4, 16), jmin: r(50, 256), jmax: r(300, 1000), s1, s2, s3: rs(8, 64), s4: rs(6, 31), h1, h2, h3, h4, ...awg3(80) };
+		return { jc: r(4, 16), jmin: r(50, 256), jmax: r(300, 1000), s1, s2, s3: rs(8, 64), s4: rs(6, 31), h1, h2, h3, h4, ...awg3(CPA_HI.stealth) };
 	}
 };
+
+export type AwgVersion = '2.0' | '3.0' | '3.1';
+export const AWG_VERSIONS: AwgVersion[] = ['2.0', '3.0', '3.1'];
+
+// awgVersion reports the version the CLIENT ends up with. Header protection is
+// the gate: the backend strips every awg3 field — the 3.1 flags included — from
+// an export whose header key is empty (manager.go clientConfFor), so filled
+// CPA/RAT with protection off still hands out a plain 2.0 config. Deriving this
+// from the fields alone would label 3.0 what AmneziaWG calls 2.0 (#60, #64).
+export function awgVersion(obf: AwgObf, headerProtection: boolean): AwgVersion {
+	if (!headerProtection) return '2.0';
+	return obf.random_trailers ? '3.1' : '3.0';
+}
+
+// applyVersion reshapes obf for the target version, drawing the awg3 params from
+// the preset's own range when they are absent and never redrawing ones already
+// set. The caller owns header_protection — awgVersion reads it back.
+export function applyVersion(obf: AwgObf, v: AwgVersion, preset: string): AwgObf {
+	if (v === '2.0') return { ...obf, ...AWG3_OFF };
+	const filled = obf.content_padding_addition ? obf : { ...obf, ...awg3(CPA_HI[preset] ?? CPA_HI.web) };
+	return {
+		...filled,
+		random_trailers: v === '3.1',
+		// DisableCookies is a 3.1 key too, so it cannot outlive a drop to 3.0.
+		disable_cookies: v === '3.1' ? (obf.disable_cookies ?? false) : false
+	};
+}

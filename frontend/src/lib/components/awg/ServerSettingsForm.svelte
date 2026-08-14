@@ -94,21 +94,9 @@
 
 <div class="settings-divider"></div>
 
-<ObfuscationControl bind:obf={form.obf} bind:preset={form.obf_preset} {awg3Available} {awg31Available} />
-
-{#if awg3Available}
-	<div class="hp-row">
-		<button
-			type="button"
-			class="toggle-btn"
-			class:selected={form.header_protection}
-			onclick={() => (form.header_protection = !form.header_protection)}
-		>
-			{$t('awg.headerProtection')}
-		</button>
-		<span class="hint">{$t('awg.headerProtectionHint')}</span>
-	</div>
-{/if}
+<!-- header_protection has no toggle of its own: it IS the 2.0/3.0 switch, so the
+     version row inside ObfuscationControl owns it (#76). -->
+<ObfuscationControl bind:obf={form.obf} bind:preset={form.obf_preset} bind:headerProtection={form.header_protection} {awg3Available} {awg31Available} />
 {#if isSingbox}
 	<div class="hp-row">
 		<button
