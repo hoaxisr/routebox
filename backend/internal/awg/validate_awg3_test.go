@@ -48,6 +48,32 @@ func TestValidateObfCPARAT(t *testing.T) {
 	}
 }
 
+// validateObf builds its result field by field, so every field added to
+// Obfuscation later has to be added there too or it is silently dropped. The two
+// AWG 3.1 flags were: they never reached the rendered config, and the running
+// snapshot they were dropped from could never equal the saved settings, so the
+// Apply banner stayed up forever (#74).
+func TestValidateObfKeepsAwg31Flags(t *testing.T) {
+	out, err := validateObf(Obfuscation{RandomTrailers: true, DisableCookies: true})
+	if err != nil {
+		t.Fatalf("3.1 flags rejected: %v", err)
+	}
+	if !out.RandomTrailers || !out.DisableCookies {
+		t.Fatalf("3.1 flags dropped: %+v", out)
+	}
+	// Everything else must still survive a round trip untouched, flags or not.
+	in := Obfuscation{
+		Jc: 4, Jmin: 30, Jmax: 80, S1: 100, S2: 22, S3: 16, S4: 12,
+		H1: "10", H2: "20", H3: "30", H4: "40",
+		CPA: "0-64", RAT: "120-150", RekeyTimeout: "5", RejectAfterTime: "180",
+		KeepaliveTimeout: "25-30", MaxHandshakeAttempts: "18",
+		RandomTrailers: true,
+	}
+	if out, err := validateObf(in); err != nil || out != in {
+		t.Fatalf("round trip changed the struct: %v\n got %+v\nwant %+v", err, out, in)
+	}
+}
+
 func TestValidateObfDeviceTimers(t *testing.T) {
 	out, err := validateObf(Obfuscation{
 		RekeyTimeout: "5", RejectAfterTime: "180", KeepaliveTimeout: "25-30", MaxHandshakeAttempts: "18",
