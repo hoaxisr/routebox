@@ -393,6 +393,7 @@ func (m *Manager) Status(ctx context.Context) AWGStatus {
 	enabled, lastErr, port, phase, wan := m.enabled, m.lastErr, m.listenPort, m.phase, m.wan
 	subnet, mtu, obf, desired, obfPreset := m.subnet, m.mtu, m.obf, m.desired, m.obfPreset
 	hp, kernelSupports3Fn := m.headerProtection, m.kernelSupports3Fn
+	kernelSupports31Fn := m.kernelSupports31Fn
 	m.mu.Unlock()
 	if phase == "" {
 		phase = PhaseIdle
@@ -414,6 +415,13 @@ func (m *Manager) Status(ctx context.Context) AWGStatus {
 			// this one once the host is awg3-capable.
 			dObf.stripAwg3()
 			runObf.stripAwg3()
+		} else if !(kernelSupports31Fn != nil && kernelSupports31Fn()) {
+			// Same argument one version up: Enable strips the 3.1 flags on a host
+			// whose module clears 3.0 but not 3.1, so leaving them in the saved
+			// operand alone makes the banner permanent (#74 on the kernel backend —
+			// reachable when the flags were saved on the singbox backend first).
+			dObf.stripAwg31()
+			runObf.stripAwg31()
 		}
 		configDirty = d.Subnet != subnet || d.ListenPort != port || d.MTU != mtu ||
 			(d.WANIface != "" && d.WANIface != wan) || dObf != runObf || d.ObfPreset != obfPreset ||
@@ -516,10 +524,12 @@ func validateObf(o Obfuscation) (Obfuscation, error) {
 	if o.S1 != 0 && o.S2 != 0 && o.S1+56 == o.S2 {
 		return Obfuscation{}, fmt.Errorf("s1+56 must not equal s2 (got s1=%d s2=%d)", o.S1, o.S2)
 	}
-	out := Obfuscation{
-		Jc: o.Jc, Jmin: o.Jmin, Jmax: o.Jmax,
-		S1: o.S1, S2: o.S2, S3: o.S3, S4: o.S4,
-	}
+	// Start from the input and overwrite only what canonicalisation changes.
+	// Listing the carried-over fields by hand is how the two AWG 3.1 flags got
+	// dropped for a release (#74): they never reached the rendered config, and the
+	// running snapshot missing them could never equal the saved settings, so the
+	// Apply banner stayed up for good. A copy cannot lose a field added later.
+	out := o
 	for i, h := range []*string{&o.H1, &o.H2, &o.H3, &o.H4} {
 		if *h == "" {
 			continue

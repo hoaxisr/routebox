@@ -165,3 +165,26 @@ func TestClientConfFor_KernelAWG3Capable_IncludesHeaderKey(t *testing.T) {
 		t.Fatalf("client conf must carry CPA on an awg3-capable kernel host:\n%s", conf)
 	}
 }
+
+// A host whose module clears 3.0 but not 3.1: Enable strips the two 3.1 flags on
+// the way in, so the saved-vs-running compare has to strip them too. Otherwise a
+// settings file carrying them (saved while on the singbox backend, then switched)
+// pins the Apply banner on for good — #74's symptom by a different route.
+func TestStatus_KernelConfigDirty_Awg31FlagsStrippedOnIncapableHost(t *testing.T) {
+	f := newFakeRunner()
+	m := newEnableManager(t, f)
+	m.SetKernelSupportsAWG3(func() bool { return true })
+	m.SetKernelSupportsAWG31(func() bool { return false })
+	f.outputs["awg show awg-rb0"] = "interface: awg-rb0\n  listening port: 51820\n"
+	f.outputs["iptables -t nat -S"] = "-N RBOX-AWG-NAT\n"
+	desired := goodEnableInput()
+	desired.Obf.RandomTrailers = true
+	desired.Obf.DisableCookies = true
+	m.desired = func() EnableInput { return desired }
+	if err := m.Enable(context.Background(), desired); err != nil {
+		t.Fatalf("Enable: %v", err)
+	}
+	if m.Status(context.Background()).ConfigDirty {
+		t.Fatal("3.1 flags the host cannot take must not read dirty forever")
+	}
+}

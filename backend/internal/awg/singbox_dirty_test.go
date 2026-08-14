@@ -114,3 +114,36 @@ func TestStatusSingbox_RehydrateNotDirty(t *testing.T) {
 		t.Fatal("rehydrate from the saved settings must not report dirty")
 	}
 }
+
+// #74: turning on either AWG 3.1 flag left the Apply banner up for good — Apply
+// reported success, the banner stayed, a panel restart did not clear it. The
+// flags were dropped on the way into the running snapshot, so the saved settings
+// could never match it. Both the enable and the rehydrate (restart) path.
+func TestStatusSingbox_Awg31FlagsNotPermanentlyDirty(t *testing.T) {
+	desired := singboxEnableInput()
+	desired.Obf.RandomTrailers = true
+	desired.Obf.DisableCookies = true
+
+	m, fs, _ := newSingboxMgr(t)
+	m.SetDesired(func() EnableInput { return desired })
+	if err := m.Enable(context.Background(), desired); err != nil {
+		t.Fatal(err)
+	}
+	if m.Status(context.Background()).ConfigDirty {
+		t.Fatal("clean settings must not read dirty right after Apply")
+	}
+	// The flags are inert unless they also reach the rendered endpoint.
+	if fs.lastSpec.Obf["random_trailers"] != true || fs.lastSpec.Obf["disable_cookies"] != true {
+		t.Fatalf("3.1 flags missing from the synced endpoint: %+v", fs.lastSpec.Obf)
+	}
+
+	m2, _, _ := newSingboxMgr(t)
+	if err := m2.store.SetServerKey(m2.serverPriv); err != nil {
+		t.Fatal(err)
+	}
+	m2.SetDesired(func() EnableInput { return desired })
+	m2.RehydrateSingbox(desired, true)
+	if m2.Status(context.Background()).ConfigDirty {
+		t.Fatal("restart with the 3.1 flags saved must come up clean")
+	}
+}
