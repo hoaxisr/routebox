@@ -406,6 +406,35 @@ func TestRenderClientConfOmitsDNSWhenUnset(t *testing.T) {
 	}
 }
 
+// DNS is client-only, so Status never marks it dirty and there is no Apply
+// button — the export must therefore read the SAVED value, not the Enable-time
+// snapshot, or a changed resolver keeps shipping the old one until a re-enable.
+func TestRenderClientConfUsesSavedDNS(t *testing.T) {
+	m := newTestManager(t, newFakeRunner())
+	m.serverPriv = "AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAEs="
+	m.dns = []string{"1.1.1.1"} // what was running at Enable time
+	_ = m.store.Put(Peer{PublicKey: validPub, PrivateKey: "cpriv", Address: "10.10.0.2/32", Name: "bob"})
+
+	m.SetDesired(func() EnableInput { return EnableInput{DNS: []string{"9.9.9.9"}} })
+	conf, err := m.RenderClientConf(validPub, "1.2.3.4")
+	if err != nil {
+		t.Fatalf("RenderClientConf: %v", err)
+	}
+	if !strings.Contains(conf, "DNS = 9.9.9.9\n") {
+		t.Fatalf("client conf must carry the saved DNS, got:\n%s", conf)
+	}
+
+	// Garbage in settings falls back to the running snapshot rather than
+	// producing a conf with no resolver at all.
+	m.SetDesired(func() EnableInput { return EnableInput{DNS: []string{"not-an-ip"}} })
+	if conf, err = m.RenderClientConf(validPub, "1.2.3.4"); err != nil {
+		t.Fatalf("RenderClientConf: %v", err)
+	}
+	if !strings.Contains(conf, "DNS = 1.1.1.1\n") {
+		t.Fatalf("invalid saved DNS must fall back to the snapshot, got:\n%s", conf)
+	}
+}
+
 // awg3Manager builds a manager whose server runs the full awg3 parameter set.
 // supports3 chooses whether the running binary is claimed to understand them.
 func awg3Manager(t *testing.T, supports3 bool) *Manager {

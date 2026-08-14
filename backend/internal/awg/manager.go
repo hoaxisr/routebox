@@ -613,7 +613,7 @@ func (m *Manager) clientConfFor(pub, host string) (ClientConf, Peer, error) {
 		return ClientConf{}, Peer{}, fmt.Errorf("no such peer")
 	}
 	m.mu.Lock()
-	serverPriv, dns, mtu, obf, port, preset, headerKey := m.serverPriv, m.dns, m.mtu, m.obf, m.listenPort, m.obfPreset, m.headerKey
+	serverPriv, mtu, obf, port, preset, headerKey := m.serverPriv, m.mtu, m.obf, m.listenPort, m.obfPreset, m.headerKey
 	broker, ula, s3fn, kernelS3fn, backend := m.v6Active, m.ulaPrefix, m.supports3Fn, m.kernelSupports3Fn, m.backend
 	m.mu.Unlock()
 	serverPub, err := PublicFromPrivate(serverPriv)
@@ -653,6 +653,7 @@ func (m *Manager) clientConfFor(pub, host string) (ClientConf, Peer, error) {
 	// No fallback resolver: an empty field means the client keeps its own DNS.
 	// Inventing 1.1.1.1 here silently overrode routing that worked without it,
 	// and the UI never showed the value it was substituting (#45).
+	dns := m.clientDNS()
 	addr6, allowed := "", []string{"0.0.0.0/0"}
 	if broker {
 		if a, err := netip.ParsePrefix(p.Address); err == nil {
@@ -701,6 +702,25 @@ func (m *Manager) clientKeepalive() string {
 		return DefaultClientKeepalive
 	}
 	return v
+}
+
+// clientDNS resolves the client-export resolvers from the live saved settings, for
+// the same reason clientKeepalive does: DNS never reaches the server device, so
+// Status() deliberately does not mark it dirty and the operator gets no Apply
+// button — reading the Enable-time snapshot meant a changed resolver only took
+// effect after a re-enable/restart. Invalid entries fall back to the snapshot.
+func (m *Manager) clientDNS() []string {
+	m.mu.Lock()
+	desired, snap := m.desired, m.dns
+	m.mu.Unlock()
+	if desired == nil {
+		return snap
+	}
+	dns, err := ValidateDNS(desired().DNS)
+	if err != nil {
+		return snap
+	}
+	return dns
 }
 
 // RenderClientConf builds the client .conf. host is the validated public host; the
