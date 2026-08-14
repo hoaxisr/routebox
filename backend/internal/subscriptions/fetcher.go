@@ -1,15 +1,19 @@
 package subscriptions
 
 import (
+	"errors"
 	"fmt"
 	"io"
 	"net/http"
+	neturl "net/url"
 	"strings"
 	"time"
 )
 
 const (
 	fetchTimeout  = 30 * time.Second
+	retryDelay    = 250 * time.Millisecond
+	fetchAttempts = 3
 	maxBodyBytes  = 2 << 20 // 2 MiB
 	userAgent     = "RouteBox"
 	urltestURL    = "https://www.gstatic.com/generate_204"
@@ -23,8 +27,37 @@ type ConfigMerger interface {
 	ReplaceSubscriptionOutbounds(groupTag, nodePrefix string, nodes []map[string]interface{}, group map[string]interface{}) error
 }
 
-// Fetch downloads a subscription body (timeout, RouteBox UA, non-2xx guard, 2MiB cap).
+// Fetch downloads a subscription body (timeout, RouteBox UA, non-2xx guard,
+// 2MiB cap), retrying a transport error up to fetchAttempts times.
+//
+// The retry is what #77 was: a single "connection reset by peer" — a socket the
+// far end or something on the path dropped — failed the whole refresh, so every
+// other manual Refresh threw a raw Go error at the operator and the 12-hour
+// auto-refresh died the same way. Go's transport retries a dead connection only
+// when it came out of its own pool (TestFetchSurvivesResetOnPooledConn); on a
+// freshly dialled one nothing retries, so this does.
+//
+// Only transport errors (*url.Error) are retried, and not timeouts: the request
+// is an idempotent GET, but a non-2xx answer will not change on a second ask and
+// a second 30s wait would just double how long the panel hangs.
 func Fetch(url string) ([]byte, error) {
+	var err error
+	for attempt := 0; ; attempt++ {
+		var body []byte
+		if body, err = fetchOnce(url); err == nil {
+			return body, nil
+		}
+		var ue *neturl.Error
+		if attempt == fetchAttempts-1 || !errors.As(err, &ue) || ue.Timeout() {
+			return nil, err
+		}
+		// Grows a little: the reporter's path reset roughly every other
+		// connection, and back-to-back redials can land in the same glitch.
+		time.Sleep(time.Duration(attempt+1) * retryDelay)
+	}
+}
+
+func fetchOnce(url string) ([]byte, error) {
 	req, err := http.NewRequest(http.MethodGet, url, nil)
 	if err != nil {
 		return nil, err
