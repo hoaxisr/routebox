@@ -101,7 +101,7 @@ export const AWG_VERSIONS: AwgVersion[] = ['2.0', '3.0', '3.1'];
 // from the fields alone would label 3.0 what AmneziaWG calls 2.0 (#60, #64).
 export function awgVersion(obf: AwgObf, headerProtection: boolean): AwgVersion {
 	if (!headerProtection) return '2.0';
-	return obf.random_trailers ? '3.1' : '3.0';
+	return obf.random_trailers || obf.disable_cookies ? '3.1' : '3.0';
 }
 
 // applyVersion reshapes obf for the target version, drawing the awg3 params from
@@ -112,8 +112,10 @@ export function applyVersion(obf: AwgObf, v: AwgVersion, preset: string): AwgObf
 	const filled = obf.content_padding_addition ? obf : { ...obf, ...awg3(CPA_HI[preset] ?? CPA_HI.web) };
 	return {
 		...filled,
+		// Both flags ARE 3.1 here: picking the version turns the pair on, and
+		// dropping below it clears the pair. Leaving DisableCookies opt-in gave
+		// exported 3.1 configs one of the version's two new parameters.
 		random_trailers: v === '3.1',
-		// DisableCookies is a 3.1 key too, so it cannot outlive a drop to 3.0.
-		disable_cookies: v === '3.1' ? (obf.disable_cookies ?? false) : false
+		disable_cookies: v === '3.1'
 	};
 }

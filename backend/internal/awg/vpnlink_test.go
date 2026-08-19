@@ -501,7 +501,7 @@ func TestHasAwg3CountsRandomTrailers(t *testing.T) {
 	if !hasAwg3(Obfuscation{RandomTrailers: true}, "") {
 		t.Fatal("RandomTrailers alone must make the link awg3")
 	}
-	if hasAwg3(Obfuscation{DisableCookies: true}, "") {
-		t.Fatal("DisableCookies is responder-side and must not make a client link awg3")
+	if !hasAwg3(Obfuscation{DisableCookies: true}, "") {
+		t.Fatal("DisableCookies alone must make the link awg3")
 	}
 }

@@ -133,16 +133,20 @@ func writeObf(b *strings.Builder, o Obfuscation) {
 			fmt.Fprintf(b, "%s = %s\n", f.k, f.v)
 		}
 	}
-	// AWG 3.1. RandomTrailers only: it is symmetric, so a client conf without
-	// it means the client drops the server's lengthened handshakes and the
-	// tunnel never comes up. DisableCookies is responder-side policy and is
-	// emitted by RenderServer alone, since this renderer is shared with
-	// BuildClient and an unknown key aborts a client's whole parse.
+	// Both AWG 3.1 flags. RandomTrailers is symmetric — a client conf without it
+	// drops the server's lengthened handshakes and the tunnel never comes up.
+	// DisableCookies is device-level too (awg-tools 3.1 config.c parses it as a
+	// plain [Interface] key on either side); it is mostly a no-op on an
+	// initiator, but a config labelled 3.1 carries both of the version's flags,
+	// and shipping one of two is what made exported .conf files look wrong.
 	//
 	// The literal is `on`, not `true`: awg reads .conf with parse_bool, which
 	// takes on/off or a number and rejects "true" outright.
 	if o.RandomTrailers {
 		b.WriteString("RandomTrailers = on\n")
+	}
+	if o.DisableCookies {
+		b.WriteString("DisableCookies = on\n")
 	}
 }
 
