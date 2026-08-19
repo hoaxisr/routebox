@@ -81,11 +81,20 @@ describe('awg protocol version', () => {
 		expect(awgVersion(o, true)).toBe('3.0');
 	});
 
-	it('3.1 turns trailers on without redrawing existing awg3 values', () => {
+	it('3.1 turns BOTH new flags on without redrawing existing awg3 values', () => {
 		const base = PRESETS.dns();
 		const o = applyVersion(base, '3.1', 'dns');
 		expect(o.content_padding_addition).toBe(base.content_padding_addition);
+		expect(o.random_trailers).toBe(true);
+		expect(o.disable_cookies).toBe(true);
 		expect(awgVersion(o, true)).toBe('3.1');
+	});
+
+	// Either flag alone is a 3.1-only key, so the version badge has to read 3.1
+	// or the form goes on offering a "3.0" that the backend exports as 3.1 (#74).
+	it('reads 3.1 from either flag alone', () => {
+		const o = PRESETS.web();
+		expect(awgVersion({ ...o, disable_cookies: true }, true)).toBe('3.1');
 	});
 });
 

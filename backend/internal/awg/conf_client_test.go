@@ -232,13 +232,23 @@ func TestClientConfOmitsRandomTrailersWhenOff(t *testing.T) {
 	}
 }
 
-// TestClientConfOmitsDisableCookies keeps the responder-side flag out of the
-// shared obfuscation renderer: it is server policy, and an unknown key aborts a
-// client's whole parse rather than being skipped.
-func TestClientConfOmitsDisableCookies(t *testing.T) {
+// TestClientConfCarriesDisableCookies pins the second AWG 3.1 flag into the
+// client artifact. awg-tools 3.1 parses DisableCookies as a plain [Interface]
+// device key (config.c: key_match("DisableCookies")), same as RandomTrailers —
+// it is not server-only, and leaving it out gave a "3.1" .conf carrying one of
+// the version's two flags.
+func TestClientConfCarriesDisableCookies(t *testing.T) {
 	var b strings.Builder
 	writeObf(&b, Obfuscation{DisableCookies: true})
+	if !strings.Contains(b.String(), "DisableCookies = on") {
+		t.Fatalf("expected DisableCookies = on in:\n%s", b.String())
+	}
+}
+
+func TestClientConfOmitsDisableCookiesWhenOff(t *testing.T) {
+	var b strings.Builder
+	writeObf(&b, Obfuscation{})
 	if strings.Contains(b.String(), "DisableCookies") {
-		t.Fatalf("DisableCookies must not reach a client conf:\n%s", b.String())
+		t.Fatalf("expected no DisableCookies when off:\n%s", b.String())
 	}
 }

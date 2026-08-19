@@ -85,7 +85,7 @@ func missingHeaderFields(o Obfuscation) []string {
 func hasAwg3(o Obfuscation, headerKey string) bool {
 	return headerKey != "" || o.CPA != "" || o.RAT != "" || o.RekeyTimeout != "" ||
 		o.RejectAfterTime != "" || o.KeepaliveTimeout != "" || o.MaxHandshakeAttempts != "" ||
-		o.RandomTrailers
+		o.RandomTrailers || o.DisableCookies
 }
 
 // AmneziaLink renders a peer as a vpn:// link for the Amnezia client. peerName is
@@ -187,11 +187,13 @@ func AmneziaLink(c ClientConf, peerName string) (string, error) {
 				last[k] = v
 			}
 		}
-		// AWG 3.1, symmetric half only. Spelled `on` because the client feeds
-		// this through awg's parse_bool. DisableCookies is responder-side and
-		// never leaves the server.
+		// Both AWG 3.1 flags, spelled `on` because the client feeds these
+		// through awg's parse_bool ("true" is rejected outright).
 		if o.RandomTrailers {
 			last["RandomTrailers"] = "on"
+		}
+		if o.DisableCookies {
+			last["DisableCookies"] = "on"
 		}
 	}
 

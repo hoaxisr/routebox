@@ -159,17 +159,19 @@
 				</div>
 			</div>
 			{/if}
-			<!-- RandomTrailers is what AWG 3.1 IS here, so the version row owns it;
-			     DisableCookies is responder-side policy and stays a free choice. -->
+			<!-- The two device flags AWG 3.1 adds. They are what picking 3.1 MEANS,
+			     so the version row owns both — DisableCookies used to be a separate
+			     opt-in, which is how a config labelled 3.1 shipped with only one. -->
 			{#if version === '3.1'}
 			<div class="flag-list">
-				<label class="flag">
-					<input type="checkbox" checked={obf.disable_cookies ?? false} onchange={(e) => (obf.disable_cookies = e.currentTarget.checked)} />
-					<span>
-						<span class="flag-name">{$t('awg.disableCookies')}</span>
-						<span class="flag-hint">{$t('awg.disableCookiesHint')}</span>
-					</span>
-				</label>
+				<div class="flag">
+					<span class="flag-name">{$t('awg.randomTrailers')}</span>
+					<span class="flag-hint">{$t('awg.randomTrailersHint')}</span>
+				</div>
+				<div class="flag">
+					<span class="flag-name">{$t('awg.disableCookies')}</span>
+					<span class="flag-hint">{$t('awg.disableCookiesHint')}</span>
+				</div>
 			</div>
 			{/if}
 		</div>
@@ -191,18 +193,6 @@
 		flex-direction: column;
 		gap: 1rem;
 		margin-top: 1rem;
-	}
-
-	.flag {
-		display: flex;
-		align-items: flex-start;
-		gap: 0.625rem;
-		cursor: pointer;
-	}
-
-	.flag input {
-		margin-top: 0.2rem;
-		flex: none;
 	}
 
 	.flag-name,

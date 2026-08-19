@@ -43,12 +43,7 @@ func RenderServer(s ServerConf, peers []PeerLine) string {
 	if s.MTU > 0 {
 		fmt.Fprintf(&b, "MTU = %d\n", s.MTU)
 	}
-	writeObf(&b, s.Obf) // reuse the single obfuscation renderer (shared with BuildClient)
-	// Responder-side only, so it is not in writeObf (that renderer is shared
-	// with BuildClient and a client neither needs nor can parse this key).
-	if s.Obf.DisableCookies {
-		b.WriteString("DisableCookies = on\n")
-	}
+	writeObf(&b, s.Obf) // reuse the single obfuscation renderer (shared with BuildClient; emits both 3.1 flags)
 	if s.HeaderProtectionKey != "" {
 		fmt.Fprintf(&b, "HeaderProtectionKey = %s\n", s.HeaderProtectionKey)
 	}
