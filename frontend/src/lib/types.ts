@@ -1091,6 +1091,11 @@ export interface AwgStatus {
 	// awg-quick/tools pairing (always false/omitted on the singbox backend).
 	kernel_awg3_available?: boolean;
 	kernel_awg31_available?: boolean;
+	// Installed amneziawg kernel module version (see
+	// backend/internal/awg/kernel_awg3.go DetectedKernelModuleVersion), for
+	// display. Empty/omitted when not installed/loaded, or on singbox (needs
+	// no kernel module).
+	kernel_module_version?: string;
 }
 
 export interface AwgPeer {

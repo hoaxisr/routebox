@@ -9,6 +9,11 @@
 	import PeerRoster from '$lib/components/awg/PeerRoster.svelte';
 	import BackendPicker from '$lib/components/awg/BackendPicker.svelte';
 
+	// Where the "not installed" notice sends people: the upstream kernel module
+	// project's own install instructions (per distro), not a RouteBox doc — the
+	// module isn't RouteBox's to install outside the Debian/Ubuntu PPA path.
+	const AMNEZIAWG_MODULE_REPO = 'https://github.com/amnezia-vpn/amneziawg-linux-kernel-module';
+
 	let status = $state<AwgStatus | null>(null);
 	let settings = $state<AwgServerSettings | null>(null);
 	let form = $state<AwgServerSettings | null>(null);
@@ -316,10 +321,18 @@
 		</div>
 
 		{#if !isSingbox}
-			<div class="dep-note">
-				<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" width="14" height="14"><polyline points="20 6 9 17 4 12" /></svg>
-				{$t('awg.depNote', { values: { module: status.module } })}
-			</div>
+			{#if status.kernel_module_version}
+				<div class="dep-note">
+					<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" width="14" height="14"><polyline points="20 6 9 17 4 12" /></svg>
+					{$t('awg.depNoteVersion', { values: { version: status.kernel_module_version } })}
+				</div>
+			{:else}
+				<div class="dep-note warn">
+					<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" width="14" height="14"><path d="M12 9v4" /><path d="M12 17h.01" /><path d="M10.29 3.86 1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z" /></svg>
+					<span>{$t('awg.depNoteMissing')}</span>
+					<a href={AMNEZIAWG_MODULE_REPO} target="_blank" rel="noopener noreferrer">{$t('awg.installInstructions')}</a>
+				</div>
+			{/if}
 		{/if}
 	</div>
 {:else}
@@ -363,9 +376,20 @@
 							<div class="ready-chip">
 								<span class="ok"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 13l4 4L19 7" /></svg></span>
 								<span>{$t('awg.kernelModule')}</span>
-								<span class="status-badge {status.module === 'loaded' ? 'success' : 'info'}">{status.module}</span>
+								{#if status.kernel_module_version}
+									<span class="status-badge success">v{status.kernel_module_version}</span>
+								{:else}
+									<span class="status-badge error">{$t('awg.notInstalled')}</span>
+								{/if}
 							</div>
 						</div>
+						{#if !status.kernel_module_version}
+							<div class="dep-note warn">
+								<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" width="14" height="14"><path d="M12 9v4" /><path d="M12 17h.01" /><path d="M10.29 3.86 1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z" /></svg>
+								<span>{$t('awg.depNoteMissing')}</span>
+								<a href={AMNEZIAWG_MODULE_REPO} target="_blank" rel="noopener noreferrer">{$t('awg.installInstructions')}</a>
+							</div>
+						{/if}
 					</div>
 				</section>
 			{/if}
@@ -771,6 +795,16 @@
 	.dep-note svg {
 		color: var(--ctp-green);
 		flex-shrink: 0;
+	}
+	.dep-note.warn {
+		color: var(--ctp-red);
+	}
+	.dep-note.warn svg {
+		color: var(--ctp-red);
+	}
+	.dep-note a {
+		color: inherit;
+		text-decoration: underline;
 	}
 
 	/* ---- wizard ---- */

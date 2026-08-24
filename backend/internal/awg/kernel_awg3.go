@@ -103,16 +103,8 @@ var KernelSupportsAWG31 = func() bool {
 // error is a "no". Kept in one place so the two gates cannot drift apart on the
 // fail-closed rules — those are the subtle part, not the comparison.
 func kernelAndToolsClear(clears func(string) bool) bool {
-	modOut, err := sysfsModuleVersion()
-	if err != nil {
-		if !errors.Is(err, fs.ErrNotExist) {
-			return false
-		}
-		if modOut, err = kernelModuleVersion(); err != nil {
-			return false
-		}
-	}
-	if !clears(modOut) {
+	modOut, ok := resolvedModuleVersion()
+	if !ok || !clears(modOut) {
 		return false
 	}
 	toolsOut, err := kernelToolsVersion()
@@ -120,4 +112,35 @@ func kernelAndToolsClear(clears func(string) bool) bool {
 		return false
 	}
 	return true
+}
+
+// resolvedModuleVersion is the loaded-vs-on-disk arbitration from
+// KernelSupportsAWG3's doc comment, factored out of kernelAndToolsClear so
+// DetectedKernelModuleVersion (a plain "what version is installed" read for
+// the UI, no capability bar involved) shares the exact same fail-closed rules
+// instead of re-deriving them and risking drift.
+func resolvedModuleVersion() (version string, ok bool) {
+	modOut, err := sysfsModuleVersion()
+	if err != nil {
+		if !errors.Is(err, fs.ErrNotExist) {
+			return "", false
+		}
+		if modOut, err = kernelModuleVersion(); err != nil {
+			return "", false
+		}
+	}
+	v := strings.TrimSpace(modOut)
+	if v == "" {
+		return "", false
+	}
+	return v, true
+}
+
+// DetectedKernelModuleVersion reports the amneziawg kernel module's version
+// for display, using the same loaded-vs-on-disk arbitration as
+// KernelSupportsAWG3/AWG31 (see that doc comment). ok is false when the
+// module is neither loaded nor installed, or when its version cannot be
+// read — the UI shows a "not installed" notice in that case, never a guess.
+func DetectedKernelModuleVersion() (version string, ok bool) {
+	return resolvedModuleVersion()
 }

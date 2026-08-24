@@ -2,6 +2,8 @@ package awg
 
 import (
 	"context"
+	"errors"
+	"io/fs"
 	"os"
 	"path/filepath"
 	"strings"
@@ -17,6 +19,34 @@ func kernelAwg3EnableInput() EnableInput {
 	in.Obf = Obfuscation{S1: 12, S2: 12, S3: 12, S4: 12, CPA: "10-20", RAT: "120",
 		RekeyTimeout: "5", RejectAfterTime: "180", KeepaliveTimeout: "25", MaxHandshakeAttempts: "18"}
 	return in
+}
+
+// Status must surface the installed module's version for the UI, and must
+// leave it empty when the module cannot be detected — never guess a version.
+func TestStatusKernel_SurfacesModuleVersion(t *testing.T) {
+	origSysfs, origMod := sysfsModuleVersion, kernelModuleVersion
+	t.Cleanup(func() { sysfsModuleVersion, kernelModuleVersion = origSysfs, origMod })
+
+	t.Run("installed => version reported", func(t *testing.T) {
+		sysfsModuleVersion = func() (string, error) { return "3.0.20260731-04\n", nil }
+		f := newFakeRunner()
+		m := newEnableManager(t, f)
+		st := m.Status(context.Background())
+		if st.KernelModuleVersion != "3.0.20260731-04" {
+			t.Fatalf("KernelModuleVersion = %q, want %q", st.KernelModuleVersion, "3.0.20260731-04")
+		}
+	})
+
+	t.Run("not installed => empty, not a guess", func(t *testing.T) {
+		sysfsModuleVersion = func() (string, error) { return "", fs.ErrNotExist }
+		kernelModuleVersion = func() (string, error) { return "", errors.New("modinfo: ERROR: Module amneziawg not found") }
+		f := newFakeRunner()
+		m := newEnableManager(t, f)
+		st := m.Status(context.Background())
+		if st.KernelModuleVersion != "" {
+			t.Fatalf("KernelModuleVersion = %q, want empty when the module is not installed", st.KernelModuleVersion)
+		}
+	})
 }
 
 func TestEnableKernel_AWG3Capable_RendersHeaderProtectionAndCPA(t *testing.T) {
