@@ -137,6 +137,53 @@ func TestSysfsModuleVersionDefault(t *testing.T) {
 	}
 }
 
+func TestDetectedKernelModuleVersion(t *testing.T) {
+	origSysfs, origMod := sysfsModuleVersion, kernelModuleVersion
+	t.Cleanup(func() { sysfsModuleVersion, kernelModuleVersion = origSysfs, origMod })
+
+	notLoaded := func() (string, error) { return "", fs.ErrNotExist }
+
+	t.Run("loaded => sysfs version, trimmed, modinfo not consulted", func(t *testing.T) {
+		sysfsModuleVersion = func() (string, error) { return "3.0.20260731-04\n", nil }
+		kernelModuleVersion = func() (string, error) {
+			t.Error("modinfo must not be consulted when the module is loaded")
+			return "", nil
+		}
+		v, ok := DetectedKernelModuleVersion()
+		if !ok || v != "3.0.20260731-04" {
+			t.Fatalf("got (%q, %v), want (\"3.0.20260731-04\", true)", v, ok)
+		}
+	})
+
+	t.Run("not loaded, on disk => modinfo version, trimmed", func(t *testing.T) {
+		sysfsModuleVersion = notLoaded
+		kernelModuleVersion = func() (string, error) { return "3.1.20260812\n", nil }
+		v, ok := DetectedKernelModuleVersion()
+		if !ok || v != "3.1.20260812" {
+			t.Fatalf("got (%q, %v), want (\"3.1.20260812\", true)", v, ok)
+		}
+	})
+
+	t.Run("not loaded, not on disk => not ok", func(t *testing.T) {
+		sysfsModuleVersion = notLoaded
+		kernelModuleVersion = func() (string, error) { return "", errors.New("modinfo: ERROR: Module amneziawg not found") }
+		if _, ok := DetectedKernelModuleVersion(); ok {
+			t.Fatal("expected not ok when neither sysfs nor modinfo has a version")
+		}
+	})
+
+	t.Run("sysfs fails for another reason => fail closed, no modinfo fallback", func(t *testing.T) {
+		sysfsModuleVersion = func() (string, error) { return "", fs.ErrPermission }
+		kernelModuleVersion = func() (string, error) {
+			t.Error("modinfo must not be a fallback for an unreadable sysfs")
+			return "3.1.20260812\n", nil
+		}
+		if _, ok := DetectedKernelModuleVersion(); ok {
+			t.Fatal("expected not ok on a non-ENOENT sysfs error")
+		}
+	})
+}
+
 func TestAwg3AtLeast(t *testing.T) {
 	cases := []struct {
 		name         string
