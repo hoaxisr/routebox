@@ -1,0 +1,74 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>STASH — COLD STORAGE FOR BIG FILES</title>
+<meta name="description" content="STASH parks the files nobody wants on a laptop: disc rips, session stems, scan dumps. Flat rate per terabyte, no expiry.">
+<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect width='32' height='32' fill='%23111'/%3E%3Crect x='4' y='6' width='24' height='7' fill='%23f2e600'/%3E%3Crect x='4' y='16' width='24' height='7' fill='%23f2e600'/%3E%3Crect x='7' y='8.5' width='4' height='2' fill='%23111'/%3E%3Crect x='7' y='18.5' width='4' height='2' fill='%23111'/%3E%3C/svg%3E">
+<style>
+*{box-sizing:border-box;margin:0;padding:0}
+body{font:15px/1.5 "Helvetica Neue",Helvetica,Arial,sans-serif;background:#111;color:#f4f4f4}
+a{color:#f2e600;text-decoration:none;border-bottom:2px solid transparent}
+a:hover{border-bottom-color:#f2e600}
+.bar{background:#f2e600;color:#111;display:flex;align-items:center;padding:10px 20px;font-weight:800;text-transform:uppercase;letter-spacing:.1em;font-size:13px}
+.bar .sp{margin-left:auto}
+.bar a{color:#111;margin-left:20px;border-bottom:2px solid #111}
+.grid{display:grid;grid-template-columns:1fr 320px;min-height:calc(100vh - 39px)}
+.left{padding:52px 44px;border-right:4px solid #f2e600}
+h1{font-size:clamp(38px,7vw,78px);line-height:.94;font-weight:800;text-transform:uppercase;letter-spacing:-.03em}
+h1 mark{background:#f2e600;color:#111;padding:0 6px}
+.sub{margin:26px 0 40px;font-size:19px;max-width:34ch;color:#bdbdbd}
+table{width:100%;border-collapse:collapse;font-size:14px}
+th{text-align:left;text-transform:uppercase;letter-spacing:.1em;font-size:11px;color:#8b8b8b;border-bottom:2px solid #333;padding:0 0 8px}
+td{padding:13px 0;border-bottom:1px solid #262626}
+td:last-child,th:last-child{text-align:right;color:#f2e600;font-weight:700}
+.right{padding:52px 34px;background:#1a1a1a}
+h2{font-size:13px;text-transform:uppercase;letter-spacing:.16em;color:#f2e600;margin-bottom:24px}
+label{display:block;font-size:11px;text-transform:uppercase;letter-spacing:.1em;color:#8b8b8b;margin-bottom:6px}
+input{width:100%;font:inherit;padding:11px 12px;background:#111;border:2px solid #333;color:#f4f4f4;margin-bottom:18px}
+input:focus{outline:none;border-color:#f2e600}
+button{width:100%;font:inherit;font-weight:800;text-transform:uppercase;letter-spacing:.12em;background:#f2e600;color:#111;border:0;padding:13px;cursor:pointer}
+button:hover{background:#fff}
+.err{display:none;border-left:4px solid #ff4d4d;padding:8px 11px;font-size:13px;color:#ff8f8f;margin-bottom:18px}
+.err.on{display:block}
+.foot{margin-top:24px;font-size:12px;color:#6f6f6f;text-transform:uppercase;letter-spacing:.08em}
+@media(max-width:860px){.grid{grid-template-columns:1fr}.left{border-right:0;border-bottom:4px solid #f2e600;padding:38px 22px}.right{padding:38px 22px}}
+</style>
+</head>
+<body>
+<div class="bar">Stash<span class="sp"></span><a href="#rates">Rates</a><a href="#limits">Limits</a><a href="#api">API</a></div>
+<div class="grid">
+  <div class="left">
+    <h1>Park the<br><mark>huge stuff</mark><br>somewhere else.</h1>
+    <p class="sub">Disc rips, session stems, scan dumps, the raw folder from that shoot. Upload it, forget it, pull it back when the client suddenly needs it.</p>
+    <table id="rates">
+      <tr><th>Plan</th><th>Space</th><th>Per month</th></tr>
+      <tr><td>Shelf</td><td>500 GB</td><td>3</td></tr>
+      <tr><td>Crate</td><td>4 TB</td><td>18</td></tr>
+      <tr><td>Pallet</td><td>20 TB</td><td>72</td></tr>
+      <tr><td id="limits">Warehouse</td><td>100 TB+</td><td>ask</td></tr>
+    </table>
+  </div>
+  <div class="right">
+    <h2>Account</h2>
+    <form id="f" novalidate>
+      <div class="err" id="e">Wrong e-mail or password.</div>
+      <label for="u">E-mail</label>
+      <input id="u" name="email" type="email" autocomplete="username" placeholder="you@mail.com">
+      <label for="p">Password</label>
+      <input id="p" name="password" type="password" autocomplete="current-password" placeholder="••••••••">
+      <button type="submit">Open</button>
+    </form>
+    <p class="foot"><a href="#reset">Reset password</a> &middot; <a href="#api">API keys</a></p>
+  </div>
+</div>
+<script>
+document.getElementById('f').addEventListener('submit',function(ev){
+  ev.preventDefault();
+  document.getElementById('e').classList.add('on');
+  document.getElementById('p').value='';
+});
+</script>
+</body>
+</html>

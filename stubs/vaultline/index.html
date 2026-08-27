@@ -1,0 +1,79 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Vaultline — private media storage</title>
+<meta name="description" content="Vaultline keeps your photos, video and archives on hardware you control. Encrypted at rest, no third parties.">
+<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect width='32' height='32' rx='6' fill='%230b1220'/%3E%3Cpath d='M8 12h16v13H8z' fill='none' stroke='%2338bdf8' stroke-width='2'/%3E%3Cpath d='M12 12V9a4 4 0 018 0v3' fill='none' stroke='%2338bdf8' stroke-width='2'/%3E%3C/svg%3E">
+<style>
+*{box-sizing:border-box;margin:0;padding:0}
+body{font:14px/1.6 ui-monospace,SFMono-Regular,Menlo,Consolas,monospace;background:#0b1220;color:#c7d2e0;min-height:100vh;display:flex;flex-direction:column}
+a{color:#38bdf8;text-decoration:none}
+header{border-bottom:1px solid #1c2b41;padding:18px 28px;display:flex;justify-content:space-between;align-items:center}
+.brand{color:#e6edf6;letter-spacing:.14em;text-transform:uppercase;font-size:13px}
+.brand b{color:#38bdf8}
+nav a{margin-left:22px;font-size:12px;color:#6b8098}
+nav a:hover{color:#c7d2e0}
+main{flex:1;display:grid;grid-template-columns:1fr 360px;gap:64px;max-width:1040px;margin:0 auto;padding:80px 28px;align-items:start}
+h1{font-size:30px;font-weight:600;color:#e6edf6;line-height:1.3;margin-bottom:18px}
+h1 span{color:#38bdf8}
+p.lead{color:#8ea3ba;margin-bottom:34px;max-width:46ch}
+dl{border-top:1px solid #1c2b41}
+dl div{display:flex;gap:20px;padding:14px 0;border-bottom:1px solid #1c2b41}
+dt{color:#6b8098;width:120px;flex:none;font-size:12px;text-transform:uppercase;letter-spacing:.08em}
+dd{color:#a9bccf}
+.card{background:#101b2d;border:1px solid #1c2b41;border-radius:10px;padding:26px}
+.card h2{font-size:13px;text-transform:uppercase;letter-spacing:.12em;color:#e6edf6;margin-bottom:20px}
+label{display:block;font-size:11px;text-transform:uppercase;letter-spacing:.08em;color:#6b8098;margin-bottom:6px}
+input{width:100%;background:#0b1220;border:1px solid #24354e;border-radius:6px;padding:10px 12px;color:#e6edf6;font:inherit;margin-bottom:16px}
+input:focus{outline:none;border-color:#38bdf8}
+button{width:100%;background:#38bdf8;color:#06121f;border:0;border-radius:6px;padding:11px;font:inherit;font-weight:700;cursor:pointer}
+button:hover{background:#5ccbfa}
+.err{display:none;color:#f87171;font-size:12px;margin-bottom:14px}
+.err.on{display:block}
+.small{margin-top:18px;font-size:12px;color:#6b8098;text-align:center}
+footer{border-top:1px solid #1c2b41;padding:20px 28px;font-size:12px;color:#4f6379;text-align:center}
+@media(max-width:820px){main{grid-template-columns:1fr;gap:44px;padding:48px 22px}}
+</style>
+</head>
+<body>
+<header>
+  <div class="brand"><b>//</b> vaultline</div>
+  <nav><a href="#storage">Storage</a><a href="#pricing">Pricing</a><a href="#docs">Docs</a><a href="#status">Status</a></nav>
+</header>
+<main>
+  <section>
+    <h1>Your media library,<br><span>on your own hardware.</span></h1>
+    <p class="lead">Vaultline is a single-tenant storage node. Photos, raw video, project archives — uploaded over TLS, encrypted at rest, indexed locally. Nothing leaves the box you rent.</p>
+    <dl id="storage">
+      <div><dt>Capacity</dt><dd>2 TB — 40 TB per node, expandable</dd></div>
+      <div><dt>Transfer</dt><dd>Unmetered on 1 Gbit/s uplink</dd></div>
+      <div><dt>Encryption</dt><dd>AES-256-XTS, keys held by the account owner</dd></div>
+      <div><dt>Retention</dt><dd>Nightly snapshots, 30 days rolling</dd></div>
+      <div><dt id="pricing">Billing</dt><dd>Monthly, no minimum term</dd></div>
+    </dl>
+  </section>
+  <aside class="card">
+    <h2>Sign in</h2>
+    <form id="f" novalidate>
+      <div class="err" id="e">Incorrect e-mail or password.</div>
+      <label for="u">E-mail</label>
+      <input id="u" name="email" type="email" autocomplete="username" placeholder="you@example.com">
+      <label for="p">Password</label>
+      <input id="p" name="password" type="password" autocomplete="current-password" placeholder="••••••••">
+      <button type="submit">Continue</button>
+    </form>
+    <div class="small"><a href="#reset">Forgot password?</a></div>
+  </aside>
+</main>
+<footer id="docs">Vaultline &middot; <a href="#status">status</a> &middot; <a href="#terms">terms</a> &middot; <a href="#privacy">privacy</a></footer>
+<script>
+document.getElementById('f').addEventListener('submit',function(ev){
+  ev.preventDefault();
+  document.getElementById('e').classList.add('on');
+  document.getElementById('p').value='';
+});
+</script>
+</body>
+</html>

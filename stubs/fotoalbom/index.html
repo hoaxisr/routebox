@@ -1,0 +1,81 @@
+<!doctype html>
+<html lang="ru">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Фотоальбом — семейный архив снимков</title>
+<meta name="description" content="Домашний архив фотографий и плёнок. Сканы, негативы и семейные съёмки в одном месте, доступ только по приглашению.">
+<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect width='32' height='32' rx='4' fill='%23f6f1e7'/%3E%3Ccircle cx='16' cy='17' r='6' fill='none' stroke='%23803a3a' stroke-width='2'/%3E%3Crect x='5' y='10' width='22' height='15' rx='2' fill='none' stroke='%23803a3a' stroke-width='2'/%3E%3Cpath d='M12 10l2-3h4l2 3' fill='none' stroke='%23803a3a' stroke-width='2'/%3E%3C/svg%3E">
+<style>
+*{box-sizing:border-box;margin:0;padding:0}
+body{font:16px/1.7 Georgia,"Times New Roman",serif;background:#f6f1e7;color:#3b332c}
+a{color:#803a3a}
+.wrap{max-width:960px;margin:0 auto;padding:0 24px}
+header{padding:46px 0 30px;text-align:center;border-bottom:2px solid #e0d5c2}
+header h1{font-size:36px;font-weight:400;letter-spacing:.04em}
+header p{color:#8a7a68;font-style:italic;margin-top:8px}
+.cols{display:grid;grid-template-columns:1.35fr 1fr;gap:56px;padding:48px 0}
+h2{font-size:22px;font-weight:400;margin-bottom:14px;color:#803a3a}
+.cols p{margin-bottom:16px}
+.albums{list-style:none;margin-top:26px;border-top:1px solid #e0d5c2}
+.albums li{display:flex;justify-content:space-between;padding:11px 2px;border-bottom:1px solid #e0d5c2}
+.albums span{color:#8a7a68;font-size:14px}
+.login{background:#fffdf8;border:1px solid #e0d5c2;padding:30px;box-shadow:0 2px 0 #e8ddca}
+.login h2{margin-bottom:6px}
+.login .hint{font-size:14px;color:#8a7a68;font-style:italic;margin-bottom:22px}
+label{display:block;font-size:14px;color:#6b5f52;margin-bottom:5px}
+input{width:100%;font:inherit;font-size:15px;padding:9px 11px;border:1px solid #d8cbb5;background:#fff;color:#3b332c;margin-bottom:18px}
+input:focus{outline:none;border-color:#803a3a}
+button{width:100%;font:inherit;font-size:16px;background:#803a3a;color:#fdf8f0;border:0;padding:11px;cursor:pointer;letter-spacing:.03em}
+button:hover{background:#964646}
+.err{display:none;color:#a63232;font-size:14px;margin-bottom:16px;font-style:italic}
+.err.on{display:block}
+.note{margin-top:16px;font-size:14px;color:#8a7a68;text-align:center}
+footer{border-top:2px solid #e0d5c2;padding:24px 0 40px;text-align:center;font-size:14px;color:#8a7a68}
+@media(max-width:800px){.cols{grid-template-columns:1fr;gap:40px}header h1{font-size:29px}}
+</style>
+</head>
+<body>
+<div class="wrap">
+<header>
+  <h1>Фотоальбом</h1>
+  <p>семейный архив снимков и плёнок, 1968 — наши дни</p>
+</header>
+<div class="cols">
+  <section>
+    <h2>Что здесь хранится</h2>
+    <p>Сканы старых отпечатков, оцифрованные негативы, съёмки с праздников и поездок. Всё разложено по годам и подписано теми, кто ещё помнит, кто на снимке.</p>
+    <p>Архив закрытый: ссылки на альбомы выдаются по родственной линии, поиск по фамилиям снаружи не работает.</p>
+    <ul class="albums">
+      <li>Дача, лето 1974 <span>212 снимков</span></li>
+      <li>Свадьба в Луге <span>96 снимков</span></li>
+      <li>Плёнки «Свема», разбор коробки <span>1 340 кадров</span></li>
+      <li>Поездка на море, 1989 <span>184 снимка</span></li>
+      <li>Новые сканы, этот год <span>57 снимков</span></li>
+    </ul>
+  </section>
+  <aside class="login">
+    <h2>Вход</h2>
+    <p class="hint">по приглашению</p>
+    <form id="f" novalidate>
+      <div class="err" id="e">Неверная почта или пароль.</div>
+      <label for="u">Почта</label>
+      <input id="u" name="email" type="email" autocomplete="username" placeholder="имя@почта.ру">
+      <label for="p">Пароль</label>
+      <input id="p" name="password" type="password" autocomplete="current-password" placeholder="••••••••">
+      <button type="submit">Войти</button>
+    </form>
+    <p class="note"><a href="#reset">Забыли пароль?</a></p>
+  </aside>
+</div>
+<footer>Фотоальбом &middot; <a href="#help">помощь</a> &middot; <a href="#contacts">контакты</a></footer>
+</div>
+<script>
+document.getElementById('f').addEventListener('submit',function(ev){
+  ev.preventDefault();
+  document.getElementById('e').classList.add('on');
+  document.getElementById('p').value='';
+});
+</script>
+</body>
+</html>

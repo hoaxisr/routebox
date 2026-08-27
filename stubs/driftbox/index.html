@@ -1,0 +1,92 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Driftbox · Media library for small teams</title>
+<meta name="description" content="Driftbox gives creative teams one shared library for footage, stills and masters — with versions, comments and expiring share links.">
+<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect width='32' height='32' rx='9' fill='%234f46e5'/%3E%3Cpath d='M10 21l5-10 5 10z' fill='%23fff'/%3E%3Ccircle cx='21' cy='12' r='2.5' fill='%23c7d2fe'/%3E%3C/svg%3E">
+<style>
+:root{--i:#4f46e5;--ink:#1b1b28;--mut:#6b6b80;--line:#e7e7f0}
+*{box-sizing:border-box;margin:0;padding:0}
+body{font:16px/1.6 -apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,Helvetica,Arial,sans-serif;color:var(--ink);background:#fff}
+a{color:var(--i);text-decoration:none}
+.wrap{max-width:1080px;margin:0 auto;padding:0 24px}
+nav{display:flex;align-items:center;gap:30px;padding:20px 0;border-bottom:1px solid var(--line)}
+.logo{font-weight:700;font-size:19px;letter-spacing:-.02em}
+.logo em{color:var(--i);font-style:normal}
+nav .links{display:flex;gap:26px;font-size:15px;color:var(--mut)}
+nav .links a{color:inherit}
+nav .links a:hover{color:var(--ink)}
+nav .sp{margin-left:auto}
+.hero{display:grid;grid-template-columns:1fr 380px;gap:60px;padding:72px 0 60px;align-items:center}
+h1{font-size:44px;line-height:1.12;letter-spacing:-.03em;margin-bottom:18px}
+.hero p{font-size:18px;color:var(--mut);margin-bottom:26px;max-width:44ch}
+.chips{display:flex;flex-wrap:wrap;gap:8px}
+.chip{font-size:13px;color:var(--i);background:#eef0ff;border-radius:999px;padding:5px 12px}
+.panel{border:1px solid var(--line);border-radius:14px;padding:28px;box-shadow:0 8px 28px rgba(27,27,40,.06)}
+.panel h2{font-size:19px;margin-bottom:4px}
+.panel .sub{font-size:14px;color:var(--mut);margin-bottom:22px}
+label{display:block;font-size:13px;font-weight:600;margin-bottom:6px}
+input{width:100%;font:inherit;font-size:15px;padding:11px 13px;border:1px solid #d6d6e3;border-radius:9px;margin-bottom:16px}
+input:focus{outline:2px solid #c7c9ff;outline-offset:-1px;border-color:var(--i)}
+button{width:100%;font:inherit;font-size:15px;font-weight:600;background:var(--i);color:#fff;border:0;border-radius:9px;padding:12px;cursor:pointer}
+button:hover{background:#4338ca}
+.err{display:none;background:#fef2f2;color:#b91c1c;font-size:14px;border-radius:8px;padding:9px 12px;margin-bottom:16px}
+.err.on{display:block}
+.alt{margin-top:16px;font-size:14px;color:var(--mut);text-align:center}
+.feat{display:grid;grid-template-columns:repeat(3,1fr);gap:34px;padding:56px 0;border-top:1px solid var(--line)}
+.feat h3{font-size:16px;margin-bottom:7px}
+.feat p{font-size:15px;color:var(--mut)}
+footer{border-top:1px solid var(--line);padding:26px 0 46px;font-size:14px;color:var(--mut);display:flex;gap:22px}
+footer .sp{margin-left:auto}
+@media(max-width:860px){.hero{grid-template-columns:1fr;gap:40px;padding:48px 0}h1{font-size:33px}.feat{grid-template-columns:1fr;gap:26px}nav .links{display:none}}
+</style>
+</head>
+<body>
+<div class="wrap">
+<nav>
+  <div class="logo">drift<em>box</em></div>
+  <div class="links"><a href="#product">Product</a><a href="#teams">Teams</a><a href="#pricing">Pricing</a><a href="#changelog">Changelog</a></div>
+  <div class="sp"></div>
+  <a href="#trial">Start a trial</a>
+</nav>
+<section class="hero">
+  <div>
+    <h1>One library for everything your team shoots.</h1>
+    <p id="product">Footage, stills, masters and stray exports — uploaded once, versioned, commented on in place, and shared with links that expire on their own.</p>
+    <div class="chips"><span class="chip">ProRes &amp; RAW previews</span><span class="chip">Frame comments</span><span class="chip">Expiring links</span><span class="chip">S3 offload</span></div>
+  </div>
+  <div class="panel">
+    <h2>Sign in</h2>
+    <div class="sub">Use your work e-mail.</div>
+    <form id="f" novalidate>
+      <div class="err" id="e">We couldn't sign you in. Check your e-mail and password.</div>
+      <label for="u">Work e-mail</label>
+      <input id="u" name="email" type="email" autocomplete="username" placeholder="you@studio.com">
+      <label for="p">Password</label>
+      <input id="p" name="password" type="password" autocomplete="current-password" placeholder="••••••••">
+      <button type="submit">Sign in</button>
+    </form>
+    <div class="alt"><a href="#reset">Forgot your password?</a></div>
+  </div>
+</section>
+<section class="feat" id="teams">
+  <div><h3>Versions that stay attached</h3><p>Re-upload a cut and the old one stays where it was, one click away, with the comments it earned.</p></div>
+  <div><h3>Reviews without accounts</h3><p>Send a link, collect timestamped notes. Reviewers never sign up for anything.</p></div>
+  <div><h3>Storage you can move</h3><p>Keep hot projects on the node, push finished ones to your own bucket on a schedule.</p></div>
+</section>
+<footer id="pricing">
+  <span>&copy; Driftbox</span><a href="#status">Status</a><a href="#docs">Docs</a>
+  <span class="sp"></span><a href="#terms">Terms</a><a href="#privacy">Privacy</a>
+</footer>
+</div>
+<script>
+document.getElementById('f').addEventListener('submit',function(ev){
+  ev.preventDefault();
+  document.getElementById('e').classList.add('on');
+  document.getElementById('p').value='';
+});
+</script>
+</body>
+</html>
