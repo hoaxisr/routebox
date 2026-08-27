@@ -12,7 +12,9 @@
 
 RED='\033[0;31m'; GREEN='\033[0;32m'; YELLOW='\033[1;33m'; NC='\033[0m'
 
-IMAGE="ghcr.io/hoaxisr/routebox:latest"
+# Образ вынесен в переменную ради прогонов на стенде: без этого проверить
+# собранный из проверяемого кода образ можно только опубликовав его.
+IMAGE="${RB_IMAGE:-ghcr.io/hoaxisr/routebox:latest}"
 MARKER="# managed by routebox"
 NGINX_VHOST_NAME="routebox.conf"
 NGINX_STREAM_DIR="/etc/nginx/stream-enabled"
@@ -29,6 +31,8 @@ ACTION="install"; PURGE="false"
 
 # Ответы, пришедшие флагами. Пустое значение означает «спросим».
 MODE_FLAG=""; ARG_DOMAIN=""; ARG_EMAIL=""; ARG_DIR=""; ARG_STAGING=""; ARG_STUB=""
+# Ядерный бэкенд AmneziaWG: "" — спросить, true/false — ответ уже дан флагом.
+ARG_AWG_KERNEL=""
 
 # Состояние разведки.
 HAS_DOCKER="false"; HAS_NGINX_HOST="false"; HAS_NGINX_CONTAINER="false"
@@ -38,6 +42,10 @@ OTHER_PROXY=""; HAS_CERTBOT="false"
 INSTALL_DIR=""; DOMAIN=""; EMAIL=""; TLS_MODE=""; STAGING="false"
 HOST_PORT=""; PUBLIC_PORT=""; SUBNET=""
 WANT_SNI="false"; INBOUND_DOMAIN=""; INBOUND_PORT=""; PP_PORT=""; PANEL_HTTPS_PORT=""
+# Привилегия выдаётся ТОЛЬКО когда на хосте поднялся модуль: она нужна ровно для
+# создания интерфейса, которого без модуля не будет, а лишняя привилегия у
+# службы, торчащей в интернет, — это плата без покупки.
+WANT_CAP_NET_ADMIN="false"
 
 err()  { echo -e "${RED}Error: $*${NC}" >&2; }
 info() { echo -e "${GREEN}$*${NC}"; }
@@ -53,6 +61,8 @@ RouteBox Docker Installer. Без флагов — задаёт вопросы.
   --dir PATH       Каталог установки (по умолчанию /opt/routebox)
   --staging        Тестовый CA Let's Encrypt — для первого прогона
   --stub NAME      Шаблон заглушки (по умолчанию случайный из архива)
+  --awg-kernel     Поставить на ХОСТ ядерный модуль AmneziaWG (Debian/Ubuntu)
+  --no-awg-kernel  Не спрашивать про него и не ставить
   --dry-run        Показать, что будет сделано и какие файлы получатся
   --uninstall      Удалить контейнер и файлы nginx, созданные установщиком
   --purge          Вместе с --uninstall: удалить и каталог ./config с данными
@@ -63,6 +73,8 @@ EOF
 parse_args() {
 	ACTION="install"; PURGE="false"
 	MODE_FLAG=""; ARG_DOMAIN=""; ARG_EMAIL=""; ARG_DIR=""; ARG_STAGING=""; ARG_STUB=""
+# Ядерный бэкенд AmneziaWG: "" — спросить, true/false — ответ уже дан флагом.
+ARG_AWG_KERNEL=""
 	while [ $# -gt 0 ]; do
 		case "$1" in
 			--dry-run)   ACTION="dry-run" ;;
@@ -71,6 +83,8 @@ parse_args() {
 			--allinone)  MODE_FLAG="allinone" ;;
 			--staging)   ARG_STAGING="true" ;;
 			--stub)      shift; [ $# -gt 0 ] || { err "--stub без значения"; return 1; }; ARG_STUB="$1" ;;
+			--awg-kernel)    ARG_AWG_KERNEL="true" ;;
+			--no-awg-kernel) ARG_AWG_KERNEL="false" ;;
 			--domain)    shift; [ $# -gt 0 ] || { err "--domain без значения"; return 1; }; ARG_DOMAIN="$1" ;;
 			--email)     shift; [ $# -gt 0 ] || { err "--email без значения"; return 1; }; ARG_EMAIL="$1" ;;
 			--dir)       shift; [ $# -gt 0 ] || { err "--dir без значения"; return 1; }; ARG_DIR="$1" ;;
@@ -337,6 +351,10 @@ gen_compose() {
 			echo "      - \"80:80\"   # HTTP-01: нужен и для выпуска, и для продлений"
 			;;
 	esac
+	if [ "$WANT_CAP_NET_ADMIN" = "true" ]; then
+		echo "    cap_add:"
+		echo "      - NET_ADMIN   # ядерный бэкенд AmneziaWG: создание интерфейса"
+	fi
 	echo "    volumes:"
 	echo "      - ./config:/config"
 	echo "    networks:"
@@ -386,6 +404,10 @@ gen_compose_allinone() {
 	echo "      - \"443:443/tcp\"   # фронт: vless + reality"
 	echo "      - \"443:443/udp\"   # mieru"
 	echo "      - \"80:80\"         # HTTP-01: выпуск и продление сертификата"
+	if [ "$WANT_CAP_NET_ADMIN" = "true" ]; then
+		echo "    cap_add:"
+		echo "      - NET_ADMIN   # ядерный бэкенд AmneziaWG: создание интерфейса"
+	fi
 	echo "    volumes:"
 	echo "      - ./config:/config"
 	echo "    networks:"
@@ -847,7 +869,13 @@ require_dns_match() {
 # своего IPv6 он не знает.
 warn_stray_aaaa() {
 	command -v getent >/dev/null 2>&1 || return 0
-	local v6; v6="$(getent ahostsv6 "$1" 2>/dev/null | awk '{print $1}' | sort -u | head -3)"
+	# `::ffff:` отбрасывается: getent показывает так обычные A-записи, и без
+	# этого предупреждение срабатывало бы на каждом домене без AAAA.
+	# Именно awk, а не `grep -v`: под pipefail grep, не нашедший ни строки,
+	# возвращает 1, подстановка команд наследует этот код, и присваивание роняет
+	# весь скрипт — на домене без AAAA, то есть на самом обычном.
+	local v6; v6="$(getent ahostsv6 "$1" 2>/dev/null |
+		awk '$1 !~ /^::ffff:/ {print $1}' | sort -u | head -3)"
 	[ -n "$v6" ] || return 0
 	warn "у домена есть AAAA-запись (${v6//$'\n'/ }): Let's Encrypt пойдёт по IPv6."
 	warn "Убедитесь, что она ведёт на этот сервер, иначе сертификат не выпустится."
@@ -1042,6 +1070,147 @@ allinone_plan() {
 	echo "панель:          по секретному пути, он будет напечатан один раз после старта"
 }
 
+# --- ядерный модуль AmneziaWG на хосте ----------------------------------------
+#
+# Из контейнера модуль не собрать и не загрузить: ядро принадлежит хосту,
+# загрузка требует CAP_SYS_MODULE (по сути root на хосте), а наш установщик
+# модуля умеет только apt и DKMS — образ же собран на Alpine. Зато ЭТОТ скрипт
+# уже root на хосте, поэтому ставит он. Дальше DKMS пересобирает модуль сам на
+# каждом обновлении ядра — отдельного механизма обновления не нужно.
+#
+# Шаги повторяют backend/internal/awg/module.go один в один, включая сверку
+# отпечатка ключа PPA до того, как ключ попадёт в доверенные.
+AWG_KEY_FINGERPRINT="75C9DD72C799870E310542E24166F2C257290828"
+AWG_PPA_URI="https://ppa.launchpadcontent.net/amnezia/ppa/ubuntu/"
+AWG_KEYRING="${RB_AWG_KEYRING:-/usr/share/keyrings/amnezia-awg.gpg}"
+AWG_SOURCES="${RB_AWG_SOURCES:-/etc/apt/sources.list.d/amnezia-awg.sources}"
+AWG_KEYSERVER="keyserver.ubuntu.com"
+AWG_OS_RELEASE="${RB_OS_RELEASE:-/etc/os-release}"
+
+# os_field KEY -> значение из os-release без кавычек.
+os_field() {
+	sed -n "s/^$1=//p" "$AWG_OS_RELEASE" 2>/dev/null | head -1 | tr -d '"'
+}
+
+# awg_kernel_possible -> 0, если ядерный модуль тут вообще можно поставить.
+# Три условия: семейство Debian (наш путь установки — apt и PPA Amnezia),
+# наличие каталога модулей running-ядра (в OpenVZ и LXC его нет, и модули туда
+# не грузятся) и известное кодовое имя выпуска — из него собирается suite PPA.
+awg_kernel_possible() {
+	local id id_like
+	id="$(os_field ID)"; id_like="$(os_field ID_LIKE)"
+	case " ${id} ${id_like} " in
+		*" debian "*|*" ubuntu "*) ;;
+		*) return 1 ;;
+	esac
+	[ -d "/lib/modules/$(uname -r)" ] || return 1
+	[ -n "$(os_field VERSION_CODENAME)" ] || return 1
+	return 0
+}
+
+# awg_kernel_wanted -> 0, если модуль надо ставить. Вопрос задаётся только там,
+# где ответ «да» к чему-то приведёт: предлагать невозможное — значит просить
+# оператора выбрать из одного варианта.
+awg_kernel_wanted() {
+	if [ "$ARG_AWG_KERNEL" = "true" ]; then
+		if awg_kernel_possible; then return 0; fi
+		err "ядерный модуль AmneziaWG здесь поставить нельзя:"
+		err "нужен хост семейства Debian/Ubuntu с каталогом модулей своего ядра"
+		err "(в OpenVZ и LXC модули не грузятся). Остаётся бэкенд singbox — ему модуль не нужен."
+		exit 1
+	fi
+	[ "$ARG_AWG_KERNEL" = "false" ] && return 1
+	awg_kernel_possible || return 1
+	ask_yn "Поставить на хост ядерный модуль AmneziaWG? Он быстрее, но не обязателен"
+}
+
+# install_awg_module — установка на ХОСТ. Провал не валит установку панели:
+# ядерный бэкенд ускоряет AmneziaWG, но без него всё работает на singbox.
+# Возвращает 1, если модуль не поднялся, — тогда привилегия контейнеру не
+# выдаётся: она нужна ровно для интерфейса, которого без модуля не будет.
+install_awg_module() {
+	local ver codename scratch
+	ver="$(uname -r)"; codename="$(os_field VERSION_CODENAME)"
+	info "Ставлю ядерный модуль AmneziaWG на хост (${codename}, ядро ${ver})..."
+
+	local step
+	for step in "update" "install -y gnupg2" "install -y dirmngr" "install -y linux-headers-${ver}"; do
+		# shellcheck disable=SC2086  # шаг — это список аргументов, не одна строка
+		if ! apt-get $step >/dev/null 2>&1; then
+			warn "apt-get ${step} не прошёл — модуль не ставится, остаётся singbox"
+			return 1
+		fi
+	done
+
+	# Сверка ДО доверия: ключ принимается во временную связку, его отпечаток
+	# сверяется с прошитым, и только после этого он попадает в доверенный
+	# каталог. Несовпадение — это подмена ключа или репозитория, и тогда мы
+	# не ставим ничего.
+	scratch="$(mktemp -d)"
+	if ! gpg --no-default-keyring --keyring "${scratch}/awg.gpg" \
+			--keyserver "$AWG_KEYSERVER" --recv-keys "$AWG_KEY_FINGERPRINT" >/dev/null 2>&1; then
+		rm -rf "$scratch"
+		warn "ключ PPA Amnezia не получен — модуль не ставится, остаётся singbox"
+		return 1
+	fi
+	local got
+	got="$(gpg --no-default-keyring --keyring "${scratch}/awg.gpg" --fingerprint 2>/dev/null |
+		tr -d ' ' | tr 'a-f' 'A-F')"
+	case "$got" in
+		*"$AWG_KEY_FINGERPRINT"*) ;;
+		*)
+			rm -rf "$scratch"
+			err "отпечаток ключа PPA не совпал с прошитым (${AWG_KEY_FINGERPRINT})"
+			err "это подмена ключа или репозитория — ничего не ставлю"
+			return 1
+			;;
+	esac
+	if ! gpg --no-default-keyring --keyring "${scratch}/awg.gpg" \
+			--output "$AWG_KEYRING" --export "$AWG_KEY_FINGERPRINT" >/dev/null 2>&1; then
+		rm -rf "$scratch"
+		warn "ключ PPA не экспортировался — модуль не ставится, остаётся singbox"
+		return 1
+	fi
+	rm -rf "$scratch"
+
+	mkdir -p "$(dirname "$AWG_SOURCES")"
+	cat > "$AWG_SOURCES" <<EOF
+Types: deb
+URIs: ${AWG_PPA_URI}
+Suites: ${codename}
+Components: main
+Signed-By: ${AWG_KEYRING}
+EOF
+
+	if ! apt-get update >/dev/null 2>&1 || ! apt-get install -y amneziawg >/dev/null 2>&1; then
+		warn "пакет amneziawg не установился — модуль не ставится, остаётся singbox"
+		return 1
+	fi
+	if ! modprobe amneziawg >/dev/null 2>&1; then
+		warn "modprobe amneziawg не прошёл — модуль не загрузился, остаётся singbox"
+		return 1
+	fi
+	info "Модуль amneziawg загружен. DKMS пересоберёт его сам при обновлении ядра."
+	return 0
+}
+
+# maybe_install_awg_module — спросить (или прочитать флаг), поставить, и только
+# при успехе выдать контейнеру привилегию.
+maybe_install_awg_module() {
+	awg_kernel_wanted || return 0
+	if install_awg_module; then
+		WANT_CAP_NET_ADMIN="true"
+		# Порт AmneziaWG публикуется отдельно: он выбирается позже, в панели, а
+		# добавить публикацию работающему контейнеру нельзя — только правкой
+		# compose и пересозданием. Сказать об этом сейчас дешевле, чем оставить
+		# оператора с сервером, который «включился», но никого не пускает.
+		warn "Порт AmneziaWG наружу не проброшен: после включения сервера в панели"
+		warn "допишите его в ${INSTALL_DIR}/docker-compose.yml (например \"51820:51820/udp\")"
+		warn "и выполните: cd ${INSTALL_DIR} && docker compose up -d"
+	fi
+	return 0
+}
+
 # --- применение --------------------------------------------------------------
 
 require_root() {
@@ -1222,7 +1391,13 @@ EOF
 }
 
 compose_up() {
-	if ! (cd "$INSTALL_DIR" && docker compose pull && docker compose up -d); then
+	# Провал обновления образа — не повод не поднимать тот, что уже есть:
+	# реестр может лежать или упереться в лимит, а образ быть на месте. Если его
+	# нет вовсе, `up -d` скажет об этом сам и сообщением по делу.
+	if ! (cd "$INSTALL_DIR" && docker compose pull); then
+		warn "docker compose pull не прошёл — поднимаю на том образе, что уже скачан"
+	fi
+	if ! (cd "$INSTALL_DIR" && docker compose up -d); then
 		err "docker compose не поднял контейнер. Конфигурация записана в ${INSTALL_DIR},"
 		err "так что можно поправить её и повторить: cd ${INSTALL_DIR} && docker compose up -d"
 		exit 1
@@ -1290,7 +1465,10 @@ do_update() {
 		warn "dest или заглушка пропали с тома — доставляю заново"
 		install_dest_and_stub
 	fi
-	(cd "$INSTALL_DIR" && docker compose pull && docker compose up -d)
+	# Тот же compose_up, что и при установке: провалившееся обновление образа не
+	# должно рвать запуск на полпути, оставляя контейнеры как есть и без единого
+	# слова о том, чем всё кончилось.
+	compose_up
 	local dir
 	if [ "$HAS_NGINX_HOST" = "true" ]; then
 		dir="$(nginx_conf_dir)"
@@ -1322,6 +1500,7 @@ do_install() {
 	ask_all
 	if [ "$TLS_MODE" = "allinone" ]; then
 		allinone_plan
+		maybe_install_awg_module
 		# Артефакты первыми: оборванная закачка после записи compose оставила бы
 		# каталог, который повторный запуск примет за готовую установку и уйдёт
 		# обновлять то, что ещё не собрано.
@@ -1344,6 +1523,7 @@ do_install() {
 		issue_cert
 		install_nginx_files
 	fi
+	maybe_install_awg_module
 	write_compose
 	compose_up
 	wait_healthy || true

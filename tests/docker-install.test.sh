@@ -703,8 +703,37 @@ OUT_AGAIN="$(PATH="$E2EBIN:$PATH" RB_TTY_IN=/dev/null RB_NGINX_T_CMD="true" \
 	bash "$HERE/../docker-install.sh" --allinone --dir "$E2E_DIR" 2>&1)"; AGAIN_CODE=$?
 assert_eq "0" "$AGAIN_CODE"                        "повторный запуск проходит"
 assert_contains "$OUT_AGAIN" "обновляю образ"      "повторный запуск уходит в обновление"
+assert_contains "$OUT_AGAIN" "Готово"              "обновление доходит до конца"
 assert_not_contains "$OUT_AGAIN" "занят"           "свой же 443 не считается помехой"
 assert_contains "$(cat "$E2E_DIR/docker-compose.yml")" "BOOTSTRAP_ALLINONE=1" "compose не переписан"
+
+# Реестр может лежать, а образ быть на месте: обновление обязано дойти до конца.
+cat >"$E2EBIN/docker" <<'EOF'
+#!/bin/bash
+case "$1" in
+	ps)      echo '' ;;
+	network) echo '10.0.0.0/24' ;;
+	compose)
+		case "$2" in
+			pull) echo "pull access denied" >&2; exit 1 ;;
+			exec)
+				mkdir -p ./config
+				echo "secret-password" > ./config/routebox-initial-password
+				echo "https://panel.example.com/deadbeef"
+				;;
+			*) ;;
+		esac
+		;;
+esac
+exit 0
+EOF
+chmod +x "$E2EBIN/docker"
+OUT_NOPULL="$(PATH="$E2EBIN:$PATH" RB_TTY_IN=/dev/null RB_NGINX_T_CMD="true" \
+	RB_RELEASE_BASE="https://example.invalid/releases" \
+	bash "$HERE/../docker-install.sh" --allinone --dir "$E2E_DIR" 2>&1)"; NOPULL_CODE=$?
+assert_eq "0" "$NOPULL_CODE"                        "провал pull не обрывает обновление"
+assert_contains "$OUT_NOPULL" "поднимаю на том образе" "сказано, что поднимаемся на скачанном"
+assert_contains "$OUT_NOPULL" "Готово"              "обновление всё равно доходит до конца"
 
 # Пропавший с тома dest восстанавливается, а не оставляет контейнер в перезапусках.
 rm -f "$E2E_DIR/config/bin/dest"
@@ -733,6 +762,119 @@ assert_eq "1" "$FOREIGN_CODE"                        "чужой compose -> от
 assert_eq "0" "$(test -f "$E2E_DIR/docker-compose.yml"; echo $?)" "чужой compose на месте"
 assert_contains "$OUT_FOREIGN" "чужой docker-compose.yml" "названа причина отказа"
 rm -rf "$E2E"
+
+echo
+echo "предупреждение о AAAA"
+# getent показывает обычную A-запись как ::ffff:… — на домене без AAAA
+# предупреждение срабатывать не должно.
+NOAAAA="$(mktemp -d)"
+cat >"$NOAAAA/getent" <<'EOF'
+#!/bin/bash
+case "$1" in
+	ahostsv6) echo "::ffff:203.0.113.10 STREAM panel.example.com" ;;
+	*)        echo "203.0.113.10 STREAM panel.example.com" ;;
+esac
+EOF
+chmod +x "$NOAAAA/getent"
+# Под `set -euo pipefail`, как в main: без этого не видно, что пустой вывод
+# grep роняет весь скрипт на домене без AAAA.
+OUT_V4ONLY="$( (set -euo pipefail; PATH="$NOAAAA:$PATH"; warn_stray_aaaa panel.example.com; echo "дожили") 2>&1 )"
+assert_eq "дожили" "$OUT_V4ONLY" "домен без AAAA: ни предупреждения, ни падения"
+cat >"$NOAAAA/getent" <<'EOF'
+#!/bin/bash
+case "$1" in
+	ahostsv6) echo "2001:db8::1 STREAM panel.example.com" ;;
+	*)        echo "203.0.113.10 STREAM panel.example.com" ;;
+esac
+EOF
+chmod +x "$NOAAAA/getent"
+OUT_V6="$( (set -euo pipefail; PATH="$NOAAAA:$PATH"; warn_stray_aaaa panel.example.com) 2>&1 )"
+assert_contains "$OUT_V6" "2001:db8::1" "настоящая AAAA-запись названа"
+assert_contains "$OUT_V6" "IPv6"        "сказано, почему это важно"
+rm -rf "$NOAAAA"
+
+echo
+echo "ядерный модуль AmneziaWG на хосте"
+AWGH="$(mktemp -d)"
+mkdir -p "$AWGH/bin" "$AWGH/etc"
+# os-release семейства Debian и каталог модулей running-ядра — два условия, при
+# которых модуль тут вообще можно поставить.
+printf 'ID=ubuntu\nID_LIKE=debian\nVERSION_CODENAME=noble\n' > "$AWGH/os-release"
+# Переменные читаются при сорсинге, поэтому подменяем их сами, а не через окружение.
+AWG_OS_RELEASE="$AWGH/os-release"
+assert_eq "0" "$(awg_kernel_possible; echo $?)" "Debian-семейство с каталогом модулей -> можно"
+printf 'ID=alpine\n' > "$AWGH/os-release"
+assert_fails 'awg_kernel_possible' "не-Debian хост -> нельзя"
+printf 'ID=ubuntu\nID_LIKE=debian\n' > "$AWGH/os-release"
+assert_fails 'awg_kernel_possible' "без кодового имени выпуска -> нельзя (не из чего собрать suite PPA)"
+printf 'ID=ubuntu\nID_LIKE=debian\nVERSION_CODENAME=noble\n' > "$AWGH/os-release"
+
+# Явный --awg-kernel там, где модуль невозможен, — это остановка с причиной, а
+# не тихий пропуск: оператор попросил то, чего здесь не будет.
+printf 'ID=alpine\n' > "$AWGH/os-release"
+ARG_AWG_KERNEL="true"
+OUT_IMP="$( (awg_kernel_wanted) 2>&1 )"; IMP_CODE=$?
+assert_eq "1" "$IMP_CODE"                       "--awg-kernel на неподходящем хосте -> отказ"
+assert_contains "$OUT_IMP" "Debian/Ubuntu"      "названо, какой хост нужен"
+assert_contains "$OUT_IMP" "singbox"            "названа рабочая альтернатива"
+printf 'ID=ubuntu\nID_LIKE=debian\nVERSION_CODENAME=noble\n' > "$AWGH/os-release"
+ARG_AWG_KERNEL="false"
+assert_fails 'awg_kernel_wanted' "--no-awg-kernel -> не спрашиваем и не ставим"
+ARG_AWG_KERNEL=""
+
+# Установка на стабах: apt, gpg и modprobe подменены, ключ отдаёт правильный
+# отпечаток. Проверяем, что дошли до конца и написали источник apt.
+cat >"$AWGH/bin/apt-get" <<'EOF'
+#!/bin/bash
+exit 0
+EOF
+cat >"$AWGH/bin/gpg" <<EOF
+#!/bin/bash
+case "\$*" in
+	*--fingerprint*) echo "      75C9 DD72 C799 870E 3105  42E2 4166 F2C2 5729 0828" ;;
+	*--export*)      out=""; prev=""; for a in "\$@"; do [ "\$prev" = "--output" ] && out="\$a"; prev="\$a"; done; [ -n "\$out" ] && echo key > "\$out" ;;
+esac
+exit 0
+EOF
+printf '#!/bin/bash\nexit 0\n' > "$AWGH/bin/modprobe"
+chmod +x "$AWGH/bin"/*
+RB_AWG_KEYRING="$AWGH/etc/amnezia.gpg"
+RB_AWG_SOURCES="$AWGH/etc/amnezia.sources"
+AWG_KEYRING="$RB_AWG_KEYRING"; AWG_SOURCES="$RB_AWG_SOURCES"
+OUT_MOD="$( (PATH="$AWGH/bin:$PATH"; install_awg_module) 2>&1 )"; MOD_CODE=$?
+assert_eq "0" "$MOD_CODE"                            "установка модуля проходит"
+assert_contains "$OUT_MOD" "DKMS"                    "сказано, что обновления берёт на себя DKMS"
+assert_contains "$(cat "$RB_AWG_SOURCES")" "Suites: noble" "suite PPA взят из выпуска хоста"
+assert_contains "$(cat "$RB_AWG_SOURCES")" "Signed-By: $RB_AWG_KEYRING" "источник подписан проверенной связкой"
+
+# Подменённый ключ не должен доехать до доверенного каталога.
+rm -f "$RB_AWG_KEYRING"
+cat >"$AWGH/bin/gpg" <<'EOF'
+#!/bin/bash
+case "$*" in
+	*--fingerprint*) echo "      DEAD BEEF C799 870E 3105  42E2 4166 F2C2 5729 0828" ;;
+esac
+exit 0
+EOF
+chmod +x "$AWGH/bin/gpg"
+OUT_BADKEY="$( (PATH="$AWGH/bin:$PATH"; install_awg_module) 2>&1 )"; BADKEY_CODE=$?
+assert_eq "1" "$BADKEY_CODE"                     "чужой отпечаток -> модуль не ставится"
+assert_contains "$OUT_BADKEY" "подмена"          "названа причина отказа"
+assert_fails "test -f '$RB_AWG_KEYRING'"         "чужой ключ не попал в доверенные"
+
+# Привилегия появляется в compose только вместе с установленным модулем.
+WANT_CAP_NET_ADMIN="false"
+assert_not_contains "$(gen_compose_allinone d.example.com a@b.c 172.30.0.0/24 false)" "NET_ADMIN" \
+	"без модуля привилегии в compose нет"
+WANT_CAP_NET_ADMIN="true"
+assert_contains "$(gen_compose_allinone d.example.com a@b.c 172.30.0.0/24 false)" "- NET_ADMIN" \
+	"с модулем привилегия выдаётся"
+assert_contains "$(gen_compose nginx d.example.com a@b.c 8445 443 172.30.0.0/24 false "")" "- NET_ADMIN" \
+	"и в остальных режимах тоже"
+WANT_CAP_NET_ADMIN="false"
+rm -rf "$AWGH"
+unset RB_AWG_KEYRING RB_AWG_SOURCES
+AWG_OS_RELEASE="/etc/os-release"
 
 # Схему compose проверяет сам docker, если он на машине есть: набор ключей у
 # compose меняется от версии к версии, и «yaml разобрался» об этом не говорит.
