@@ -205,6 +205,26 @@ type ServerSettings struct {
 	// client share links must carry this port instead. 0 = nothing fronts them,
 	// which is the case for every layout where inbounds bind a public address.
 	FrontPort int `toml:"front_port" json:"front_port"`
+
+	// Bootstrapped marks an install that came up from the out-of-the-box plan:
+	// one external port, every inbound behind the front, dest serving the stub
+	// site. Written once, by the bootstrap itself, and read by anything that has
+	// to explain a consequence of that layout — the connections monitor cannot
+	// show client addresses, because the front relays unauthenticated traffic
+	// as raw bytes and every connection reaches dest from loopback (ADR 0001).
+	// It is also what stops a second bootstrap from minting fresh secrets over
+	// a working install whose config file merely went missing.
+	Bootstrapped bool `toml:"bootstrapped" json:"bootstrapped"`
+
+	// PanelPath is the secret URL that opens the panel gate on a bootstrapped
+	// install: visiting it sets the cookie dest matches on. Kept out of JSON —
+	// it is a bearer secret, and nothing in the WebUI needs it; `routebox
+	// panel-url` prints it for whoever has the machine.
+	PanelPath string `toml:"panel_path" json:"-"`
+
+	// Dest is host:port of the web server the front relays unauthenticated
+	// traffic to — the same address the Caddyfile was planned for.
+	Dest string `toml:"dest" json:"dest"`
 }
 
 // SingboxSettings configures sing-box integration
@@ -496,6 +516,32 @@ func (m *Manager) SetSingboxConfigPath(path string) error {
 		// пользователя, и повторять то же самое здесь по-английски значило бы
 		// показать одно следствие дважды.
 		return fmt.Errorf("saving %s to the settings file: %w", path, err)
+	}
+	return nil
+}
+
+// SetBootstrap records what the out-of-the-box bootstrap just produced and puts
+// it on disk in one go: the mark that this install has that shape, the secret
+// URL that opens the panel gate, the dest the front relays to, and the external
+// port client links must carry.
+//
+// Deliberately not four keys in Update: that path is what PUT /api/settings
+// feeds, and none of these belong to a request. The panel path is a bearer
+// secret, and the mark is what stops a second bootstrap from replacing a
+// working install's users and keys with fresh ones.
+//
+// One write, because these four are only true together — an install marked
+// bootstrapped with no panel path is one nobody can log into.
+func (m *Manager) SetBootstrap(panelPath, dest string, frontPort int) error {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+
+	m.settings.Server.Bootstrapped = true
+	m.settings.Server.PanelPath = panelPath
+	m.settings.Server.Dest = dest
+	m.settings.Server.FrontPort = frontPort
+	if err := m.saveLocked(); err != nil {
+		return fmt.Errorf("saving the bootstrap result to the settings file: %w", err)
 	}
 	return nil
 }

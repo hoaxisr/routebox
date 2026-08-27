@@ -11,6 +11,19 @@ import (
 // the two places cannot drift apart.
 const caddyfileUnsafe = " \t\r\n\"\\{}"
 
+// panelCookie is the gate cookie: hold it and every request on this domain that
+// no inbound claimed reaches the panel, lack it and the same request reaches the
+// stub site. Its value is the secret path's own token — one secret, in one place.
+const panelCookie = "rb_gate"
+
+// panelCookieMaxAge keeps the gate open for a year, so an operator types the
+// secret URL when they install and not on every visit.
+const panelCookieMaxAge = 31536000
+
+// panelToken is the secret path without its leading slash — the same string
+// serves as the URL that opens the gate and as the cookie value it hands out.
+func panelToken(panelPath string) string { return strings.TrimPrefix(panelPath, "/") }
+
 // stagingCA is Let's Encrypt's test directory: same protocol, throwaway certs,
 // no rate limit worth hitting. The only knob an operator needs while trying an
 // install out.
@@ -63,9 +76,19 @@ func PlanCaddyfile(p Params) (string, error) {
 	w("\t}")
 	w("")
 
+	// The panel is not on a path prefix: an SPA built with an empty base sends
+	// absolute /_app and /api, so a stripped prefix serves one HTML page and
+	// drops everything under it into the stub site. The secret is a cookie
+	// instead — the secret URL below sets it once and the panel then lives at
+	// the root, where its absolute paths are correct. The secret also stops
+	// appearing in the address bar, browser history and Referer headers.
+	w("\t@panel header Cookie *%s=%s*", panelCookie, panelToken(p.Paths.Panel))
+	w("")
+
 	// One route, so the order below is the order that runs: naive first — it is
 	// recognised by the request being a proxy request, not by a path — then the
-	// secret paths, then the stub site as the catch-all.
+	// secret paths, then the panel for whoever holds the cookie, then the stub
+	// site as the catch-all.
 	w("\troute {")
 	w("\t\tforward_proxy {")
 	w("\t\t\tbasic_auth %s %s", quote(p.User.Name), quote(p.User.Password))
@@ -81,10 +104,15 @@ func PlanCaddyfile(p Params) (string, error) {
 	// service name is the first path segment.
 	w("\t\treverse_proxy /%s/* h2c://%s:%d", p.Paths.VlessGRPC, loopback, p.Ports.VlessGRPC)
 	w("")
-	w("\t\troute %s* {", p.Paths.Panel)
-	w("\t\t\turi strip_prefix %s", p.Paths.Panel)
-	w("\t\t\treverse_proxy %s:%d", loopback, p.Ports.Panel)
+	// Exact match, so the gate is one URL and not a prefix the stub site loses
+	// paths to. Handing out the cookie is all it does; the panel does its own
+	// login behind it.
+	w("\t\troute %s {", p.Paths.Panel)
+	w("\t\t\theader +Set-Cookie \"%s=%s; Path=/; Max-Age=%d; HttpOnly; Secure; SameSite=Lax\"", panelCookie, panelToken(p.Paths.Panel), panelCookieMaxAge)
+	w("\t\t\tredir / 302")
 	w("\t\t}")
+	w("")
+	w("\t\treverse_proxy @panel %s:%d", loopback, p.Ports.Panel)
 	w("")
 	w("\t\troot * %s", p.StubRoot)
 	w("\t\tfile_server")

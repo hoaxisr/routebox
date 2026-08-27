@@ -7,9 +7,14 @@ package bootstrap
 
 import (
 	"fmt"
+	"regexp"
 	"sort"
 	"strings"
 )
+
+// panelPathToken is what the panel's secret path is allowed to look like: see
+// validate() for why it is stricter than the other paths.
+var panelPathToken = regexp.MustCompile(`^/[A-Za-z0-9_-]+$`)
 
 // Inbound tags of the planned config. Exported because the wrapper (and the
 // Caddyfile planner) address these inbounds by tag.
@@ -187,6 +192,12 @@ func (p Params) validate() error {
 	if len(bare) > 0 {
 		sort.Strings(bare)
 		return fmt.Errorf("bootstrap params: %s must start with /", strings.Join(bare, ", "))
+	}
+	// The panel path is also the gate cookie's value and the body of a substring
+	// matcher, so it has to survive three grammars, not one. A token charset
+	// satisfies all three and costs nothing: the value is generated, never typed.
+	if !panelPathToken.MatchString(p.Paths.Panel) {
+		return fmt.Errorf("bootstrap params: panel path must be / followed by letters, digits, - or _")
 	}
 	// These values land in the Caddyfile unquoted — as matchers and as a root —
 	// where a character from caddyfileUnsafe is syntax rather than data.

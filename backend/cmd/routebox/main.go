@@ -74,6 +74,24 @@ func main() {
 		fmt.Printf("routebox version %s\n", Version)
 		return
 	}
+	// panel-url exists because the secret address is announced once, on the first
+	// start, and a container log rotates. Whoever has the machine can ask again.
+	if len(os.Args) > 1 && os.Args[1] == "panel-url" {
+		if err := flag.CommandLine.Parse(os.Args[2:]); err != nil {
+			os.Exit(2)
+		}
+		sm, err := settings.NewManager(*settingsPath)
+		if err != nil {
+			log.Fatalf("Failed to load settings: %v", err)
+		}
+		url := panelURL(sm.Get())
+		if url == "" {
+			fmt.Fprintln(os.Stderr, "This install has no panel gate: it was not brought up by the out-of-the-box bootstrap, so the panel answers on its own listen address.")
+			os.Exit(1)
+		}
+		fmt.Println(url)
+		return
+	}
 	flag.Parse()
 
 	// Load settings
@@ -187,6 +205,26 @@ func main() {
 			log.Printf("Warning: Could not load config from %s: %v", resolvedConfigPath, err)
 			cfgMgr = config.NewEmptyManager(resolvedConfigPath)
 		}
+	} else if effectiveMode == "vps" && os.Getenv(allInOneEnv) != "" {
+		// Out-of-the-box install: the same moment the minimal config below is
+		// written, except the whole server is planned instead — every inbound, the
+		// stub site and the panel behind its gate. Fatal on failure: the operator
+		// asked for a configured server, and a panel that came up with an empty
+		// config instead would look like it worked.
+		a, err := planAllInOne(cfg, settingsMgr.GetPath(), resolvedConfigPath, orDefault(*listenAddr, cfg.Network.Listen))
+		if err != nil {
+			log.Fatalf("%v", err)
+		}
+		if err := runAllInOne(settingsMgr, a, os.Stdout); err != nil {
+			log.Fatalf("out-of-the-box bootstrap: %v", err)
+		}
+		// The bootstrap writes [server] and [network]; cfg was read before it.
+		cfg = settingsMgr.Get()
+		m, lerr := config.NewManager(resolvedConfigPath)
+		if lerr != nil {
+			log.Fatalf("the planned config at %s does not load: %v", resolvedConfigPath, lerr)
+		}
+		cfgMgr = m
 	} else if effectiveMode == "vps" {
 		// VPS/panel mode: the installer enables the amnezia-box service at install time,
 		// which crash-loops ("read config: no such file") until a config exists. Scaffold

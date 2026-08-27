@@ -36,11 +36,29 @@ func TestPlanCaddyfileServesStubAtRoot(t *testing.T) {
 	requireLine(t, out, "file_server")
 }
 
-func TestPlanCaddyfileServesPanelAtSecretPath(t *testing.T) {
+// The secret URL hands out the gate cookie and nothing else: the panel itself
+// answers wherever that cookie shows up, so its SPA keeps serving the absolute
+// /_app and /api paths it was built with.
+func TestPlanCaddyfilePanelIsBehindTheGateCookie(t *testing.T) {
 	out := caddyfileOK(t, fixture())
-	requireLine(t, out, "route /panel-9c2f1a* {")
-	requireLine(t, out, "uri strip_prefix /panel-9c2f1a")
-	requireLine(t, out, "reverse_proxy 127.0.0.1:8080")
+	requireLine(t, out, "@panel header Cookie *rb_gate=panel-9c2f1a*")
+	requireLine(t, out, "route /panel-9c2f1a {")
+	requireLine(t, out, `header +Set-Cookie "rb_gate=panel-9c2f1a; Path=/; Max-Age=31536000; HttpOnly; Secure; SameSite=Lax"`)
+	requireLine(t, out, "redir / 302")
+	requireLine(t, out, "reverse_proxy @panel 127.0.0.1:8080")
+}
+
+// Order is the whole security property: a visitor with no cookie must fall
+// through the panel into the stub site, and one with it must not have the stub
+// site answer first.
+func TestPlanCaddyfileGateBeatsTheStubSite(t *testing.T) {
+	out := caddyfileOK(t, fixture())
+	gate := strings.Index(out, "route /panel-9c2f1a {")
+	panel := strings.Index(out, "reverse_proxy @panel")
+	stub := strings.Index(out, "root * ") // "file_server" also appears in the global order line
+	if !(gate < panel && panel < stub) {
+		t.Fatalf("want gate < panel < stub, got %d, %d, %d:\n%s", gate, panel, stub, out)
+	}
 }
 
 // The Caddyfile and the sing-box config are two halves of one path fork: if the
@@ -123,6 +141,11 @@ func TestPlanCaddyfileRejectsIncompleteInput(t *testing.T) {
 		"no panel port":   func(p *Params) { p.Ports.Panel = 0 },
 		"no panel path":   func(p *Params) { p.Paths.Panel = "" },
 		"panel path bare": func(p *Params) { p.Paths.Panel = "panel-9c2f1a" },
+		// The panel path is also a cookie value and a substring matcher, so a
+		// separator that is harmless in a URL is not harmless here.
+		"semicolon in panel path": func(p *Params) { p.Paths.Panel = "/panel;evil=1" },
+		"star in panel path":      func(p *Params) { p.Paths.Panel = "/panel*" },
+		"slash in panel path":     func(p *Params) { p.Paths.Panel = "/panel/deep" },
 		// A path lands in a matcher token, where a space or a brace is grammar.
 		"space in path":   func(p *Params) { p.Paths.TrojanWS = "/ws 4f2b8d" },
 		"brace in path":   func(p *Params) { p.Paths.VlessGRPC = "grpc{7a1c9e}" },
