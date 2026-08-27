@@ -35,6 +35,10 @@ data/
 .claude/
 CLAUDE.md
 docs/
+
+# Внутренняя кухня: словарь, тикеты и спеки не уходят в публичный репозиторий
+CONTEXT.md
+.scratch/
 Makefile
 routebox-linux-amd64
 specs/
