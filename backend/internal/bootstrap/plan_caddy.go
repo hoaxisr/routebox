@@ -52,6 +52,13 @@ func PlanCaddyfile(p Params) (string, error) {
 	// directive order until we give it one.
 	w("{")
 	w("\torder forward_proxy before file_server")
+	// Without this every response carries `Alt-Svc: h3="<dest port>"`, which
+	// hands the internal port to anyone who sends one request. HTTP/3 could not
+	// work here anyway: only the front's port is published, and on its UDP side
+	// sits mieru.
+	w("\tservers {")
+	w("\t\tprotocols h1 h2")
+	w("\t}")
 	w("}")
 	w("")
 
@@ -72,7 +79,12 @@ func PlanCaddyfile(p Params) (string, error) {
 	w("}")
 	w("")
 
-	w("%s:%d {", p.Domain, p.DestPort)
+	// Two addresses, not one. A CONNECT request carries the host the client
+	// wants to reach, not ours, so a site declared only as <domain>:<port> never
+	// matches one and Caddy answers an empty 200 — naive would be configured and
+	// dead. The bare port catches those; the named one is what ACME issues for.
+	// This is the shape naive's own documentation prescribes.
+	w(":%d, %s:%d {", p.DestPort, p.Domain, p.DestPort)
 	w("")
 	w("\ttls {")
 	w("\t\tissuer acme {")
@@ -125,7 +137,11 @@ func PlanCaddyfile(p Params) (string, error) {
 	// login behind it.
 	w("\t\troute %s {", p.Paths.Panel)
 	w("\t\t\theader +Set-Cookie \"%s=%s; Path=/; Max-Age=%d; HttpOnly; Secure; SameSite=Lax\"", panelCookie, panelToken(p.Paths.Panel), panelCookieMaxAge)
-	w("\t\t\tredir / 302")
+	// `redir / 302` would read as "for requests matching path /, redirect to the
+	// URL 302": a leading slash makes the first argument an inline matcher. The
+	// gate then set its cookie and fell through to the stub site, so the panel
+	// answered 404 at its own secret address.
+	w("\t\t\tredir * / 302")
 	w("\t\t}")
 	w("")
 	w("\t\treverse_proxy @panel %s:%d", loopback, p.Ports.Panel)

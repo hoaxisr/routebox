@@ -44,7 +44,7 @@ func TestPlanCaddyfilePanelIsBehindTheGateCookie(t *testing.T) {
 	requireLine(t, out, "@panel header Cookie *rb_gate=panel-9c2f1a*")
 	requireLine(t, out, "route /panel-9c2f1a {")
 	requireLine(t, out, `header +Set-Cookie "rb_gate=panel-9c2f1a; Path=/; Max-Age=31536000; HttpOnly; Secure; SameSite=Lax"`)
-	requireLine(t, out, "redir / 302")
+	requireLine(t, out, "redir * / 302")
 	requireLine(t, out, "reverse_proxy @panel 127.0.0.1:8080")
 }
 
@@ -267,4 +267,34 @@ func TestPlanCaddyfileQuotesAnAwkwardContact(t *testing.T) {
 	p := fixture()
 	p.ACME.Email = `we "two" <a b@example.com>`
 	requireLine(t, caddyfileOK(t, p), `email "we \"two\" <a b@example.com>"`)
+}
+
+// naive is served by dest, and dest is Caddy: a CONNECT request carries the
+// *target* host, not ours, so a site declared only as <domain>:<port> never
+// matches it and Caddy answers an empty 200 instead. The bare port address is
+// what catches those — it is the shape naive's own documentation prescribes,
+// and without it naive is not merely misconfigured, it is absent.
+//
+// Verified against a real build of the fork: with only the named address an
+// authenticated CONNECT returned "200 OK, Content-Length: 0" and no tunnel;
+// with both, the same request returned the padded 200 and proxied traffic.
+func TestPlanCaddyfileCatchesForeignHostsForNaive(t *testing.T) {
+	requireLine(t, caddyfileOK(t, fixture()), ":8443, media.example.com:8443 {")
+}
+
+// `redir / 302` reads as "redirect requests matching path / to the URL 302":
+// a leading slash makes the first argument an inline path matcher. The gate
+// then set its cookie and fell through to the stub site, which answered 404 —
+// so the panel was unreachable by its own secret address. The wildcard matcher
+// puts the arguments back where they belong.
+func TestPlanCaddyfileGateActuallyRedirects(t *testing.T) {
+	requireLine(t, caddyfileOK(t, fixture()), "redir * / 302")
+}
+
+// Caddy advertises HTTP/3 with an Alt-Svc header naming the site's port, so
+// every response from dest carried `alt-svc: h3=":8443"` — the internal port,
+// handed to anyone who sent a single request. h3 was never reachable anyway:
+// only 443 is published, and there mieru holds the UDP side.
+func TestPlanCaddyfileDoesNotAdvertiseTheDestPort(t *testing.T) {
+	requireLine(t, caddyfileOK(t, fixture()), "protocols h1 h2")
 }
