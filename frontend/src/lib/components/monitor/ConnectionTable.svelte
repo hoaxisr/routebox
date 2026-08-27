@@ -1,7 +1,7 @@
 <script lang="ts">
 	import { browser } from '$app/environment';
 	import { t } from 'svelte-i18n';
-	import { formatBytes, clientNames } from '$lib/stores';
+	import { formatBytes, clientNames, behindFront } from '$lib/stores';
 	import type { ClashConnection } from '$lib/types';
 
 	interface Props {
@@ -30,6 +30,15 @@
 		browser ? localStorage.getItem('connections.groupByChain') === 'true' : false
 	);
 	let expandedGroups = $state<Set<string>>(new Set());
+
+	// Behind the front every connection reports the loopback as its source, so
+	// the address is not data — it is the absence of data. One derived flag, so
+	// the table, the cards and the details cannot disagree about it. GeoIP is
+	// unaffected: it is looked up on the destination, which is real either way.
+	const showSource = $derived(!$behindFront);
+	// Grouping by client needs client addresses; without them every connection
+	// falls into one group named after the loopback.
+	const groupingBySource = $derived(groupBySource && showSource);
 
 	$effect(() => {
 		if (browser) localStorage.setItem('connections.groupBySource', String(groupBySource));
@@ -154,7 +163,7 @@
 				getHost(conn).toLowerCase().includes(lower) ||
 				conn.chains.some(c => c.toLowerCase().includes(lower)) ||
 				conn.rule.toLowerCase().includes(lower) ||
-				conn.metadata.sourceIP?.toLowerCase().includes(lower) ||
+				(showSource && conn.metadata.sourceIP?.toLowerCase().includes(lower)) ||
 				conn.geoip?.country?.toLowerCase().includes(lower) ||
 				conn.geoip?.country_code?.toLowerCase().includes(lower) ||
 				conn.geoip?.as_name?.toLowerCase().includes(lower) ||
@@ -248,12 +257,14 @@
 			</svg>
 		</div>
 		<div class="flex items-center gap-4 sm:gap-3 sm:contents">
-			<label class="flex items-center gap-2 cursor-pointer flex-shrink-0 text-sm text-[var(--ctp-subtext1)]">
-				<input type="checkbox" checked={groupBySource}
-					onchange={(e) => toggleGroupBySource(e.currentTarget.checked)}
-					class="w-4 h-4 rounded border-[var(--ctp-surface2)] text-[var(--ctp-primary)] focus:ring-[var(--ctp-primary)]" />
-				{$t('connections.groupBySource')}
-			</label>
+			{#if showSource}
+				<label class="flex items-center gap-2 cursor-pointer flex-shrink-0 text-sm text-[var(--ctp-subtext1)]">
+					<input type="checkbox" checked={groupBySource}
+						onchange={(e) => toggleGroupBySource(e.currentTarget.checked)}
+						class="w-4 h-4 rounded border-[var(--ctp-surface2)] text-[var(--ctp-primary)] focus:ring-[var(--ctp-primary)]" />
+					{$t('connections.groupBySource')}
+				</label>
+			{/if}
 			<label class="flex items-center gap-2 cursor-pointer flex-shrink-0 text-sm text-[var(--ctp-subtext1)]">
 				<input type="checkbox" checked={groupByChain}
 					onchange={(e) => toggleGroupByChain(e.currentTarget.checked)}
@@ -262,6 +273,18 @@
 			</label>
 		</div>
 	</div>
+
+	{#if !showSource}
+		<div class="flex items-start gap-2 px-3 py-2 rounded-lg bg-[var(--ctp-surface0)] border border-[var(--ctp-surface2)] text-sm">
+			<svg class="w-4 h-4 mt-0.5 flex-shrink-0 text-[var(--ctp-overlay1)]" fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden="true">
+				<path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
+			</svg>
+			<span>
+				<span class="text-[var(--ctp-text)]">{$t('connections.clientAddressUnavailable')}</span>
+				<span class="text-[var(--ctp-overlay1)]"> — {$t('connections.clientAddressUnavailableHint')}</span>
+			</span>
+		</div>
+	{/if}
 
 	<!-- Table -->
 	<div class="hidden md:block bg-[var(--ctp-surface0)] rounded-lg border border-[var(--ctp-surface2)] overflow-hidden">
@@ -299,7 +322,7 @@
 						</button>
 					</th>
 					<th class="px-4 py-3 text-center font-medium">
-						{groupByChain ? $t('connections.source') : $t('connections.chain')}
+						{groupByChain && showSource ? $t('connections.source') : $t('connections.chain')}
 					</th>
 					<th class="px-4 py-3 text-center font-medium">
 						<button onclick={() => setSort('start')} class="w-full flex items-center gap-1 justify-center hover:text-[var(--ctp-text)]">
@@ -310,7 +333,7 @@
 				</tr>
 			</thead>
 			<tbody class="divide-y divide-[var(--ctp-surface2)]">
-				{#if groupBySource}
+				{#if groupingBySource}
 					{#each groupedConnections as group}
 						{@const groupName = $clientNames.get(group.sourceIP)}
 						<!-- Group header -->
@@ -409,7 +432,7 @@
 
 	<!-- Mobile card list -->
 	<div class="md:hidden space-y-2">
-		{#if groupBySource}
+		{#if groupingBySource}
 			{#each groupedConnections as group}
 				{@render groupHeaderCard(group.sourceIP, $clientNames.get(group.sourceIP), group.connections.length, group.totalUpload, group.totalDownload)}
 				{#if expandedGroups.has(group.sourceIP)}
@@ -482,7 +505,7 @@
 			{formatBytes(conn.download)}
 		</td>
 		<td class="px-4 py-3 text-center">
-			{#if groupByChain}
+			{#if groupByChain && showSource}
 				{@const name = $clientNames.get(conn.metadata.sourceIP || '')}
 				<span class="text-sm text-[var(--ctp-subtext1)] whitespace-nowrap" title={conn.metadata.sourceIP}>
 					{#if name}{name}
@@ -522,9 +545,15 @@
 				<div class="grid grid-cols-2 gap-4 text-sm">
 					<div>
 						<span class="text-[var(--ctp-overlay0)]">{$t('connections.sourceIP')}:</span>
-						<span class="ml-2 font-mono text-[var(--ctp-text)]">
-							{conn.metadata.sourceIP}:{conn.metadata.sourcePort}
-						</span>
+						{#if showSource}
+							<span class="ml-2 font-mono text-[var(--ctp-text)]">
+								{conn.metadata.sourceIP}:{conn.metadata.sourcePort}
+							</span>
+						{:else}
+							<span class="ml-2 text-[var(--ctp-overlay1)]" title={$t('connections.clientAddressUnavailableHint')}>
+								{$t('connections.clientAddressUnavailableShort')}
+							</span>
+						{/if}
 					</div>
 					<div>
 						<span class="text-[var(--ctp-overlay0)]">{$t('connections.destinationIP')}:</span>
@@ -619,7 +648,7 @@
 		</div>
 		<div class="flex flex-wrap items-center gap-x-3 gap-y-1.5 mt-2 text-xs text-[var(--ctp-overlay1)]">
 			<span class="px-2 py-0.5 rounded bg-[var(--ctp-surface2)] text-[var(--ctp-subtext1)]">{conn.metadata.network.toUpperCase()}</span>
-			{#if groupByChain}
+			{#if groupByChain && showSource}
 				{@const name = $clientNames.get(conn.metadata.sourceIP || '')}
 				<span class="text-[var(--ctp-subtext1)] whitespace-nowrap" title={conn.metadata.sourceIP}>
 					{#if name}{name}
@@ -638,7 +667,11 @@
 			<div class="mt-2 pt-2 border-t border-[var(--ctp-surface2)] text-xs space-y-1 text-[var(--ctp-subtext1)]">
 				<div>
 					<span class="text-[var(--ctp-overlay0)]">{$t('connections.sourceIP')}:</span>
-					<span class="font-mono">{conn.metadata.sourceIP}:{conn.metadata.sourcePort}</span>
+					{#if showSource}
+						<span class="font-mono">{conn.metadata.sourceIP}:{conn.metadata.sourcePort}</span>
+					{:else}
+						<span class="text-[var(--ctp-overlay1)]">{$t('connections.clientAddressUnavailableShort')}</span>
+					{/if}
 				</div>
 				<div>
 					<span class="text-[var(--ctp-overlay0)]">{$t('connections.rule')}:</span>

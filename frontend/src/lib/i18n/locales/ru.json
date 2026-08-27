@@ -1303,6 +1303,9 @@
     "liveUpdates": "Обновления в реальном времени",
     "groupBySource": "Группировать по клиенту",
     "groupByChain": "Группировать по цепочке",
+    "clientAddressUnavailable": "Адреса клиентов недоступны",
+    "clientAddressUnavailableHint": "Все инбаунды стоят за фронтом на 443: он передаёт трафик сырыми байтами и адрес клиента до сервера не доносит.",
+    "clientAddressUnavailableShort": "недоступен за фронтом",
     "noConnectionsMatchFilter": "Нет соединений по фильтру"
   },
   "breakdown": {

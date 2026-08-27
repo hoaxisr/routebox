@@ -10,7 +10,18 @@ import type { Mode } from '$lib/mode/routeModes';
 export const serverMode = writable<Mode>('router');
 
 export const panelMode = derived(serverMode, ($m) => $m === 'vps');
+
 export const routerMode = derived(serverMode, ($m) => $m === 'router');
+
+// behindFront: this install came up from the out-of-the-box bootstrap, where
+// every inbound sits behind the front on 443. The front relays unauthenticated
+// traffic as raw bytes and never carries the client's address to sing-box, so
+// every connection reports the loopback as its source. The monitor uses this to
+// say so instead of showing 127.0.0.1 as if it were data.
+//
+// Fail-safe the same way as the mode: false until a settings read explicitly
+// says otherwise, and false is the existing UI every other install gets.
+export const behindFront = writable<boolean>(false);
 
 // normalize: only the exact string 'vps' becomes vps; everything else (missing,
 // empty, garbage, undefined) is router. Keeps the conservative contract central.
@@ -24,6 +35,7 @@ async function fetchAndApply(): Promise<void> {
 	try {
 		const res = await api.getSettings();
 		serverMode.set(normalize(res?.settings?.server?.mode));
+		behindFront.set(res?.settings?.server?.bootstrapped === true);
 	} catch (e) {
 		// keep last-good mode (router on first load) — see fail-safe contract
 		console.error('Failed to load server mode:', e);
@@ -49,4 +61,5 @@ export function currentMode(): Mode {
 // test-only reset.
 export function __resetMode(): void {
 	serverMode.set('router');
+	behindFront.set(false);
 }

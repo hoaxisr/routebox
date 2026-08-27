@@ -1294,6 +1294,9 @@
     "liveUpdates": "Live updates",
     "groupBySource": "Group by client",
     "groupByChain": "Group by chain",
+    "clientAddressUnavailable": "Client addresses are not available",
+    "clientAddressUnavailableHint": "Every inbound sits behind the front on 443, which passes traffic through as raw bytes and does not carry the client's address to the server.",
+    "clientAddressUnavailableShort": "not available behind the front",
     "noConnectionsMatchFilter": "No connections match filter"
   },
   "breakdown": {

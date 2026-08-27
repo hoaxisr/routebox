@@ -836,3 +836,28 @@ func TestUpdateServerFrontPort(t *testing.T) {
 		t.Fatalf("rejected update must not modify FrontPort; got %d", got)
 	}
 }
+
+// The monitor decides whether to show client addresses from this one field in
+// the settings the panel serves. It is not a field anything else reads over
+// JSON, so a rename here would be silent: the UI would go back to showing every
+// connection as coming from the loopback, which is the lie the flag exists to
+// prevent.
+func TestBootstrappedIsVisibleToTheUI(t *testing.T) {
+	s := Default()
+	s.Server.Bootstrapped = true
+	raw, err := json.Marshal(s)
+	if err != nil {
+		t.Fatalf("marshal settings: %v", err)
+	}
+	var out struct {
+		Server struct {
+			Bootstrapped bool `json:"bootstrapped"`
+		} `json:"server"`
+	}
+	if err := json.Unmarshal(raw, &out); err != nil {
+		t.Fatalf("unmarshal settings: %v", err)
+	}
+	if !out.Server.Bootstrapped {
+		t.Fatalf("server.bootstrapped never reached the JSON the panel serves:\n%s", raw)
+	}
+}

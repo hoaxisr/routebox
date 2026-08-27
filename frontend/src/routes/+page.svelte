@@ -2,7 +2,7 @@
 	import { onMount } from 'svelte';
 	import { t } from 'svelte-i18n';
 	import { api, createTrafficStream, createConnectionsStream } from '$lib/api/client';
-	import { notifications, formatBytes, formatSpeed, clientNames, panelMode, routerMode, refreshStatus } from '$lib/stores';
+	import { notifications, formatBytes, formatSpeed, clientNames, panelMode, routerMode, behindFront, refreshStatus } from '$lib/stores';
 	import { singboxVersion, loadVersion } from '$lib/stores/version';
 	import PendingChanges from '$lib/components/shared/PendingChanges.svelte';
 	import type { ProcessStatus, ClashConnection } from '$lib/types';
@@ -413,14 +413,19 @@
 					<div class="bg-[var(--ctp-surface1)] rounded-lg divide-y divide-[var(--ctp-surface2)]">
 						{#each topConnections as conn}
 							{@const sourceName = $clientNames.get(conn.metadata.sourceIP)}
+							<!-- Behind the front every source is the loopback (see the
+							     connections monitor), so the column is dropped rather
+							     than filled with 127.0.0.1 for every row. -->
 							<div class="px-3 sm:px-4 py-2 flex items-center gap-2 sm:gap-4">
 								<div class="min-w-0 flex-1 truncate text-sm text-[var(--ctp-text)]">
 									{conn.metadata.host || conn.metadata.destinationIP}
 								</div>
-								<div class="hidden sm:block w-[8rem] text-right text-xs tabular-nums text-[var(--ctp-overlay1)] flex-shrink-0 truncate" title={conn.metadata.sourceIP}>
-									{#if sourceName}{sourceName}
-									{:else}<span class="font-mono">{conn.metadata.sourceIP}</span>{/if}
-								</div>
+								{#if !$behindFront}
+									<div class="hidden sm:block w-[8rem] text-right text-xs tabular-nums text-[var(--ctp-overlay1)] flex-shrink-0 truncate" title={conn.metadata.sourceIP}>
+										{#if sourceName}{sourceName}
+										{:else}<span class="font-mono">{conn.metadata.sourceIP}</span>{/if}
+									</div>
+								{/if}
 								<div class="hidden sm:flex items-center justify-end gap-1 w-[10rem] flex-shrink-0">
 									{#each conn.chains as chain}
 										<span class="selection-chip">{chain}</span>

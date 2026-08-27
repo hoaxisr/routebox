@@ -6,7 +6,7 @@ vi.mock('$lib/api/client', () => ({
 	api: { getSettings: vi.fn() }
 }));
 import { api } from '$lib/api/client';
-import { serverMode, panelMode, routerMode, loadMode, refreshMode, __resetMode } from './mode';
+import { serverMode, panelMode, routerMode, behindFront, loadMode, refreshMode, __resetMode } from './mode';
 
 const getSettings = api.getSettings as unknown as ReturnType<typeof vi.fn>;
 
@@ -79,5 +79,44 @@ describe('mode store — fail-safe default', () => {
 		getSettings.mockRejectedValueOnce(new Error('flaky'));
 		await refreshMode();
 		expect(get(serverMode)).toBe('vps');
+	});
+});
+
+describe('behindFront — client addresses are unobservable behind the front', () => {
+	beforeEach(() => {
+		__resetMode();
+		getSettings.mockReset();
+	});
+
+	it('is false before any load, so every other install sees the usual monitor', () => {
+		expect(get(behindFront)).toBe(false);
+	});
+
+	it('turns on only when settings say the install was bootstrapped', async () => {
+		getSettings.mockResolvedValueOnce({ settings: { server: { bootstrapped: true } } });
+		await loadMode();
+		expect(get(behindFront)).toBe(true);
+	});
+
+	it('stays off for an install that was not bootstrapped', async () => {
+		getSettings.mockResolvedValueOnce({ settings: { server: { mode: 'vps' } } });
+		await loadMode();
+		expect(get(behindFront)).toBe(false);
+	});
+
+	// A truthy-but-not-true value (a string "false" from a hand-edited toml, say)
+	// must not hide the addresses of an install that has them.
+	it('takes only a real true', async () => {
+		getSettings.mockResolvedValueOnce({ settings: { server: { bootstrapped: 'false' } } });
+		await loadMode();
+		expect(get(behindFront)).toBe(false);
+	});
+
+	it('goes back off when a later read says so', async () => {
+		getSettings.mockResolvedValueOnce({ settings: { server: { bootstrapped: true } } });
+		await loadMode();
+		getSettings.mockResolvedValueOnce({ settings: { server: {} } });
+		await refreshMode();
+		expect(get(behindFront)).toBe(false);
 	});
 });
