@@ -822,6 +822,9 @@
     "editInbound": "Edit Inbound",
     "deleteInbound": "Delete Inbound",
     "confirmDelete": "Are you sure you want to delete inbound \"{name}\"?",
+    "naiveServedByDest": "served by dest, not sing-box — same port, same users",
+    "naiveCopyLink": "Copy link",
+    "naiveNoLink": "no link: set the public host and the front port",
     "noInbounds": "No inbounds configured",
     "types": {
       "tun": "TUN",
@@ -1844,6 +1847,7 @@
     "shareLocked": "Turn the server on to add and share clients.",
     "reset": "Reset",
     "backendKernel": "Kernel module",
+    "backendKernelUnavailable": "The kernel backend is unavailable here",
     "backendKernelHint": "amneziawg-quick interface (awg-rb0). Needs the kernel module.",
     "backendSingbox": "sing-box",
     "backendSingboxHint": "Runs inside amnezia-box. No kernel module. Peer changes reload the tunnel briefly.",

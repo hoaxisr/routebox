@@ -44,6 +44,11 @@ type AWGStatus struct {
 	NATOrphan   bool        `json:"nat_orphan"`
 	ConfigDirty bool        `json:"config_dirty"` // enabled & saved settings differ from running -> needs Apply
 	IPv6Active  bool        `json:"ipv6_active"`  // broker desired AND egress preflight passed
+	// KernelUnavailable names why this system cannot run the kernel backend, or
+	// is empty when it can. The panel offers a backend choice, and on a system
+	// without the tools or CAP_NET_ADMIN every choice of kernel ends in the same
+	// refusal at save time — so the picker refuses it up front instead.
+	KernelUnavailable string `json:"kernel_unavailable,omitempty"`
 	// KernelAWG3Available reports whether the kernel backend's host has a
 	// confirmed awg3-capable module + awg-quick/tools pairing (always false on
 	// the singbox backend, which has its own supports3Fn gate).
@@ -465,8 +470,9 @@ func (m *Manager) Status(ctx context.Context) AWGStatus {
 		mod = StateReady
 	}
 	return AWGStatus{
-		Backend: "kernel",
-		Module:  mod, Enabled: enabled, Phase: phase, IfaceUp: ifaceUp, ListenPort: port,
+		Backend:           "kernel",
+		KernelUnavailable: KernelBackendUnsupported(),
+		Module:            mod, Enabled: enabled, Phase: phase, IfaceUp: ifaceUp, ListenPort: port,
 		PublicHost: m.publicHost, PeerCount: len(peers), Online: online, Rx: rx, Tx: tx, WANIface: wan,
 		NATOrphan: rulesPresent && !ifaceUp, ConfigDirty: configDirty, LastError: lastErr,
 		KernelAWG3Available:  kAwg3,

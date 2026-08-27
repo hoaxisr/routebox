@@ -376,9 +376,38 @@ func buildNaive(inbound, user map[string]interface{}, host string, port int) (st
 	if username == "" {
 		return "", fmt.Errorf("naive user has no username")
 	}
-	userinfo := url.UserPassword(username, password).String()
+	return naiveURI(username, password, host, port, remarkOf(inbound, user, "NaiveProxy")), nil
+}
+
+// BuildNaiveLink renders the client link for naive as an out-of-the-box install
+// serves it: by dest, not by sing-box (ADR 0002). There is no inbound to hand
+// BuildShareLink there, and the client still needs a link — the same scheme the
+// panel emits for a sing-box naive inbound, and the same one its own
+// subscription parser reads back.
+//
+// The credentials are the panel user's, derived from the config exactly as the
+// list dest authenticates against is, so the link cannot drift from what the
+// server accepts.
+func BuildNaiveLink(name, password string, ep PublicAddr) (string, error) {
+	if name == "" {
+		return "", fmt.Errorf("naive user has no name")
+	}
+	if ep.Host == "" {
+		return "", fmt.Errorf("host is required")
+	}
+	// The port is the front's: dest listens on loopback, and a link naming the
+	// port it listens on would be a link to nowhere.
+	if ep.Port <= 0 {
+		return "", ErrNoFront
+	}
+	return naiveURI(name, password, ep.Host, ep.Port, "NaiveProxy"), nil
+}
+
+// naiveURI is the one place the naive link is spelled, so the inbound-served and
+// the dest-served forms cannot disagree.
+func naiveURI(username, password, host string, port int, remark string) string {
 	return fmt.Sprintf("naive+https://%s@%s#%s",
-		userinfo, hostPort(host, port), url.PathEscape(remarkOf(inbound, user, "NaiveProxy"))), nil
+		url.UserPassword(username, password).String(), hostPort(host, port), url.PathEscape(remark))
 }
 
 // buildMieru emits a mierus:// link for a mieru inbound user. Unlike naive the

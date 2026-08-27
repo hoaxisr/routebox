@@ -298,3 +298,20 @@ func TestPlanCaddyfileGateActuallyRedirects(t *testing.T) {
 func TestPlanCaddyfileDoesNotAdvertiseTheDestPort(t *testing.T) {
 	requireLine(t, caddyfileOK(t, fixture()), "protocols h1 h2")
 }
+
+// The subscription endpoint is how every client app actually receives its
+// nodes, and it is public by design: the token in the URL is the secret, and no
+// client sends the panel's gate cookie. Behind the gate it fell into the stub
+// site and answered 404, so subscription links were dead on this server —
+// found on a live install.
+func TestPlanCaddyfileLetsSubscriptionsThroughWithoutTheGate(t *testing.T) {
+	out := caddyfileOK(t, fixture())
+	requireLine(t, out, "reverse_proxy /sub/* 127.0.0.1:8080")
+	// Before the gate: the panel answers it whether or not a cookie is present.
+	sub := strings.Index(out, "reverse_proxy /sub/*")
+	gate := strings.Index(out, "route /panel-9c2f1a {")
+	stub := strings.Index(out, "root * ")
+	if !(sub < gate && sub < stub) {
+		t.Fatalf("want the subscription route before the gate and the stub, got %d, %d, %d:\n%s", sub, gate, stub, out)
+	}
+}

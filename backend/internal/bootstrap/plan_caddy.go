@@ -127,6 +127,13 @@ func PlanCaddyfile(p Params) (string, error) {
 	w("\t\t\tprobe_resistance")
 	w("\t\t}")
 	w("")
+	// The subscription endpoint is public by design — the token in the URL is the
+	// secret — and no client app sends the panel's gate cookie. Without this rule
+	// every subscription link on this server fell into the stub site and answered
+	// 404. The cost is that a prober who guesses this path sees the panel's 404
+	// rather than the site's; the token itself remains the only key.
+	w("\t\treverse_proxy /sub/* %s:%d", loopback, p.Ports.Panel)
+	w("")
 	w("\t\treverse_proxy %s* %s:%d", p.Paths.TrojanWS, loopback, p.Ports.TrojanWS)
 	// sing-box's grpc inbound speaks h2c in the clear behind dest, and its
 	// service name is the first path segment.

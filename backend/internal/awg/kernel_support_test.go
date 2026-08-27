@@ -1,6 +1,7 @@
 package awg
 
 import (
+	"context"
 	"errors"
 	"os"
 	"os/exec"
@@ -100,5 +101,26 @@ func TestLookPathDefaultsToExec(t *testing.T) {
 		if _, execErr := exec.LookPath("sh"); execErr == nil {
 			t.Fatal("lookPath is not wired to exec.LookPath")
 		}
+	}
+}
+
+// The panel offers a backend choice, and on a system that cannot run the kernel
+// one every choice of it ends in the same 409. The status carries the reason so
+// the picker can refuse it up front instead of letting the operator find out by
+// clicking — reported from a live container with no CAP_NET_ADMIN.
+func TestStatusReportsWhyTheKernelBackendIsUnavailable(t *testing.T) {
+	orig := KernelBackendUnsupported
+	t.Cleanup(func() { KernelBackendUnsupported = orig })
+
+	KernelBackendUnsupported = func() string { return "no CAP_NET_ADMIN" }
+	m := newTestManager(t, &fakeRunner{})
+	m.SetBackend("singbox")
+	if got := m.Status(context.Background()).KernelUnavailable; got != "no CAP_NET_ADMIN" {
+		t.Fatalf("KernelUnavailable = %q, want the reason", got)
+	}
+
+	KernelBackendUnsupported = func() string { return "" }
+	if got := m.Status(context.Background()).KernelUnavailable; got != "" {
+		t.Fatalf("KernelUnavailable = %q on a system that can run it", got)
 	}
 }

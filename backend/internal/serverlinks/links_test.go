@@ -1156,3 +1156,52 @@ func TestBuildShareLinkPublicPlaintextStaysPlaintext(t *testing.T) {
 		t.Fatalf("plaintext public inbound must not claim TLS: %s", link)
 	}
 }
+
+// In an out-of-the-box install naive is served by dest, not sing-box: there is
+// no inbound to hand BuildShareLink, and the client still needs a link. Same
+// scheme the rest of the panel emits and its own parser reads.
+func TestBuildNaiveLinkForDest(t *testing.T) {
+	link, err := BuildNaiveLink("alice", "s3cr3t", PublicAddr{Host: "vpn.example.com", Port: 443})
+	if err != nil {
+		t.Fatalf("BuildNaiveLink: %v", err)
+	}
+	if want := "naive+https://alice:s3cr3t@vpn.example.com:443#NaiveProxy"; link != want {
+		t.Fatalf("link = %q, want %q", link, want)
+	}
+}
+
+// Credentials are operator text and land in a URL's userinfo: a ':' or '@' left
+// unescaped moves the boundary between user, password and host.
+func TestBuildNaiveLinkEscapesCredentials(t *testing.T) {
+	link, err := BuildNaiveLink("a:b", "p@ss word", PublicAddr{Host: "vpn.example.com", Port: 443})
+	if err != nil {
+		t.Fatalf("BuildNaiveLink: %v", err)
+	}
+	if strings.Contains(link, "a:b:") || strings.Contains(link, "p@ss") {
+		t.Fatalf("credentials went in raw: %s", link)
+	}
+	if !strings.HasSuffix(link, "@vpn.example.com:443#NaiveProxy") {
+		t.Fatalf("host boundary moved: %s", link)
+	}
+}
+
+// Nothing usable comes out of a missing name, a missing host or a port that no
+// front ever published — and a link that looks right and cannot work is worse
+// than none.
+func TestBuildNaiveLinkRefusesTheUnusable(t *testing.T) {
+	cases := []struct {
+		name, user, pass string
+		ep               PublicAddr
+	}{
+		{"no user", "", "pw", PublicAddr{Host: "h", Port: 443}},
+		{"no host", "alice", "pw", PublicAddr{Port: 443}},
+		{"no port", "alice", "pw", PublicAddr{Host: "h"}},
+	}
+	for _, c := range cases {
+		t.Run(c.name, func(t *testing.T) {
+			if _, err := BuildNaiveLink(c.user, c.pass, c.ep); err == nil {
+				t.Fatal("want an error, got a link")
+			}
+		})
+	}
+}

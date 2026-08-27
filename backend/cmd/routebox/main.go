@@ -779,6 +779,11 @@ func main() {
 				r.Post("/{id}/refresh", apiHandler.RefreshSubscription)
 			})
 
+			// The naive node dest serves in an out-of-the-box install. Not an
+			// inbound, so it cannot come from /inbounds — and without it the
+			// panel shows four protocols on a server that runs five.
+			r.Get("/dest/naive", apiHandler.GetDestNaive)
+
 			// Panel users CRUD + share-by-id
 			r.Route("/users", func(r chi.Router) {
 				r.Get("/", apiHandler.ListUsers)

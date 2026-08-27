@@ -822,6 +822,9 @@
     "editInbound": "Изменить вход",
     "deleteInbound": "Удалить вход",
     "confirmDelete": "Удалить входящее подключение «{name}»?",
+    "naiveServedByDest": "исполняет dest, не sing-box — тот же порт, те же пользователи",
+    "naiveCopyLink": "Скопировать ссылку",
+    "naiveNoLink": "ссылки нет: задайте публичный хост и порт фронта",
     "noInbounds": "Входящие не настроены",
     "types": {
       "tun": "TUN",
@@ -1853,6 +1856,7 @@
     "shareLocked": "Включите сервер, чтобы добавлять и раздавать клиентов.",
     "reset": "Сбросить",
     "backendKernel": "Модуль ядра",
+    "backendKernelUnavailable": "Ядерный бэкенд здесь недоступен",
     "backendKernelHint": "Интерфейс amneziawg-quick (awg-rb0). Требуется модуль ядра.",
     "backendSingbox": "sing-box",
     "backendSingboxHint": "Работает внутри amnezia-box. Без модуля ядра. Изменения пиров кратко перезагружают туннель.",

@@ -5,15 +5,21 @@
 		disabled?: boolean;
 		/** Router mode is sing-box-only: pass false to hide the kernel option. */
 		allowKernel?: boolean;
+		/** Why the kernel backend is unavailable here, shown in its place. */
+		kernelReason?: string;
 		onChange: (b: 'kernel' | 'singbox') => void;
 	}
-	let { value, disabled = false, allowKernel = true, onChange }: Props = $props();
+	let { value, disabled = false, allowKernel = true, kernelReason = '', onChange }: Props = $props();
 	const allOptions: Array<{ id: 'kernel' | 'singbox'; label: string; hint: string }> = [
 		{ id: 'kernel', label: $t('awg.backendKernel'), hint: $t('awg.backendKernelHint') },
 		{ id: 'singbox', label: $t('awg.backendSingbox'), hint: $t('awg.backendSingboxHint') }
 	];
 	const options = $derived(allowKernel ? allOptions : allOptions.filter((o) => o.id !== 'kernel'));
 </script>
+
+{#if !allowKernel && kernelReason}
+	<p class="bp-reason">{$t('awg.backendKernelUnavailable')}: {kernelReason}</p>
+{/if}
 
 <div class="backend-picker">
 	{#each options as o}
@@ -35,4 +41,5 @@
 	.type-btn { flex: 1; text-align: left; display: flex; flex-direction: column; gap: 2px; }
 	.bp-label { font-weight: 600; }
 	.bp-hint { font-size: 0.75rem; color: var(--ctp-overlay1); }
+	.bp-reason { font-size: 0.8rem; color: var(--ctp-overlay1); margin-bottom: 0.5rem; }
 </style>

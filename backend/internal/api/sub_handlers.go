@@ -76,7 +76,10 @@ func (h *Handler) GetSubscription(w http.ResponseWriter, r *http.Request) {
 		return // empty body
 	}
 
-	body, err := users.BuildSubscription(&user, h.config.GetActive(), serverlinks.PublicAddr{Host: host, Port: h.frontPort()})
+	// naive is not an inbound in an out-of-the-box install — dest serves it — so
+	// it cannot come out of the config the way the other four nodes do.
+	body, err := users.BuildSubscription(&user, h.config.GetActive(),
+		serverlinks.PublicAddr{Host: host, Port: h.frontPort()}, h.naiveUserLink(user.Name, host))
 	if err != nil {
 		// The builder is host-agnostic and never errors on the inputs above; treat
 		// any residual as a server error WITHOUT echoing internals.

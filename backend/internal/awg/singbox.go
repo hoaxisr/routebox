@@ -653,19 +653,20 @@ func (m *Manager) statusSingbox(ctx context.Context) AWGStatus {
 			d.IPv6Broker != broker
 	}
 	return AWGStatus{
-		Backend:     "singbox",
-		Enabled:     enabled,
-		Phase:       phase,
-		ListenPort:  port,
-		PublicHost:  m.publicHost,
-		PeerCount:   len(peers),
-		Online:      online,
-		Rx:          rx,
-		Tx:          tx,
-		Module:      StateReady, // module not applicable; report ready so UI doesn't warn
-		ConfigDirty: configDirty,
-		IPv6Active:  v6active,
-		LastError:   lastErr,
+		Backend:           "singbox",
+		KernelUnavailable: KernelBackendUnsupported(),
+		Enabled:           enabled,
+		Phase:             phase,
+		ListenPort:        port,
+		PublicHost:        m.publicHost,
+		PeerCount:         len(peers),
+		Online:            online,
+		Rx:                rx,
+		Tx:                tx,
+		Module:            StateReady, // module not applicable; report ready so UI doesn't warn
+		ConfigDirty:       configDirty,
+		IPv6Active:        v6active,
+		LastError:         lastErr,
 	}
 }
 

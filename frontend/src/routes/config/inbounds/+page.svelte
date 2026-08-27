@@ -3,12 +3,15 @@
 	import { t } from 'svelte-i18n';
 	import { api } from '$lib/api/client';
 	import { notifications, unsavedChanges } from '$lib/stores';
-	import type { Inbound } from '$lib/types';
+	import { copyText } from '$lib/utils/clipboard';
+	import type { Inbound, DestNaive } from '$lib/types';
 	import Modal from '$lib/components/shared/Modal.svelte';
 	import InboundForm from '$lib/components/config/InboundForm.svelte';
 	import { inboundDisplayAddress } from '$lib/utils/inboundAddress';
 
 	let inbounds = $state<Inbound[]>([]);
+	let naive = $state<DestNaive | null>(null);
+	let copied = $state<string>('');
 	let loading = $state(true);
 	// Server inbounds bind the wildcard; the list shows the address clients dial (#37).
 	let publicHost = $state('');
@@ -103,12 +106,31 @@
 		}
 	}
 
+	async function copyLink(name: string, link: string) {
+		if (!link) return;
+		if (await copyText(link)) {
+			copied = name;
+			setTimeout(() => (copied = ''), 1500);
+		} else {
+			notifications.error($t('common.copyFailed'));
+		}
+	}
+
 	onMount(async () => {
 		await fetchInbounds();
 		try {
 			publicHost = (await api.getSettings()).settings.server?.public_host ?? '';
 		} catch {
 			/* no public host → the list falls back to a bare wildcard */
+		}
+		try {
+			// naive is served by dest, not sing-box, so it is not in the list above.
+			// Without this card the operator sees four protocols on a server that
+			// runs five, and has no way to hand anyone naive access.
+			const n = await api.getDestNaive();
+			naive = n.enabled ? n : null;
+		} catch {
+			/* an install with no dest simply has no naive node */
 		}
 	});
 </script>
@@ -123,6 +145,35 @@
 			+ {$t('inbounds.addInbound')}
 		</button>
 	</div>
+
+	{#if naive}
+		<div class="bg-[var(--ctp-surface0)] rounded-xl p-4 border border-[var(--ctp-surface2)]">
+			<div class="flex items-center gap-2 flex-wrap">
+				<span class="font-semibold text-[var(--ctp-text)]">naive</span>
+				<span class="px-2 py-0.5 text-xs bg-[var(--ctp-surface2)] rounded text-[var(--ctp-subtext1)]">
+					{naive.host}{naive.port && naive.port !== 443 ? ':' + naive.port : ''}
+				</span>
+				<span class="text-xs text-[var(--ctp-overlay1)]">{$t('inbounds.naiveServedByDest')}</span>
+			</div>
+			<div class="mt-3 space-y-1.5">
+				{#each naive.users as u}
+					<div class="flex items-center gap-2 text-sm">
+						<span class="text-[var(--ctp-subtext1)] min-w-[8rem] truncate">{u.name}</span>
+						{#if u.link}
+							<button
+								onclick={() => copyLink(u.name, u.link)}
+								class="px-2 py-1 text-xs rounded bg-[var(--ctp-surface2)] text-[var(--ctp-subtext1)] hover:bg-[var(--ctp-surface1)]"
+							>
+								{copied === u.name ? $t('common.copied') : $t('inbounds.naiveCopyLink')}
+							</button>
+						{:else}
+							<span class="text-xs text-[var(--ctp-overlay0)]">{$t('inbounds.naiveNoLink')}</span>
+						{/if}
+					</div>
+				{/each}
+			</div>
+		</div>
+	{/if}
 
 	{#if loading}
 		<div class="text-[var(--ctp-overlay0)]">{$t('common.loading')}</div>

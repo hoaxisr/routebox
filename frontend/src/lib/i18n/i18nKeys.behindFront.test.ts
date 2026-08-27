@@ -32,3 +32,24 @@ describe('behind-the-front monitor i18n keys', () => {
 		}
 	}
 });
+
+// naive has no inbound in an out-of-the-box install, so the panel names it in a
+// card of its own; the AWG picker names why a backend it cannot run is absent.
+const NAIVE_AND_BACKEND_KEYS = [
+	'inbounds.naiveServedByDest',
+	'inbounds.naiveCopyLink',
+	'inbounds.naiveNoLink',
+	'awg.backendKernelUnavailable'
+];
+
+describe('dest-served naive and kernel-backend i18n keys', () => {
+	for (const key of NAIVE_AND_BACKEND_KEYS) {
+		for (const [name, locale] of [['en', en], ['ru', ru]] as const) {
+			it(`${name} resolves ${key}`, () => {
+				const v = resolve(locale, key);
+				expect(typeof v).toBe('string');
+				expect((v as string).length).toBeGreaterThan(0);
+			});
+		}
+	}
+});

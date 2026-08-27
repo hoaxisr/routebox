@@ -23,6 +23,9 @@
 	// Form differs from saved settings — drives the Save button state + unsaved marker.
 	const formDirty = $derived(!!form && !!settings && JSON.stringify(form) !== JSON.stringify(settings));
 	const isSingbox = $derived((status?.backend ?? settings?.backend) === 'singbox');
+	// Offering a backend this system cannot run means every click on it ends in
+	// the same refusal at save time. The server says why; say it instead.
+	const kernelUnavailable = $derived(status?.kernel_unavailable ?? '');
 	const backendValue = $derived<'kernel' | 'singbox'>(isSingbox ? 'singbox' : 'kernel');
 	// AWG3 controls (header protection, CPA/RAT) are available on singbox always,
 	// and on the kernel backend only when the host's module + awg-quick/tools have
@@ -202,7 +205,7 @@
 			<p>{$t('awg.description')}</p>
 		</div>
 
-		<BackendPicker value={backendValue} disabled={status.enabled} allowKernel={!$routerMode} onChange={changeBackend} />
+		<BackendPicker value={backendValue} disabled={status.enabled} allowKernel={!$routerMode && !kernelUnavailable} kernelReason={kernelUnavailable} onChange={changeBackend} />
 
 		<!-- Status strip -->
 		<div class="status-strip">
@@ -341,7 +344,7 @@
 			{/if}
 		</div>
 
-		<BackendPicker value={backendValue} disabled={status.enabled} allowKernel={!$routerMode} onChange={changeBackend} />
+		<BackendPicker value={backendValue} disabled={status.enabled} allowKernel={!$routerMode && !kernelUnavailable} kernelReason={kernelUnavailable} onChange={changeBackend} />
 
 		<div class="spine">
 			<!-- STEP 1 — Setup / readiness (kernel backend only) -->

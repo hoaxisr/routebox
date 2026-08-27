@@ -934,6 +934,16 @@ export interface ServerSettings {
 	bootstrapped?: boolean;
 }
 
+// DestNaive is the fifth protocol of an out-of-the-box install: dest serves it,
+// so it has no inbound and cannot appear in the inbounds list the way the other
+// four do.
+export interface DestNaive {
+	enabled: boolean;
+	host?: string;
+	port?: number;
+	users: Array<{ name: string; link: string }>;
+}
+
 export interface RouteBoxSettings {
 	geoip: GeoIPSettings;
 	ui: UISettings;
@@ -1097,6 +1107,10 @@ export interface AwgStatus {
 	// awg-quick/tools pairing (always false/omitted on the singbox backend).
 	kernel_awg3_available?: boolean;
 	kernel_awg31_available?: boolean;
+	// Why this system cannot run the kernel backend, empty when it can. In a
+	// container without CAP_NET_ADMIN every switch to kernel is refused at save
+	// time, so the picker does not offer it.
+	kernel_unavailable?: string;
 }
 
 export interface AwgPeer {

@@ -24,7 +24,11 @@ import (
 // binding must never make the PUBLIC endpoint error). Links are "\n"-joined; the
 // result is base64.StdEncoding (the de-facto subscription wire format). A user
 // with no resolvable nodes yields base64 of "" (i.e. ""), not an error.
-func BuildSubscription(user *PanelUser, active map[string]interface{}, ep serverlinks.PublicAddr) (string, error) {
+// extra carries nodes this server serves that are NOT sing-box inbounds — today
+// that is naive, which dest serves in an out-of-the-box install and which
+// therefore has no inbound to look up. Empty strings are ignored, so a caller
+// with nothing to add passes what it has.
+func BuildSubscription(user *PanelUser, active map[string]interface{}, ep serverlinks.PublicAddr, extra ...string) (string, error) {
 	var links []string
 	if user != nil {
 		// Index active inbounds by tag for O(1) lookup.
@@ -68,6 +72,12 @@ func BuildSubscription(user *PanelUser, active map[string]interface{}, ep server
 				}
 				continue // empty host / malformed inbound: skip, don't fail
 			}
+			links = append(links, link)
+		}
+	}
+
+	for _, link := range extra {
+		if link != "" {
 			links = append(links, link)
 		}
 	}
