@@ -50,6 +50,8 @@ WANT_SNI="false"; INBOUND_DOMAIN=""; INBOUND_PORT=""; PP_PORT=""; PANEL_HTTPS_PO
 WANT_CAP_NET_ADMIN="false"
 # Порт AmneziaWG, опубликованный на контейнере. Пусто — не публикуется.
 AWG_PORT=""
+# Ответ на вопрос о ядерном модуле, полученный на этапе вопросов.
+WANT_AWG_KERNEL="false"
 
 err()  { echo -e "${RED}Error: $*${NC}" >&2; }
 info() { echo -e "${GREEN}$*${NC}"; }
@@ -727,6 +729,7 @@ ask_all() {
 	fi
 
 	ask_awg_port
+	ask_awg_kernel
 	SUBNET="$(pick_free_subnet)"
 	WANT_SNI="false"; INBOUND_DOMAIN=""; INBOUND_PORT=""; PP_PORT=""; PANEL_HTTPS_PORT=""
 
@@ -956,6 +959,7 @@ ask_allinone() {
 	HOST_PORT="$CONTAINER_PANEL_PORT"
 	PUBLIC_PORT="443"
 	ask_awg_port
+	ask_awg_kernel
 	SUBNET="$(pick_free_subnet)"
 	WANT_SNI="false"; INBOUND_DOMAIN=""; INBOUND_PORT=""; PP_PORT=""; PANEL_HTTPS_PORT=""
 }
@@ -1133,6 +1137,12 @@ awg_kernel_possible() {
 # awg_kernel_wanted -> 0, если модуль надо ставить. Вопрос задаётся только там,
 # где ответ «да» к чему-то приведёт: предлагать невозможное — значит просить
 # оператора выбрать из одного варианта.
+# ask_awg_kernel — задаётся вместе с остальными вопросами, ответ запоминается.
+ask_awg_kernel() {
+	if awg_kernel_wanted; then WANT_AWG_KERNEL="true"; else WANT_AWG_KERNEL="false"; fi
+	return 0
+}
+
 awg_kernel_wanted() {
 	if [ "$ARG_AWG_KERNEL" = "true" ]; then
 		if awg_kernel_possible; then return 0; fi
@@ -1261,10 +1271,12 @@ ask_awg_port() {
 	done
 }
 
-# maybe_install_awg_module — спросить (или прочитать флаг), поставить, и только
-# при успехе выдать контейнеру привилегию.
+# maybe_install_awg_module — поставить (если на вопрос ответили «да») и только
+# при успехе выдать контейнеру привилегию. Спрашивает не она: все вопросы
+# задаются до того, как что-то делается, иначе оператор, отошедший от терминала
+# после ответов, возвращается к скрипту, который ничего не сделал и ждёт.
 maybe_install_awg_module() {
-	awg_kernel_wanted || return 0
+	[ "$WANT_AWG_KERNEL" = "true" ] || return 0
 	if install_awg_module; then
 		WANT_CAP_NET_ADMIN="true"
 		if [ -z "$AWG_PORT" ]; then
