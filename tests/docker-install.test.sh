@@ -288,7 +288,7 @@ echo "dry-run целиком"
 WORK="$(mktemp -d)"
 # Порядок ответов: каталог, домен, «TLS держит nginx» — да, почта,
 # тестовый сертификат — нет, SNI-роутер — нет.
-printf '%s\n' "$WORK/rb" "panel.example.com" "y" "you@example.com" "n" "n" > "$WORK/answers"
+printf '%s\n' "$WORK/rb" "panel.example.com" "y" "you@example.com" "n" "0" "n" > "$WORK/answers"
 OUT="$(RB_TTY_IN="$WORK/answers" RB_NGINX_T_CMD="cat $FIXTURES/nginx-clean.conf" \
 	PATH="$STUBS:$PATH" bash "$HERE/../docker-install.sh" --dry-run 2>&1 || true)"
 assert_contains "$OUT" "PUBLIC_HOST=panel.example.com" "dry-run печатает compose"
@@ -300,7 +300,7 @@ assert_eq "0" "$(ls -A "$WORK/rb" 2>/dev/null | wc -l)" "dry-run не созда
 
 # Тот же прогон, но с запрошенным SNI-роутером: каталог, домен, «TLS у nginx»,
 # почта, тестовый сертификат — нет, SNI-роутер — да, домен инбаунда.
-printf '%s\n' "$WORK/rb" "panel.example.com" "y" "you@example.com" "n" "y" "vpn.example.com" > "$WORK/answers-sni"
+printf '%s\n' "$WORK/rb" "panel.example.com" "y" "you@example.com" "n" "0" "y" "vpn.example.com" > "$WORK/answers-sni"
 OUT_SNI="$(RB_TTY_IN="$WORK/answers-sni" RB_NGINX_T_CMD="cat $FIXTURES/nginx-clean.conf" \
 	PATH="$STUBS:$PATH" bash "$HERE/../docker-install.sh" --dry-run 2>&1 || true)"
 assert_contains "$OUT_SNI" "ssl_preread on;"            "SNI: stream-конфигурация напечатана"
@@ -350,7 +350,7 @@ chmod +x "$BARE"/*
 # Ответы: каталог, «из коробки» — нет, домен, почта, тестовый сертификат — да,
 # порт панели (дефолт). На этом стенде 80 и 443 свободны, поэтому новый режим
 # предлагается и от него надо явно отказаться.
-printf '%s\n' "$WORK/rb" "n" "panel.example.com" "you@example.com" "y" "" > "$WORK/answers-bare"
+printf '%s\n' "$WORK/rb" "n" "panel.example.com" "you@example.com" "y" "0" "" > "$WORK/answers-bare"
 OUT_BARE="$(RB_TTY_IN="$WORK/answers-bare" RB_NGINX_T_CMD="true" \
 	PATH="$BARE:$PATH" bash "$HERE/../docker-install.sh" --dry-run 2>&1 || true)"
 assert_contains "$OUT_BARE" "ACME_EMAIL=you@example.com" "без nginx: панель выпускает сертификат сама"
@@ -485,7 +485,7 @@ assert_contains "$OUT_ASK" "panel.example.com" "домен спрошен"
 
 # Отказ от нового режима возвращает на прежнюю дорогу: панель держит TLS сама.
 # Ответы: каталог, «из коробки» — нет, домен, почта, тестовый CA — нет, порт.
-printf '%s\n' "$OOB/rb" "n" "panel.example.com" "you@example.com" "n" "" > "$OOB/answers"
+printf '%s\n' "$OOB/rb" "n" "panel.example.com" "you@example.com" "n" "0" "" > "$OOB/answers"
 OUT_NO="$(oob_run --dry-run)"; OOB_CODE=$?
 assert_eq "0" "$OOB_CODE"                          "отказ от нового режима не ломает прежний путь"
 assert_contains "$OUT_NO" "ACME_EMAIL=you@example.com" "отказ -> прежний standalone-режим"
@@ -792,6 +792,50 @@ OUT_V6="$( (set -euo pipefail; PATH="$NOAAAA:$PATH"; warn_stray_aaaa panel.examp
 assert_contains "$OUT_V6" "2001:db8::1" "настоящая AAAA-запись названа"
 assert_contains "$OUT_V6" "IPv6"        "сказано, почему это важно"
 rm -rf "$NOAAAA"
+
+echo
+echo "порт AmneziaWG"
+# Порт выбирается на установке и попадает и в проброс, и в переменную, из
+# которой панель узнаёт, что менять его нельзя.
+AWG_PORT="51820"
+C_AWG="$(gen_compose_allinone d.example.com a@b.c 172.30.0.0/24 false)"
+assert_contains "$C_AWG" '"51820:51820/udp"'   "порт AmneziaWG опубликован"
+assert_contains "$C_AWG" "AWG_LISTEN_PORT=51820" "панель узнаёт порт из окружения"
+C_AWG_N="$(gen_compose nginx d.example.com a@b.c 8445 443 172.30.0.0/24 false "")"
+assert_contains "$C_AWG_N" '"51820:51820/udp"'   "и в остальных режимах тоже"
+assert_contains "$C_AWG_N" "AWG_LISTEN_PORT=51820" "и переменная тоже"
+AWG_PORT=""
+assert_not_contains "$(gen_compose_allinone d.example.com a@b.c 172.30.0.0/24 false)" "AWG_LISTEN_PORT" \
+	"без порта переменной нет"
+assert_not_contains "$(gen_compose_allinone d.example.com a@b.c 172.30.0.0/24 false)" "/udp\"   # AmneziaWG" \
+	"без порта проброса нет"
+
+# Ответ «0» — это отказ, а не порт 0.
+ANSP="$(mktemp)"; printf '0\n' > "$ANSP"; exec 3<"$ANSP"
+ARG_AWG_PORT=""; AWG_PORT="сторож"
+ask_awg_port
+assert_eq "" "$AWG_PORT" "ноль означает «не публиковать»"
+exec 3<&-; rm -f "$ANSP"
+
+# Занятый UDP-порт отвергается, и спрашивается снова — как и порт панели.
+ANSP="$(mktemp)"; printf '443\nне-число\n51820\n' > "$ANSP"; exec 3<"$ANSP"
+cat >"$STUBS/ss" <<'EOF'
+#!/bin/bash
+case "$*" in
+	*u*) echo 'UNCONN 0 0 0.0.0.0:443 0.0.0.0:* users:(("mieru",pid=9,fd=3))' ;;
+esac
+EOF
+chmod +x "$STUBS/ss"
+AWG_PORT=""
+OUT_AWGP="$( (PATH="$STUBS:$PATH"; ask_awg_port; echo "порт=$AWG_PORT") 2>&1 )"
+assert_contains "$OUT_AWGP" "занят"        "занятый UDP-порт назван занятым"
+assert_contains "$OUT_AWGP" "порт=51820"   "после отказа спрашивается снова"
+exec 3<&-; rm -f "$ANSP"
+
+# Флагом — то же самое, но без переспрашивания: занятый порт это остановка.
+ARG_AWG_PORT="443"
+assert_fails '(PATH="$STUBS:$PATH"; ask_awg_port)' "--awg-port на занятый порт -> отказ"
+ARG_AWG_PORT=""; AWG_PORT=""
 
 echo
 echo "ядерный модуль AmneziaWG на хосте"

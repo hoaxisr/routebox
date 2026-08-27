@@ -33,6 +33,8 @@ ACTION="install"; PURGE="false"
 MODE_FLAG=""; ARG_DOMAIN=""; ARG_EMAIL=""; ARG_DIR=""; ARG_STAGING=""; ARG_STUB=""
 # Ядерный бэкенд AmneziaWG: "" — спросить, true/false — ответ уже дан флагом.
 ARG_AWG_KERNEL=""
+# Порт AmneziaWG: "" — спросить, "0" — не публиковать, число — публиковать его.
+ARG_AWG_PORT=""
 
 # Состояние разведки.
 HAS_DOCKER="false"; HAS_NGINX_HOST="false"; HAS_NGINX_CONTAINER="false"
@@ -46,6 +48,8 @@ WANT_SNI="false"; INBOUND_DOMAIN=""; INBOUND_PORT=""; PP_PORT=""; PANEL_HTTPS_PO
 # создания интерфейса, которого без модуля не будет, а лишняя привилегия у
 # службы, торчащей в интернет, — это плата без покупки.
 WANT_CAP_NET_ADMIN="false"
+# Порт AmneziaWG, опубликованный на контейнере. Пусто — не публикуется.
+AWG_PORT=""
 
 err()  { echo -e "${RED}Error: $*${NC}" >&2; }
 info() { echo -e "${GREEN}$*${NC}"; }
@@ -61,6 +65,7 @@ RouteBox Docker Installer. Без флагов — задаёт вопросы.
   --dir PATH       Каталог установки (по умолчанию /opt/routebox)
   --staging        Тестовый CA Let's Encrypt — для первого прогона
   --stub NAME      Шаблон заглушки (по умолчанию случайный из архива)
+  --awg-port N     Опубликовать UDP-порт AmneziaWG (0 — не публиковать)
   --awg-kernel     Поставить на ХОСТ ядерный модуль AmneziaWG (Debian/Ubuntu)
   --no-awg-kernel  Не спрашивать про него и не ставить
   --dry-run        Показать, что будет сделано и какие файлы получатся
@@ -75,6 +80,8 @@ parse_args() {
 	MODE_FLAG=""; ARG_DOMAIN=""; ARG_EMAIL=""; ARG_DIR=""; ARG_STAGING=""; ARG_STUB=""
 # Ядерный бэкенд AmneziaWG: "" — спросить, true/false — ответ уже дан флагом.
 ARG_AWG_KERNEL=""
+# Порт AmneziaWG: "" — спросить, "0" — не публиковать, число — публиковать его.
+ARG_AWG_PORT=""
 	while [ $# -gt 0 ]; do
 		case "$1" in
 			--dry-run)   ACTION="dry-run" ;;
@@ -83,6 +90,7 @@ ARG_AWG_KERNEL=""
 			--allinone)  MODE_FLAG="allinone" ;;
 			--staging)   ARG_STAGING="true" ;;
 			--stub)      shift; [ $# -gt 0 ] || { err "--stub без значения"; return 1; }; ARG_STUB="$1" ;;
+			--awg-port)  shift; [ $# -gt 0 ] || { err "--awg-port без значения"; return 1; }; ARG_AWG_PORT="$1" ;;
 			--awg-kernel)    ARG_AWG_KERNEL="true" ;;
 			--no-awg-kernel) ARG_AWG_KERNEL="false" ;;
 			--domain)    shift; [ $# -gt 0 ] || { err "--domain без значения"; return 1; }; ARG_DOMAIN="$1" ;;
@@ -338,7 +346,11 @@ gen_compose() {
 			if [ "$staging" = "true" ]; then echo "      - ACME_STAGING=true"; fi
 			;;
 	esac
+	if [ -n "$AWG_PORT" ]; then echo "      - AWG_LISTEN_PORT=${AWG_PORT}"; fi
 	echo "    ports:"
+	if [ -n "$AWG_PORT" ]; then
+		echo "      - \"${AWG_PORT}:${AWG_PORT}/udp\"   # AmneziaWG"
+	fi
 	case "$mode" in
 		nginx|proxy)
 			echo "      - \"127.0.0.1:${host_port}:${CONTAINER_PANEL_PORT}\""
@@ -400,10 +412,17 @@ gen_compose_allinone() {
 	# строки каждый вход в панель выглядел бы приходом с 127.0.0.1, и блокировка
 	# перебора пароля считала бы попытки всех сразу.
 	echo "      - TRUSTED_PROXIES=127.0.0.1/32"
+	# Панель узнаёт из этой переменной, что порт задан установкой, пишет его в
+	# настройки при первом старте и дальше не даёт менять: другой порт попал бы
+	# на сокет, который никто не пробрасывает.
+	if [ -n "$AWG_PORT" ]; then echo "      - AWG_LISTEN_PORT=${AWG_PORT}"; fi
 	echo "    ports:"
 	echo "      - \"443:443/tcp\"   # фронт: vless + reality"
 	echo "      - \"443:443/udp\"   # mieru"
 	echo "      - \"80:80\"         # HTTP-01: выпуск и продление сертификата"
+	if [ -n "$AWG_PORT" ]; then
+		echo "      - \"${AWG_PORT}:${AWG_PORT}/udp\"   # AmneziaWG"
+	fi
 	if [ "$WANT_CAP_NET_ADMIN" = "true" ]; then
 		echo "    cap_add:"
 		echo "      - NET_ADMIN   # ядерный бэкенд AmneziaWG: создание интерфейса"
@@ -707,6 +726,7 @@ ask_all() {
 		fi
 	fi
 
+	ask_awg_port
 	SUBNET="$(pick_free_subnet)"
 	WANT_SNI="false"; INBOUND_DOMAIN=""; INBOUND_PORT=""; PP_PORT=""; PANEL_HTTPS_PORT=""
 
@@ -935,6 +955,7 @@ ask_allinone() {
 	# а клиентские ссылки собираются от внешнего 443.
 	HOST_PORT="$CONTAINER_PANEL_PORT"
 	PUBLIC_PORT="443"
+	ask_awg_port
 	SUBNET="$(pick_free_subnet)"
 	WANT_SNI="false"; INBOUND_DOMAIN=""; INBOUND_PORT=""; PP_PORT=""; PANEL_HTTPS_PORT=""
 }
@@ -1064,6 +1085,7 @@ allinone_plan() {
 	echo "сеть контейнера: ${SUBNET}"
 	echo "сертификат:      выпускает dest, ${acme}"
 	echo "почта:           ${EMAIL} — уезжает в настройки панели"
+	echo "AmneziaWG:       ${AWG_PORT:+порт ${AWG_PORT}/udp наружу}${AWG_PORT:-не публикуется}"
 	echo "заглушка:        ${ARG_STUB:-случайный шаблон из архива релиза}"
 	echo "артефакты:       dest и шаблоны — из релиза, со сверкой sha256"
 	echo "чужие файлы:     не правятся ни одного"
@@ -1194,19 +1216,64 @@ EOF
 	return 0
 }
 
+# ask_awg_port — порт AmneziaWG выбирается ЗДЕСЬ, а не потом в панели.
+# Публикацию порта нельзя добавить работающему контейнеру: нужно править compose
+# и пересоздавать его. Панель этого сделать не может (для этого ей нужен
+# docker.sock, то есть root на хосте у службы, торчащей в интернет), поэтому
+# порт фиксируется на установке — и панель дальше не даёт его менять.
+#
+# Второй внешний UDP-порт стоит дёшево: AmneziaWG 3.1 на неаутентифицированный
+# пакет не отвечает вовсе, а молчащий UDP-порт снаружи неотличим от
+# отфильтрованного.
+ask_awg_port() {
+	local p
+	while :; do
+		if [ -n "$ARG_AWG_PORT" ]; then
+			p="$ARG_AWG_PORT"
+		else
+			# Умолчание — «не нужен»: Enter не должен открывать наружу порт,
+			# которого не просили, тем более в режиме, весь смысл которого в
+			# одном внешнем порте. Кому AmneziaWG нужен, тот вводит номер.
+			p="$(ask "Порт для AmneziaWG, если он нужен (0 — нет; потом не изменить)" "0")"
+		fi
+		case "$p" in
+			0|"") AWG_PORT=""; return 0 ;;
+			*[!0-9]*)
+				err "порт должен быть числом"
+				[ -n "$ARG_AWG_PORT" ] && exit 1
+				continue ;;
+		esac
+		if [ "$p" -lt 1 ] || [ "$p" -gt 65535 ]; then
+			err "порт вне диапазона 1..65535"
+			[ -n "$ARG_AWG_PORT" ] && exit 1
+			continue
+		fi
+		local owner
+		# Проверяется UDP: AmneziaWG живёт по UDP, и занятость TCP-порта с тем же
+		# номером ему не мешает.
+		if owner="$(port_owner "$p" udp)"; then
+			err "порт ${p}/udp занят${owner:+: $owner}"
+			[ -n "$ARG_AWG_PORT" ] && exit 1
+			continue
+		fi
+		AWG_PORT="$p"
+		return 0
+	done
+}
+
 # maybe_install_awg_module — спросить (или прочитать флаг), поставить, и только
 # при успехе выдать контейнеру привилегию.
 maybe_install_awg_module() {
 	awg_kernel_wanted || return 0
 	if install_awg_module; then
 		WANT_CAP_NET_ADMIN="true"
-		# Порт AmneziaWG публикуется отдельно: он выбирается позже, в панели, а
-		# добавить публикацию работающему контейнеру нельзя — только правкой
-		# compose и пересозданием. Сказать об этом сейчас дешевле, чем оставить
-		# оператора с сервером, который «включился», но никого не пускает.
-		warn "Порт AmneziaWG наружу не проброшен: после включения сервера в панели"
-		warn "допишите его в ${INSTALL_DIR}/docker-compose.yml (например \"51820:51820/udp\")"
-		warn "и выполните: cd ${INSTALL_DIR} && docker compose up -d"
+		if [ -z "$AWG_PORT" ]; then
+			# Модуль есть, а порта наружу нет: сервер включится и не пустит никого,
+			# и заметить это можно будет только по молчащему клиенту.
+			warn "Порт AmneziaWG не публикуется: сервер, включённый в панели, будет"
+			warn "недостижим снаружи. Допишите порт в ${INSTALL_DIR}/docker-compose.yml"
+			warn "и в переменную AWG_LISTEN_PORT, затем: cd ${INSTALL_DIR} && docker compose up -d"
+		fi
 	fi
 	return 0
 }
