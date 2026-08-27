@@ -7,6 +7,8 @@ import (
 	"net/url"
 	"strconv"
 	"strings"
+
+	"routebox/backend/internal/util"
 )
 
 // defaultFingerprint is the uTLS fingerprint advertised to clients in TLS/Reality
@@ -128,21 +130,13 @@ func clientPort(inbound map[string]interface{}, behindFront bool, ep PublicAddr)
 }
 
 // listensOnLoopback reports whether the inbound binds an address that cannot be
-// reached from another host. An absent or non-literal listen is NOT loopback:
-// sing-box defaults to the wildcard address, and treating an unparseable value
-// as loopback would rewrite ports for inbounds that are in fact public.
+// reached from another host — the sole marker of "behind the front". The
+// predicate itself lives in util, shared with the config validator: if the two
+// disagreed, the panel would refuse to save a config whose links it already
+// rewrites as fronted.
 func listensOnLoopback(inbound map[string]interface{}) bool {
 	listen, _ := inbound["listen"].(string)
-	if listen == "" {
-		return false
-	}
-	// A hand-written config may name the loopback instead of numbering it;
-	// sing-box resolves it, and a client link built from it would be dead.
-	if strings.EqualFold(listen, "localhost") {
-		return true
-	}
-	ip := net.ParseIP(listen)
-	return ip != nil && ip.IsLoopback()
+	return util.IsLoopbackListen(listen)
 }
 
 func portOf(m map[string]interface{}) int {

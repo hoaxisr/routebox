@@ -9,6 +9,8 @@ import (
 	"regexp"
 	"strconv"
 	"strings"
+
+	"routebox/backend/internal/util"
 )
 
 // ValidateLocalRuleSetPaths checks that every rule_set of type "local" points
@@ -688,6 +690,13 @@ func validateOutboundVisionFlow(ob map[string]interface{}, prefix string) []stri
 }
 
 // validateInbound validates a single inbound object
+// isLoopbackListen reports whether an inbound binds loopback only. Shared with
+// the client-link builder through util so the two cannot drift apart.
+func isLoopbackListen(ib map[string]interface{}) bool {
+	listen, _ := ib["listen"].(string)
+	return util.IsLoopbackListen(listen)
+}
+
 func validateInbound(ib map[string]interface{}, index int) []string {
 	var errors []string
 	prefix := fmt.Sprintf("inbounds[%d]", index)
@@ -761,8 +770,12 @@ func validateInbound(ib map[string]interface{}, index int) []string {
 					realityOn, _ = reality["enabled"].(bool)
 				}
 			}
-			if !tlsOn && !realityOn {
-				errors = append(errors, fmt.Sprintf("%s: trojan requires TLS (tls.enabled = true) or Reality (tls.reality.enabled = true)", prefix))
+			// The exception is a trojan bound to loopback: it sits behind the 443
+			// front (ADR 0001), where dest terminates TLS and forwards plaintext
+			// over the loopback interface. There is no wire to sniff, and the
+			// bootstrap planner produces exactly this shape.
+			if !tlsOn && !realityOn && !isLoopbackListen(ib) {
+				errors = append(errors, fmt.Sprintf("%s: trojan requires TLS (tls.enabled = true) or Reality (tls.reality.enabled = true), unless it listens on loopback behind a TLS-terminating front", prefix))
 			}
 		}
 		// Inbound tls must NOT carry utls (outbound/client-only; the binary
