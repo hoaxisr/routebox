@@ -20,8 +20,15 @@
 	async function handleApply() {
 		saving = true;
 		try {
-			await api.applyConfig();
+			const result = await api.applyConfig();
 			notifications.success($t('changes.configApplied'));
+			// duration 0 = stays until dismissed: this is the one place the
+			// operator learns that naive is still on the previous user list, and
+			// a notice that fades leaves the panel claiming a success it only
+			// half had.
+			if (result.warning) {
+				notifications.warning($t('changes.destWarning', { values: { error: result.warning } }), 0);
+			}
 			unsavedChanges.clearChanges();
 		} catch (err) {
 			notifications.error(`Failed to apply: ${err}`);

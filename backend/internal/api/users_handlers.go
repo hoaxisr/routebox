@@ -30,6 +30,10 @@ type userView struct {
 	Bindings      []users.Binding `json:"bindings"`
 	Upload        int64           `json:"upload"`
 	Download      int64           `json:"download"`
+	// Warning is set when the change was made but did not reach everywhere it
+	// had to — today, dest, which serves naive on its own. Omitted when empty,
+	// so every other answer keeps its shape.
+	Warning string `json:"warning,omitempty"`
 }
 
 // ListUsers returns registry (applied) users plus pending users that exist only
@@ -495,11 +499,18 @@ func (h *Handler) UpdateUser(w http.ResponseWriter, r *http.Request) {
 		writeConfigError(w, http.StatusInternalServerError, err)
 		return
 	}
-	h.syncRejectRule() // immediate enforcement + reload-on-change
-	writeSuccess(w, userView{
+	view := userView{
 		ID: u.ID, Name: u.Name, Enabled: u.Enabled, ExpiresAt: u.ExpiresAt,
 		Pending: false, Token: u.Token, TokenDisabled: u.TokenDisabled, Bindings: u.Bindings,
-	})
+	}
+	// Immediate enforcement + reload-on-change. sing-box takes the change here;
+	// naive is dest's, and a lifecycle decision that did not reach dest leaves
+	// the user still connecting over naive — said out loud rather than logged,
+	// because the panel would otherwise report a clean success.
+	if err := h.syncRejectRule(); err != nil {
+		view.Warning = fmt.Sprintf("the change did not reach dest, so naive still uses the previous user list: %v", err)
+	}
+	writeSuccess(w, view)
 }
 
 // findActiveInbound returns the inbound with tag from an active config map.

@@ -277,6 +277,9 @@ export interface PanelUser {
 	bindings: PanelBinding[];
 	upload?: number;
 	download?: number;
+	/** Set when a lifecycle change was made but did not reach dest, which serves
+	 * naive on its own — the user is disabled for sing-box and not for naive. */
+	warning?: string;
 }
 
 export interface UserTrafficPoint {

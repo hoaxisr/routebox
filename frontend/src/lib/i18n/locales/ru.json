@@ -173,6 +173,7 @@
     "hideDetails": "Скрыть детали",
     "applyChanges": "Применить изменения",
     "discardChanges": "Отменить",
+    "destWarning": "Применено, но не везде: {error}",
     "configApplied": "Конфигурация применена",
     "configDiscarded": "Изменения отменены",
     "failedApply": "Не удалось применить",

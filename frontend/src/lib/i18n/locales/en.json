@@ -173,6 +173,7 @@
     "hideDetails": "Hide details",
     "applyChanges": "Apply Changes",
     "discardChanges": "Discard",
+    "destWarning": "Applied, but not everywhere: {error}",
     "configApplied": "Configuration applied",
     "configDiscarded": "Changes discarded",
     "failedApply": "Failed to apply",

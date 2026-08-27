@@ -35,9 +35,9 @@ const stagingCA = "https://acme-staging-v02.api.letsencrypt.org/directory"
 // inbounds on their secret paths, and naive, which dest itself serves through
 // the forwardproxy fork (ADR 0002).
 //
-// naive's users are not a second user list. The basic_auth block below renders
-// the same User the inbounds carry, so the panel stays the only owner of users
-// and Caddy is only an executor.
+// naive's users are not a second user list. The basic_auth lines live in the
+// imported file RenderNaiveUsers writes, straight from the same inbound users
+// the panel owns, so Caddy stays an executor and never a second registry.
 func PlanCaddyfile(p Params) (string, error) {
 	if err := p.validate(); err != nil {
 		return "", err
@@ -91,7 +91,10 @@ func PlanCaddyfile(p Params) (string, error) {
 	// site as the catch-all.
 	w("\troute {")
 	w("\t\tforward_proxy {")
-	w("\t\t\tbasic_auth %s %s", quote(p.User.Name), quote(p.User.Password))
+	// The credentials are imported, not written here: they are the only part of
+	// dest's configuration that a user change touches, and a generated file the
+	// panel rewrites on every apply must not be the file an operator edits.
+	w("\t\t\timport %s", p.NaiveUsers)
 	w("\t\t\thide_ip")
 	w("\t\t\thide_via")
 	// Wrong password must not answer 407: with probe_resistance dest keeps

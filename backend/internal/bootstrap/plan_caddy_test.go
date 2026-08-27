@@ -89,18 +89,23 @@ func TestPlanCaddyfileNaiveIsProbeResistant(t *testing.T) {
 }
 
 // naive's users are not a second user list — they are the inbound user list,
-// rendered. Same source, so the check reads the source.
+// rendered into the file the Caddyfile imports. Same source, so the check reads
+// the source: the planned inbounds go in, the credential list comes out.
 func TestPlanCaddyfileNaiveUsersMatchInbounds(t *testing.T) {
 	p := fixture()
-	inbounds := inboundsByTag(t, planOK(t, p))
-	users := inbounds[TagTrojanWS]["users"].([]interface{})
+	planned := planOK(t, p)
+	users := inboundsByTag(t, planned)[TagTrojanWS]["users"].([]interface{})
 	if len(users) != 1 {
 		t.Fatalf("expected exactly one inbound user, got %d", len(users))
 	}
 	u := users[0].(map[string]interface{})
 
-	out := caddyfileOK(t, p)
-	requireLine(t, out, fmt.Sprintf("basic_auth %s %s", u["name"], u["password"]))
+	rendered, err := RenderNaiveUsers(NaiveUsersOfConfig(planned, nil))
+	if err != nil {
+		t.Fatalf("RenderNaiveUsers: %v", err)
+	}
+	requireLine(t, rendered, fmt.Sprintf("basic_auth %s %s", u["name"], u["password"]))
+	requireLine(t, caddyfileOK(t, p), "import "+p.NaiveUsers)
 }
 
 func TestPlanCaddyfileUsesACME(t *testing.T) {
@@ -125,14 +130,6 @@ func TestPlanCaddyfileIsDeterministic(t *testing.T) {
 	if a != b {
 		t.Fatalf("same input gave different bytes:\n%s\n---\n%s", a, b)
 	}
-}
-
-// A password is operator-supplied text, and the Caddyfile is a token grammar:
-// unquoted, a space in it silently becomes an extra argument.
-func TestPlanCaddyfileQuotesCredentials(t *testing.T) {
-	p := fixture()
-	p.User.Password = `pa ss"word`
-	requireLine(t, caddyfileOK(t, p), `basic_auth owner "pa ss\"word"`)
 }
 
 func TestPlanCaddyfileRejectsIncompleteInput(t *testing.T) {
@@ -175,11 +172,20 @@ func TestPlanCaddyfilePassesCaddyValidate(t *testing.T) {
 	if err != nil || !strings.Contains(string(modules), "forward_proxy") {
 		t.Skip("caddy on PATH has no forwardproxy module")
 	}
-	staging := fixture()
-	staging.ACME.Staging = true
+	// The Caddyfile imports the credential list, so Caddy cannot parse one
+	// without it: every case below plans against a file that exists.
+	withUsers := func(t *testing.T) Params {
+		t.Helper()
+		p := fixture()
+		p.NaiveUsers = filepath.Join(t.TempDir(), "naive-users.caddy")
+		if _, err := SyncNaiveUsers(p.NaiveUsers, []NaiveUser{{Name: p.User.Name, Password: p.User.Password}}); err != nil {
+			t.Fatal(err)
+		}
+		return p
+	}
 	t.Run("acme solvers stay reachable", func(t *testing.T) {
 		path := filepath.Join(t.TempDir(), "Caddyfile")
-		if err := os.WriteFile(path, []byte(caddyfileOK(t, fixture())), 0644); err != nil {
+		if err := os.WriteFile(path, []byte(caddyfileOK(t, withUsers(t))), 0644); err != nil {
 			t.Fatal(err)
 		}
 		out, err := exec.Command(binary, "adapt", "--adapter", "caddyfile", "--config", path).Output()
@@ -193,8 +199,10 @@ func TestPlanCaddyfilePassesCaddyValidate(t *testing.T) {
 			t.Fatalf("acme challenges are bound to one host, so HTTP-01 cannot be reached:\n%s", out)
 		}
 	})
-	for name, p := range map[string]Params{"production": fixture(), "staging": staging} {
-		t.Run(name, func(t *testing.T) {
+	for _, staging := range []bool{false, true} {
+		t.Run(fmt.Sprintf("staging=%v", staging), func(t *testing.T) {
+			p := withUsers(t)
+			p.ACME.Staging = staging
 			path := filepath.Join(t.TempDir(), "Caddyfile")
 			if err := os.WriteFile(path, []byte(caddyfileOK(t, p)), 0644); err != nil {
 				t.Fatal(err)

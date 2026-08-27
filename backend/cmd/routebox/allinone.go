@@ -149,6 +149,14 @@ func runAllInOne(sm *settings.Manager, a allInOne, out io.Writer) error {
 	if err := os.MkdirAll(filepath.Dir(a.CaddyPath), 0755); err != nil {
 		return fmt.Errorf("create the directory for %s: %w", a.CaddyPath, err)
 	}
+	// The credential list first: the Caddyfile imports it, so a Caddyfile
+	// without it is one dest refuses to parse at all. From here on the panel
+	// rewrites this file on every user change (see Handler.syncDest).
+	if _, err := bootstrap.SyncNaiveUsers(p.NaiveUsers, []bootstrap.NaiveUser{
+		{Name: p.User.Name, Password: p.User.Password},
+	}); err != nil {
+		return err
+	}
 	if err := os.WriteFile(a.CaddyPath, []byte(caddyfile), 0644); err != nil {
 		return fmt.Errorf("write %s: %w", a.CaddyPath, err)
 	}
@@ -165,7 +173,7 @@ func runAllInOne(sm *settings.Manager, a allInOne, out io.Writer) error {
 		return fmt.Errorf("turn the panel's own ACME off: %w", err)
 	}
 	dest := net.JoinHostPort(p.DestHost, strconv.Itoa(p.DestPort))
-	if err := sm.SetBootstrap(p.Paths.Panel, dest, p.Ports.Front); err != nil {
+	if err := sm.SetBootstrap(p.Paths.Panel, dest, a.CaddyPath, p.Ports.Front); err != nil {
 		return err
 	}
 
@@ -209,10 +217,11 @@ func plannedParams(a allInOne) (bootstrap.Params, error) {
 		}
 	}
 	return bootstrap.Params{
-		Domain:   a.Domain,
-		DestHost: "127.0.0.1",
-		DestPort: destPort,
-		StubRoot: a.StubRoot,
+		Domain:     a.Domain,
+		DestHost:   "127.0.0.1",
+		DestPort:   destPort,
+		StubRoot:   a.StubRoot,
+		NaiveUsers: bootstrap.NaiveUsersPath(a.CaddyPath),
 		User: bootstrap.User{
 			Name:     bootstrapUser,
 			UUID:     uuid.NewString(),

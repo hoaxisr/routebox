@@ -203,6 +203,23 @@ func (h *Handler) ApplyConfig(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 
+	// naive is dest's, not sing-box's, so the users just applied reach it only
+	// through here (see syncDest). Not fatal — the other four inbounds did get
+	// the change — but not swallowed either: the answer carries a warning, so
+	// the operator learns that naive is still on the previous list instead of
+	// finding out from a client that cannot connect.
+	respond := writeSuccess
+	if err := h.syncDest(); err != nil {
+		log.Printf("dest: naive user sync failed: %v", err)
+		warning := fmt.Sprintf("the user list did not reach dest, so naive still authenticates against the previous one: %v", err)
+		respond = func(w http.ResponseWriter, data interface{}) {
+			if m, ok := data.(map[string]interface{}); ok {
+				m["warning"] = warning
+			}
+			writeSuccess(w, data)
+		}
+	}
+
 	// Check if we should use reload or restart
 	// Query param ?mode=reload|restart (default: reload)
 	mode := r.URL.Query().Get("mode")
@@ -212,7 +229,7 @@ func (h *Handler) ApplyConfig(w http.ResponseWriter, r *http.Request) {
 
 	status := h.getProcessStatus()
 	if !status.Running {
-		writeSuccess(w, map[string]interface{}{
+		respond(w, map[string]interface{}{
 			"message":   "Config saved (process not running)",
 			"reloaded":  false,
 			"restarted": false,
@@ -228,14 +245,14 @@ func (h *Handler) ApplyConfig(w http.ResponseWriter, r *http.Request) {
 				writeError(w, http.StatusInternalServerError, fmt.Sprintf("Saved but failed to reload/restart: %v", err))
 				return
 			}
-			writeSuccess(w, map[string]interface{}{
+			respond(w, map[string]interface{}{
 				"message":   "Config applied (reload failed, used restart)",
 				"reloaded":  false,
 				"restarted": true,
 			})
 			return
 		}
-		writeSuccess(w, map[string]interface{}{
+		respond(w, map[string]interface{}{
 			"message":  "Config applied (hot reload)",
 			"reloaded": true,
 		})
@@ -245,7 +262,7 @@ func (h *Handler) ApplyConfig(w http.ResponseWriter, r *http.Request) {
 			writeError(w, http.StatusInternalServerError, fmt.Sprintf("Saved but failed to restart: %v", err))
 			return
 		}
-		writeSuccess(w, map[string]interface{}{
+		respond(w, map[string]interface{}{
 			"message":   "Config applied (restarted)",
 			"restarted": true,
 		})

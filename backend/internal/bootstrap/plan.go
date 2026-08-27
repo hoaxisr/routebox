@@ -33,11 +33,16 @@ type Params struct {
 	DestHost string // web server behind the front: stub site, panel, transport inbounds
 	DestPort int
 	StubRoot string // directory dest serves at the domain root — the stub site
-	User     User
-	Reality  Reality
-	Ports    Ports
-	Paths    Paths
-	ACME     ACME
+	// NaiveUsers is the generated credential list the Caddyfile imports. It is a
+	// separate file because it is the one part of dest's configuration that
+	// changes after the install: every user added or removed in the panel
+	// rewrites it, and nothing else (see SyncNaiveUsers).
+	NaiveUsers string
+	User       User
+	Reality    Reality
+	Ports      Ports
+	Paths      Paths
+	ACME       ACME
 }
 
 // User is the single account every inbound carries. PanelUser is derived from
@@ -174,6 +179,7 @@ func (p Params) validate() error {
 		"trojan ws path":      p.Paths.TrojanWS == "",
 		"panel path":          p.Paths.Panel == "",
 		"stub root":           p.StubRoot == "",
+		"naive users path":    p.NaiveUsers == "",
 	} {
 		if empty {
 			missing = append(missing, name)
@@ -203,12 +209,13 @@ func (p Params) validate() error {
 	// where a character from caddyfileUnsafe is syntax rather than data.
 	var unsafe []string
 	for name, value := range map[string]string{
-		"domain":          p.Domain,
-		"dest host":       p.DestHost,
-		"stub root":       p.StubRoot,
-		"vless grpc path": p.Paths.VlessGRPC,
-		"trojan ws path":  p.Paths.TrojanWS,
-		"panel path":      p.Paths.Panel,
+		"domain":           p.Domain,
+		"dest host":        p.DestHost,
+		"stub root":        p.StubRoot,
+		"vless grpc path":  p.Paths.VlessGRPC,
+		"trojan ws path":   p.Paths.TrojanWS,
+		"panel path":       p.Paths.Panel,
+		"naive users path": p.NaiveUsers,
 	} {
 		if strings.ContainsAny(value, caddyfileUnsafe) {
 			unsafe = append(unsafe, name)

@@ -15,10 +15,11 @@ import (
 // input must give a fixed output. Secrets here are throwaway literals.
 func fixture() Params {
 	return Params{
-		Domain:   "media.example.com",
-		DestHost: "127.0.0.1",
-		DestPort: 8443,
-		StubRoot: "/var/lib/routebox/stub",
+		Domain:     "media.example.com",
+		DestHost:   "127.0.0.1",
+		DestPort:   8443,
+		StubRoot:   "/var/lib/routebox/stub",
+		NaiveUsers: "/var/lib/routebox/naive-users.caddy",
 		User: User{
 			Name:     "owner",
 			UUID:     "11111111-2222-3333-4444-555555555555",

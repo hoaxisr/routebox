@@ -7,6 +7,7 @@ import (
 	"strings"
 	"testing"
 
+	"routebox/backend/internal/bootstrap"
 	"routebox/backend/internal/settings"
 )
 
@@ -56,10 +57,19 @@ func TestAllInOneConfiguresEveryProtocol(t *testing.T) {
 	if err != nil {
 		t.Fatalf("read the Caddyfile: %v", err)
 	}
-	for _, want := range []string{"forward_proxy {", "basic_auth " + bootstrapUser, "file_server"} {
+	for _, want := range []string{"forward_proxy {", "import ", "file_server"} {
 		if !strings.Contains(string(caddyfile), want) {
 			t.Errorf("the Caddyfile has no %q:\n%s", want, caddyfile)
 		}
+	}
+	// naive's credentials live in the file the Caddyfile imports — the one the
+	// panel rewrites whenever a user changes. Without it dest does not parse.
+	naive, err := os.ReadFile(bootstrap.NaiveUsersPath(a.CaddyPath))
+	if err != nil {
+		t.Fatalf("read the naive credential list: %v", err)
+	}
+	if !strings.Contains(string(naive), "basic_auth "+bootstrapUser+" ") {
+		t.Errorf("the credential list has no %q:\n%s", bootstrapUser, naive)
 	}
 }
 

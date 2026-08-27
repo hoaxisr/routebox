@@ -155,10 +155,14 @@ export const api = {
 			body: JSON.stringify(config)
 		}),
 
+	// `warning` is set when the config was applied but did not reach dest, which
+	// serves naive on its own: those four inbounds have the new user list and
+	// naive still has the old one, so the operator has to be told.
 	applyConfig: (mode: 'reload' | 'restart' = 'reload') =>
-		request<{ message: string; reloaded?: boolean; restarted?: boolean }>(`/config/apply?mode=${mode}`, {
-			method: 'POST'
-		}),
+		request<{ message: string; reloaded?: boolean; restarted?: boolean; warning?: string }>(
+			`/config/apply?mode=${mode}`,
+			{ method: 'POST' }
+		),
 
 	// Config backup/restore
 	exportConfig: () => {

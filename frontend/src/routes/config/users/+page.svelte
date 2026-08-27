@@ -132,10 +132,21 @@
 		return new Date(d.getTime() - off).toISOString().slice(0, 10);
 	}
 
+	// A lifecycle change that did not reach dest leaves the user disabled for the
+	// four sing-box inbounds and still connecting over naive, which dest serves
+	// on its own. duration 0 = stays until dismissed: it is the only place this
+	// is said, and a notice that fades leaves the panel claiming a clean success.
+	function warnIfNotEverywhere(updated: PanelUser) {
+		if (updated?.warning) {
+			notifications.warning($t('changes.destWarning', { values: { error: updated.warning } }), 0);
+		}
+	}
+
 	async function toggleEnabled(u: PanelUser) {
 		try {
-			await api.updateUser(u.id, { enabled: !u.enabled });
+			const updated = await api.updateUser(u.id, { enabled: !u.enabled });
 			notifications.success($t(u.enabled ? 'users.disabled' : 'users.enabled', { values: { name: u.name } }));
+			warnIfNotEverywhere(updated);
 			await load();
 		} catch (e) {
 			notifications.error(`${e}`);
@@ -146,8 +157,9 @@
 		// Empty => clear (0 = never). A date => seconds at LOCAL midnight.
 		const expires_at = value ? Math.floor(new Date(value + 'T00:00:00').getTime() / 1000) : 0;
 		try {
-			await api.updateUser(u.id, { expires_at });
+			const updated = await api.updateUser(u.id, { expires_at });
 			notifications.success($t('users.expirySet', { values: { name: u.name } }));
+			warnIfNotEverywhere(updated);
 			await load();
 		} catch (e) {
 			notifications.error(`${e}`);

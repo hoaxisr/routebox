@@ -225,6 +225,13 @@ type ServerSettings struct {
 	// Dest is host:port of the web server the front relays unauthenticated
 	// traffic to — the same address the Caddyfile was planned for.
 	Dest string `toml:"dest" json:"dest"`
+
+	// Caddyfile is the configuration file dest runs with, as the bootstrap
+	// wrote it. It is kept because dest keeps executing part of the panel's own
+	// user list — naive lives there, not in sing-box — so every user change has
+	// to rewrite the imported credential list next to this file and make dest
+	// re-read it. Empty on every install that is not out-of-the-box.
+	Caddyfile string `toml:"caddyfile" json:"-"`
 }
 
 // SingboxSettings configures sing-box integration
@@ -522,23 +529,24 @@ func (m *Manager) SetSingboxConfigPath(path string) error {
 
 // SetBootstrap records what the out-of-the-box bootstrap just produced and puts
 // it on disk in one go: the mark that this install has that shape, the secret
-// URL that opens the panel gate, the dest the front relays to, and the external
-// port client links must carry.
+// URL that opens the panel gate, the dest the front relays to, the file dest
+// runs with, and the external port client links must carry.
 //
 // Deliberately not four keys in Update: that path is what PUT /api/settings
 // feeds, and none of these belong to a request. The panel path is a bearer
 // secret, and the mark is what stops a second bootstrap from replacing a
 // working install's users and keys with fresh ones.
 //
-// One write, because these four are only true together — an install marked
+// One write, because these are only true together — an install marked
 // bootstrapped with no panel path is one nobody can log into.
-func (m *Manager) SetBootstrap(panelPath, dest string, frontPort int) error {
+func (m *Manager) SetBootstrap(panelPath, dest, caddyfile string, frontPort int) error {
 	m.mu.Lock()
 	defer m.mu.Unlock()
 
 	m.settings.Server.Bootstrapped = true
 	m.settings.Server.PanelPath = panelPath
 	m.settings.Server.Dest = dest
+	m.settings.Server.Caddyfile = caddyfile
 	m.settings.Server.FrontPort = frontPort
 	if err := m.saveLocked(); err != nil {
 		return fmt.Errorf("saving the bootstrap result to the settings file: %w", err)
