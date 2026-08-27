@@ -2,7 +2,7 @@
 	import { onMount, onDestroy } from 'svelte';
 	import { t } from 'svelte-i18n';
 	import { createConnectionsStream, api } from '$lib/api/client';
-	import { formatBytes, clientNames, notifications, behindFront } from '$lib/stores';
+	import { formatBytes, clientNames, notifications } from '$lib/stores';
 	import type { ClashConnection } from '$lib/types';
 	import PieChart from '$lib/components/monitor/PieChart.svelte';
 	import type { TrafficRange, TrafficBucket } from '$lib/types';
@@ -114,22 +114,6 @@ import { PRESETS as VOLUME_PRESETS, bytesFromUnit, splitBytes, type VolumeUnit }
 			window.removeEventListener('keydown', onKey);
 			window.removeEventListener('mousedown', onClick, true);
 		};
-	});
-
-	// Behind the front every connection comes from the loopback, so a breakdown
-	// by client is one slice named 127.0.0.1 — the limitation drawn as data.
-	// The other two dimensions are about the destination and stay honest.
-	const showSource = $derived(!$behindFront);
-	const shownDimensions = $derived<Dimension[]>(
-		showSource ? ['source', 'domain', 'chain'] : ['domain', 'chain']
-	);
-	// Настройки читаются асинхронно, поэтому панель по клиентам успевает
-	// показаться на первом кадре. Клик по ней в этот момент оставил бы фильтр,
-	// который потом некому снять: и панель, и его чип уже скрыты.
-	$effect(() => {
-		if (!showSource && filters.source !== null) {
-			filters = { ...filters, source: null };
-		}
 	});
 
 	function keyOf(conn: ClashConnection, dim: Dimension): string {
@@ -556,7 +540,7 @@ import { PRESETS as VOLUME_PRESETS, bytesFromUnit, splitBytes, type VolumeUnit }
 	{#if hasAnyFilter}
 		<div class="bg-[var(--ctp-surface0)] rounded-b-lg border-x border-b border-[var(--ctp-surface2)] px-4 py-2 flex flex-wrap items-center gap-2">
 			<div class="text-xs text-[var(--ctp-overlay1)]">{$t('breakdown.filters')}:</div>
-			{#each shownDimensions as dim}
+			{#each ['source', 'domain', 'chain'] as Dimension[] as dim}
 				{#if filters[dim] !== null}
 					<button
 						onclick={() => dim === 'domain' ? domainBack() : toggleFilter(dim, filters[dim]!)}
@@ -590,24 +574,11 @@ import { PRESETS as VOLUME_PRESETS, bytesFromUnit, splitBytes, type VolumeUnit }
 			</svg>
 		</div>
 	{:else}
-		<div class="grid grid-cols-1 {showSource ? 'lg:grid-cols-3' : 'lg:grid-cols-2'} gap-4">
-			{#if showSource}
-				{@render panel('source', $t('breakdown.bySource'), sourceBucketsVisible)}
-			{/if}
+		<div class="grid grid-cols-1 lg:grid-cols-3 gap-4">
+			{@render panel('source', $t('breakdown.bySource'), sourceBucketsVisible)}
 			{@render panel('domain', $t('breakdown.byDomain'), domainBucketsVisible)}
 			{@render panel('chain', $t('breakdown.byChain'), chainBucketsVisible)}
 		</div>
-		{#if !showSource}
-			<div class="mt-4 flex items-start gap-2 px-3 py-2 rounded-lg bg-[var(--ctp-surface0)] border border-[var(--ctp-surface2)] text-sm">
-				<svg class="w-4 h-4 mt-0.5 flex-shrink-0 text-[var(--ctp-overlay1)]" fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden="true">
-					<path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
-				</svg>
-				<span>
-					<span class="text-[var(--ctp-text)]">{$t('connections.clientAddressUnavailable')}</span>
-					<span class="text-[var(--ctp-overlay1)]"> — {$t('connections.clientAddressUnavailableHint')}</span>
-				</span>
-			</div>
-		{/if}
 	{/if}
 </div>
 
