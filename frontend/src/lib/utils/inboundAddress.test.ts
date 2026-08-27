@@ -73,3 +73,39 @@ describe('inboundDisplayAddress', () => {
 		);
 	});
 });
+
+// An inbound bound to the loopback in an out-of-the-box install is not a local
+// inbound — it is one standing behind the front, which is exactly how the panel
+// knows it is behind one. Its listen port is an implementation detail: clients
+// reach it at the front's address, and showing 127.0.0.1:9444 tells the operator
+// nothing they can use or hand to anyone.
+describe('inboundDisplayAddress behind a front', () => {
+	const host = 'vpn.example.com';
+
+	it('shows the front address for a loopback-bound inbound', () => {
+		expect(
+			inboundDisplayAddress({ listen: '127.0.0.1', listen_port: 9444 }, host, 443)
+		).toBe('vpn.example.com:443');
+	});
+
+	it('shows the loopback as-is when nothing fronts it', () => {
+		expect(inboundDisplayAddress({ listen: '127.0.0.1', listen_port: 9444 }, host, 0)).toBe(
+			'127.0.0.1:9444'
+		);
+	});
+
+	// Without a public host there is nothing to substitute, and inventing one
+	// would be worse than showing the bind address.
+	it('shows the loopback as-is with no public host', () => {
+		expect(inboundDisplayAddress({ listen: '127.0.0.1', listen_port: 9444 }, '', 443)).toBe(
+			'127.0.0.1:9444'
+		);
+	});
+
+	// A wildcard bind keeps its own port: the front does not carry it.
+	it('leaves a wildcard-bound inbound on its own port', () => {
+		expect(inboundDisplayAddress({ listen: '::', listen_port: 443 }, host, 443)).toBe(
+			'vpn.example.com:443'
+		);
+	});
+});

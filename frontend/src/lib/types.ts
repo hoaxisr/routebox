@@ -929,6 +929,9 @@ export interface ServerSettings {
 	mode?: 'router' | 'vps';
 	public_host?: string;
 	public_port?: number; // external panel port for sub-URLs; 0/undefined = none/443
+	// front_port is the external port that fronts inbounds bound to a loopback
+	// address — a different thing from public_port, which is the panel's own.
+	front_port?: number;
 	// bootstrapped: came up from the out-of-the-box plan — every inbound is
 	// behind the front on 443, so client addresses are not observable.
 	bootstrapped?: boolean;

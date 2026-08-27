@@ -23,7 +23,8 @@ export function isWildcardListen(listen: string): boolean {
  */
 export function inboundDisplayAddress(
 	inbound: { listen?: string; listen_port?: number; listen_ports?: string[] },
-	publicHost: string
+	publicHost: string,
+	frontPort = 0
 ): string {
 	// A mieru inbound may bind ONLY ranges (listen_ports, no listen_port); showing
 	// the 1080 fallback there invented a port nothing listens on (#46). Ranges are
@@ -43,5 +44,22 @@ export function inboundDisplayAddress(
 			: publicHost;
 		return `${host}:${port}`;
 	}
+	// An inbound bound to the loopback while a front is configured is not local:
+	// it is one standing behind the front, which is how the panel recognises it
+	// (server.front_port, serverlinks). Its own port is unreachable by
+	// definition, so showing it tells the operator nothing they can dial or hand
+	// to anyone — clients reach it at the front's address.
+	if (frontPort > 0 && publicHost && listen !== undefined && isLoopbackListen(listen)) {
+		const host = publicHost.includes(':') && !publicHost.startsWith('[')
+			? `[${publicHost}]`
+			: publicHost;
+		return `${host}:${frontPort}`;
+	}
 	return `${listen ?? '127.0.0.1'}:${port}`;
+}
+
+// Loopback binds, mirroring the backend's listensOnLoopback (serverlinks).
+function isLoopbackListen(listen: string): boolean {
+	const v = listen.trim().replace(/^\[|\]$/g, '');
+	return v === '127.0.0.1' || v === '::1' || v.startsWith('127.');
 }

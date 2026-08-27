@@ -10,6 +10,7 @@
 	import { inboundDisplayAddress } from '$lib/utils/inboundAddress';
 
 	let inbounds = $state<Inbound[]>([]);
+	let frontPort = $state(0);
 	let naive = $state<DestNaive | null>(null);
 	let copied = $state<string>('');
 	let loading = $state(true);
@@ -119,7 +120,9 @@
 	onMount(async () => {
 		await fetchInbounds();
 		try {
-			publicHost = (await api.getSettings()).settings.server?.public_host ?? '';
+			const s = (await api.getSettings()).settings.server;
+			publicHost = s?.public_host ?? '';
+			frontPort = s?.front_port ?? 0;
 		} catch {
 			/* no public host → the list falls back to a bare wildcard */
 		}
@@ -215,7 +218,7 @@
 											<span class="text-[var(--ctp-primary)]">• auto_route</span>
 										{/if}
 									{:else}
-										{inboundDisplayAddress(inbound, publicHost)}
+										{inboundDisplayAddress(inbound, publicHost, frontPort)}
 									{/if}
 								</div>
 							</div>
