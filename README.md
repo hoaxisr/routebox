@@ -103,15 +103,14 @@ curl -fsSL https://raw.githubusercontent.com/hoaxisr/routebox/main/vps-install.s
 
 - чистый сервер: `443/tcp`, `443/udp` и `80/tcp` должны быть свободны — установщик остановится и назовёт, кто их занял;
 - домен с A-записью на этот сервер — сверяется до того, как что-либо изменится;
-- Docker с compose v2 (`curl -fsSL https://get.docker.com | sh`);
-- `iproute2` (`ss`) — им проверяется занятость портов.
+- Docker с compose v2 и `iproute2` (`ss`, им проверяется занятость портов) — чего не хватает, установщик предложит поставить сам; `--install-deps` соглашается заранее, `--no-deps` запрещает.
 
 ```bash
 curl -fsSL https://raw.githubusercontent.com/hoaxisr/routebox/main/docker-install.sh \
   | sudo bash -s -- --allinone --domain example.com --email you@example.com
 ```
 
-Без флагов скрипт предложит этот режим сам, если он здесь возможен, и спросит только домен и почту. Флаги: `--domain`, `--email`, `--dir`, `--staging` (тестовый CA на первый прогон), `--stub` (шаблон заглушки, по умолчанию случайный), `--awg-port` и `--awg-kernel` (см. ниже). `--dry-run` печатает намерения и будущий `docker-compose.yml`, ничего не создавая.
+Без флагов скрипт предложит этот режим сам, если он здесь возможен, и спросит только домен и почту. Флаги: `--domain`, `--email`, `--dir`, `--staging` (тестовый CA на первый прогон), `--stub` (шаблон заглушки, по умолчанию случайный), `--install-deps`, `--awg-port` и `--awg-kernel` (см. ниже). `--dry-run` печатает намерения и будущий `docker-compose.yml`, ничего не создавая.
 
 В конце установщик один раз печатает адрес панели и пароль. Адрес можно спросить снова:
 
