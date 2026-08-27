@@ -35,6 +35,8 @@ MODE_FLAG=""; ARG_DOMAIN=""; ARG_EMAIL=""; ARG_DIR=""; ARG_STAGING=""; ARG_STUB=
 ARG_AWG_KERNEL=""
 # Порт AmneziaWG: "" — спросить, "0" — не публиковать, число — публиковать его.
 ARG_AWG_PORT=""
+# Доставка недостающего на хост: "" — спросить, true/false — ответ дан флагом.
+ARG_INSTALL_DEPS=""
 
 # Состояние разведки.
 HAS_DOCKER="false"; HAS_NGINX_HOST="false"; HAS_NGINX_CONTAINER="false"
@@ -67,6 +69,8 @@ RouteBox Docker Installer. Без флагов — задаёт вопросы.
   --dir PATH       Каталог установки (по умолчанию /opt/routebox)
   --staging        Тестовый CA Let's Encrypt — для первого прогона
   --stub NAME      Шаблон заглушки (по умолчанию случайный из архива)
+  --install-deps   Поставить недостающее на хост (Docker, iproute2) без вопросов
+  --no-deps        Не ставить ничего: не хватает — остановиться
   --awg-port N     Опубликовать UDP-порт AmneziaWG (0 — не публиковать)
   --awg-kernel     Поставить на ХОСТ ядерный модуль AmneziaWG (Debian/Ubuntu)
   --no-awg-kernel  Не спрашивать про него и не ставить
@@ -84,6 +88,8 @@ parse_args() {
 ARG_AWG_KERNEL=""
 # Порт AmneziaWG: "" — спросить, "0" — не публиковать, число — публиковать его.
 ARG_AWG_PORT=""
+# Доставка недостающего на хост: "" — спросить, true/false — ответ дан флагом.
+ARG_INSTALL_DEPS=""
 	while [ $# -gt 0 ]; do
 		case "$1" in
 			--dry-run)   ACTION="dry-run" ;;
@@ -92,6 +98,8 @@ ARG_AWG_PORT=""
 			--allinone)  MODE_FLAG="allinone" ;;
 			--staging)   ARG_STAGING="true" ;;
 			--stub)      shift; [ $# -gt 0 ] || { err "--stub без значения"; return 1; }; ARG_STUB="$1" ;;
+			--install-deps)  ARG_INSTALL_DEPS="true" ;;
+			--no-deps)       ARG_INSTALL_DEPS="false" ;;
 			--awg-port)  shift; [ $# -gt 0 ] || { err "--awg-port без значения"; return 1; }; ARG_AWG_PORT="$1" ;;
 			--awg-kernel)    ARG_AWG_KERNEL="true" ;;
 			--no-awg-kernel) ARG_AWG_KERNEL="false" ;;
@@ -1096,6 +1104,71 @@ allinone_plan() {
 	echo "панель:          по секретному пути, он будет напечатан один раз после старта"
 }
 
+# --- предусловия хоста --------------------------------------------------------
+
+# missing_host_tools -> список недостающего, человеческим языком, или пусто.
+# Два обязательных: docker с compose v2 (без него ставить некуда) и ss из
+# iproute2 (им проверяется занятость портов; без него «свободен» было бы просто
+# другим именем для «не смогли проверить»).
+missing_host_tools() {
+	local miss=""
+	if [ "$HAS_DOCKER" != "true" ]; then miss="docker с compose v2"; fi
+	if ! command -v ss >/dev/null 2>&1; then miss="${miss:+${miss}, }iproute2 (ss)"; fi
+	echo "$miss"
+}
+
+# pkg_install PKG — поставить пакет тем, что есть на хосте.
+pkg_install() {
+	if command -v apt-get >/dev/null 2>&1; then
+		apt-get update >/dev/null 2>&1 && apt-get install -y "$1" >/dev/null 2>&1
+	elif command -v dnf >/dev/null 2>&1; then
+		dnf install -y "$1" >/dev/null 2>&1
+	elif command -v yum >/dev/null 2>&1; then
+		yum install -y "$1" >/dev/null 2>&1
+	elif command -v apk >/dev/null 2>&1; then
+		apk add --no-cache "$1" >/dev/null 2>&1
+	elif command -v pacman >/dev/null 2>&1; then
+		pacman -Sy --noconfirm "$1" >/dev/null 2>&1
+	else
+		return 1
+	fi
+}
+
+# ensure_host_tools — доставить недостающее, спросив один раз.
+# Установка Docker — заметное изменение системы, поэтому по умолчанию она
+# спрашивается, а не делается молча; get.docker.com — тот же путь, который
+# скрипт до сих пор советовал выполнить руками. Заодно он ставит плагин
+# compose там, где docker есть, а плагина нет.
+ensure_host_tools() {
+	local miss; miss="$(missing_host_tools)"
+	[ -n "$miss" ] || return 0
+	if [ "$ARG_INSTALL_DEPS" = "false" ]; then return 0; fi
+	if [ "$ARG_INSTALL_DEPS" != "true" ]; then
+		info "На хосте не хватает: ${miss}"
+		ask_yn "Поставить это сейчас?" y || return 0
+	fi
+
+	if [ "$HAS_DOCKER" != "true" ]; then
+		info "Ставлю Docker (get.docker.com)..."
+		if ! curl -fsSL https://get.docker.com | sh >/dev/null 2>&1; then
+			warn "установка Docker не удалась"
+		fi
+	fi
+	if ! command -v ss >/dev/null 2>&1; then
+		info "Ставлю iproute2..."
+		pkg_install iproute2 || warn "не удалось поставить iproute2 — поставьте его сами"
+	fi
+
+	# Перепроверяем: дальше решения принимаются по состоянию хоста, а не по
+	# тому, что мы пытались сделать.
+	detect >/dev/null
+	miss="$(missing_host_tools)"
+	if [ -n "$miss" ]; then
+		warn "всё ещё не хватает: ${miss}"
+	fi
+	return 0
+}
+
 # --- ядерный модуль AmneziaWG на хосте ----------------------------------------
 #
 # Из контейнера модуль не собрать и не загрузить: ядро принадлежит хосту,
@@ -1561,6 +1634,7 @@ do_update() {
 do_install() {
 	require_root
 	detect
+	ensure_host_tools
 	if [ "$HAS_DOCKER" != "true" ]; then
 		err "нужен docker с compose v2: curl -fsSL https://get.docker.com | sh"
 		exit 1

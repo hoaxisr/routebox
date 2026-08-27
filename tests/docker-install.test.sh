@@ -794,6 +794,39 @@ assert_contains "$OUT_V6" "IPv6"        "сказано, почему это в�
 rm -rf "$NOAAAA"
 
 echo
+echo "предусловия хоста"
+assert_eq "" "$(HAS_DOCKER=true; missing_host_tools)" "docker и ss на месте -> ничего не нужно"
+assert_contains "$(HAS_DOCKER=false; missing_host_tools)" "compose" "без docker он назван"
+DEPS="$(mktemp -d)"   # PATH без ss, но с тем, что нужно самому скрипту
+assert_contains "$( (PATH="$DEPS"; HAS_DOCKER=true; missing_host_tools) )" "iproute2" "без ss назван iproute2"
+
+# --no-deps ничего не ставит и молчит: оператор так и просил.
+ARG_INSTALL_DEPS="false"
+OUT_NODEPS="$( (HAS_DOCKER=false; ensure_host_tools) 2>&1 )"
+assert_eq "" "$OUT_NODEPS" "--no-deps -> ни установки, ни вопросов"
+
+# Отказ на вопрос — тоже отказ: ставить молча то, на что не согласились, нельзя.
+ARG_INSTALL_DEPS=""
+ANSD="$(mktemp)"; printf 'n\n' > "$ANSD"; exec 3<"$ANSD"
+OUT_DECL="$( (HAS_DOCKER=false; ensure_host_tools) 2>&1 )"
+assert_contains "$OUT_DECL" "не хватает"      "названо, чего не хватает"
+assert_not_contains "$OUT_DECL" "Ставлю"      "после отказа ничего не ставится"
+exec 3<&-; rm -f "$ANSD"
+
+# Пакетный менеджер выбирается по тому, что есть на хосте.
+cat >"$DEPS/apt-get" <<'EOF'
+#!/bin/bash
+echo "apt-get $*" >> "$PKGLOG"
+exit 0
+EOF
+chmod +x "$DEPS/apt-get"
+PKGLOG="$(mktemp)"
+(PATH="$DEPS:/usr/bin:/bin"; export PKGLOG; pkg_install iproute2)
+assert_contains "$(cat "$PKGLOG")" "install -y iproute2" "apt-get зовётся с нужным пакетом"
+rm -f "$PKGLOG"; rm -rf "$DEPS"
+ARG_INSTALL_DEPS=""
+
+echo
 echo "порт AmneziaWG"
 # Порт выбирается на установке и попадает и в проброс, и в переменную, из
 # которой панель узнаёт, что менять его нельзя.
