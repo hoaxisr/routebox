@@ -18,6 +18,7 @@ func fixture() Params {
 		Domain:   "media.example.com",
 		DestHost: "127.0.0.1",
 		DestPort: 8443,
+		StubRoot: "/var/lib/routebox/stub",
 		User: User{
 			Name:     "owner",
 			UUID:     "11111111-2222-3333-4444-555555555555",
@@ -27,8 +28,8 @@ func fixture() Params {
 			PrivateKey: "aFqZ8sPPy7yHY0Vzs8fyIm0e1uVWvZKPy5Q1G0y3d0A",
 			ShortID:    "0123abcd",
 		},
-		Ports: Ports{Front: 443, Mieru: 443, VlessGRPC: 8444, TrojanWS: 8445},
-		Paths: Paths{VlessGRPC: "grpc-7a1c9e", TrojanWS: "/ws-4f2b8d"},
+		Ports: Ports{Front: 443, Mieru: 443, VlessGRPC: 8444, TrojanWS: 8445, Panel: 8080},
+		Paths: Paths{VlessGRPC: "grpc-7a1c9e", TrojanWS: "/ws-4f2b8d", Panel: "/panel-9c2f1a"},
 	}
 }
 

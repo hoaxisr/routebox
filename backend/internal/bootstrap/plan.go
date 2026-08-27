@@ -6,7 +6,6 @@
 package bootstrap
 
 import (
-	"errors"
 	"fmt"
 	"sort"
 	"strings"
@@ -28,10 +27,12 @@ type Params struct {
 	Domain   string // own domain — Reality steals its own name (self-steal, ADR 0001)
 	DestHost string // web server behind the front: stub site, panel, transport inbounds
 	DestPort int
+	StubRoot string // directory dest serves at the domain root — the stub site
 	User     User
 	Reality  Reality
 	Ports    Ports
 	Paths    Paths
+	ACME     ACME
 }
 
 // User is the single account every inbound carries. PanelUser is derived from
@@ -53,6 +54,7 @@ type Ports struct {
 	Mieru     int // external UDP — a different socket, no conflict with Front
 	VlessGRPC int // loopback, behind dest
 	TrojanWS  int // loopback, behind dest
+	Panel     int // loopback, behind dest — the RouteBox panel itself
 }
 
 // Paths are the secret path-fork addresses of the transport inbounds behind dest.
@@ -60,6 +62,13 @@ type Ports struct {
 type Paths struct {
 	VlessGRPC string // grpc service name
 	TrojanWS  string // ws path, leading slash
+	Panel     string // panel path, leading slash
+}
+
+// ACME is how dest gets the certificate the front borrows (ADR 0001): Caddy
+// issues and renews it itself, so there is no certbot in the stack.
+type ACME struct {
+	Staging bool // point at the test CA instead, for dry runs against rate limits
 }
 
 // PlanSingbox builds the sing-box config a fresh install starts with: four
@@ -155,8 +164,11 @@ func (p Params) validate() error {
 		"mieru port":          p.Ports.Mieru <= 0,
 		"vless grpc port":     p.Ports.VlessGRPC <= 0,
 		"trojan ws port":      p.Ports.TrojanWS <= 0,
+		"panel port":          p.Ports.Panel <= 0,
 		"vless grpc path":     p.Paths.VlessGRPC == "",
 		"trojan ws path":      p.Paths.TrojanWS == "",
+		"panel path":          p.Paths.Panel == "",
+		"stub root":           p.StubRoot == "",
 	} {
 		if empty {
 			missing = append(missing, name)
@@ -166,8 +178,34 @@ func (p Params) validate() error {
 		sort.Strings(missing)
 		return fmt.Errorf("bootstrap params incomplete: %s", strings.Join(missing, ", "))
 	}
-	if !strings.HasPrefix(p.Paths.TrojanWS, "/") {
-		return errors.New("bootstrap params: trojan ws path must start with /")
+	var bare []string
+	for name, path := range map[string]string{"trojan ws path": p.Paths.TrojanWS, "panel path": p.Paths.Panel} {
+		if !strings.HasPrefix(path, "/") {
+			bare = append(bare, name)
+		}
+	}
+	if len(bare) > 0 {
+		sort.Strings(bare)
+		return fmt.Errorf("bootstrap params: %s must start with /", strings.Join(bare, ", "))
+	}
+	// These values land in the Caddyfile unquoted — as matchers and as a root —
+	// where a character from caddyfileUnsafe is syntax rather than data.
+	var unsafe []string
+	for name, value := range map[string]string{
+		"domain":          p.Domain,
+		"dest host":       p.DestHost,
+		"stub root":       p.StubRoot,
+		"vless grpc path": p.Paths.VlessGRPC,
+		"trojan ws path":  p.Paths.TrojanWS,
+		"panel path":      p.Paths.Panel,
+	} {
+		if strings.ContainsAny(value, caddyfileUnsafe) {
+			unsafe = append(unsafe, name)
+		}
+	}
+	if len(unsafe) > 0 {
+		sort.Strings(unsafe)
+		return fmt.Errorf("bootstrap params: %s must not contain whitespace, quotes, braces or backslashes", strings.Join(unsafe, ", "))
 	}
 	return nil
 }
