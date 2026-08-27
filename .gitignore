@@ -42,3 +42,9 @@ CONTEXT.md
 Makefile
 routebox-linux-amd64
 specs/
+
+# Снимки страниц и логи консоли, которые playwright пишет в корень репозитория.
+# Здесь им не место: это следы отладки, а репозиторий публичный.
+.playwright-mcp/
+/monitor-connections.png
+/page-*.yml
