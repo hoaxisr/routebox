@@ -2,6 +2,7 @@ package users
 
 import (
 	"encoding/base64"
+	"errors"
 	"log"
 	"strings"
 
@@ -23,7 +24,7 @@ import (
 // binding must never make the PUBLIC endpoint error). Links are "\n"-joined; the
 // result is base64.StdEncoding (the de-facto subscription wire format). A user
 // with no resolvable nodes yields base64 of "" (i.e. ""), not an error.
-func BuildSubscription(user *PanelUser, active map[string]interface{}, host string) (string, error) {
+func BuildSubscription(user *PanelUser, active map[string]interface{}, ep serverlinks.PublicAddr) (string, error) {
 	var links []string
 	if user != nil {
 		// Index active inbounds by tag for O(1) lookup.
@@ -51,16 +52,17 @@ func BuildSubscription(user *PanelUser, active map[string]interface{}, host stri
 			if !found {
 				continue // credential not present in active (e.g. unapplied): skip
 			}
-			link, err := serverlinks.BuildShareLink(inbound, userMap, host)
+			link, err := serverlinks.BuildShareLink(inbound, userMap, ep)
 			if err != nil {
 				// A resolvable inbound+credential that still can't render a link is
 				// the diagnosable silent-skip: an unsupported inbound type
 				// (BuildShareLink's default branch) or a malformed inbound. Log it
 				// (tag+type, never the credential) so a dropped binding is
-				// discoverable. host=="" is NOT this case — it is the handler's
-				// "public host not configured" policy where every binding skips by
-				// design, so stay silent there to avoid per-request log noise.
-				if host != "" {
+				// discoverable. Two cases are NOT that and stay silent, because /sub
+				// is public and unauthenticated and they would log on EVERY request:
+				// ep.Host=="" (the handler's "public host not configured" policy) and
+				// ErrNoFront (a front-less deployment, likewise configuration).
+				if ep.Host != "" && !errors.Is(err, serverlinks.ErrNoFront) {
 					typ, _ := inbound["type"].(string)
 					log.Printf("users: subscription skipped binding tag=%q type=%q: %v", b.InboundTag, typ, err)
 				}

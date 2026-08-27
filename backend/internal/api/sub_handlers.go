@@ -9,6 +9,7 @@ import (
 
 	"github.com/go-chi/chi/v5"
 
+	"routebox/backend/internal/serverlinks"
 	"routebox/backend/internal/users"
 	"routebox/backend/internal/util"
 )
@@ -75,7 +76,7 @@ func (h *Handler) GetSubscription(w http.ResponseWriter, r *http.Request) {
 		return // empty body
 	}
 
-	body, err := users.BuildSubscription(&user, h.config.GetActive(), host)
+	body, err := users.BuildSubscription(&user, h.config.GetActive(), serverlinks.PublicAddr{Host: host, Port: h.frontPort()})
 	if err != nil {
 		// The builder is host-agnostic and never errors on the inputs above; treat
 		// any residual as a server error WITHOUT echoing internals.

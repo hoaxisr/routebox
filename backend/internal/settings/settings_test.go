@@ -807,3 +807,32 @@ func TestUpdateReportsLowestBadKey(t *testing.T) {
 		}
 	}
 }
+
+// server.front_port is the external port fronting loopback-bound inbounds. It
+// validates like server.public_port but is a DIFFERENT field: the two are set
+// independently (a panel on 8443 behind a front on 443 is a valid layout), so
+// this pins that writing one never moves the other.
+func TestUpdateServerFrontPort(t *testing.T) {
+	m := &Manager{settings: Default(), path: ""}
+	if err := m.Update(map[string]interface{}{"server.public_port": 8443}); err != nil {
+		t.Fatalf("Update public_port: %v", err)
+	}
+	if err := m.Update(map[string]interface{}{"server.front_port": 443}); err != nil {
+		t.Fatalf("Update front_port: %v", err)
+	}
+	if got := m.Get().Server.FrontPort; got != 443 {
+		t.Fatalf("FrontPort = %d, want 443", got)
+	}
+	if got := m.Get().Server.PublicPort; got != 8443 {
+		t.Fatalf("front_port must not touch PublicPort; got %d, want 8443", got)
+	}
+
+	for _, bad := range []interface{}{-1, 65536, "443"} {
+		if err := m.Update(map[string]interface{}{"server.front_port": bad}); err == nil {
+			t.Fatalf("expected an error for front_port %v", bad)
+		}
+	}
+	if got := m.Get().Server.FrontPort; got != 443 {
+		t.Fatalf("rejected update must not modify FrontPort; got %d", got)
+	}
+}

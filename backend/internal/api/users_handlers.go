@@ -271,7 +271,7 @@ func (h *Handler) GetUserLinkByID(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusNotFound, "credential not present in active config (apply pending changes first)")
 		return
 	}
-	link, err := serverlinks.BuildShareLink(inbound, user, host)
+	link, err := serverlinks.BuildShareLink(inbound, user, serverlinks.PublicAddr{Host: host, Port: h.frontPort()})
 	if err != nil {
 		writeError(w, http.StatusBadRequest, err.Error())
 		return
@@ -539,4 +539,14 @@ func findActiveUserByCredential(inbound map[string]interface{}, cred string) (ma
 		}
 	}
 	return nil, false
+}
+
+// frontPort is the external port fronting loopback-bound inbounds, or 0 when
+// nothing fronts them. Reading it here (rather than at each link site) keeps the
+// nil-settings fallback in one place.
+func (h *Handler) frontPort() int {
+	if h.settings == nil {
+		return 0
+	}
+	return h.settings.Get().Server.FrontPort
 }

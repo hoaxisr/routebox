@@ -1,6 +1,7 @@
 package serverlinks
 
 import (
+	"errors"
 	"net/url"
 	"strings"
 	"testing"
@@ -34,7 +35,7 @@ func TestBuildShareLinkVlessReality(t *testing.T) {
 	}
 	user := map[string]interface{}{"name": "phone", "uuid": "11111111-2222-3333-4444-555555555555", "flow": "xtls-rprx-vision"}
 
-	link, err := BuildShareLink(inbound, user, "vpn.example.com")
+	link, err := BuildShareLink(inbound, user, PublicAddr{Host: "vpn.example.com"})
 	if err != nil {
 		t.Fatalf("BuildShareLink: %v", err)
 	}
@@ -72,7 +73,7 @@ func TestBuildShareLinkVlessPlainTLS(t *testing.T) {
 	}
 	user := map[string]interface{}{"name": "laptop", "uuid": "aaaaaaaa-bbbb-cccc-dddd-eeeeeeeeeeee"}
 
-	link, err := BuildShareLink(inbound, user, "vpn.example.com")
+	link, err := BuildShareLink(inbound, user, PublicAddr{Host: "vpn.example.com"})
 	if err != nil {
 		t.Fatalf("BuildShareLink: %v", err)
 	}
@@ -103,7 +104,7 @@ func TestBuildShareLinkErrors(t *testing.T) {
 		{"hy2 no password", map[string]interface{}{"type": "hysteria2", "listen_port": float64(443)}, map[string]interface{}{}, "h"},
 	}
 	for _, c := range cases {
-		if _, err := BuildShareLink(c.inbound, c.user, c.host); err == nil {
+		if _, err := BuildShareLink(c.inbound, c.user, PublicAddr{Host: c.host}); err == nil {
 			t.Errorf("%s: expected error, got nil", c.name)
 		}
 	}
@@ -124,7 +125,7 @@ func TestBuildShareLinkDisabledReality(t *testing.T) {
 	}
 	user := map[string]interface{}{"name": "test", "uuid": "11111111-2222-3333-4444-555555555555"}
 
-	link, err := BuildShareLink(inbound, user, "vpn.example.com")
+	link, err := BuildShareLink(inbound, user, PublicAddr{Host: "vpn.example.com"})
 	if err != nil {
 		t.Fatalf("BuildShareLink: %v", err)
 	}
@@ -145,7 +146,7 @@ func TestBuildShareLinkIPv6Host(t *testing.T) {
 	user := map[string]interface{}{"name": "ipv6user", "uuid": "11111111-2222-3333-4444-555555555555"}
 	host := "2001:db8::1"
 
-	link, err := BuildShareLink(inbound, user, host)
+	link, err := BuildShareLink(inbound, user, PublicAddr{Host: host})
 	if err != nil {
 		t.Fatalf("BuildShareLink: %v", err)
 	}
@@ -168,7 +169,7 @@ func TestBuildShareLinkNaive(t *testing.T) {
 	}
 	user := map[string]interface{}{"username": "alice", "password": "s3cr3t"}
 
-	link, err := BuildShareLink(inbound, user, "vpn.example.com")
+	link, err := BuildShareLink(inbound, user, PublicAddr{Host: "vpn.example.com"})
 	if err != nil {
 		t.Fatalf("BuildShareLink: %v", err)
 	}
@@ -192,7 +193,7 @@ func TestBuildShareLinkHysteria2(t *testing.T) {
 	}
 	user := map[string]interface{}{"name": "phone", "password": "hunter2"}
 
-	link, err := BuildShareLink(inbound, user, "vpn.example.com")
+	link, err := BuildShareLink(inbound, user, PublicAddr{Host: "vpn.example.com"})
 	if err != nil {
 		t.Fatalf("BuildShareLink: %v", err)
 	}
@@ -229,7 +230,7 @@ func TestBuildShareLinkHysteria2Gecko(t *testing.T) {
 	}
 	user := map[string]interface{}{"name": "phone", "password": "hunter2"}
 
-	link, err := BuildShareLink(inbound, user, "vpn.example.com")
+	link, err := BuildShareLink(inbound, user, PublicAddr{Host: "vpn.example.com"})
 	if err != nil {
 		t.Fatalf("BuildShareLink: %v", err)
 	}
@@ -252,7 +253,7 @@ func TestBuildShareLinkHysteria2GeckoDefaultSizes(t *testing.T) {
 	}
 	user := map[string]interface{}{"name": "phone", "password": "hunter2"}
 
-	link, err := BuildShareLink(inbound, user, "vpn.example.com")
+	link, err := BuildShareLink(inbound, user, PublicAddr{Host: "vpn.example.com"})
 	if err != nil {
 		t.Fatalf("BuildShareLink: %v", err)
 	}
@@ -275,7 +276,7 @@ func TestBuildShareLinkHysteria2NoObfs(t *testing.T) {
 	}
 	user := map[string]interface{}{"name": "laptop", "password": "hunter2"}
 
-	link, err := BuildShareLink(inbound, user, "vpn.example.com")
+	link, err := BuildShareLink(inbound, user, PublicAddr{Host: "vpn.example.com"})
 	if err != nil {
 		t.Fatalf("BuildShareLink: %v", err)
 	}
@@ -295,7 +296,7 @@ func TestBuildShareLinkSpecialCharCredentials(t *testing.T) {
 		"tls": map[string]interface{}{"enabled": true, "server_name": "vpn.example.com"},
 	}
 	nUser := map[string]interface{}{"username": "us:er", "password": "p@ss:word"}
-	link, err := BuildShareLink(naive, nUser, "vpn.example.com")
+	link, err := BuildShareLink(naive, nUser, PublicAddr{Host: "vpn.example.com"})
 	if err != nil {
 		t.Fatalf("naive: %v", err)
 	}
@@ -313,7 +314,7 @@ func TestBuildShareLinkSpecialCharCredentials(t *testing.T) {
 		"tls": map[string]interface{}{"enabled": true, "server_name": "vpn.example.com"},
 	}
 	hUser := map[string]interface{}{"name": "phone", "password": "p@ss:w0rd"}
-	link2, err := BuildShareLink(hy2, hUser, "vpn.example.com")
+	link2, err := BuildShareLink(hy2, hUser, PublicAddr{Host: "vpn.example.com"})
 	if err != nil {
 		t.Fatalf("hy2: %v", err)
 	}
@@ -354,7 +355,7 @@ func TestBuildVlessTransportFlowOnlyWhenRaw(t *testing.T) {
 		"transport": map[string]interface{}{"type": "ws", "path": "/p", "headers": map[string]interface{}{"Host": "cdn.ex.com"}},
 	}
 	user := map[string]interface{}{"name": "p", "uuid": "11111111-2222-3333-4444-555555555555", "flow": "xtls-rprx-vision"}
-	link, err := BuildShareLink(inbound, user, "vpn.ex.com")
+	link, err := BuildShareLink(inbound, user, PublicAddr{Host: "vpn.ex.com"})
 	if err != nil {
 		t.Fatalf("BuildShareLink: %v", err)
 	}
@@ -381,7 +382,7 @@ func TestBuildVlessRawKeepsFlow(t *testing.T) {
 		"tls": map[string]interface{}{"enabled": true, "server_name": "ex.com"},
 	}
 	user := map[string]interface{}{"uuid": "11111111-2222-3333-4444-555555555555", "flow": "xtls-rprx-vision"}
-	link, err := BuildShareLink(inbound, user, "vpn.ex.com")
+	link, err := BuildShareLink(inbound, user, PublicAddr{Host: "vpn.ex.com"})
 	if err != nil {
 		t.Fatalf("BuildShareLink: %v", err)
 	}
@@ -532,7 +533,7 @@ func TestBuildTrojanReality(t *testing.T) {
 		},
 	}
 	user := map[string]interface{}{"name": "phone", "password": "pw-secret"}
-	link, err := BuildShareLink(inbound, user, "vpn.example.com")
+	link, err := BuildShareLink(inbound, user, PublicAddr{Host: "vpn.example.com"})
 	if err != nil {
 		t.Fatalf("BuildShareLink: %v", err)
 	}
@@ -561,7 +562,7 @@ func TestBuildTrojanTlsWithTransport(t *testing.T) {
 				ib["transport"] = tr
 			}
 			user := map[string]interface{}{"name": "p", "password": "p@ss:w0rd"}
-			link, err := BuildShareLink(ib, user, "ex.com")
+			link, err := BuildShareLink(ib, user, PublicAddr{Host: "ex.com"})
 			if err != nil {
 				t.Fatalf("BuildShareLink: %v", err)
 			}
@@ -648,7 +649,7 @@ func TestShareLinkRemarkIncludesInboundTag(t *testing.T) {
 	}
 	for _, c := range cases {
 		t.Run(c.name, func(t *testing.T) {
-			link, err := BuildShareLink(c.inbound, c.user, "vpn.example.com")
+			link, err := BuildShareLink(c.inbound, c.user, PublicAddr{Host: "vpn.example.com"})
 			if err != nil {
 				t.Fatalf("BuildShareLink: %v", err)
 			}
@@ -670,7 +671,7 @@ func TestShareLinkRemarkIncludesInboundTag(t *testing.T) {
 	link, _ := BuildShareLink(
 		map[string]interface{}{"type": "vless", "tag": "vless-in", "listen_port": float64(443)},
 		map[string]interface{}{"name": "alice", "uuid": "11111111-2222-3333-4444-555555555555"},
-		"vpn.example.com")
+		PublicAddr{Host: "vpn.example.com"})
 	if !strings.Contains(link, "#alice%20%C2%B7%20vless-in") {
 		t.Fatalf("expected escaped remark '#alice%%20%%C2%%B7%%20vless-in' in %s", link)
 	}
@@ -678,7 +679,7 @@ func TestShareLinkRemarkIncludesInboundTag(t *testing.T) {
 
 func TestBuildTrojanNoPassword(t *testing.T) {
 	ib := map[string]interface{}{"type": "trojan", "listen_port": float64(8443), "tls": map[string]interface{}{"enabled": true}}
-	if _, err := BuildShareLink(ib, map[string]interface{}{"name": "x"}, "h"); err == nil {
+	if _, err := BuildShareLink(ib, map[string]interface{}{"name": "x"}, PublicAddr{Host: "h"}); err == nil {
 		t.Fatalf("trojan with no password must error")
 	}
 }
@@ -800,7 +801,7 @@ func TestBuildShareLinkMieruListenPorts(t *testing.T) {
 			"type": "mieru", "tag": "m-in", "listen_port": float64(2020), "transport": "UDP",
 			"listen_ports": []interface{}{"25010-25012", "26000-26100"},
 		}
-		link, err := BuildShareLink(ib, user, "vpn.example.com")
+		link, err := BuildShareLink(ib, user, PublicAddr{Host: "vpn.example.com"})
 		if err != nil {
 			t.Fatalf("BuildShareLink: %v", err)
 		}
@@ -836,7 +837,7 @@ func TestBuildShareLinkMieruListenPorts(t *testing.T) {
 			"type": "mieru", "tag": "m-in", "transport": "TCP",
 			"listen_ports": []interface{}{"25010-25012"},
 		}
-		link, err := BuildShareLink(ib, user, "vpn.example.com")
+		link, err := BuildShareLink(ib, user, PublicAddr{Host: "vpn.example.com"})
 		if err != nil {
 			t.Fatalf("BuildShareLink with ranges only: %v", err)
 		}
@@ -851,8 +852,222 @@ func TestBuildShareLinkMieruListenPorts(t *testing.T) {
 
 	t.Run("no ports at all is still an error", func(t *testing.T) {
 		ib := map[string]interface{}{"type": "mieru", "tag": "m-in", "transport": "TCP"}
-		if _, err := BuildShareLink(ib, user, "vpn.example.com"); err == nil {
+		if _, err := BuildShareLink(ib, user, PublicAddr{Host: "vpn.example.com"}); err == nil {
 			t.Fatal("expected an error when the inbound exposes no port at all")
 		}
 	})
+}
+
+// --- public endpoint (inbounds behind a front) -------------------------------
+
+// An inbound bound to loopback is unreachable at its own listen_port by
+// definition: whatever fronts it on the public port is what a client must dial.
+func TestBuildShareLinkLoopbackUsesFrontPort(t *testing.T) {
+	cases := []struct {
+		name    string
+		inbound map[string]interface{}
+		user    map[string]interface{}
+		want    string // authority expected in the link
+	}{
+		{
+			name: "vless grpc behind front",
+			inbound: map[string]interface{}{
+				"type": "vless", "tag": "vless-grpc", "listen": "127.0.0.1", "listen_port": float64(10001),
+				"tls":       map[string]interface{}{"enabled": true, "server_name": "example.com"},
+				"transport": map[string]interface{}{"type": "grpc", "service_name": "Zt7qP1"},
+			},
+			user: map[string]interface{}{"name": "phone", "uuid": "11111111-2222-3333-4444-555555555555"},
+			want: "example.com:443",
+		},
+		{
+			name: "trojan ws behind front",
+			inbound: map[string]interface{}{
+				"type": "trojan", "tag": "trojan-ws", "listen": "127.0.0.1", "listen_port": float64(10002),
+				"tls":       map[string]interface{}{"enabled": true, "server_name": "example.com"},
+				"transport": map[string]interface{}{"type": "ws", "path": "/Kx9mB2"},
+			},
+			user: map[string]interface{}{"name": "phone", "password": "s3cret"},
+			want: "example.com:443",
+		},
+		{
+			name: "ipv6 loopback counts as loopback",
+			inbound: map[string]interface{}{
+				"type": "vless", "tag": "vless-grpc", "listen": "::1", "listen_port": float64(10001),
+				"tls":       map[string]interface{}{"enabled": true, "server_name": "example.com"},
+				"transport": map[string]interface{}{"type": "grpc", "service_name": "Zt7qP1"},
+			},
+			user: map[string]interface{}{"name": "phone", "uuid": "11111111-2222-3333-4444-555555555555"},
+			want: "example.com:443",
+		},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			link, err := BuildShareLink(tc.inbound, tc.user, PublicAddr{Host: "example.com", Port: 443})
+			if err != nil {
+				t.Fatalf("BuildShareLink: %v", err)
+			}
+			u, err := url.Parse(link)
+			if err != nil {
+				t.Fatalf("parse link %q: %v", link, err)
+			}
+			if u.Host != tc.want {
+				t.Errorf("authority = %q, want %q (link=%q)", u.Host, tc.want, link)
+			}
+			if strings.Contains(link, "10001") || strings.Contains(link, "10002") {
+				t.Errorf("internal listen_port leaked into link: %q", link)
+			}
+			// The port rewrite must not disturb the transport coordinates: without
+			// them the client reaches the front but never the inbound behind it.
+			if tr := mapOf(tc.inbound["transport"]); tr != nil {
+				q := u.Query()
+				if p, _ := tr["path"].(string); p != "" && q.Get("path") != p {
+					t.Errorf("path = %q, want %q", q.Get("path"), p)
+				}
+				if sn, _ := tr["service_name"].(string); sn != "" && q.Get("serviceName") != sn {
+					t.Errorf("serviceName = %q, want %q", q.Get("serviceName"), sn)
+				}
+			}
+		})
+	}
+}
+
+// The front port must not disturb an inbound that is already reachable from
+// outside — that is every inbound of every existing installation.
+func TestBuildShareLinkExternalListenKeepsItsPort(t *testing.T) {
+	cases := []struct{ name, listen string }{
+		{"wildcard v6", "::"},
+		{"wildcard v4", "0.0.0.0"},
+		{"absent listen", ""},
+		{"specific public address", "203.0.113.7"},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			inbound := map[string]interface{}{
+				"type": "vless", "tag": "vless-in", "listen_port": float64(8443),
+				"tls": map[string]interface{}{"enabled": true, "server_name": "example.com"},
+			}
+			if tc.listen != "" {
+				inbound["listen"] = tc.listen
+			}
+			user := map[string]interface{}{"name": "phone", "uuid": "11111111-2222-3333-4444-555555555555"}
+
+			link, err := BuildShareLink(inbound, user, PublicAddr{Host: "example.com", Port: 443})
+			if err != nil {
+				t.Fatalf("BuildShareLink: %v", err)
+			}
+			u, _ := url.Parse(link)
+			if u.Host != "example.com:8443" {
+				t.Errorf("authority = %q, want example.com:8443 — front port must not override a reachable inbound", u.Host)
+			}
+		})
+	}
+}
+
+// Without a configured front port a loopback inbound has no dialable port at
+// all. Emitting the loopback one would hand the client a link that cannot work;
+// failing lets the caller skip the binding and log it.
+func TestBuildShareLinkLoopbackWithoutFrontPortFails(t *testing.T) {
+	inbound := map[string]interface{}{
+		"type": "vless", "tag": "vless-grpc", "listen": "127.0.0.1", "listen_port": float64(10001),
+		"tls": map[string]interface{}{"enabled": true, "server_name": "example.com"},
+	}
+	user := map[string]interface{}{"name": "phone", "uuid": "11111111-2222-3333-4444-555555555555"}
+
+	if _, err := BuildShareLink(inbound, user, PublicAddr{Host: "example.com"}); err == nil {
+		t.Fatal("expected an error for a loopback inbound with no front port")
+	}
+}
+
+// The SNI a client presents comes from the inbound's configured name, never
+// from the address it happens to be bound to.
+func TestBuildShareLinkSNIComesFromConfigNotListenAddress(t *testing.T) {
+	inbound := map[string]interface{}{
+		"type": "vless", "tag": "vless-grpc", "listen": "127.0.0.1", "listen_port": float64(10001),
+		"tls":       map[string]interface{}{"enabled": true, "server_name": "cdn.example.com"},
+		"transport": map[string]interface{}{"type": "grpc", "service_name": "Zt7qP1"},
+	}
+	user := map[string]interface{}{"name": "phone", "uuid": "11111111-2222-3333-4444-555555555555"}
+
+	link, err := BuildShareLink(inbound, user, PublicAddr{Host: "example.com", Port: 443})
+	if err != nil {
+		t.Fatalf("BuildShareLink: %v", err)
+	}
+	u, _ := url.Parse(link)
+	if got := u.Query().Get("sni"); got != "cdn.example.com" {
+		t.Errorf("sni = %q, want cdn.example.com", got)
+	}
+	if got := u.Query().Get("serviceName"); got != "Zt7qP1" {
+		t.Errorf("serviceName = %q, want Zt7qP1 — transport path must survive the port rewrite", got)
+	}
+}
+
+// mieru binds port RANGES, and a front maps single ports. There is no image of a
+// range through a front, so a loopback-bound mieru is unbuildable rather than
+// silently mapped: emitting it leaked the internal range into the client link
+// AND paired it with a front port the inbound never listened on.
+func TestBuildShareLinkMieruLoopbackRangesFail(t *testing.T) {
+	inbound := map[string]interface{}{
+		"type": "mieru", "tag": "mieru-in", "listen": "127.0.0.1",
+		"listen_ports": []interface{}{"25010-25012"}, "transport": "UDP",
+	}
+	user := map[string]interface{}{"name": "alice", "password": "pw"}
+
+	link, err := BuildShareLink(inbound, user, PublicAddr{Host: "example.com", Port: 443})
+	if err == nil {
+		t.Fatalf("expected an error, got link %q", link)
+	}
+	if strings.Contains(link, "25010") {
+		t.Errorf("internal range leaked into link: %q", link)
+	}
+}
+
+// mieru reachable from outside keeps every port it actually binds, front or no
+// front — this is the shape every existing installation has.
+func TestBuildShareLinkMieruExternalKeepsRanges(t *testing.T) {
+	inbound := map[string]interface{}{
+		"type": "mieru", "tag": "mieru-in", "listen": "::",
+		"listen_ports": []interface{}{"25010-25012"}, "transport": "UDP",
+	}
+	user := map[string]interface{}{"name": "alice", "password": "pw"}
+
+	link, err := BuildShareLink(inbound, user, PublicAddr{Host: "example.com", Port: 443})
+	if err != nil {
+		t.Fatalf("BuildShareLink: %v", err)
+	}
+	u, _ := url.Parse(link)
+	if ports := u.Query()["port"]; len(ports) != 1 || ports[0] != "25010-25012" {
+		t.Errorf("port = %v, want exactly [25010-25012] — the front port must not be added", ports)
+	}
+}
+
+// "localhost" is loopback spelled as a name; a link built from it would be dead.
+func TestBuildShareLinkLocalhostCountsAsLoopback(t *testing.T) {
+	inbound := map[string]interface{}{
+		"type": "vless", "tag": "vless-in", "listen": "localhost", "listen_port": float64(10001),
+		"tls": map[string]interface{}{"enabled": true, "server_name": "example.com"},
+	}
+	user := map[string]interface{}{"name": "phone", "uuid": "11111111-2222-3333-4444-555555555555"}
+
+	link, err := BuildShareLink(inbound, user, PublicAddr{Host: "example.com", Port: 443})
+	if err != nil {
+		t.Fatalf("BuildShareLink: %v", err)
+	}
+	if u, _ := url.Parse(link); u.Host != "example.com:443" {
+		t.Errorf("authority = %q, want example.com:443", u.Host)
+	}
+}
+
+// The front-less skip is configuration policy, not a malformed inbound: /sub is
+// public and unauthenticated, so it must not log once per request.
+func TestErrNoFrontIsIdentifiable(t *testing.T) {
+	inbound := map[string]interface{}{
+		"type": "vless", "tag": "vless-in", "listen": "127.0.0.1", "listen_port": float64(10001),
+		"tls": map[string]interface{}{"enabled": true, "server_name": "example.com"},
+	}
+	user := map[string]interface{}{"name": "phone", "uuid": "11111111-2222-3333-4444-555555555555"}
+
+	_, err := BuildShareLink(inbound, user, PublicAddr{Host: "example.com"})
+	if !errors.Is(err, ErrNoFront) {
+		t.Fatalf("err = %v, want it to wrap ErrNoFront", err)
+	}
 }

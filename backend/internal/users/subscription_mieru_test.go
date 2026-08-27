@@ -5,6 +5,8 @@ import (
 	"path/filepath"
 	"strings"
 	"testing"
+
+	"routebox/backend/internal/serverlinks"
 )
 
 // TestSubscriptionIncludesMieru is the mandatory silent-skip guard for the mieru
@@ -60,7 +62,7 @@ func TestSubscriptionIncludesMieru(t *testing.T) {
 	}
 
 	// (2) Subscription output is base64.StdEncoding — decode before asserting.
-	sub, err := BuildSubscription(bob, active, "vpn.example.com")
+	sub, err := BuildSubscription(bob, active, serverlinks.PublicAddr{Host: "vpn.example.com"})
 	if err != nil {
 		t.Fatalf("BuildSubscription: %v", err)
 	}

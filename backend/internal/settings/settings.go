@@ -200,6 +200,11 @@ type ServerSettings struct {
 	Mode       string `toml:"mode" json:"mode"`               // "router" (default) | "vps"
 	PublicHost string `toml:"public_host" json:"public_host"` // domain or IP for client share-links; "" = unset
 	PublicPort int    `toml:"public_port" json:"public_port"` // external panel port for sub-URLs; 0 = none/443
+	// FrontPort is the external port that fronts inbounds bound to a loopback
+	// address. Such an inbound is unreachable at its own listen_port, so its
+	// client share links must carry this port instead. 0 = nothing fronts them,
+	// which is the case for every layout where inbounds bind a public address.
+	FrontPort int `toml:"front_port" json:"front_port"`
 }
 
 // SingboxSettings configures sing-box integration
@@ -800,6 +805,16 @@ func (m *Manager) Update(updates map[string]interface{}) error {
 				return fmt.Errorf("setting %s: port %d out of range (0-65535)", key, v)
 			}
 			staged.Server.PublicPort = v
+
+		case "server.front_port":
+			v, ok := toInt(value)
+			if !ok {
+				return fmt.Errorf("setting %s: value must be a whole number", key)
+			}
+			if v < 0 || v > 65535 {
+				return fmt.Errorf("setting %s: port %d out of range (0-65535)", key, v)
+			}
+			staged.Server.FrontPort = v
 
 		// Advanced runtime settings
 		case "advanced.ws_ping_interval_sec":

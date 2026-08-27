@@ -1,6 +1,7 @@
 package serverlinks
 
 import (
+	"errors"
 	"fmt"
 	"net"
 	"net/url"
@@ -13,18 +14,47 @@ import (
 // sensible default is emitted.
 const defaultFingerprint = "chrome"
 
+// PublicAddr is the address clients dial to reach this server from outside.
+// Neither field is present in the inbound config, so both come from the caller.
+// Deliberately NOT named Endpoint: CONTEXT.md reserves that word for the
+// AWG/WireGuard interface entity, which this is not.
+//
+// Port fronts inbounds that bind a loopback address: those are unreachable at
+// their own listen_port by definition, so their share links must carry this one
+// instead. Zero means nothing fronts them — see clientPort.
+type PublicAddr struct {
+	Host string
+	Port int
+}
+
+// ErrNoFront reports that an inbound is only reachable through a front whose
+// port nobody configured. Callers rendering a whole subscription treat it as
+// configuration policy (skip the node quietly) rather than as a malformed
+// inbound worth logging on every request to a public endpoint.
+var ErrNoFront = errors.New("inbound listens on loopback but no public front port is configured")
+
 // BuildShareLink turns a server inbound plus one of its users into a client
-// share-link URI. host is the public domain/IP of the server (not present in
-// the inbound config). It is the inverse of the subscription link parsers.
-func BuildShareLink(inbound, user map[string]interface{}, host string) (string, error) {
+// share-link URI. It is the inverse of the subscription link parsers.
+func BuildShareLink(inbound, user map[string]interface{}, ep PublicAddr) (string, error) {
+	host := ep.Host
 	if host == "" {
 		return "", fmt.Errorf("host is required")
 	}
 	typ, _ := inbound["type"].(string)
-	port := portOf(inbound)
+	behindFront := listensOnLoopback(inbound)
 	// mieru may bind ONLY ranges (listen_ports) and no single port, so for it an
 	// absent listen_port is not automatically a broken inbound (#37).
 	mieruRanges := typ == "mieru" && len(listOfStrings(inbound["listen_ports"])) > 0
+	// A front maps one external port onto one internal one; a range has no such
+	// image. Emitting the range anyway leaks internal ports into a client link
+	// and pairs them with a port the inbound never listened on.
+	if behindFront && mieruRanges {
+		return "", fmt.Errorf("inbound listens on loopback with port ranges: a front cannot be mapped onto a range")
+	}
+	port, err := clientPort(inbound, behindFront, ep)
+	if err != nil {
+		return "", err
+	}
 	if port == 0 && !mieruRanges {
 		return "", fmt.Errorf("inbound has no listen_port")
 	}
@@ -77,6 +107,42 @@ func buildVless(inbound, user map[string]interface{}, host string, port int) (st
 // hostPort joins a host and port, bracketing IPv6 literals per RFC 3986.
 func hostPort(host string, port int) string {
 	return net.JoinHostPort(host, strconv.Itoa(port))
+}
+
+// clientPort resolves the port a client must dial. For an inbound reachable
+// from outside that is its own listen_port, which is every inbound of every
+// installation that predates the loopback-fronted layout.
+//
+// For a loopback-bound inbound the listen_port is meaningless to a client, so
+// the front's port is used. With no front configured there is no dialable port
+// at all: returning the loopback one would hand out a link that cannot work and
+// looks correct, so this fails instead and lets the caller skip the binding.
+func clientPort(inbound map[string]interface{}, behindFront bool, ep PublicAddr) (int, error) {
+	if !behindFront {
+		return portOf(inbound), nil
+	}
+	if ep.Port == 0 {
+		return 0, ErrNoFront
+	}
+	return ep.Port, nil
+}
+
+// listensOnLoopback reports whether the inbound binds an address that cannot be
+// reached from another host. An absent or non-literal listen is NOT loopback:
+// sing-box defaults to the wildcard address, and treating an unparseable value
+// as loopback would rewrite ports for inbounds that are in fact public.
+func listensOnLoopback(inbound map[string]interface{}) bool {
+	listen, _ := inbound["listen"].(string)
+	if listen == "" {
+		return false
+	}
+	// A hand-written config may name the loopback instead of numbering it;
+	// sing-box resolves it, and a client link built from it would be dead.
+	if strings.EqualFold(listen, "localhost") {
+		return true
+	}
+	ip := net.ParseIP(listen)
+	return ip != nil && ip.IsLoopback()
 }
 
 func portOf(m map[string]interface{}) int {

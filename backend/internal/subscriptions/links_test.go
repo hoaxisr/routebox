@@ -736,7 +736,7 @@ func TestParseMieruRoundTrip(t *testing.T) {
 		"traffic_pattern": "YWJj",
 	}
 	user := map[string]interface{}{"name": "alice", "password": "p@ss w#rd"}
-	link, err := serverlinks.BuildShareLink(inbound, user, "vpn.example.com")
+	link, err := serverlinks.BuildShareLink(inbound, user, serverlinks.PublicAddr{Host: "vpn.example.com"})
 	if err != nil {
 		t.Fatalf("BuildShareLink: %v", err)
 	}

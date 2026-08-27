@@ -6,6 +6,8 @@ import (
 	"testing"
 
 	"routebox/backend/internal/subscriptions"
+
+	"routebox/backend/internal/serverlinks"
 )
 
 // activeMultiInbound builds an active config with vless, hysteria2 and naive
@@ -63,7 +65,7 @@ func nodesByPort(nodes []subscriptions.ParsedNode) map[int]map[string]interface{
 }
 
 func TestBuildSubscription_RoundTripMultiBinding(t *testing.T) {
-	out, err := BuildSubscription(userBoundTo(), activeMultiInbound(), "vpn.example.com")
+	out, err := BuildSubscription(userBoundTo(), activeMultiInbound(), serverlinks.PublicAddr{Host: "vpn.example.com"})
 	if err != nil {
 		t.Fatalf("BuildSubscription: %v", err)
 	}
@@ -141,7 +143,7 @@ func TestBuildSubscription_SkipsBindingMissingFromActive(t *testing.T) {
 	// Add a binding whose inbound is NOT in active — must be skipped, not fatal.
 	u.Bindings = append(u.Bindings, Binding{
 		InboundTag: "ghost-in", Credential: "x", Protocol: "vless"})
-	out, err := BuildSubscription(u, activeMultiInbound(), "vpn.example.com")
+	out, err := BuildSubscription(u, activeMultiInbound(), serverlinks.PublicAddr{Host: "vpn.example.com"})
 	if err != nil {
 		t.Fatalf("BuildSubscription must not fail on a missing binding: %v", err)
 	}
@@ -165,7 +167,7 @@ func TestBuildSubscription_SkipsBindingCredentialNotInActive(t *testing.T) {
 			{InboundTag: "hy2-in", Credential: "not-a-real-password", Protocol: "hysteria2"},
 		},
 	}
-	out, err := BuildSubscription(u, activeMultiInbound(), "vpn.example.com")
+	out, err := BuildSubscription(u, activeMultiInbound(), serverlinks.PublicAddr{Host: "vpn.example.com"})
 	if err != nil {
 		t.Fatalf("BuildSubscription: %v", err)
 	}
@@ -194,7 +196,7 @@ func TestBuildSubscription_SkipsEmptyCredential(t *testing.T) {
 			{InboundTag: "hy2-in", Credential: "", Protocol: "hysteria2"},
 		},
 	}
-	out, err := BuildSubscription(u, activeMultiInbound(), "vpn.example.com")
+	out, err := BuildSubscription(u, activeMultiInbound(), serverlinks.PublicAddr{Host: "vpn.example.com"})
 	if err != nil {
 		t.Fatalf("BuildSubscription: %v", err)
 	}
@@ -225,7 +227,7 @@ func TestBuildSubscription_SkipsUnknownProtocol(t *testing.T) {
 			{InboundTag: "vless-in", Credential: "uuid-1", Protocol: "bogus-proto"},
 		},
 	}
-	out, err := BuildSubscription(u, activeMultiInbound(), "vpn.example.com")
+	out, err := BuildSubscription(u, activeMultiInbound(), serverlinks.PublicAddr{Host: "vpn.example.com"})
 	if err != nil {
 		t.Fatalf("BuildSubscription: %v", err)
 	}
@@ -239,7 +241,7 @@ func TestBuildSubscription_SkipsUnknownProtocol(t *testing.T) {
 func TestBuildSubscription_EmptyWhenNoActiveNodes(t *testing.T) {
 	u := &PanelUser{ID: "u1", Name: "alice", Token: "tok",
 		Bindings: []Binding{{InboundTag: "vless-in", Credential: "uuid-1", Protocol: "vless"}}}
-	out, err := BuildSubscription(u, map[string]interface{}{"inbounds": []interface{}{}}, "vpn.example.com")
+	out, err := BuildSubscription(u, map[string]interface{}{"inbounds": []interface{}{}}, serverlinks.PublicAddr{Host: "vpn.example.com"})
 	if err != nil {
 		t.Fatalf("BuildSubscription: %v", err)
 	}
@@ -253,7 +255,7 @@ func TestBuildSubscription_EmptyWhenNoActiveNodes(t *testing.T) {
 // policy). With no host, BuildShareLink errors per binding and every binding is
 // skipped, yielding base64 of "" (i.e. ""). The builder must NOT hard-error.
 func TestBuildSubscription_EmptyHostIsNotAnError(t *testing.T) {
-	out, err := BuildSubscription(userBoundTo(), activeMultiInbound(), "")
+	out, err := BuildSubscription(userBoundTo(), activeMultiInbound(), serverlinks.PublicAddr{Host: ""})
 	if err != nil {
 		t.Fatalf("empty host must not error the pure builder: %v", err)
 	}
