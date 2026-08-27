@@ -1,7 +1,9 @@
 # Release pipeline: push a version tag (v1.2.3) and this builds the panel
 # (frontend embedded into the Go binary), runs the full test suite as a gate,
 # publishes routebox-linux-{amd64,arm64} + .sha256 sidecars (the exact asset
-# names install.sh and the in-app self-updater download), fills the release
+# names install.sh and the in-app self-updater download), builds the dest web
+# server (routebox-dest-linux-{amd64,arm64}) and packs the stub sites
+# (routebox-stubs.tar.gz) the out-of-the-box install needs, fills the release
 # body with the tag's CHANGELOG.md section via .github/scripts/extract-changelog.sh,
 # and (once that succeeds) builds+pushes the multi-arch Docker image.
 name: Release
@@ -66,8 +68,32 @@ jobs:
               go build -trimpath -ldflags "-s -w -X main.Version=${VERSION}" \
               -o "dist/routebox-linux-${arch}" ./backend/cmd/routebox
           done
-          cd dist
-          for f in routebox-linux-*; do
+
+      # dest — the web server the out-of-the-box install puts in front of the
+      # panel (ADR 0002). It ships prebuilt because handing an operator's
+      # production box a Go toolchain to compile a web server is not something
+      # an install script gets to do. The fork matters: upstream forwardproxy
+      # does not speak naive. So does the `=` replace — klzgrad's fork still
+      # declares the upstream module path, and xcaddy refuses --with without it.
+      - name: Build dest (Caddy + naive forwardproxy)
+        run: |
+          go install github.com/caddyserver/xcaddy/cmd/xcaddy@v0.4.7
+          for arch in amd64 arm64; do
+            CGO_ENABLED=0 GOOS=linux GOARCH="$arch" \
+              "$(go env GOPATH)/bin/xcaddy" build v2.11.4 \
+              --with github.com/caddyserver/forwardproxy=github.com/klzgrad/forwardproxy@naive \
+              --output "dist/routebox-dest-linux-${arch}"
+          done
+
+      # The stub sites dest serves at the domain root. One archive, one
+      # directory per template — the installer picks one at random.
+      - name: Pack stub templates
+        run: tar czf dist/routebox-stubs.tar.gz stubs
+
+      - name: Checksum artifacts
+        working-directory: dist
+        run: |
+          for f in *; do
             sha256sum "$f" > "$f.sha256"
           done
           ls -la
