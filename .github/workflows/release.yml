@@ -76,6 +76,13 @@ jobs:
       # does not speak naive. So does the `=` replace — klzgrad's fork still
       # declares the upstream module path, and xcaddy refuses --with without it.
       - name: Build dest (Caddy + naive forwardproxy)
+        # GOTOOLCHAIN=auto только здесь: setup-go выставляет "local", чтобы
+        # версия из go.mod была последним словом для НАШЕГО кода, и это верно.
+        # Caddy — чужая зависимость со своим требованием к тулчейну (2.11.4
+        # хочет go >= 1.25.1), и поднимать из-за него go.mod всего проекта
+        # значило бы менять то, чем собирается RouteBox, ради постороннего.
+        env:
+          GOTOOLCHAIN: auto
         run: |
           go install github.com/caddyserver/xcaddy/cmd/xcaddy@v0.4.7
           for arch in amd64 arm64; do
