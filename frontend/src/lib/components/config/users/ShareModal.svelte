@@ -29,6 +29,11 @@
 	let singleQr = $state('');
 	let loadingLink = $state(false);
 	let loadSeq = 0; // request-sequencing token for loadLink (not reactive)
+	// naive is served by dest, not sing-box, so this user has no binding for it
+	// and no inbound to build a link from — its link comes ready-made.
+	const naiveTag = 'naive';
+	let naiveLink = $state('');
+	let naiveAsked = false;
 
 	const subUrl = $derived(
 		effectiveSubUrl({ token, token_disabled: disabled }, publicHost, publicPort)
@@ -57,14 +62,46 @@
 		loadingLink = false;
 	}
 
+	async function loadNaive() {
+		if (naiveAsked) return;
+		naiveAsked = true;
+		try {
+			const n = await api.getDestNaive();
+			if (n.enabled) naiveLink = n.users.find((u) => u.name === user.name)?.link ?? '';
+		} catch {
+			/* an install with no dest simply has no naive node */
+		}
+	}
+
+	// The link is already in hand, so this selection costs no request — but it
+	// shares loadLink's sequencing so a slower pill cannot land on top of it.
+	async function selectNaive() {
+		const seq = ++loadSeq;
+		selectedTag = naiveTag;
+		linkError = '';
+		loadingLink = false;
+		link = naiveLink;
+		const qr = await QRCode.toDataURL(naiveLink, { width: 256, margin: 1 });
+		if (seq !== loadSeq) return;
+		singleQr = qr;
+	}
+
 	// Auto-select the first protocol the first time Single mode is opened. The
 	// `!selectedTag` guard is load-bearing: loadLink() sets selectedTag synchronously
 	// before its first await, so the effect re-runs as a no-op and never loops. Do NOT
 	// reset selectedTag on mode-switch or this will re-fetch on every toggle.
 	$effect(() => {
 		if (mode === 'single' && !selectedTag) {
+			void loadNaive();
 			const b = defaultBinding(user.bindings);
 			if (b) void loadLink(b.inbound_tag);
+		}
+	});
+
+	// A person whose only node is naive still has one to show.
+	$effect(() => {
+		if (mode === 'single' && !selectedTag && naiveLink && user.bindings.length === 0) {
+			void selectNaive();
 		}
 	});
 
@@ -199,7 +236,7 @@
 					{$t('users.noPublicHost')}
 					<a href="/config/settings" class="text-[var(--ctp-primary)] underline ml-1">{$t('users.openSettings')}</a>
 				</div>
-			{:else if user.bindings.length === 0}
+			{:else if user.bindings.length === 0 && !naiveLink}
 				<div class="text-sm text-[var(--ctp-overlay1)]">{$t('users.noConnections')}</div>
 			{:else}
 				<label class="block text-xs font-medium text-[var(--ctp-overlay1)]">{$t('users.selectProtocol')}</label>
@@ -210,6 +247,12 @@
 							{pillLabel(b)}
 						</button>
 					{/each}
+					{#if naiveLink}
+						<button type="button" onclick={selectNaive}
+							class="px-3 py-1.5 rounded-lg text-sm border transition-colors {selectedTag === naiveTag ? 'bg-[var(--ctp-primary)] text-white border-[var(--ctp-primary)]' : 'text-[var(--ctp-text)] border-[var(--ctp-surface2)] hover:bg-[var(--ctp-surface0)]'}">
+							{pillLabel({ protocol: naiveTag, name: '' })}
+						</button>
+					{/if}
 				</div>
 
 				{#if linkError}

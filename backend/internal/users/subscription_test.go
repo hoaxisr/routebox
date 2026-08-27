@@ -263,3 +263,60 @@ func TestBuildSubscription_EmptyHostIsNotAnError(t *testing.T) {
 		t.Fatalf("empty host should skip all bindings -> empty base64, got %q", out)
 	}
 }
+
+// Order is a safety property, not cosmetics. naive is the one node in the body
+// whose scheme a client app may not know — it is not a sing-box outbound
+// anywhere, only dest serves it — and a parser that gives up on an unknown line
+// has, by then, already read the four it does understand. Putting it last costs
+// nothing and bounds what a strict client loses to the node it could not have
+// used anyway.
+func TestSubscriptionPutsTheExtraNodeLast(t *testing.T) {
+	user := &PanelUser{
+		Name: "alice",
+		Bindings: []Binding{
+			{InboundTag: "trojan-in", Protocol: "trojan", Credential: "pw"},
+		},
+	}
+	active := map[string]interface{}{
+		"inbounds": []interface{}{
+			map[string]interface{}{
+				"type": "trojan", "tag": "trojan-in", "listen": "::", "listen_port": float64(443),
+				"users": []interface{}{map[string]interface{}{"name": "alice", "password": "pw"}},
+			},
+		},
+	}
+	out, err := BuildSubscription(user, active, serverlinks.PublicAddr{Host: "vpn.example.com", Port: 443},
+		"naive+https://alice:pw@vpn.example.com:443#alice")
+	if err != nil {
+		t.Fatalf("BuildSubscription: %v", err)
+	}
+	raw, err := base64.StdEncoding.DecodeString(out)
+	if err != nil {
+		t.Fatalf("not base64: %v", err)
+	}
+	lines := strings.Split(strings.TrimSpace(string(raw)), "\n")
+	if len(lines) != 2 {
+		t.Fatalf("want two nodes, got %d: %q", len(lines), lines)
+	}
+	if !strings.HasPrefix(lines[0], "trojan://") {
+		t.Fatalf("the inbound-derived node is not first: %q", lines[0])
+	}
+	if !strings.HasPrefix(lines[1], "naive+https://") {
+		t.Fatalf("the extra node is not last: %q", lines[1])
+	}
+}
+
+// Nothing to add is the normal case for every install that is not out of the
+// box, and an empty string must not become an empty line: a blank line in a
+// subscription body is a node some parsers refuse.
+func TestSubscriptionIgnoresAnEmptyExtra(t *testing.T) {
+	out, err := BuildSubscription(&PanelUser{Name: "alice"}, map[string]interface{}{},
+		serverlinks.PublicAddr{Host: "vpn.example.com", Port: 443}, "")
+	if err != nil {
+		t.Fatalf("BuildSubscription: %v", err)
+	}
+	raw, _ := base64.StdEncoding.DecodeString(out)
+	if len(raw) != 0 {
+		t.Fatalf("an empty extra became a line: %q", raw)
+	}
+}

@@ -1165,7 +1165,7 @@ func TestBuildNaiveLinkForDest(t *testing.T) {
 	if err != nil {
 		t.Fatalf("BuildNaiveLink: %v", err)
 	}
-	if want := "naive+https://alice:s3cr3t@vpn.example.com:443#NaiveProxy"; link != want {
+	if want := "naive+https://alice:s3cr3t@vpn.example.com:443#alice%20%C2%B7%20naive"; link != want {
 		t.Fatalf("link = %q, want %q", link, want)
 	}
 }
@@ -1180,7 +1180,7 @@ func TestBuildNaiveLinkEscapesCredentials(t *testing.T) {
 	if strings.Contains(link, "a:b:") || strings.Contains(link, "p@ss") {
 		t.Fatalf("credentials went in raw: %s", link)
 	}
-	if !strings.HasSuffix(link, "@vpn.example.com:443#NaiveProxy") {
+	if !strings.Contains(link, "@vpn.example.com:443#") {
 		t.Fatalf("host boundary moved: %s", link)
 	}
 }

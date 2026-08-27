@@ -2,6 +2,7 @@ package subscriptions
 
 import (
 	"encoding/base64"
+	"fmt"
 	"reflect"
 	"strings"
 	"testing"
@@ -756,5 +757,32 @@ func TestParseMieruRoundTrip(t *testing.T) {
 	}
 	if !reflect.DeepEqual(ob, want) {
 		t.Fatalf("got %#v\nwant %#v", ob, want)
+	}
+}
+
+// The naive node an out-of-the-box install puts in a subscription has to be a
+// link something can actually read back — a line no parser understands is a
+// node that reaches nobody. This is the round trip through the only parser we
+// own: what serverlinks emits, ParseLinks turns back into the outbound the
+// client would dial, credentials and all.
+func TestNaiveLinkFromAnOutOfTheBoxInstallRoundTrips(t *testing.T) {
+	link, err := serverlinks.BuildNaiveLink("alice", "p@ss:word",
+		serverlinks.PublicAddr{Host: "vpn.example.com", Port: 443})
+	if err != nil {
+		t.Fatalf("BuildNaiveLink: %v", err)
+	}
+	nodes, skipped := ParseLinks([]string{link})
+	if skipped != 0 || len(nodes) != 1 {
+		t.Fatalf("the emitted naive link did not parse: %d nodes, %d skipped", len(nodes), skipped)
+	}
+	ob := nodes[0].Outbound
+	if ob["type"] != "naive" || ob["server"] != "vpn.example.com" {
+		t.Fatalf("wrong outbound: %v", ob)
+	}
+	if ob["username"] != "alice" || ob["password"] != "p@ss:word" {
+		t.Fatalf("credentials did not survive the round trip: %v", ob)
+	}
+	if fmt.Sprint(ob["server_port"]) != "443" {
+		t.Fatalf("port did not survive: %v", ob["server_port"])
 	}
 }

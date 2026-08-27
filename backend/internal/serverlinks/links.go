@@ -400,7 +400,10 @@ func BuildNaiveLink(name, password string, ep PublicAddr) (string, error) {
 	if ep.Port <= 0 {
 		return "", ErrNoFront
 	}
-	return naiveURI(name, password, ep.Host, ep.Port, "NaiveProxy"), nil
+	// Same remark shape as every other node — "<person> · <node>" — so a client
+	// app lists it next to the other four under the name of whoever it belongs
+	// to, instead of a bare protocol name shared by everyone.
+	return naiveURI(name, password, ep.Host, ep.Port, name+" · naive"), nil
 }
 
 // naiveURI is the one place the naive link is spelled, so the inbound-served and
