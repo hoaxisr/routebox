@@ -1071,3 +1071,88 @@ func TestErrNoFrontIsIdentifiable(t *testing.T) {
 		t.Fatalf("err = %v, want it to wrap ErrNoFront", err)
 	}
 }
+
+// An inbound behind the 443 front carries no tls block of its own: dest
+// terminates TLS with the real certificate and forwards plaintext on loopback.
+// The client still speaks TLS — to the front — so the link must say so. Without
+// this the link looks right, resolves, and dies in the handshake.
+func TestBuildShareLinkBehindFrontEmitsFrontTLS(t *testing.T) {
+	cases := []struct {
+		name    string
+		inbound map[string]interface{}
+		user    map[string]interface{}
+	}{
+		{
+			name: "plaintext vless grpc behind front",
+			inbound: map[string]interface{}{
+				"type": "vless", "tag": "vless-grpc-in", "listen": "127.0.0.1", "listen_port": float64(8444),
+				"transport": map[string]interface{}{"type": "grpc", "service_name": "grpc-7a1c9e"},
+			},
+			user: map[string]interface{}{"name": "owner", "uuid": "11111111-2222-3333-4444-555555555555"},
+		},
+		{
+			name: "plaintext trojan ws behind front",
+			inbound: map[string]interface{}{
+				"type": "trojan", "tag": "trojan-ws-in", "listen": "127.0.0.1", "listen_port": float64(8445),
+				"transport": map[string]interface{}{"type": "ws", "path": "/ws-4f2b8d"},
+			},
+			user: map[string]interface{}{"name": "owner", "password": "s3cret-pw"},
+		},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			link, err := BuildShareLink(tc.inbound, tc.user, PublicAddr{Host: "media.example.com", Port: 443})
+			if err != nil {
+				t.Fatalf("BuildShareLink: %v", err)
+			}
+			u, err := url.Parse(link)
+			if err != nil {
+				t.Fatalf("parse: %v", err)
+			}
+			q := u.Query()
+			if q.Get("security") != "tls" {
+				t.Errorf("security = %q, want tls: %s", q.Get("security"), link)
+			}
+			// The front answers for the public host; that is the name the client
+			// must ask for, and the only one dest holds a certificate for.
+			if q.Get("sni") != "media.example.com" {
+				t.Errorf("sni = %q, want media.example.com: %s", q.Get("sni"), link)
+			}
+			if q.Get("fp") == "" {
+				t.Errorf("no fingerprint: %s", link)
+			}
+
+			// The round-trip is the real check: a client parsing this link must
+			// end up with TLS enabled.
+			ob := parseBack(t, link)
+			tls, ok := ob["tls"].(map[string]interface{})
+			if !ok {
+				t.Fatalf("client outbound has no tls block: %v", ob)
+			}
+			if enabled, _ := tls["enabled"].(bool); !enabled {
+				t.Errorf("client outbound TLS not enabled: %v", tls)
+			}
+			if tls["server_name"] != "media.example.com" {
+				t.Errorf("client SNI = %v, want media.example.com", tls["server_name"])
+			}
+		})
+	}
+}
+
+// A plaintext inbound reachable from outside is NOT behind a front — inventing
+// TLS for it would produce a link that cannot connect, the same failure in the
+// other direction.
+func TestBuildShareLinkPublicPlaintextStaysPlaintext(t *testing.T) {
+	inbound := map[string]interface{}{
+		"type": "vless", "tag": "vless-plain", "listen": "::", "listen_port": float64(8080),
+		"transport": map[string]interface{}{"type": "ws", "path": "/p"},
+	}
+	user := map[string]interface{}{"name": "phone", "uuid": "11111111-2222-3333-4444-555555555555"}
+	link, err := BuildShareLink(inbound, user, PublicAddr{Host: "example.com", Port: 443})
+	if err != nil {
+		t.Fatalf("BuildShareLink: %v", err)
+	}
+	if strings.Contains(link, "security=") {
+		t.Fatalf("plaintext public inbound must not claim TLS: %s", link)
+	}
+}

@@ -81,7 +81,7 @@ func buildVless(inbound, user map[string]interface{}, host string, port int) (st
 	if uuid == "" {
 		return "", fmt.Errorf("vless user has no uuid")
 	}
-	q, err := tlsParams(mapOf(inbound["tls"]), host)
+	q, err := inboundTLSParams(inbound, host)
 	if err != nil {
 		return "", err
 	}
@@ -242,6 +242,29 @@ func tlsParams(tls map[string]interface{}, host string) (url.Values, error) {
 	return q, nil
 }
 
+// inboundTLSParams is tlsParams plus the one thing an inbound cannot say about
+// itself: an inbound behind the 443 front has NO tls block, because dest
+// terminates TLS with the real certificate and forwards plaintext over
+// loopback. The client still speaks TLS — to the front — so the link must carry
+// security=tls and the front's SNI. Emitting the inbound's bare plaintext here
+// produced a link that looked right and died in the handshake.
+//
+// Only the absence of TLS is filled in: an inbound that does declare TLS or
+// Reality keeps exactly what it declared.
+func inboundTLSParams(inbound map[string]interface{}, host string) (url.Values, error) {
+	tls := mapOf(inbound["tls"])
+	q, err := tlsParams(tls, host)
+	if err != nil {
+		return nil, err
+	}
+	if q.Get("security") == "" && listensOnLoopback(inbound) {
+		q.Set("security", "tls")
+		q.Set("sni", sniOf(tls, host))
+		q.Set("fp", defaultFingerprint)
+	}
+	return q, nil
+}
+
 // transportParams builds the shared transport query params (uniform host= on the
 // URL; the importer maps it to headers.Host for ws). raw/absent/unknown → empty.
 //
@@ -334,7 +357,7 @@ func buildTrojan(inbound, user map[string]interface{}, host string, port int) (s
 	if password == "" {
 		return "", fmt.Errorf("trojan user has no password")
 	}
-	q, err := tlsParams(mapOf(inbound["tls"]), host)
+	q, err := inboundTLSParams(inbound, host)
 	if err != nil {
 		return "", err
 	}
