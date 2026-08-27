@@ -16,6 +16,11 @@
 		/** Active backend is sing-box: shows sing-box-only controls unrelated to awg3
 		 * (currently just the IPv6 broker toggle). */
 		isSingbox?: boolean;
+		/** The UDP port this deployment published on the container, when it did.
+		 * Then the port is not the panel's to change: the mapping lives in
+		 * docker-compose.yml, and any other value lands on a socket nobody
+		 * forwards to — the server would come up answering nobody. */
+		listenPortFixed?: string;
 		/** Server is running: the primary button saves AND applies (restarts the interface). */
 		applied?: boolean;
 		/** Form differs from the saved settings — enables the buttons and shows the marker. */
@@ -26,7 +31,7 @@
 		onReset: () => void;
 	}
 
-	let { form = $bindable(), pubkey = '', saving = false, awg3Available = false, awg31Available = false, isSingbox = false, applied = false, dirty = true, ipv6Active = false, onSave, onReset }: Props = $props();
+	let { form = $bindable(), pubkey = '', saving = false, awg3Available = false, awg31Available = false, isSingbox = false, listenPortFixed = '', applied = false, dirty = true, ipv6Active = false, onSave, onReset }: Props = $props();
 
 	// DNS is stored as string[]; edit it as a comma-separated field and write back.
 	let dnsText = $state((form.dns ?? []).join(', '));
@@ -47,8 +52,11 @@
 	</div>
 	<div class="field">
 		<label for="awg-port">{$t('awg.listenPort')}</label>
-		<input id="awg-port" type="number" bind:value={form.listen_port} />
-		<span class="hint">{$t('awg.listenPortHint')}</span>
+		<input id="awg-port" type="number" bind:value={form.listen_port}
+			readonly={!!listenPortFixed} class:locked={!!listenPortFixed} />
+		<span class="hint">
+			{listenPortFixed ? $t('awg.listenPortFixed') : $t('awg.listenPortHint')}
+		</span>
 	</div>
 	<div class="field">
 		<label for="awg-subnet">{$t('awg.subnet')}</label>
@@ -135,6 +143,7 @@
 </div>
 
 <style>
+	.locked { opacity: 0.7; cursor: not-allowed; }
 	.field-grid {
 		display: grid;
 		grid-template-columns: repeat(2, 1fr);

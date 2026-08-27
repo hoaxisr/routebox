@@ -1114,6 +1114,10 @@ export interface AwgStatus {
 	// container without CAP_NET_ADMIN every switch to kernel is refused at save
 	// time, so the picker does not offer it.
 	kernel_unavailable?: string;
+	// The UDP port this deployment published on the container, when it did. Then
+	// the port is fixed: the mapping lives in docker-compose.yml, and the API
+	// refuses any other value.
+	listen_port_fixed?: string;
 }
 
 export interface AwgPeer {

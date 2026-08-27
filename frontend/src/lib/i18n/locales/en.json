@@ -1759,6 +1759,7 @@
     "serverSettings": "Server settings",
     "serverSettingsSub": "Set once — port, subnet, DNS, obfuscation",
     "subnetHint": "New clients get the next free /32.",
+    "listenPortFixed": "Fixed by this deployment: it is the port published on the container. Change it in docker-compose.yml and recreate the container.",
     "listenPortHint": "UDP port forwarded to this host.",
     "mtuHint": "Lower if you see fragmentation.",
     "clientKeepalive": "Client keepalive",

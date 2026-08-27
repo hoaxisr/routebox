@@ -39,7 +39,8 @@ const NAIVE_AND_BACKEND_KEYS = [
 	'inbounds.naiveServedByDest',
 	'inbounds.naiveCopyLink',
 	'inbounds.naiveNoLink',
-	'awg.backendKernelUnavailable'
+	'awg.backendKernelUnavailable',
+	'awg.listenPortFixed'
 ];
 
 describe('dest-served naive and kernel-backend i18n keys', () => {

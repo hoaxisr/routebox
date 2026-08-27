@@ -125,6 +125,22 @@ if [ ! -f /config/routebox.toml ]; then
         done
     fi
 
+    # The AmneziaWG server's UDP port is published on the container, so it is
+    # the deployment that owns it: a port changed in the panel would land on a
+    # socket nobody forwards to, and the server would come up answering nobody.
+    # Written here, and refused at the API for as long as this variable is set.
+    awg_section=""
+    if [ -n "${AWG_LISTEN_PORT:-}" ]; then
+        case "$AWG_LISTEN_PORT" in
+            ''|*[!0-9]*)
+                echo "**** AWG_LISTEN_PORT='$AWG_LISTEN_PORT' is not a number; ignoring ****" >&2 ;;
+            *)
+                awg_section="
+[awg]
+listen_port = ${AWG_LISTEN_PORT}" ;;
+        esac
+    fi
+
     cat > /config/routebox.toml <<EOF
 [server]
 mode = "vps"
@@ -149,6 +165,7 @@ enabled = true
 [singbox]
 config_path = "/config/amnezia-box/config.json"
 binary_path = "/config/bin/amnezia-box"
+${awg_section}
 EOF
 
     if [ -n "$trusted_proxies" ]; then

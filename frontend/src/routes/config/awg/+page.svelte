@@ -313,7 +313,7 @@
 			</button>
 			{#if settingsOpen}
 				<div class="disclosure-body">
-					<ServerSettingsForm bind:form saving={saving || enabling} {awg3Available} {awg31Available} {isSingbox} applied={status.enabled} dirty={formDirty} ipv6Active={status.ipv6_active} onSave={saveOrApply} onReset={onResetClick} />
+					<ServerSettingsForm listenPortFixed={status?.listen_port_fixed ?? ''} bind:form saving={saving || enabling} {awg3Available} {awg31Available} {isSingbox} applied={status.enabled} dirty={formDirty} ipv6Active={status.ipv6_active} onSave={saveOrApply} onReset={onResetClick} />
 				</div>
 			{/if}
 		</div>
@@ -384,7 +384,7 @@
 						</div>
 					</div>
 					<p class="step-desc">{$t('awg.stepConfigureDesc')}</p>
-					<ServerSettingsForm bind:form saving={saving || enabling} {awg3Available} {awg31Available} {isSingbox} applied={status.enabled} dirty={formDirty} ipv6Active={status.ipv6_active} onSave={saveOrApply} onReset={onResetClick} />
+					<ServerSettingsForm listenPortFixed={status?.listen_port_fixed ?? ''} bind:form saving={saving || enabling} {awg3Available} {awg31Available} {isSingbox} applied={status.enabled} dirty={formDirty} ipv6Active={status.ipv6_active} onSave={saveOrApply} onReset={onResetClick} />
 				</div>
 			</section>
 

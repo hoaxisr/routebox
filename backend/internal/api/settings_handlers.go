@@ -4,9 +4,16 @@ import (
 	"encoding/json"
 	"fmt"
 	"net/http"
+	"os"
 
 	"routebox/backend/internal/awg"
 )
+
+// awgPortEnv is set by the container when the deployment publishes the
+// AmneziaWG UDP port. Its presence means the port is not the panel's to change:
+// the mapping lives in docker-compose.yml, and a port changed here would land
+// on a socket nobody forwards to.
+const awgPortEnv = "AWG_LISTEN_PORT"
 
 // --- Log Settings ---
 
@@ -88,6 +95,21 @@ func (h *Handler) UpdateSettings(w http.ResponseWriter, r *http.Request) {
 	if err := json.NewDecoder(r.Body).Decode(&updates); err != nil {
 		writeError(w, http.StatusBadRequest, fmt.Sprintf("Invalid JSON: %v", err))
 		return
+	}
+
+	// The AmneziaWG port belongs to the deployment when the deployment published
+	// it: in Docker the compose file maps one UDP port onto the container, and a
+	// port changed here would land on a socket nobody forwards to — the server
+	// would come up and answer nobody. Refused where the choice is made, with the
+	// place it is actually fixed named, rather than at Enable, where it looks
+	// like a broken server.
+	if v, ok := updates["awg.listen_port"]; ok {
+		if fixed := os.Getenv(awgPortEnv); fixed != "" && fmt.Sprint(v) != fixed {
+			writeError(w, http.StatusConflict,
+				"the AmneziaWG port is fixed at "+fixed+" by this deployment: it is the port published on the container. "+
+					"Change it in docker-compose.yml (the published port and "+awgPortEnv+") and recreate the container.")
+			return
+		}
 	}
 
 	// Backend switch: only while the AWG server is disabled and no config draft is

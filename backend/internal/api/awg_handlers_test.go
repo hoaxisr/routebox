@@ -789,3 +789,39 @@ func TestKernelBackendAllowedWhenSupported(t *testing.T) {
 		t.Fatalf("kernel backend must stay selectable where it is supported; body=%q", rec.Body.String())
 	}
 }
+
+// The deployment publishes one UDP port on the container, so it owns it: a port
+// changed in the panel would land on a socket nobody forwards to, and the AWG
+// server would come up answering nobody. Refused where the choice is made, with
+// the reason named — not at Enable, where it looks like a broken server.
+func TestAWGListenPortIsRefusedWhenTheDeploymentFixedIt(t *testing.T) {
+	t.Setenv(awgPortEnv, "51820")
+	h, _, _, _ := destInstall(t, oneUser)
+
+	rr := httptest.NewRecorder()
+	body := strings.NewReader(`{"awg.listen_port": 51821}`)
+	h.UpdateSettings(rr, httptest.NewRequest("PUT", "/api/settings", body))
+	if rr.Code != http.StatusConflict {
+		t.Fatalf("status = %d, want 409; body=%s", rr.Code, rr.Body.String())
+	}
+	if !strings.Contains(rr.Body.String(), "docker-compose") {
+		t.Fatalf("the answer does not say where the port is fixed: %s", rr.Body.String())
+	}
+	if got := h.settings.Get().Awg.ListenPort; got == 51821 {
+		t.Fatal("the port changed anyway")
+	}
+}
+
+// Without the variable nothing is fixed and the panel owns the port as before.
+func TestAWGListenPortIsFreeWithoutTheDeploymentVariable(t *testing.T) {
+	h, _, _, _ := destInstall(t, oneUser)
+	rr := httptest.NewRecorder()
+	body := strings.NewReader(`{"awg.listen_port": 51821}`)
+	h.UpdateSettings(rr, httptest.NewRequest("PUT", "/api/settings", body))
+	if rr.Code != http.StatusOK {
+		t.Fatalf("status = %d, want 200; body=%s", rr.Code, rr.Body.String())
+	}
+	if got := h.settings.Get().Awg.ListenPort; got != 51821 {
+		t.Fatalf("listen port = %d, want 51821", got)
+	}
+}

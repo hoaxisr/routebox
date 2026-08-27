@@ -7,6 +7,7 @@ import (
 	"net/http"
 	"net/netip"
 	"net/url"
+	"os"
 	"time"
 
 	"github.com/go-chi/chi/v5"
@@ -33,7 +34,21 @@ func (h *Handler) GetAWGStatus(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusServiceUnavailable, "awg not available")
 		return
 	}
-	writeSuccess(w, h.awg.Status(r.Context()))
+	st := h.awg.Status(r.Context())
+	// The port the deployment published, when it published one. The panel shows
+	// it as fixed instead of offering a field whose every value but this one
+	// makes the server answer nobody (settings_handlers refuses those anyway).
+	// Marshalled alongside the status rather than inside it: which port a
+	// container publishes is a deployment fact, not something the AWG manager
+	// knows or should.
+	if fixed := os.Getenv(awgPortEnv); fixed != "" {
+		writeSuccess(w, struct {
+			awg.AWGStatus
+			ListenPortFixed string `json:"listen_port_fixed"`
+		}{st, fixed})
+		return
+	}
+	writeSuccess(w, st)
 }
 
 // EnableAWG starts the enable orchestrator. The request body is ignored — the
