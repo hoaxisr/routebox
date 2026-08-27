@@ -17,9 +17,14 @@ for f in "${stubs[@]}"; do
   # xmlns SVG — не сетевая ссылка, вырезаем перед проверкой на внешние ресурсы
   body=$(sed 's|xmlns=.http://www.w3.org[^"'"'"']*.||g' "$f")
 
-  echo "$body" | grep -qE '(https?:)?//[a-zA-Z0-9.-]+' && err "$f: внешняя ссылка (CDN/шрифт/аналитика)"
-  echo "$body" | grep -qiE '<(script|link|img|iframe)[^>]+(src|href)="[^"#]' \
-    && ! echo "$body" | grep -qiE '<link[^>]+href="data:' && err "$f: внешний ресурс в теге"
+  # Схемо-относительный адрес ловим только там, где он адрес: голое // ловило
+  # любой комментарий // в инлайновом скрипте или CSS.
+  echo "$body" | grep -qE 'https?://|(="|url\()//[a-zA-Z0-9.-]+' && err "$f: внешняя ссылка (CDN/шрифт/аналитика)"
+  # data:-адрес — не внешний ресурс, поэтому вырезаем его ИЗ СВОЕГО ТЕГА, а не
+  # снимаем проверку со всего файла: снятая со всего файла, она не срабатывала
+  # никогда — favicon в виде data: обязателен в каждом шаблоне.
+  echo "$body" | sed -E 's@(src|href)="data:[^"]*"@\1="#"@g' \
+    | grep -qiE '<(script|link|img|iframe)[^>]+(src|href)="[^"#]' && err "$f: внешний ресурс в теге"
   grep -qiE '<link[^>]+rel="icon"[^>]+href="data:' "$f" || err "$f: нет встроенного favicon"
   grep -qiE '<meta[^>]+name="description"' "$f" || err "$f: нет meta description"
   grep -qiE 'type="password"' "$f" || err "$f: нет формы входа"

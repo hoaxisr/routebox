@@ -178,3 +178,46 @@ func TestFileExists(t *testing.T) {
 		t.Fatal("empty path must never count as an existing file")
 	}
 }
+
+// An inbound bound to loopback is reachable only through the front, so without
+// server.front_port its client links cannot be built at all — and the
+// subscription builder skips them WITHOUT logging, because /sub is public and
+// would otherwise log on every request. Startup is the one place where this is
+// a fact about the configuration rather than about a request.
+func TestFrontedInboundTags(t *testing.T) {
+	inbound := func(tag, listen string) interface{} {
+		return map[string]interface{}{"type": "vless", "tag": tag, "listen": listen, "listen_port": float64(8444)}
+	}
+	cases := []struct {
+		name string
+		cfg  map[string]interface{}
+		want []string
+	}{
+		{
+			name: "loopback inbounds are fronted",
+			cfg: map[string]interface{}{"inbounds": []interface{}{
+				inbound("grpc", "127.0.0.1"), inbound("ws", "::1"), inbound("public", "::"),
+			}},
+			want: []string{"grpc", "ws"},
+		},
+		{
+			name: "an ordinary install has none",
+			cfg:  map[string]interface{}{"inbounds": []interface{}{inbound("vless-in", "::"), inbound("trojan-in", "0.0.0.0")}},
+		},
+		{name: "no inbounds section", cfg: map[string]interface{}{}},
+		{name: "nil config", cfg: nil},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			got := frontedInboundTags(tc.cfg)
+			if len(got) != len(tc.want) {
+				t.Fatalf("got %v, want %v", got, tc.want)
+			}
+			for i := range got {
+				if got[i] != tc.want[i] {
+					t.Fatalf("got %v, want %v", got, tc.want)
+				}
+			}
+		})
+	}
+}

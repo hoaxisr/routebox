@@ -234,6 +234,18 @@ func main() {
 		log.Printf("Clash API address is not set (singbox.clash_api, or experimental.clash_api in the amnezia-box config): live connections and traffic history are off. It is read at startup, so restart RouteBox after setting it.")
 	}
 
+	// An inbound bound to loopback is reachable only through the front (ADR 0001),
+	// and with no front port configured its client links cannot be built at all.
+	// BuildSubscription drops those bindings WITHOUT logging — /sub is public and
+	// unauthenticated, so it would log on every request — which makes an install
+	// that is one setting away from working look like one that quietly works.
+	// Said once, here, where it is a fact about the configuration.
+	if cfg.Server.FrontPort == 0 {
+		if tags := frontedInboundTags(cfgMgr.GetActive()); len(tags) > 0 {
+			log.Printf("Inbounds %s listen on loopback and are reachable only through a front, but server.front_port is not set: their client links are skipped in subscriptions and share links. It is read at startup, so restart RouteBox after setting it.", strings.Join(tags, ", "))
+		}
+	}
+
 	// Resolve GeoIP path: CLI flag > settings
 	resolvedGeoipPath := *geoipPath
 	if resolvedGeoipPath == "" {
@@ -1406,4 +1418,23 @@ func resolveClashAddrFromConfig(cfgMgr *config.Manager) string {
 	}
 
 	return ""
+}
+
+// frontedInboundTags lists the inbounds that only a front can reach. Loopback
+// binding is the whole marker — serverlinks reads the same fact to decide which
+// port a client link carries, so the two agree by construction.
+func frontedInboundTags(cfg map[string]interface{}) []string {
+	var tags []string
+	inbounds, _ := cfg["inbounds"].([]interface{})
+	for _, ib := range inbounds {
+		obj, ok := ib.(map[string]interface{})
+		if !ok {
+			continue
+		}
+		listen, _ := obj["listen"].(string)
+		if tag, _ := obj["tag"].(string); tag != "" && util.IsLoopbackListen(listen) {
+			tags = append(tags, tag)
+		}
+	}
+	return tags
 }

@@ -60,6 +60,19 @@ jobs:
           go test ./backend/...
           CGO_ENABLED=0 go build ./backend/cmd/routebox
 
+  stubs:
+    # The stub templates are hand-edited, and a self-containment check nobody
+    # runs is worth exactly as much as one that silently passes everything —
+    # which this one did, twice. check-stubs-test.sh breaks a template on
+    # purpose and fails if the check does not notice.
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+      - name: Check the checker, then the stubs
+        run: |
+          bash scripts/check-stubs-test.sh
+          bash scripts/check-stubs.sh
+
   docker:
     # The image is only built by the release pipeline, which runs after the
     # binaries are published — a Dockerfile mistake would surface with the
