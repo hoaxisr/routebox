@@ -62,12 +62,25 @@ func PlanCaddyfile(p Params) (string, error) {
 	// that — the syntax is fine, only the issuance fails, in production.
 	// ponytail: the dest port is therefore reachable from outside; keeping it
 	// private is the installer's firewall rule, not a line in this file.
+	// Plain HTTP goes to the front on 443, not here. Caddy would otherwise write
+	// its own redirect to https://<domain>:<dest port>, and the internal port
+	// would be one `curl -I http://<domain>/` away from anyone looking. The
+	// catch-all cannot shadow the HTTP-01 challenge: Caddy answers those in
+	// ServeHTTP before any route of ours ("guarantee ACME HTTP challenges").
+	w("http://%s {", p.Domain)
+	w("\tredir https://%s{uri} 308", p.Domain)
+	w("}")
+	w("")
+
 	w("%s:%d {", p.Domain, p.DestPort)
 	w("")
 	w("\ttls {")
 	w("\t\tissuer acme {")
 	if p.ACME.Staging {
 		w("\t\t\tdir %s", stagingCA)
+	}
+	if p.ACME.Email != "" {
+		w("\t\t\temail %s", quote(p.ACME.Email))
 	}
 	// TLS-ALPN-01 answers on 443/TCP, which belongs to sing-box (ADR 0001), so
 	// it could never succeed here. HTTP-01 on the free :80 is the only option.

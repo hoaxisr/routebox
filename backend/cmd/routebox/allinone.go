@@ -61,6 +61,7 @@ type allInOne struct {
 	StubRoot   string // directory dest serves at the domain root
 	PanelPort  int    // where this process is about to listen
 	ACMEStagng bool
+	ACMEEmail  string // contact for the account dest issues the certificate under
 }
 
 // planAllInOne fills in whatever the operator did not have to say. Returns an
@@ -83,6 +84,10 @@ func planAllInOne(cfg settings.Settings, settingsPath, configPath, listenAddr st
 		StubRoot:   orDefault(os.Getenv(stubRootEnv), filepath.Join(dir, "stub")),
 		PanelPort:  panelPortOf(listenAddr),
 		ACMEStagng: cfg.Network.ACMEStaging,
+		// The panel's own ACME is off in this layout, so this address would
+		// otherwise sit in the settings unused — while the one account that
+		// does issue certificates here, dest's, had no contact at all.
+		ACMEEmail: cfg.Network.ACMEEmail,
 	}
 	if a.Domain == "" {
 		return a, fmt.Errorf("%s needs a domain: set PUBLIC_HOST (server.public_host). Reality steals its own name and dest issues the certificate for it, so there is nothing to plan without one", allInOneEnv)
@@ -237,7 +242,7 @@ func plannedParams(a allInOne) (bootstrap.Params, error) {
 			TrojanWS:  "/ws-" + tokens[2],
 			Panel:     "/" + tokens[3],
 		},
-		ACME: bootstrap.ACME{Staging: a.ACMEStagng},
+		ACME: bootstrap.ACME{Staging: a.ACMEStagng, Email: a.ACMEEmail},
 	}, nil
 }
 

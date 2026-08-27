@@ -214,3 +214,57 @@ func TestPlanCaddyfilePassesCaddyValidate(t *testing.T) {
 		})
 	}
 }
+
+// Plain HTTP must not advertise the dest port. Caddy redirects http:// to
+// https:// on its own, and for a site declared on a non-standard port it puts
+// that port in the Location header — so `curl -I http://<domain>/` handed out
+// the internal 9443 to anyone who asked, which is exactly the shape this whole
+// layout exists to hide. Verified against caddy v2.11.4: without the explicit
+// site below the header reads "https://media.example.com:9443/".
+func TestPlanCaddyfileRedirectsPlainHTTPToTheFrontAndNotToDest(t *testing.T) {
+	out := caddyfileOK(t, fixture())
+	requireLine(t, out, "http://media.example.com {")
+	requireLine(t, out, "redir https://media.example.com{uri} 308")
+	if strings.Contains(out, "https://media.example.com:") {
+		t.Fatalf("a redirect target names a port, so the layout leaks:\n%s", out)
+	}
+}
+
+// The redirect must not be able to shadow the HTTP-01 challenge: dest issues
+// the certificate the front borrows, and a redirect answering the challenge
+// path would mean no certificate at all. Caddy handles challenges in ServeHTTP
+// before any user route (server.go: "guarantee ACME HTTP challenges"), so the
+// order here is the one thing that must not drift: the redirect stays a
+// catch-all and never claims /.well-known/acme-challenge itself.
+func TestPlanCaddyfileLeavesTheChallengePathAlone(t *testing.T) {
+	out := caddyfileOK(t, fixture())
+	if strings.Contains(out, "acme-challenge") {
+		t.Fatalf("the plan handles the challenge path itself; Caddy already does:\n%s", out)
+	}
+}
+
+// Without a contact the ACME account is anonymous, and the letter saying a
+// renewal has been failing for two weeks goes nowhere. The operator is asked
+// for the address by the installer, so it has one to pass.
+func TestPlanCaddyfileGivesTheACMEAccountAContact(t *testing.T) {
+	p := fixture()
+	p.ACME.Email = "you@example.com"
+	requireLine(t, caddyfileOK(t, p), "email you@example.com")
+}
+
+func TestPlanCaddyfileOmitsTheContactWhenThereIsNone(t *testing.T) {
+	out := caddyfileOK(t, fixture())
+	for _, line := range strings.Split(out, "\n") {
+		if strings.HasPrefix(strings.TrimSpace(line), "email ") {
+			t.Fatalf("empty contact rendered anyway: %q", line)
+		}
+	}
+}
+
+// The address is operator text and lands in a Caddyfile token: a space in it
+// would silently become a second argument to `email`.
+func TestPlanCaddyfileQuotesAnAwkwardContact(t *testing.T) {
+	p := fixture()
+	p.ACME.Email = `we "two" <a b@example.com>`
+	requireLine(t, caddyfileOK(t, p), `email "we \"two\" <a b@example.com>"`)
+}

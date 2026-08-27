@@ -213,3 +213,32 @@ func TestPlanAllInOneRefusesWhatItCannotGuess(t *testing.T) {
 		})
 	}
 }
+
+// The address the operator gave the installer has to reach the account that
+// actually issues certificates here — dest's, not the panel's, whose own ACME
+// this same bootstrap turns off.
+func TestAllInOnePassesTheACMEContactToDest(t *testing.T) {
+	dir := t.TempDir()
+	sm := newVPSSettings(t, dir)
+	if err := sm.Update(map[string]interface{}{
+		"server.public_host": "media.example.com",
+		"network.acme_email": "you@example.com",
+	}); err != nil {
+		t.Fatalf("set the domain and the contact: %v", err)
+	}
+	a, err := planAllInOne(sm.Get(), sm.GetPath(), filepath.Join(dir, "config.json"), "0.0.0.0:8443")
+	if err != nil {
+		t.Fatalf("planAllInOne: %v", err)
+	}
+	var out strings.Builder
+	if err := runAllInOne(sm, a, &out); err != nil {
+		t.Fatalf("runAllInOne: %v", err)
+	}
+	caddyfile, err := os.ReadFile(a.CaddyPath)
+	if err != nil {
+		t.Fatalf("read the Caddyfile: %v", err)
+	}
+	if !strings.Contains(string(caddyfile), "email you@example.com") {
+		t.Fatalf("the contact never reached dest:\n%s", caddyfile)
+	}
+}

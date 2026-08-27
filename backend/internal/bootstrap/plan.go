@@ -79,6 +79,12 @@ type Paths struct {
 // issues and renews it itself, so there is no certbot in the stack.
 type ACME struct {
 	Staging bool // point at the test CA instead, for dry runs against rate limits
+
+	// Email is the ACME account contact. Optional — Let's Encrypt registers an
+	// account without one — but then the notice that a renewal has been failing
+	// for two weeks has nowhere to go, and the first sign is an expired
+	// certificate on a server nobody was watching.
+	Email string
 }
 
 // PlanSingbox builds the sing-box config a fresh install starts with: four
