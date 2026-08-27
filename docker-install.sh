@@ -2,7 +2,8 @@
 #
 # RouteBox Docker Installer — интерактивная установка панели в контейнере.
 # Спрашивает домен и порты, находит nginx на хосте и встраивается в него,
-# либо оставляет TLS самой панели (встроенный ACME).
+# либо оставляет TLS самой панели (встроенный ACME). Четвёртый режим,
+# «из коробки», ставит сервер целиком за одним внешним 443.
 #
 #   curl -fsSL https://raw.githubusercontent.com/hoaxisr/routebox/main/docker-install.sh | sudo bash
 #
@@ -20,8 +21,14 @@ NGINX_STREAM_FILE="${NGINX_STREAM_DIR}/routebox.conf"
 # скрипт делает с чужим файлом, и проверять это надо на копии, а не на системном.
 NGINX_CONF="${RB_NGINX_CONF:-/etc/nginx/nginx.conf}"
 CONTAINER_PANEL_PORT="8443"
+# Откуда берутся артефакты режима «из коробки». Переменная — ради тестов:
+# скачивание подменяется локальным каталогом, сеть в стенде недоступна.
+RELEASE_BASE="${RB_RELEASE_BASE:-https://github.com/hoaxisr/routebox/releases/latest/download}"
 
 ACTION="install"; PURGE="false"
+
+# Ответы, пришедшие флагами. Пустое значение означает «спросим».
+MODE_FLAG=""; ARG_DOMAIN=""; ARG_EMAIL=""; ARG_DIR=""; ARG_STAGING=""; ARG_STUB=""
 
 # Состояние разведки.
 HAS_DOCKER="false"; HAS_NGINX_HOST="false"; HAS_NGINX_CONTAINER="false"
@@ -38,22 +45,35 @@ warn() { echo -e "${YELLOW}$*${NC}"; }
 
 usage() {
 	cat <<EOF
-RouteBox Docker Installer — интерактивный, флагов установки нет.
+RouteBox Docker Installer. Без флагов — задаёт вопросы.
 
-  --dry-run     Показать, что будет сделано и какие файлы получатся
-  --uninstall   Удалить контейнер и файлы nginx, созданные установщиком
-  --purge       Вместе с --uninstall: удалить и каталог ./config с данными
-  --help        Эта справка
+  --allinone       Режим «из коробки»: все инбаунды и сайт-заглушка на одном 443
+  --domain NAME    Домен (иначе спросим)
+  --email ADDR     Контакт для Let's Encrypt (иначе спросим)
+  --dir PATH       Каталог установки (по умолчанию /opt/routebox)
+  --staging        Тестовый CA Let's Encrypt — для первого прогона
+  --stub NAME      Шаблон заглушки (по умолчанию случайный из архива)
+  --dry-run        Показать, что будет сделано и какие файлы получатся
+  --uninstall      Удалить контейнер и файлы nginx, созданные установщиком
+  --purge          Вместе с --uninstall: удалить и каталог ./config с данными
+  --help           Эта справка
 EOF
 }
 
 parse_args() {
 	ACTION="install"; PURGE="false"
+	MODE_FLAG=""; ARG_DOMAIN=""; ARG_EMAIL=""; ARG_DIR=""; ARG_STAGING=""; ARG_STUB=""
 	while [ $# -gt 0 ]; do
 		case "$1" in
 			--dry-run)   ACTION="dry-run" ;;
 			--uninstall) ACTION="uninstall" ;;
 			--purge)     PURGE="true" ;;
+			--allinone)  MODE_FLAG="allinone" ;;
+			--staging)   ARG_STAGING="true" ;;
+			--stub)      shift; [ $# -gt 0 ] || { err "--stub без значения"; return 1; }; ARG_STUB="$1" ;;
+			--domain)    shift; [ $# -gt 0 ] || { err "--domain без значения"; return 1; }; ARG_DOMAIN="$1" ;;
+			--email)     shift; [ $# -gt 0 ] || { err "--email без значения"; return 1; }; ARG_EMAIL="$1" ;;
+			--dir)       shift; [ $# -gt 0 ] || { err "--dir без значения"; return 1; }; ARG_DIR="$1" ;;
 			--help|-h)   ACTION="help" ;;
 			*) err "неизвестный аргумент: $1"; usage; return 1 ;;
 		esac
@@ -68,14 +88,19 @@ parse_args() {
 
 # --- порты -------------------------------------------------------------------
 
-# port_owner PORT -> печатает, кто занял порт; код 0 если занят, 1 если свободен.
+# port_owner PORT [PROTO] -> печатает, кто занял порт; код 0 если занят, 1 если
+# свободен. PROTO — tcp (по умолчанию) или udp: режиму «из коробки» нужен один
+# и тот же номер порта по обоим протоколам, фронт держит TCP, mieru — UDP.
 # Два источника: ss видит слушающие сокеты, docker ps — опубликованные порты.
 # Второй нужен потому, что при userland-proxy: false порт живёт только в
 # правилах DNAT и сокета под ним нет — ss его не покажет.
 port_owner() {
-	local port="$1" line=""
+	local port="$1" proto="${2:-tcp}" line="" ss_flags="-ltnpH"
+	# Не `[ ... ] && ...`: под set -e ложное условие в конце AND-списка уронило
+	# бы функцию, и занятый порт сошёл бы за свободный.
+	if [ "$proto" = "udp" ]; then ss_flags="-lunpH"; fi
 	if command -v ss >/dev/null 2>&1; then
-		line=$(ss -ltnpH 2>/dev/null | awk -v p=":${port}\$" '$4 ~ p {print; exit}')
+		line=$(ss $ss_flags 2>/dev/null | awk -v p=":${port}\$" '$4 ~ p {print; exit}')
 		if [ -n "$line" ]; then
 			echo "$line" | sed -n 's/.*users:((\"\([^\"]*\)\".*/\1/p' | head -1
 			return 0
@@ -86,15 +111,16 @@ port_owner() {
 		# понимает экранирование, `[0-9.:\[\]]` там разваливается. Заодно так
 		# ловится и IPv6-форма `[::]:8444->`. Записи разделены запятыми,
 		# поэтому `[^,]*` не может перескочить на соседний порт.
-		if docker ps --format '{{.Ports}}' 2>/dev/null | grep -qE "(^|,| )[^,]*:${port}->"; then
+		if docker ps --format '{{.Ports}}' 2>/dev/null |
+				grep -qE "(^|,| )[^,]*:${port}->[^,]*/${proto}"; then
 			echo "docker"
 			return 0
 		fi
 		# Диапазон `0.0.0.0:8440-8450->8440-8450/tcp` занимает всё, что внутри.
 		local spec lo hi
 		for spec in $(docker ps --format '{{.Ports}}' 2>/dev/null |
-				grep -oE ':[0-9]+-[0-9]+->' || true); do
-			spec="${spec#:}"; spec="${spec%->}"
+				grep -oE ":[0-9]+-[0-9]+->[0-9]+-[0-9]+/${proto}" || true); do
+			spec="${spec#:}"; spec="${spec%%->*}"
 			lo="${spec%%-*}"; hi="${spec##*-}"
 			if [ "$port" -ge "$lo" ] && [ "$port" -le "$hi" ]; then
 				echo "docker"
@@ -322,6 +348,83 @@ gen_compose() {
 	echo "        - subnet: ${subnet}"
 }
 
+# gen_compose_allinone DOMAIN EMAIL SUBNET STAGING
+# Две службы в одной сетевой области видимости: sing-box держит наружный 443 по
+# TCP (фронт) и по UDP (mieru), dest сидит на обратной петле и получает от фронта
+# всё, что не разобрали инбаунды. `network_mode: service:routebox` — это и есть
+# «dest на loopback»: 127.0.0.1 у них общий, поэтому адрес dest из плана
+# (127.0.0.1:9443) работает в обе стороны, а сам порт наружу не опубликован.
+# Наружу публикуется только 443/tcp, 443/udp и 80 — последний нужен dest для
+# HTTP-01: TLS-ALPN-01 отвечал бы на 443, а он занят фронтом.
+gen_compose_allinone() {
+	local domain="$1" email="$2" subnet="$3" staging="$4"
+
+	echo "# Создано docker-install.sh, режим «из коробки». Переменные окружения"
+	echo "# читаются один раз, когда контейнер создаёт /config/routebox.toml."
+	echo "services:"
+	echo "  routebox:"
+	echo "    image: ${IMAGE}"
+	echo "    container_name: routebox"
+	echo "    restart: unless-stopped"
+	echo "    environment:"
+	echo "      - PUID=1000"
+	echo "      - PGID=1000"
+	echo "      - TZ=Etc/UTC"
+	echo "      - PUBLIC_HOST=${domain}"
+	echo "      - PUBLIC_PORT=443"
+	echo "      - BOOTSTRAP_ALLINONE=1"
+	# Свой ACME панели здесь выключен: 443 держит sing-box, сертификат для домена
+	# выпускает dest, и второй претендент на выпуск только жёг бы лимит выдачи.
+	echo "      - ACME_ENABLED=false"
+	echo "      - ACME_EMAIL=${email}"
+	if [ "$staging" = "true" ]; then echo "      - ACME_STAGING=true"; fi
+	# Панель стоит за dest, а тот приходит с общей обратной петли. Без этой
+	# строки каждый вход в панель выглядел бы приходом с 127.0.0.1, и блокировка
+	# перебора пароля считала бы попытки всех сразу.
+	echo "      - TRUSTED_PROXIES=127.0.0.1/32"
+	echo "    ports:"
+	echo "      - \"443:443/tcp\"   # фронт: vless + reality"
+	echo "      - \"443:443/udp\"   # mieru"
+	echo "      - \"80:80\"         # HTTP-01: выпуск и продление сертификата"
+	echo "    volumes:"
+	echo "      - ./config:/config"
+	echo "    networks:"
+	echo "      - routebox"
+	echo "  dest:"
+	# Тот же образ, а не отдельный: он уже скачан, а бинарь dest статический и
+	# лежит на томе — второй образ добавил бы зависимость от чужого реестра
+	# ради /bin/sh.
+	echo "    image: ${IMAGE}"
+	echo "    container_name: routebox-dest"
+	echo "    restart: unless-stopped"
+	echo "    depends_on:"
+	echo "      - routebox"
+	echo "    network_mode: \"service:routebox\""
+	echo "    environment:"
+	# Каталог данных Caddy: без него сертификаты легли бы в файловую систему
+	# контейнера и выпускались бы заново при каждом пересоздании — прямо в
+	# лимит выдачи Let's Encrypt.
+	echo "      - XDG_DATA_HOME=/config/dest"
+	echo "      - XDG_CONFIG_HOME=/config/dest"
+	# Caddyfile пишет сама панель на первом старте, поэтому dest его дожидается.
+	# Без ожидания служба падала бы в цикл перезапусков до конца первого старта.
+	echo "    entrypoint:"
+	echo "      - /bin/sh"
+	echo "      - -c"
+	echo "      - until [ -s /config/Caddyfile ]; do sleep 1; done; exec /config/bin/dest run --config /config/Caddyfile --adapter caddyfile"
+	# Проверка здоровья из образа опрашивает панель, а не dest: в общей сетевой
+	# области она проходит всегда и говорила бы не о той службе.
+	echo "    healthcheck:"
+	echo "      disable: true"
+	echo "    volumes:"
+	echo "      - ./config:/config"
+	echo "networks:"
+	echo "  routebox:"
+	echo "    ipam:"
+	echo "      config:"
+	echo "        - subnet: ${subnet}"
+}
+
 # gen_vhost DOMAIN UPSTREAM_PORT LISTEN_SPEC
 # Сертификат выпускается отдельно (certbot certonly), а vhost сразу пишется со
 # ссылками на live-каталог: так повторный запуск может перезаписать файл целиком
@@ -491,10 +594,14 @@ ask() {
 	echo "${answer:-$default}"
 }
 
+# ask_yn PROMPT [DEFAULT] — DEFAULT это y или n (по умолчанию n).
 ask_yn() {
-	local prompt="$1" answer=""
-	printf "%s [y/N] " "$prompt" >&2
-	read -r answer <&3 || answer=""
+	local prompt="$1" default="${2:-n}" hint="y/N" answer=""
+	if [ "$default" = "y" ]; then hint="Y/n"; fi
+	printf "%s [%s] " "$prompt" "$hint" >&2
+	# Пустая строка — это умолчание, а конец ввода — нет: с умолчанием «y»
+	# оборванный ввод иначе означал бы согласие, которого никто не давал.
+	if ! read -r answer <&3; then answer="n"; else answer="${answer:-$default}"; fi
 	case "$answer" in y|Y|yes) return 0 ;; *) return 1 ;; esac
 }
 
@@ -502,7 +609,7 @@ ask_yn() {
 # повторный запуск), и do_dry_run. Внутри ask_all его быть не должно — иначе
 # вопрос задаётся дважды либо INSTALL_DIR остаётся неопределённым под set -u.
 ask_install_dir() {
-	INSTALL_DIR="$(ask "Каталог установки" "/opt/routebox")"
+	INSTALL_DIR="${ARG_DIR:-$(ask "Каталог установки" "/opt/routebox")}"
 }
 
 # ask_port PROMPT DEFAULT -> свободный числовой порт; спрашивает, пока не
@@ -536,7 +643,11 @@ valid_domain() {
 }
 
 ask_all() {
-	DOMAIN="$(ask "Домен панели (A-запись должна вести сюда)" "")"
+	if want_allinone; then
+		ask_allinone
+		return 0
+	fi
+	DOMAIN="${ARG_DOMAIN:-$(ask "Домен панели (A-запись должна вести сюда)" "")}"
 	if ! valid_domain "$DOMAIN"; then
 		err "нужно доменное имя вида panel.example.com"
 		exit 1
@@ -563,9 +674,11 @@ ask_all() {
 	# За чужим прокси сертификат выпускает он сам: ни почта, ни выбор CA нам
 	# не нужны — не спрашиваем то, что некуда положить.
 	if [ "$TLS_MODE" != "proxy" ]; then
-		EMAIL="$(ask "Контакт для Let's Encrypt" "")"
+		EMAIL="${ARG_EMAIL:-$(ask "Контакт для Let's Encrypt" "")}"
 		[ -n "$EMAIL" ] || { err "почта обязательна"; exit 1; }
-		if ask_yn "Использовать тестовый сертификат Let's Encrypt для первого прогона?"; then
+		if [ -n "$ARG_STAGING" ]; then
+			STAGING="$ARG_STAGING"
+		elif ask_yn "Использовать тестовый сертификат Let's Encrypt для первого прогона?"; then
 			STAGING="true"
 		else
 			STAGING="false"
@@ -648,6 +761,24 @@ server_public_ip() {
 	echo "$ip"
 }
 
+# resolve_ips DOMAIN -> все A-записи домена, по одной в строке.
+# Отдельно от resolve_ip: у домена с несколькими A-записями адрес этого сервера
+# может не быть первым, и сверка «по первой» остановила бы установку на
+# совершенно правильном домене.
+resolve_ips() {
+	local d="$1" out=""
+	if command -v getent >/dev/null 2>&1; then
+		out="$(getent ahostsv4 "$d" 2>/dev/null | awk '{print $1}')"
+	fi
+	if [ -z "$out" ] && command -v dig >/dev/null 2>&1; then
+		out="$(dig +short A "$d" 2>/dev/null)"
+	fi
+	if [ -z "$out" ] && command -v host >/dev/null 2>&1; then
+		out="$(host -t A "$d" 2>/dev/null | awk '/has address/{print $4}')"
+	fi
+	echo "$out" | awk 'NF' | sort -u
+}
+
 # check_dns DOMAIN — расхождение A-записи не отказ, а предупреждение с
 # подтверждением: неудачная боевая проверка расходует лимит Let's Encrypt.
 check_dns() {
@@ -660,6 +791,255 @@ check_dns() {
 	warn "DNS не сходится: $1 -> '${resolved:-нет записи}', а сервер '${server:-неизвестен}'."
 	warn "Выпуск сертификата не пройдёт, пока A-запись не будет вести сюда."
 	ask_yn "Всё равно продолжить?" || { err "прервано; поправьте A-запись"; exit 1; }
+}
+
+# --- режим «из коробки» -------------------------------------------------------
+#
+# Четвёртый режим рядом с standalone, nginx и proxy: наружу открыт ровно один
+# порт — 443 по TCP (фронт) и по UDP (mieru), — а панель, dest и остальные
+# инбаунды сидят на обратной петле. nginx в этой схеме не участвует, поэтому ни
+# одного чужого файла скрипт здесь не правит.
+
+# require_free PORT PROTO — предусловие «внешний порт свободен».
+# Опираемся на состояние сокетов, а не на проверку конфигурации веб-сервера:
+# `nginx -t` на чужом сервере, уже слушающем 443, скажет, что всё в порядке, и
+# конфликт владельцев вылезет только при запуске — на половине установки.
+require_free() {
+	local port="$1" proto="$2" owner
+	if owner="$(port_owner "$port" "$proto")"; then
+		err "внешний порт ${port}/${proto} занят${owner:+: $owner}"
+		err "в режиме «из коробки» этот порт держит сам сервер; освободите его"
+		err "или выберите другой режим установки"
+		exit 1
+	fi
+	return 0
+}
+
+# require_dns_match DOMAIN — домен обязан вести на этот сервер.
+# Здесь это отказ, а не предупреждение с подтверждением, как в остальных
+# режимах: сертификат выпускает dest по HTTP-01, и промах A-записи означает
+# сервер, который не поднимется вообще, — а понять это оператор сможет только
+# по логам контейнера.
+require_dns_match() {
+	local server ips one
+	server="$(server_public_ip)"
+	ips="$(resolve_ips "$1")"
+	if [ -n "$server" ]; then
+		for one in $ips; do
+			if [ "$one" = "$server" ]; then
+				info "DNS OK: $1 -> ${one}"
+				warn_stray_aaaa "$1"
+				return 0
+			fi
+		done
+	fi
+	local where; where="${ips//$'\n'/ }"
+	err "домен $1 ведёт на '${where:-нет A-записи}', а этот сервер — '${server:-неизвестен}'"
+	err "поправьте A-запись и запустите снова: без неё сертификат не выпустится"
+	exit 1
+}
+
+# warn_stray_aaaa DOMAIN — предупреждение о AAAA-записи.
+# Проверка выше сверяет IPv4, а Let's Encrypt для HTTP-01 предпочитает IPv6:
+# посторонняя AAAA-запись уводит проверку на чужую машину, и выпуск падает уже
+# после установки — ровно тот случай, ради которого сверка сделана жёсткой.
+# Именно предупреждение: убедиться, что AAAA ведёт сюда, скрипт не может —
+# своего IPv6 он не знает.
+warn_stray_aaaa() {
+	command -v getent >/dev/null 2>&1 || return 0
+	local v6; v6="$(getent ahostsv6 "$1" 2>/dev/null | awk '{print $1}' | sort -u | head -3)"
+	[ -n "$v6" ] || return 0
+	warn "у домена есть AAAA-запись (${v6//$'\n'/ }): Let's Encrypt пойдёт по IPv6."
+	warn "Убедитесь, что она ведёт на этот сервер, иначе сертификат не выпустится."
+	return 0
+}
+
+# allinone_possible -> 0, если режим здесь вообще имеет смысл.
+# Предлагать невозможное — значит просить оператора ответить на вопрос, у
+# которого нет годного ответа. Явный --allinone при занятом порте, наоборот,
+# останавливает установку с именем владельца: там оператор уже выбрал.
+allinone_possible() {
+	if [ "$HAS_DOCKER" != "true" ]; then return 1; fi
+	# Без ss занятость хостовых сокетов не видна, и «свободен» стало бы просто
+	# другим именем для «не смогли проверить».
+	if ! command -v ss >/dev/null 2>&1; then return 1; fi
+	local spec
+	for spec in "443 tcp" "443 udp" "80 tcp"; do
+		# shellcheck disable=SC2086  # пара «порт протокол» — именно два аргумента
+		if port_owner $spec >/dev/null; then return 1; fi
+	done
+	return 0
+}
+
+want_allinone() {
+	if [ "$MODE_FLAG" = "allinone" ]; then return 0; fi
+	if ! allinone_possible; then return 1; fi
+	ask_yn "Поставить всё из коробки: пять инбаундов и сайт-заглушка на одном 443?" y
+}
+
+ask_allinone() {
+	TLS_MODE="allinone"
+	if ! command -v ss >/dev/null 2>&1; then
+		err "нет ss (пакет iproute2) — нечем проверить, свободны ли 443 и 80"
+		err "поставьте iproute2 и запустите снова: молча подвинуть чужой сокет"
+		err "хуже, чем остановиться"
+		exit 1
+	fi
+	# Порты проверяются до вопросов: занятый 443 не лечится ни одним ответом.
+	require_free 443 tcp
+	require_free 443 udp
+	# 80 нужен снаружи для HTTP-01: сертификат выпускает dest, а пробросом
+	# HTTP-01 не лечится — проверка всегда приходит именно на 80.
+	require_free 80 tcp
+
+	DOMAIN="${ARG_DOMAIN:-$(ask "Домен (он же имя, которое заимствует Reality)" "")}"
+	if ! valid_domain "$DOMAIN"; then
+		err "нужно доменное имя вида example.com"
+		exit 1
+	fi
+	require_dns_match "$DOMAIN"
+
+	EMAIL="${ARG_EMAIL:-$(ask "Контакт для Let's Encrypt" "")}"
+	[ -n "$EMAIL" ] || { err "почта обязательна"; exit 1; }
+	STAGING="${ARG_STAGING:-false}"
+
+	# Панель наружу не публикуется вовсе: до неё ходит dest по сети контейнера,
+	# а клиентские ссылки собираются от внешнего 443.
+	HOST_PORT="$CONTAINER_PANEL_PORT"
+	PUBLIC_PORT="443"
+	SUBNET="$(pick_free_subnet)"
+	WANT_SNI="false"; INBOUND_DOMAIN=""; INBOUND_PORT=""; PP_PORT=""; PANEL_HTTPS_PORT=""
+}
+
+# detect_arch -> amd64|arm64. Артефакты релиза собраны только под них.
+detect_arch() {
+	case "$(uname -m)" in
+		x86_64)  echo "amd64" ;;
+		aarch64) echo "arm64" ;;
+		*) err "архитектура $(uname -m) не поддерживается: артефакты собираются под amd64 и arm64"; exit 1 ;;
+	esac
+}
+
+# fetch_verified URL DEST — скачать и сверить контрольную сумму.
+# Отсутствие файла суммы — тоже отказ, а не «продолжим без проверки»: все наши
+# артефакты публикуются с ним, поэтому его отсутствие означает не старый релиз,
+# а что скачано не то и не оттуда.
+fetch_verified() {
+	local url="$1" dest="$2" sum expected actual
+	curl -fsSL -o "$dest" "$url" || { err "не скачалось: ${url}"; exit 1; }
+	sum="$(mktemp)"
+	if ! curl -fsSL -o "$sum" "${url}.sha256" || [ ! -s "$sum" ]; then
+		rm -f "$sum"
+		err "нет файла контрольной суммы для ${url} — установка прервана"
+		exit 1
+	fi
+	expected="$(awk '{print $1}' "$sum")"; rm -f "$sum"
+	actual="$(sha256sum "$dest" | awk '{print $1}')"
+	if [ -z "$expected" ] || [ "$expected" != "$actual" ]; then
+		err "контрольная сумма не сошлась для ${url}"
+		err "ожидалось ${expected:-пусто}, получено ${actual}"
+		exit 1
+	fi
+	info "sha256 сверен: $(basename "$dest")"
+}
+
+# pick_stub DIR -> имя шаблона заглушки.
+# Случайный, если не задан флагом: одна и та же заглушка на всех установках сама
+# по себе становится приметой, по которой их видно списком.
+pick_stub() {
+	local dir="$1" names=() one
+	for one in "$dir"/*/; do
+		[ -d "$one" ] || continue
+		one="${one%/}"
+		names+=("${one##*/}")
+	done
+	if [ "${#names[@]}" -eq 0 ]; then
+		err "в архиве шаблонов нет ни одного каталога"
+		exit 1
+	fi
+	if [ -n "$ARG_STUB" ]; then
+		for one in "${names[@]}"; do
+			if [ "$one" = "$ARG_STUB" ]; then echo "$one"; return 0; fi
+		done
+		err "шаблона ${ARG_STUB} в архиве нет; есть: ${names[*]}"
+		exit 1
+	fi
+	echo "${names[$((RANDOM % ${#names[@]}))]}"
+}
+
+# install_dest_and_stub — доставка dest и файлов заглушки на том контейнера.
+# Оба артефакта кладутся туда, где их ждёт план: бинарь — /config/bin/dest,
+# файлы заглушки — /config/stub (корень, который планировщик прописал в
+# Caddyfile). Всё это делается ДО записи compose: иначе оборванная закачка
+# оставила бы каталог, который повторный запуск примет за готовую установку.
+install_dest_and_stub() {
+	local dir="${INSTALL_DIR}/config" arch tmp chosen
+	arch="$(detect_arch)"
+	# Скачивается рядом с установкой, а не в /tmp: любой отказ ниже — это выход
+	# из скрипта, и через ловушку на EXIT это не решить (в тестах скрипт
+	# сорсится, и такая ловушка затёрла бы чужую). Каталог с известным именем
+	# сносится в начале следующего запуска и уходит вместе с --purge.
+	tmp="${dir}/.download"
+	rm -rf "$tmp"
+	mkdir -p "$tmp" "${dir}/bin"
+
+	info "Скачиваю dest (linux-${arch})..."
+	fetch_verified "${RELEASE_BASE}/routebox-dest-linux-${arch}" "${tmp}/dest"
+	install -m 0755 "${tmp}/dest" "${dir}/bin/dest"
+
+	info "Скачиваю шаблоны заглушки..."
+	fetch_verified "${RELEASE_BASE}/routebox-stubs.tar.gz" "${tmp}/stubs.tar.gz"
+	mkdir -p "${tmp}/unpacked"
+	tar xzf "${tmp}/stubs.tar.gz" -C "${tmp}/unpacked" ||
+		{ err "архив шаблонов не распаковался"; exit 1; }
+	# В архиве один каталог stubs/, внутри — по каталогу на шаблон.
+	chosen="$(pick_stub "${tmp}/unpacked/stubs")"
+	rm -rf "${dir}/stub"
+	mkdir -p "${dir}/stub"
+	cp -r "${tmp}/unpacked/stubs/${chosen}/." "${dir}/stub/"
+	rm -rf "$tmp"
+	info "Заглушка: ${chosen}"
+}
+
+# announce_panel_url — путь к панели печатается один раз, когда он появился.
+# Спрашиваем у самого бинаря, а не собираем адрес здесь: секрет живёт в
+# настройках, и второе место, где он складывается в URL, рано или поздно
+# разойдётся с первым.
+announce_panel_url() {
+	local i=0 url=""
+	while [ "$i" -lt 120 ]; do
+		url="$( (cd "$INSTALL_DIR" && docker compose exec -T routebox routebox panel-url) 2>/dev/null | tr -d '\r')"
+		if [ -n "$url" ]; then
+			info "Панель: ${url}"
+			info "Заходить по этому адресу: он ставит cookie, без неё на домене отдаётся заглушка."
+			info "Адрес можно спросить снова: docker compose exec routebox routebox panel-url"
+			return 0
+		fi
+		if [ "$i" = "20" ]; then
+			info "Жду выпуск сертификата и первый старт, это занимает до минуты..."
+		fi
+		sleep 1; i=$((i + 1))
+	done
+	warn "Панель не отозвалась за две минуты — смотрите docker compose logs"
+	return 1
+}
+
+# allinone_plan — перечисление намерений. Ничего не читает и ничего не меняет.
+allinone_plan() {
+	local acme="боевой Let's Encrypt"
+	if [ "$STAGING" = "true" ]; then acme="тестовый Let's Encrypt"; fi
+	echo "# --- режим «из коробки»: что будет сделано ---"
+	echo "домен:           ${DOMAIN}"
+	echo "каталог:         ${INSTALL_DIR}"
+	echo "наружу:          443/tcp — фронт, 443/udp — mieru, 80/tcp — только выпуск сертификата"
+	echo "внутрь:          dest, панель и остальные инбаунды слушают обратную петлю"
+	echo "сеть контейнера: ${SUBNET}"
+	echo "сертификат:      выпускает dest, ${acme}"
+	echo "почта:           ${EMAIL} — уезжает в настройки панели"
+	echo "заглушка:        ${ARG_STUB:-случайный шаблон из архива релиза}"
+	echo "артефакты:       dest и шаблоны — из релиза, со сверкой sha256"
+	echo "чужие файлы:     не правятся ни одного"
+	echo "панель:          по секретному пути, он будет напечатан один раз после старта"
 }
 
 # --- применение --------------------------------------------------------------
@@ -676,8 +1056,13 @@ write_compose() {
 		exit 1
 	fi
 	mkdir -p "${INSTALL_DIR}/config"
-	gen_compose "$TLS_MODE" "$DOMAIN" "$EMAIL" "$HOST_PORT" "$PUBLIC_PORT" \
-		"$SUBNET" "$STAGING" "$INBOUND_PORT" > "${INSTALL_DIR}/docker-compose.yml"
+	if [ "$TLS_MODE" = "allinone" ]; then
+		gen_compose_allinone "$DOMAIN" "$EMAIL" "$SUBNET" "$STAGING" \
+			> "${INSTALL_DIR}/docker-compose.yml"
+	else
+		gen_compose "$TLS_MODE" "$DOMAIN" "$EMAIL" "$HOST_PORT" "$PUBLIC_PORT" \
+			"$SUBNET" "$STAGING" "$INBOUND_PORT" > "${INSTALL_DIR}/docker-compose.yml"
+	fi
 	info "Записан ${INSTALL_DIR}/docker-compose.yml"
 }
 
@@ -886,8 +1271,25 @@ existing_install() {
 
 # do_update — повторный запуск: ничего не переспрашивает, порты и домен уже
 # записаны в compose. Чинит свои файлы nginx, если они пропали.
+# allinone_install DIR -> 0, если в каталоге лежит наш compose режима «из
+# коробки». Признак — переменная, которая только в нём и встречается.
+allinone_install() {
+	[ -f "$1/docker-compose.yml" ] || return 1
+	grep -qF "BOOTSTRAP_ALLINONE" "$1/docker-compose.yml"
+}
+
 do_update() {
 	info "Найдена установка в ${INSTALL_DIR} — обновляю образ"
+	# Бинарь dest и файлы заглушки живут на томе, а не в образе: если их снесли
+	# (например, `--uninstall --purge`, а потом установка заново), контейнер dest
+	# уходит в вечный перезапуск на несуществующем файле, и домен молчит.
+	# Дешевле восстановить их здесь, чем объяснять это по логам.
+	if allinone_install "$INSTALL_DIR" &&
+			{ [ ! -x "${INSTALL_DIR}/config/bin/dest" ] ||
+			  [ ! -f "${INSTALL_DIR}/config/stub/index.html" ]; }; then
+		warn "dest или заглушка пропали с тома — доставляю заново"
+		install_dest_and_stub
+	fi
 	(cd "$INSTALL_DIR" && docker compose pull && docker compose up -d)
 	local dir
 	if [ "$HAS_NGINX_HOST" = "true" ]; then
@@ -918,6 +1320,22 @@ do_install() {
 		exit 1
 	fi
 	ask_all
+	if [ "$TLS_MODE" = "allinone" ]; then
+		allinone_plan
+		# Артефакты первыми: оборванная закачка после записи compose оставила бы
+		# каталог, который повторный запуск примет за готовую установку и уйдёт
+		# обновлять то, что ещё не собрано.
+		install_dest_and_stub
+		write_compose
+		compose_up
+		# Сначала ожидание, потом пароль: файл с первым паролем пишет сама панель
+		# на первом старте, и до него show_password сказал бы «пароль выдан
+		# ранее» — на свежей установке это просто неправда.
+		announce_panel_url || true
+		show_password
+		info "Сайт: https://${DOMAIN}"
+		return 0
+	fi
 	# Сначала nginx и сертификат, и только потом compose. Обратный порядок
 	# оставлял бы после любого провала каталог с нашим compose, который при
 	# повторном запуске опознаётся как готовая установка и уводит в do_update —
@@ -947,6 +1365,13 @@ do_dry_run() {
 	detect
 	ask_install_dir
 	ask_all
+	if [ "$TLS_MODE" = "allinone" ]; then
+		allinone_plan
+		echo
+		echo "# --- docker-compose.yml, который был бы записан в ${INSTALL_DIR} ---"
+		gen_compose_allinone "$DOMAIN" "$EMAIL" "$SUBNET" "$STAGING"
+		return 0
+	fi
 	echo "# --- docker-compose.yml, который был бы записан в ${INSTALL_DIR} ---"
 	gen_compose "$TLS_MODE" "$DOMAIN" "$EMAIL" "$HOST_PORT" "$PUBLIC_PORT" \
 		"$SUBNET" "$STAGING" "$INBOUND_PORT"
@@ -979,6 +1404,12 @@ do_uninstall() {
 	if [ -f "${INSTALL_DIR}/docker-compose.yml" ]; then
 		if existing_install "$INSTALL_DIR"; then
 			(cd "$INSTALL_DIR" && docker compose down) || true
+			# Свой compose — тоже свой файл, и его надо унести. Оставленный, он
+			# при следующей установке опознаётся как готовый и уводит в
+			# обновление: контейнеры поднимутся, а снесённых артефактов уже
+			# никто не доставит.
+			rm -f "${INSTALL_DIR}/docker-compose.yml"
+			info "Удалён ${INSTALL_DIR}/docker-compose.yml"
 		else
 			err "в ${INSTALL_DIR} лежит чужой docker-compose.yml — не трогаю его"
 			exit 1

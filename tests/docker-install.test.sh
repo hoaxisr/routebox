@@ -5,6 +5,10 @@
 HERE="$(cd "$(dirname "$0")" && pwd)"
 FIXTURES="$HERE/fixtures"
 FAILS=0
+# Настоящий docker, если он тут есть, — запоминается ДО того, как PATH накроют
+# стабы: им проверяется схема сгенерированного compose. Отсутствует — проверка
+# пропускается, стенд от docker не зависит.
+REAL_DOCKER="$(command -v docker 2>/dev/null || true)"
 
 assert_eq() {
 	if [ "$1" = "$2" ]; then printf '  ok   %s\n' "$3"
@@ -31,7 +35,7 @@ parse_args --dry-run;   assert_eq "dry-run"   "$ACTION" "--dry-run -> dry-run"
 parse_args --uninstall; assert_eq "uninstall" "$ACTION" "--uninstall -> uninstall"
 parse_args --uninstall --purge; assert_eq "true" "$PURGE" "--purge -> PURGE=true"
 parse_args;             assert_eq "install"   "$ACTION" "без флагов -> install"
-assert_fails 'parse_args --domain x' "неизвестный флаг отвергается"
+assert_fails 'parse_args --tls-mode x' "неизвестный флаг отвергается"
 
 # --- стабы внешних команд ----------------------------------------------------
 STUBS="$(mktemp -d)"
@@ -343,8 +347,10 @@ EOF
 printf '#!/bin/bash\necho "203.0.113.10"\n' > "$BARE/curl"
 printf '#!/bin/bash\necho "203.0.113.10 STREAM panel.example.com"\n' > "$BARE/getent"
 chmod +x "$BARE"/*
-# Ответы: каталог, домен, почта, тестовый сертификат — да, порт панели (дефолт).
-printf '%s\n' "$WORK/rb" "panel.example.com" "you@example.com" "y" "" > "$WORK/answers-bare"
+# Ответы: каталог, «из коробки» — нет, домен, почта, тестовый сертификат — да,
+# порт панели (дефолт). На этом стенде 80 и 443 свободны, поэтому новый режим
+# предлагается и от него надо явно отказаться.
+printf '%s\n' "$WORK/rb" "n" "panel.example.com" "you@example.com" "y" "" > "$WORK/answers-bare"
 OUT_BARE="$(RB_TTY_IN="$WORK/answers-bare" RB_NGINX_T_CMD="true" \
 	PATH="$BARE:$PATH" bash "$HERE/../docker-install.sh" --dry-run 2>&1 || true)"
 assert_contains "$OUT_BARE" "ACME_EMAIL=you@example.com" "без nginx: панель выпускает сертификат сама"
@@ -355,6 +361,391 @@ assert_contains "$OUT_BARE" "PUBLIC_PORT=8443"           "без nginx: PUBLIC_P
 assert_not_contains "$OUT_BARE" "TRUSTED_PROXIES"        "без nginx: доверенных прокси нет"
 assert_not_contains "$OUT_BARE" "server_name"            "без nginx: vhost не печатается"
 rm -rf "$BARE" "$WORK"
+
+echo
+echo "режим «из коробки»: флаги"
+parse_args --allinone
+assert_eq "allinone" "$MODE_FLAG" "--allinone выбирает четвёртый режим"
+parse_args --domain panel.example.com --email you@example.com --dir /opt/rb --staging
+assert_eq "panel.example.com" "$ARG_DOMAIN"  "--domain разобран"
+assert_eq "you@example.com"   "$ARG_EMAIL"   "--email разобран"
+assert_eq "/opt/rb"           "$ARG_DIR"     "--dir разобран"
+assert_eq "true"              "$ARG_STAGING" "--staging разобран"
+assert_eq ""                  "$MODE_FLAG"   "режим сбрасывается между разборами"
+parse_args
+assert_eq ""        "$ARG_DOMAIN" "флаги сбрасываются между разборами"
+assert_fails 'parse_args --domain'          "--domain без значения отвергается"
+assert_fails 'parse_args --email'           "--email без значения отвергается"
+parse_args --dry-run --allinone --domain panel.example.com
+assert_eq "dry-run"   "$ACTION"    "--dry-run сочетается с --allinone"
+assert_eq "allinone"  "$MODE_FLAG" "режим при этом сохраняется"
+
+echo
+echo "режим «из коробки»: занятость портов"
+# Внешний порт нужен и по TCP, и по UDP: фронт держит 443/tcp, mieru — 443/udp.
+cat >"$STUBS/ss" <<'EOF'
+#!/bin/bash
+case "$*" in
+	*u*) echo 'UNCONN 0 0 0.0.0.0:443 0.0.0.0:* users:(("mieru",pid=9,fd=3))' ;;
+	*)   echo 'LISTEN 0 511 0.0.0.0:8443 0.0.0.0:* users:(("nginx",pid=1,fd=6))' ;;
+esac
+EOF
+chmod +x "$STUBS/ss"
+assert_contains "$(port_owner 443 udp)" "mieru" "владелец 443/udp виден"
+assert_fails 'port_owner 443'                   "443/tcp при этом свободен"
+assert_fails 'port_owner 8443 udp'              "занятый TCP-порт не считается занятым по UDP"
+
+# --- стенд под режим «из коробки»: 80 и 443 свободны, docker есть -----------
+OOB="$(mktemp -d)"
+oob_stubs() {   # oob_stubs SS_BODY
+	cat >"$OOB/ss" <<EOF
+#!/bin/bash
+$1
+EOF
+	cat >"$OOB/docker" <<'EOF'
+#!/bin/bash
+case "$1" in
+	ps)      echo '' ;;
+	network) echo '10.0.0.0/24' ;;
+	compose) exit 0 ;;
+esac
+exit 0
+EOF
+	printf '#!/bin/bash\necho "203.0.113.10"\n' > "$OOB/curl"
+	printf '#!/bin/bash\necho "203.0.113.10 STREAM panel.example.com"\n' > "$OOB/getent"
+	printf '#!/bin/bash\nexit 1\n' > "$OOB/nginx"
+	printf '#!/bin/bash\nexit 1\n' > "$OOB/systemctl"
+	chmod +x "$OOB"/*
+}
+oob_run() {     # oob_run ARGS... -> вывод на stdout, код возврата установщика
+	local out rc
+	out="$(RB_TTY_IN="$OOB/answers" RB_NGINX_T_CMD="true" PATH="$OOB:$PATH" \
+		bash "$HERE/../docker-install.sh" "$@" 2>&1)"; rc=$?
+	printf '%s\n' "$out"
+	return "$rc"
+}
+FREE_SS='echo "LISTEN 0 128 0.0.0.0:22 0.0.0.0:* users:((\"sshd\",pid=1,fd=3))"'
+
+echo
+echo "режим «из коробки»: предварительный показ"
+oob_stubs "$FREE_SS"
+: > "$OOB/answers"   # ни одного ответа: всё пришло флагами
+OUT_OOB="$(oob_run --dry-run --allinone --domain panel.example.com \
+	--email you@example.com --dir "$OOB/rb")"; OOB_CODE=$?
+assert_eq "0" "$OOB_CODE"                        "предварительный показ проходит"
+assert_contains "$OUT_OOB" "из коробки"          "показ называет режим"
+assert_contains "$OUT_OOB" "panel.example.com"   "показ называет домен"
+assert_contains "$OUT_OOB" "443/udp"             "показ называет внешний порт по UDP"
+assert_contains "$OUT_OOB" "$OOB/rb"             "показ называет каталог установки"
+assert_not_contains "$OUT_OOB" "Домен панели"    "с флагами вопросы не задаются"
+assert_not_contains "$OUT_OOB" "Контакт для"     "почта из флага не переспрашивается"
+assert_eq "0" "$(ls -A "$OOB/rb" 2>/dev/null | wc -l)" "показ не создал ни одного файла"
+
+echo
+echo "режим «из коробки»: предусловия"
+oob_stubs 'echo "LISTEN 0 511 0.0.0.0:443 0.0.0.0:* users:((\"caddy\",pid=7,fd=5))"'
+OUT_443="$(oob_run --dry-run --allinone --domain panel.example.com --email you@example.com --dir "$OOB/rb")"; OOB_CODE=$?
+assert_eq "1" "$OOB_CODE"                   "занятый 443/tcp -> остановка"
+assert_contains "$OUT_443" "443/tcp"        "занятый 443/tcp -> назван порт"
+assert_contains "$OUT_443" "caddy"          "занятый 443/tcp -> назван владелец"
+assert_not_contains "$OUT_443" "из коробки: что будет сделано" "занятый порт -> плана нет"
+
+oob_stubs 'case "$*" in *u*) echo "UNCONN 0 0 0.0.0.0:443 0.0.0.0:* users:((\"mieru\",pid=9,fd=3))" ;; esac'
+OUT_UDP="$(oob_run --dry-run --allinone --domain panel.example.com --email you@example.com --dir "$OOB/rb")"; OOB_CODE=$?
+assert_eq "1" "$OOB_CODE"              "занятый 443/udp -> остановка"
+assert_contains "$OUT_UDP" "443/udp"   "занятый 443/udp -> назван порт"
+assert_contains "$OUT_UDP" "mieru"     "занятый 443/udp -> назван владелец"
+
+oob_stubs 'echo "LISTEN 0 511 0.0.0.0:80 0.0.0.0:* users:((\"nginx\",pid=1,fd=7))"'
+OUT_80="$(oob_run --dry-run --allinone --domain panel.example.com --email you@example.com --dir "$OOB/rb")"; OOB_CODE=$?
+assert_eq "1" "$OOB_CODE"            "занятый 80 -> остановка: сертификат выпустить нечем"
+assert_contains "$OUT_80" "80/tcp"   "занятый 80 -> назван порт"
+
+# Домен, указывающий не сюда, останавливает установку — без «всё равно
+# продолжить?»: в этом режиме сертификат выпускает dest, и промах A-записи
+# означает сервер, который не поднимется.
+oob_stubs "$FREE_SS"
+printf '#!/bin/bash\necho "198.51.100.7 STREAM panel.example.com"\n' > "$OOB/getent"
+chmod +x "$OOB/getent"
+OUT_DNS="$(oob_run --dry-run --allinone --domain panel.example.com --email you@example.com --dir "$OOB/rb")"; OOB_CODE=$?
+assert_eq "1" "$OOB_CODE"                     "домен ведёт не сюда -> остановка"
+assert_contains "$OUT_DNS" "198.51.100.7"     "названо, куда ведёт домен"
+assert_contains "$OUT_DNS" "203.0.113.10"     "названо, где сервер"
+assert_not_contains "$OUT_DNS" "Всё равно продолжить" "подтверждения не спрашиваем"
+
+echo
+echo "режим «из коробки»: интерактивный выбор"
+oob_stubs "$FREE_SS"
+# Ответы: каталог, «из коробки» — да, домен, почта.
+printf '%s\n' "$OOB/rb" "y" "panel.example.com" "you@example.com" > "$OOB/answers"
+OUT_ASK="$(oob_run --dry-run)"; OOB_CODE=$?
+assert_eq "0" "$OOB_CODE"                     "интерактивный выбор проходит"
+assert_contains "$OUT_ASK" "из коробки"       "режим предложен и выбран"
+assert_contains "$OUT_ASK" "panel.example.com" "домен спрошен"
+
+# Отказ от нового режима возвращает на прежнюю дорогу: панель держит TLS сама.
+# Ответы: каталог, «из коробки» — нет, домен, почта, тестовый CA — нет, порт.
+printf '%s\n' "$OOB/rb" "n" "panel.example.com" "you@example.com" "n" "" > "$OOB/answers"
+OUT_NO="$(oob_run --dry-run)"; OOB_CODE=$?
+assert_eq "0" "$OOB_CODE"                          "отказ от нового режима не ломает прежний путь"
+assert_contains "$OUT_NO" "ACME_EMAIL=you@example.com" "отказ -> прежний standalone-режим"
+assert_not_contains "$OUT_NO" "из коробки: что будет сделано" "отказ -> плана нового режима нет"
+
+# Когда 443 занят, новый режим не предлагается вовсе: предлагать невозможное
+# значит просить оператора отвечать на вопрос, у которого нет годного ответа.
+# Установка при этом уходит в режим «за чужим прокси» (на 443 сидит caddy), и
+# что именно она там доспросит — этой проверки не касается: она ровно о том,
+# что вопроса про «из коробки» не прозвучало.
+oob_stubs 'echo "LISTEN 0 511 0.0.0.0:443 0.0.0.0:* users:((\"caddy\",pid=7,fd=5))"'
+printf '%s\n' "$OOB/rb" "panel.example.com" "you@example.com" "n" "" > "$OOB/answers"
+OUT_BUSY="$(oob_run --dry-run)"; OOB_CODE=$?
+assert_not_contains "$OUT_BUSY" "из коробки" "занятый 443 -> режим не предлагается"
+# Домен с несколькими A-записями: адрес сервера не первый, но он в списке —
+# это правильный домен, и останавливать установку не за что.
+oob_stubs "$FREE_SS"
+printf '#!/bin/bash\necho "198.51.100.7 STREAM panel.example.com"\necho "203.0.113.10 STREAM panel.example.com"\n' > "$OOB/getent"
+chmod +x "$OOB/getent"
+OUT_MULTI="$(oob_run --dry-run --allinone --domain panel.example.com --email you@example.com --dir "$OOB/rb")"; OOB_CODE=$?
+assert_eq "0" "$OOB_CODE"                    "адрес сервера среди нескольких A-записей -> установка идёт"
+assert_contains "$OUT_MULTI" "DNS OK"        "совпадение названо вслух"
+
+# Без ss занятость хостовых сокетов не видна: это отказ, а не «свободно».
+# Проверяется на самих функциях: подсунуть скрипту PATH вообще без ss нельзя,
+# не отобрав у него заодно awk и mktemp.
+NOSS="$(mktemp -d)"
+cp "$OOB/docker" "$NOSS/docker"
+HAS_DOCKER="true"
+assert_fails '(PATH="$NOSS"; allinone_possible)' "нет ss -> режим не предлагается"
+OUT_NOSS="$( (PATH="$NOSS"; ask_allinone) 2>&1 )"; NOSS_CODE=$?
+assert_eq "1" "$NOSS_CODE"             "явный --allinone без ss -> отказ"
+assert_contains "$OUT_NOSS" "iproute2" "названо, чего не хватает"
+rm -rf "$NOSS"
+rm -rf "$OOB"
+
+echo
+echo "compose режима «из коробки»"
+C_OOB="$(gen_compose_allinone panel.example.com you@example.com 172.30.0.0/24 false)"
+assert_contains "$C_OOB" 'PUBLIC_HOST=panel.example.com' "домен уезжает в контейнер"
+assert_contains "$C_OOB" 'PUBLIC_PORT=443'               "клиенты видят 443"
+assert_contains "$C_OOB" 'BOOTSTRAP_ALLINONE=1'          "режим включается явно"
+assert_contains "$C_OOB" 'ACME_ENABLED=false'            "свой ACME панели выключен"
+assert_contains "$C_OOB" 'ACME_EMAIL=you@example.com'    "почта уезжает в контейнер"
+assert_contains "$C_OOB" 'TRUSTED_PROXIES=127.0.0.1/32'  "панель доверяет dest на общей петле"
+assert_contains "$C_OOB" '"443:443/tcp"'                 "наружу 443 по TCP"
+assert_contains "$C_OOB" '"443:443/udp"'                 "наружу 443 по UDP"
+assert_contains "$C_OOB" '"80:80"'                       "80 под HTTP-01"
+assert_not_contains "$C_OOB" '8443:'                     "порт панели наружу не опубликован"
+assert_not_contains "$C_OOB" '9443:'                     "порт dest наружу не опубликован"
+assert_contains "$C_OOB" 'network_mode: "service:routebox"' "dest живёт в сетевой области панели"
+assert_contains "$C_OOB" '/config/bin/dest run --config /config/Caddyfile' "dest запускается с планом"
+assert_contains "$C_OOB" 'until [ -s /config/Caddyfile ]' "dest дожидается первого старта панели"
+assert_contains "$C_OOB" 'XDG_DATA_HOME=/config/dest'    "сертификаты dest переживают пересоздание"
+assert_eq "2" "$(echo "$C_OOB" | grep -c 'restart: unless-stopped')" "обе службы поднимаются после перезагрузки"
+assert_not_contains "$C_OOB" "ACME_STAGING"              "боевой CA по умолчанию"
+assert_contains "$(gen_compose_allinone panel.example.com you@example.com 172.30.0.0/24 true)" \
+	"ACME_STAGING=true"                                  "тестовый CA доезжает до контейнера"
+
+echo
+echo "сверка контрольных сумм"
+REL="$(mktemp -d)"; DL="$(mktemp -d)"
+echo "содержимое-бинаря" > "$REL/artifact"
+sha256sum "$REL/artifact" | awk '{print $1}' > "$REL/artifact.sha256"
+echo "подделка" > "$REL/tampered"
+echo "0000000000000000000000000000000000000000000000000000000000000000" > "$REL/tampered.sha256"
+echo "без-суммы" > "$REL/nosum"
+cat >"$STUBS/curl" <<EOF
+#!/bin/bash
+# Понимает ровно то, чем пользуется скрипт: -o DEST URL, и запрос своего адреса.
+dest=""; url=""
+while [ \$# -gt 0 ]; do
+	case "\$1" in
+		-o) shift; dest="\$1" ;;
+		-*) ;;
+		*)  url="\$1" ;;
+	esac
+	shift
+done
+if [ -z "\$dest" ]; then echo "203.0.113.10"; exit 0; fi
+src="$REL/\$(basename "\$url")"
+[ -f "\$src" ] || exit 1
+cp "\$src" "\$dest"
+EOF
+chmod +x "$STUBS/curl"
+OUT_SUM="$( (fetch_verified "file://x/artifact" "$DL/artifact") 2>&1 )"
+assert_contains "$OUT_SUM" "sha256 сверен" "сумма сошлась — артефакт принят"
+assert_eq "содержимое-бинаря" "$(cat "$DL/artifact")" "скачано именно то, что лежало в релизе"
+OUT_BAD="$( (fetch_verified "file://x/tampered" "$DL/tampered") 2>&1 )"
+assert_fails '(fetch_verified "file://x/tampered" "$DL/tampered")' "несовпадение суммы прерывает установку"
+assert_contains "$OUT_BAD" "не сошлась" "несовпадение суммы названо вслух"
+assert_fails '(fetch_verified "file://x/nosum" "$DL/nosum")' "отсутствие файла суммы тоже прерывает"
+assert_fails '(fetch_verified "file://x/missing" "$DL/missing")' "не скачалось -> отказ"
+
+echo
+echo "выбор шаблона заглушки"
+ARCH_DIR="$(mktemp -d)"
+mkdir -p "$ARCH_DIR/stubs/vaultline" "$ARCH_DIR/stubs/stash" "$ARCH_DIR/stubs/driftbox"
+for t in vaultline stash driftbox; do echo "<html>$t</html>" > "$ARCH_DIR/stubs/$t/index.html"; done
+ARG_STUB=""
+case " vaultline stash driftbox " in
+	*" $(pick_stub "$ARCH_DIR/stubs") "*) printf '  ok   %s\n' "случайный выбор даёт шаблон из архива" ;;
+	*) printf '  FAIL %s\n' "случайный выбор даёт шаблон из архива"; FAILS=$((FAILS+1)) ;;
+esac
+ARG_STUB="stash"
+assert_eq "stash" "$(pick_stub "$ARCH_DIR/stubs")" "флаг задаёт шаблон явно"
+ARG_STUB="нетакого"
+assert_fails '(pick_stub "$ARCH_DIR/stubs")' "неизвестный шаблон -> отказ"
+ARG_STUB=""
+
+echo
+echo "доставка артефактов"
+# Собираем «релиз» так, как его публикует CI: бинарь под обе архитектуры и
+# архив шаблонов с каталогом stubs/ внутри.
+for a in amd64 arm64; do
+	echo "dest-$a" > "$REL/routebox-dest-linux-$a"
+	sha256sum "$REL/routebox-dest-linux-$a" | awk '{print $1}' > "$REL/routebox-dest-linux-$a.sha256"
+done
+tar czf "$REL/routebox-stubs.tar.gz" -C "$ARCH_DIR" stubs
+sha256sum "$REL/routebox-stubs.tar.gz" | awk '{print $1}' > "$REL/routebox-stubs.tar.gz.sha256"
+INSTALL_DIR="$(mktemp -d)/rb"
+ARG_STUB="driftbox"
+OUT_ART="$(RELEASE_BASE="https://example.invalid/releases" install_dest_and_stub 2>&1)"
+assert_contains "$OUT_ART" "Заглушка: driftbox" "выбранный шаблон виден оператору"
+assert_eq "0" "$(test -x "${INSTALL_DIR}/config/bin/dest"; echo $?)" "бинарь dest на месте и исполняемый"
+assert_contains "$(cat "${INSTALL_DIR}/config/stub/index.html")" "driftbox" "файлы выбранной заглушки распакованы"
+assert_eq "" "$(ls "${INSTALL_DIR}/config/stub" | grep -v index.html || true)" "в корне заглушки только её файлы"
+# Подменённый архив не должен доехать до тома.
+echo "мусор" > "$REL/routebox-stubs.tar.gz"
+INSTALL_DIR="$(mktemp -d)/rb2"
+assert_fails '(RELEASE_BASE="https://example.invalid/releases" install_dest_and_stub)' \
+	"подменённый архив прерывает доставку"
+assert_eq "0" "$(ls -A "${INSTALL_DIR}/config/stub" 2>/dev/null | wc -l)" "после отказа заглушка не разложена"
+rm -rf "$REL" "$DL" "$ARCH_DIR"
+ARG_STUB=""; INSTALL_DIR=""
+
+echo
+echo "установка «из коробки» целиком, на стабах"
+# Сквозной прогон настоящего do_install: артефакты -> compose -> запуск ->
+# адрес панели -> пароль. Всё внешнее подменено, root подделан стабом id.
+E2E="$(mktemp -d)"; E2EREL="$E2E/release"; mkdir -p "$E2EREL"
+for a in amd64 arm64; do
+	echo "dest-$a" > "$E2EREL/routebox-dest-linux-$a"
+	sha256sum "$E2EREL/routebox-dest-linux-$a" | awk '{print $1}' > "$E2EREL/routebox-dest-linux-$a.sha256"
+done
+mkdir -p "$E2E/pack/stubs/vaultline" "$E2E/pack/stubs/stash"
+echo "<html>vaultline</html>" > "$E2E/pack/stubs/vaultline/index.html"
+echo "<html>stash</html>"     > "$E2E/pack/stubs/stash/index.html"
+tar czf "$E2EREL/routebox-stubs.tar.gz" -C "$E2E/pack" stubs
+sha256sum "$E2EREL/routebox-stubs.tar.gz" | awk '{print $1}' > "$E2EREL/routebox-stubs.tar.gz.sha256"
+
+E2EBIN="$E2E/bin"; mkdir -p "$E2EBIN"
+printf '#!/bin/bash\necho "LISTEN 0 128 0.0.0.0:22 0.0.0.0:* users:((\\"sshd\\",pid=1,fd=3))"\n' > "$E2EBIN/ss"
+printf '#!/bin/bash\necho 0\n' > "$E2EBIN/id"
+printf '#!/bin/bash\nexit 0\n' > "$E2EBIN/systemctl"
+printf '#!/bin/bash\necho "203.0.113.10 STREAM panel.example.com"\n' > "$E2EBIN/getent"
+cat >"$E2EBIN/curl" <<EOF
+#!/bin/bash
+dest=""; url=""
+while [ \$# -gt 0 ]; do
+	case "\$1" in
+		-o) shift; dest="\$1" ;;
+		-*) ;;
+		*)  url="\$1" ;;
+	esac
+	shift
+done
+if [ -z "\$dest" ]; then echo "203.0.113.10"; exit 0; fi
+src="$E2EREL/\$(basename "\$url")"
+[ -f "\$src" ] || exit 1
+cp "\$src" "\$dest"
+EOF
+# Панель «стартует» только к моменту первого `compose exec`: пароль появляется
+# тогда же, когда становится известен адрес. Порядок в do_install обязан это
+# выдерживать, иначе оператор остаётся без пароля.
+cat >"$E2EBIN/docker" <<'EOF'
+#!/bin/bash
+case "$1" in
+	ps)      echo '' ;;
+	network) echo '10.0.0.0/24' ;;
+	compose)
+		case "$2" in
+			exec)
+				mkdir -p ./config
+				echo "secret-password" > ./config/routebox-initial-password
+				echo "https://panel.example.com/deadbeef"
+				;;
+			*) ;;
+		esac
+		;;
+esac
+exit 0
+EOF
+chmod +x "$E2EBIN"/*
+
+E2E_DIR="$E2E/opt/routebox"
+OUT_E2E="$(PATH="$E2EBIN:$PATH" RB_TTY_IN=/dev/null RB_NGINX_T_CMD="true" \
+	RB_RELEASE_BASE="https://example.invalid/releases" \
+	bash "$HERE/../docker-install.sh" --allinone --domain panel.example.com \
+	--email you@example.com --dir "$E2E_DIR" --stub stash 2>&1)"; E2E_CODE=$?
+assert_eq "0" "$E2E_CODE"                              "установка целиком проходит"
+assert_contains "$OUT_E2E" "Заглушка: stash"           "выбранный шаблон назван"
+assert_contains "$OUT_E2E" "Панель: https://panel.example.com/deadbeef" "адрес панели напечатан"
+assert_contains "$OUT_E2E" "secret-password"           "пароль напечатан, а не «выдан ранее»"
+assert_not_contains "$OUT_E2E" "выдан ранее"           "ложного «пароль выдан ранее» нет"
+assert_contains "$OUT_E2E" "Сайт: https://panel.example.com" "адрес сайта назван"
+assert_contains "$(cat "$E2E_DIR/docker-compose.yml")" "BOOTSTRAP_ALLINONE=1" "compose записан"
+assert_eq "0" "$(test -x "$E2E_DIR/config/bin/dest"; echo $?)" "бинарь dest доставлен"
+assert_contains "$(cat "$E2E_DIR/config/stub/index.html")" "stash" "заглушка разложена"
+assert_eq "0" "$(ls -A "$E2E_DIR/config/.download" 2>/dev/null | wc -l)" "временный каталог за собой убран"
+
+# Повторный запуск: ничего не переспрашивает и не упирается в собственный 443.
+OUT_AGAIN="$(PATH="$E2EBIN:$PATH" RB_TTY_IN=/dev/null RB_NGINX_T_CMD="true" \
+	RB_RELEASE_BASE="https://example.invalid/releases" \
+	bash "$HERE/../docker-install.sh" --allinone --dir "$E2E_DIR" 2>&1)"; AGAIN_CODE=$?
+assert_eq "0" "$AGAIN_CODE"                        "повторный запуск проходит"
+assert_contains "$OUT_AGAIN" "обновляю образ"      "повторный запуск уходит в обновление"
+assert_not_contains "$OUT_AGAIN" "занят"           "свой же 443 не считается помехой"
+assert_contains "$(cat "$E2E_DIR/docker-compose.yml")" "BOOTSTRAP_ALLINONE=1" "compose не переписан"
+
+# Пропавший с тома dest восстанавливается, а не оставляет контейнер в перезапусках.
+rm -f "$E2E_DIR/config/bin/dest"
+OUT_REPAIR="$(PATH="$E2EBIN:$PATH" RB_TTY_IN=/dev/null RB_NGINX_T_CMD="true" \
+	RB_RELEASE_BASE="https://example.invalid/releases" \
+	bash "$HERE/../docker-install.sh" --allinone --dir "$E2E_DIR" 2>&1 || true)"
+assert_contains "$OUT_REPAIR" "доставляю заново" "пропавший dest замечен"
+assert_eq "0" "$(test -x "$E2E_DIR/config/bin/dest"; echo $?)" "и доставлен обратно"
+
+echo
+echo "удаление режима «из коробки»"
+OUT_RM="$(PATH="$E2EBIN:$PATH" RB_TTY_IN=/dev/null RB_NGINX_T_CMD="true" \
+	RB_NGINX_CONF="$E2E/nginx.conf" \
+	bash "$HERE/../docker-install.sh" --uninstall --dir "$E2E_DIR" 2>&1)"; RM_CODE=$?
+assert_eq "0" "$RM_CODE"                           "удаление проходит"
+assert_fails "test -f '$E2E_DIR/docker-compose.yml'" "свой compose снесён"
+assert_eq "0" "$(test -f "$E2E_DIR/config/bin/dest"; echo $?)" "данные без --purge остаются"
+assert_contains "$OUT_RM" "Данные остались"        "сказано, что данные на месте"
+
+# Чужой compose в том же каталоге удаление не трогает.
+printf 'services:\n  other:\n    image: nginx\n' > "$E2E_DIR/docker-compose.yml"
+OUT_FOREIGN="$(PATH="$E2EBIN:$PATH" RB_TTY_IN=/dev/null RB_NGINX_T_CMD="true" \
+	RB_NGINX_CONF="$E2E/nginx.conf" \
+	bash "$HERE/../docker-install.sh" --uninstall --dir "$E2E_DIR" 2>&1)"; FOREIGN_CODE=$?
+assert_eq "1" "$FOREIGN_CODE"                        "чужой compose -> отказ"
+assert_eq "0" "$(test -f "$E2E_DIR/docker-compose.yml"; echo $?)" "чужой compose на месте"
+assert_contains "$OUT_FOREIGN" "чужой docker-compose.yml" "названа причина отказа"
+rm -rf "$E2E"
+
+# Схему compose проверяет сам docker, если он на машине есть: набор ключей у
+# compose меняется от версии к версии, и «yaml разобрался» об этом не говорит.
+if [ -n "$REAL_DOCKER" ] && "$REAL_DOCKER" compose version >/dev/null 2>&1; then
+	CY="$(mktemp -d)"
+	gen_compose_allinone panel.example.com you@example.com 172.30.0.0/24 true > "$CY/docker-compose.yml"
+	CY_OUT="$("$REAL_DOCKER" compose -f "$CY/docker-compose.yml" config 2>&1)"; CY_CODE=$?
+	assert_eq "0" "$CY_CODE" "docker compose принимает сгенерированный файл"
+	assert_contains "$CY_OUT" "443" "в разобранном виде внешний порт на месте"
+	rm -rf "$CY"
+else
+	echo "  --   схема compose: пропущено, docker compose недоступен"
+fi
 
 # Если nginx на машине есть, сгенерированные конфигурации проверяются им самим.
 if command -v nginx >/dev/null 2>&1; then
