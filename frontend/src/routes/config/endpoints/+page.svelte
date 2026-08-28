@@ -6,6 +6,7 @@
 	import type { Endpoint, Outbound, DnsServer, RouteSettings, ClashProxy } from '$lib/types';
 	import Modal from '$lib/components/shared/Modal.svelte';
 	import EndpointForm from '$lib/components/config/EndpointForm.svelte';
+	import { getAWGVersion } from '$lib/utils/awgVersion';
 
 	let endpoints = $state<Endpoint[]>([]);
 	// The managed awg-server endpoint is configured on the /config/awg tab and is
@@ -154,46 +155,6 @@
 			default:
 				return 'M5 12h14M5 12a2 2 0 01-2-2V6a2 2 0 012-2h14a2 2 0 012 2v4a2 2 0 01-2 2M5 12a2 2 0 00-2 2v4a2 2 0 002 2h14a2 2 0 002-2v-4a2 2 0 00-2-2';
 		}
-	}
-
-	/**
-	 * Determines AWG obfuscation version based on configured parameters.
-	 * Returns 'AWG 3.0', 'AWG 2.0', 'AWG 1.5', 'AWG 1.0', or 'WG'
-	 */
-	function getAWGVersion(ep: Endpoint): string {
-		// Check which parameter groups are configured
-		const hasI = !!(ep.i1 || ep.i2 || ep.i3 || ep.i4 || ep.i5);
-		const hasS3S4 = !!(ep.s3 || ep.s4);
-		const hasJunk = !!(ep.jc || ep.jmin || ep.jmax);
-		// AWG3 signature: header protection, content padding, or rekey-after-time.
-		const hasAwg3 = !!(ep.header_protection_key || ep.content_padding_addition || ep.rekey_after_time);
-
-		// Check if h1-h4 contain ranges (contain '-' character)
-		const isRange = (val: string | undefined) => val && val.includes('-');
-		const hasHRanges = isRange(ep.h1) || isRange(ep.h2) || isRange(ep.h3) || isRange(ep.h4);
-
-		// AWG 3.0: awg3-only params present (also carries s/h, so check before 2.0)
-		if (hasAwg3) {
-			return 'AWG 3.0';
-		}
-
-		// AWG 2.0: s3-s4 configured (with or without i1-i5) OR h1-h4 as ranges
-		if (hasS3S4 || hasHRanges) {
-			return 'AWG 2.0';
-		}
-
-		// AWG 1.5: i1-i5 configured without s3-s4
-		if (hasI) {
-			return 'AWG 1.5';
-		}
-
-		// AWG 1.0: only junk packets (jc/jmin/jmax) configured
-		if (hasJunk) {
-			return 'AWG 1.0';
-		}
-
-		// WG: no obfuscation parameters configured
-		return 'WG';
 	}
 
 	onMount(async () => {

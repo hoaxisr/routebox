@@ -467,7 +467,20 @@
 			<div class="p-4 md:p-6">
 				<!-- Config path mismatch: shown on every page, running or not -->
 				<ConfigMismatchBanner />
-				{@render children()}
+				<!-- Without a boundary, one page throwing while it renders takes the
+				     whole app down to a spinner that never stops, and the only clue
+				     in the console is an unrelated i18n message. Keep the chrome and
+				     say which page failed. -->
+				<svelte:boundary>
+					{@render children()}
+					{#snippet failed(error)}
+						<div class="rounded-lg border border-[var(--ctp-red)] bg-[var(--ctp-surface0)] p-4">
+							<p class="text-[var(--ctp-red)] font-medium">{$t('errors.pageCrashed')}</p>
+							<p class="text-sm text-[var(--ctp-overlay1)] mt-1">{$t('errors.pageCrashedHint')}</p>
+							<pre class="mt-3 text-xs font-mono text-[var(--ctp-subtext0)] whitespace-pre-wrap break-all">{String(error)}</pre>
+						</div>
+					{/snippet}
+				</svelte:boundary>
 			</div>
 		</main>
 	</div>

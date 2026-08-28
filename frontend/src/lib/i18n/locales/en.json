@@ -1460,6 +1460,8 @@
     "deleteWarning": "This action cannot be undone."
   },
   "errors": {
+    "pageCrashed": "This page failed to render",
+    "pageCrashedHint": "The rest of the panel still works. Reopen the page, and if it keeps failing, the message below says why.",
     "networkError": "Network error",
     "serverError": "Server error",
     "notFound": "Not found",
