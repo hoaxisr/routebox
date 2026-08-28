@@ -194,6 +194,22 @@
 		});
 	}
 
+	// Deleting an UNASSIGNED rule-set deletes the rule-set itself, not a route
+	// rule — it has none, which is why it sits here (#86). Deliberately a
+	// different question from the one above: that one only takes the route away.
+	async function handleDeleteRuleSet(tag: string) {
+		if (!confirm($t('routes.deleteRuleSetEntirelyConfirm', { values: { tag } }))) return;
+		try {
+			await api.deleteRuleSet(tag);
+			ruleSets = ruleSets.filter((rs) => rs.tag !== tag);
+			hasChanges = true;
+			unsavedChanges.markChanged('Routes', `Deleted rule set ${tag}`);
+			notifications.success($t('ruleSets.ruleSetDeleted'));
+		} catch (e) {
+			notifications.error(`${e}`);
+		}
+	}
+
 	async function handleReorder(from: number, to: number) {
 		// Both ends are positions: remember the rule being moved AND the one whose
 		// place it should take, then re-locate both when the turn comes.
@@ -585,6 +601,22 @@
 										{/each}
 										<option value="__reject__">&#9940; REJECT</option>
 									</select>
+									<!-- The second half of the two-stage delete (#86): removing a
+									     mapping above drops the rule-set here, and removing it HERE
+									     is what actually deletes it. Without this the only way out
+									     was the Rule Sets page, which is not where the rule-set is
+									     being looked at. -->
+									<button
+										type="button"
+										class="action-btn-danger ml-auto"
+										title={$t('routes.deleteRuleSetEntirely', { values: { tag: ruleSet.tag } })}
+										aria-label={$t('routes.deleteRuleSetEntirely', { values: { tag: ruleSet.tag } })}
+										onclick={() => handleDeleteRuleSet(ruleSet.tag)}
+									>
+										<svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+											<path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
+										</svg>
+									</button>
 								</div>
 							{/each}
 						</div>
