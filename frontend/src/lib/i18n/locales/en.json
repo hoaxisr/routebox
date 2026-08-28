@@ -1002,7 +1002,7 @@
     "disableExpire": "Disable expire",
     "optimistic": "Optimistic caching",
     "fallback": "Fallback DNS",
-    "fallbackHint": "Ask the primary server first; if it answers with one of the codes below, ask the fallback server instead. Adds a few generated rules at the end of the rule list, managed here.",
+    "fallbackHint": "Ask the primary server first; if it answers with one of the codes below, ask the next server in the chain. Adds a few generated rules at the end of the rule list, managed here.",
     "fallbackNeedsTwoServers": "Needs at least two DNS servers.",
     "fallbackPrimary": "Primary server",
     "fallbackServer": "Fallback servers",

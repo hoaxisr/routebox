@@ -244,6 +244,15 @@ func (m *Manager) applyDnsFallback(in map[string]interface{}) error {
 		return fmt.Errorf("DNS fallback needs a primary server")
 	}
 	rawServers, _ := in["fallbacks"].([]interface{})
+	// A panel tab open across an upgrade still sends the pre-#70 single "fallback"
+	// string. Rejecting it would fail EVERY save on the DNS page — including the
+	// ones that have nothing to do with the fallback — until the operator thought
+	// to reload, which is the exact failure #68 already had once.
+	if len(rawServers) == 0 {
+		if legacy, _ := in["fallback"].(string); legacy != "" {
+			rawServers = []interface{}{legacy}
+		}
+	}
 	var fallbacks []string
 	seen := map[string]bool{primary: true}
 	for _, v := range rawServers {

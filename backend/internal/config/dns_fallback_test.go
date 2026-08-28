@@ -158,6 +158,28 @@ func TestDnsFallbackRejectsRepeatedServer(t *testing.T) {
 	}
 }
 
+// A panel tab open across an upgrade still sends the pre-#70 single "fallback"
+// string. It has to keep working, or every save on the DNS page fails until the
+// operator reloads — and nothing on the page says that is what to do.
+func TestDnsFallbackAcceptsPreChainPayload(t *testing.T) {
+	m := fallbackManager(t, `{`+twoServers+`}`)
+	err := m.UpdateDnsSettings(map[string]interface{}{"fallback": map[string]interface{}{
+		"enabled": true, "primary": "primary", "fallback": "backup",
+		"rcodes": []interface{}{"SERVFAIL"},
+	}})
+	if err != nil {
+		t.Fatalf("UpdateDnsSettings: %v", err)
+	}
+	got := m.GetDnsSettings()["fallback"].(map[string]interface{})
+	want := map[string]interface{}{
+		"enabled": true, "primary": "primary", "fallbacks": []interface{}{"backup"},
+		"rcodes": []interface{}{"SERVFAIL"},
+	}
+	if !reflect.DeepEqual(got, want) {
+		t.Fatalf("read back %#v, want %#v", got, want)
+	}
+}
+
 // A block the panel cannot rewrite must not read back as one it owns. It used to:
 // the panel then re-sent it with every unrelated DNS change and the write side
 // rejected all of them, so nothing on the page could be saved at all.

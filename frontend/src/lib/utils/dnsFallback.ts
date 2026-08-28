@@ -20,7 +20,11 @@ import type { DnsRule } from '$lib/types';
  */
 export const FALLBACK_RCODES = ['NXDOMAIN', 'SERVFAIL', 'REFUSED', 'NOTIMP', 'FORMERR'];
 
-const keyCount = (r: DnsRule) => Object.keys(r).filter((k) => r[k as keyof DnsRule] !== undefined).length;
+// Null-safe on purpose: dns.rules can carry a literal null, and the Go side reads
+// one as "not a rule I own" rather than failing. Throwing here instead would take
+// the whole DNS page down over a rule this parser does not even want.
+const keyCount = (r: DnsRule | null | undefined) =>
+	r ? Object.keys(r).filter((k) => r[k as keyof DnsRule] !== undefined).length : 0;
 
 export function fallbackStart(rules: DnsRule[]): number {
 	const none = rules.length;
@@ -28,7 +32,7 @@ export function fallbackStart(rules: DnsRule[]): number {
 	if (i < 1) return none;
 
 	const last = rules[i];
-	if (keyCount(last) !== 2 || last.match_response !== true || last.action !== 'respond') return none;
+	if (!last || keyCount(last) !== 2 || last.match_response !== true || last.action !== 'respond') return none;
 	i--;
 
 	// One hop: the run of per-rcode rules with `action`, all naming one server.
@@ -40,6 +44,7 @@ export function fallbackStart(rules: DnsRule[]): number {
 		for (; i >= 0; i--) {
 			const r = rules[i];
 			if (
+				!r ||
 				keyCount(r) !== 4 ||
 				r.match_response !== true ||
 				r.action !== action ||
@@ -70,7 +75,7 @@ export function fallbackStart(rules: DnsRule[]): number {
 	if (i < 0) return none;
 
 	const head = rules[i];
-	if (keyCount(head) !== 2 || head.action !== 'evaluate' || !head.server) return none;
+	if (!head || keyCount(head) !== 2 || head.action !== 'evaluate' || !head.server) return none;
 	// A server twice in the chain is a loop the panel never writes.
 	const seen = new Set([head.server]);
 	for (const s of servers) {

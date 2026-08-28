@@ -16,8 +16,10 @@ export function getAWGVersion(ep: Endpoint): string {
 	// AWG3 signature: header protection, content padding, or rekey-after-time.
 	const hasAwg3 = !!(ep.header_protection_key || ep.content_padding_addition || ep.rekey_after_time);
 
-	// h1-h4 hold a range ("lo-hi") rather than a single header type.
-	const isRange = (val: unknown) => val !== undefined && val !== null && String(val).includes('-');
+	// h1-h4 hold a range ("lo-hi") rather than a single header type. Matched whole
+	// rather than by the presence of a minus: a negative number is not a range,
+	// and reading one as AWG 2.0 would label the endpoint off a typo.
+	const isRange = (val: unknown) => /^\d+-\d+$/.test(String(val ?? '').trim());
 	const hasHRanges = isRange(ep.h1) || isRange(ep.h2) || isRange(ep.h3) || isRange(ep.h4);
 
 	// AWG 3.0: awg3-only params present (also carries s/h, so check before 2.0)

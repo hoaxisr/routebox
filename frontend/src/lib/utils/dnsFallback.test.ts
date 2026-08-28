@@ -84,4 +84,19 @@ describe('fallbackStart', () => {
 		];
 		expect(fallbackStart(rules)).toBe(rules.length);
 	});
+
+	// dns.rules can carry a literal null. The backend reads one as "not a rule I
+	// own"; throwing here instead would take the whole DNS page down over a rule
+	// this parser does not even want.
+	it('survives a null element in the rule list', () => {
+		expect(() => fallbackStart([null as unknown as DnsRule])).not.toThrow();
+		expect(fallbackStart([null as unknown as DnsRule])).toBe(1);
+		const rules = [
+			null as unknown as DnsRule,
+			{ action: 'evaluate', server: 'primary' },
+			{ match_response: true, response_rcode: 'NXDOMAIN', action: 'route', server: 'fb' },
+			{ match_response: true, action: 'respond' }
+		] as DnsRule[];
+		expect(fallbackStart(rules)).toBe(1);
+	});
 });
