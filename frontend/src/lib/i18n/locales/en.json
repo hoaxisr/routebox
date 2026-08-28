@@ -1729,6 +1729,7 @@
     "down": "down",
     "peers": "Clients",
     "wanIface": "WAN interface",
+    "liveStale": "Panel unreachable — figures are stale",
     "loadFailed": "Failed to load AmneziaWG status",
     "moduleMissing": "The amneziawg kernel module is not loaded. Load it before enabling the server.",
     "natOrphan": "NAT rule is missing — traffic may not be forwarded. Re-enable to repair.",

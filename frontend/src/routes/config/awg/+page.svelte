@@ -64,21 +64,39 @@
 		}
 	}
 
-	async function refreshStatus() {
+	// True when the last background refresh could not reach the panel, so the
+	// figures on screen are older than they look.
+	let liveStale = $state(false);
+
+	// quiet is the 5s poll, which must not shout. A dropped request there is
+	// ordinary — the panel restarting after Apply, the admin's own tunnel blipping
+	// while AWG comes up, a laptop waking — and a toast per tick turned every one
+	// of those into "Failed to fetch" on repeat (#78). Silent, but not invisible:
+	// the strip says the numbers are stale until a refresh gets through.
+	async function refreshStatus(quiet = false) {
 		try {
 			status = await api.awgStatus();
+			liveStale = false;
 		} catch (e) {
-			notifications.error(`${$t('awg.loadFailed')}: ${e}`);
+			if (!quiet) notifications.error(`${$t('awg.loadFailed')}: ${e}`);
+			liveStale = true;
 		}
 	}
 
-	async function refreshPeers() {
-		peers = status?.enabled ? await api.getAwgPeers() : [];
+	async function refreshPeers(quiet = false) {
+		try {
+			peers = status?.enabled ? await api.getAwgPeers() : [];
+		} catch (e) {
+			// Unguarded before, so a failure here rejected inside the poll's
+			// interval callback — an unhandled rejection every five seconds.
+			if (!quiet) notifications.error(`${$t('awg.loadFailed')}: ${e}`);
+			liveStale = true;
+		}
 	}
 
-	async function refreshLive() {
-		await refreshStatus();
-		await refreshPeers();
+	async function refreshLive(quiet = false) {
+		await refreshStatus(quiet);
+		await refreshPeers(quiet);
 	}
 
 	let poll: ReturnType<typeof setInterval> | null = null;
@@ -178,7 +196,7 @@
 		// The online dots and traffic figures are only meaningful live — poll while
 		// the tab is open, skipping a tick that would race a save/enable in flight.
 		poll = setInterval(() => {
-			if (!loading && !saving && !enabling) refreshLive();
+			if (!loading && !saving && !enabling) refreshLive(true);
 		}, 5000);
 	});
 
@@ -224,6 +242,10 @@
 					</div>
 				{/if}
 			</div>
+
+			{#if liveStale}
+				<span class="status-badge info stale">{$t('awg.liveStale')}</span>
+			{/if}
 
 			<div class="strip-divider"></div>
 
@@ -545,6 +567,11 @@
 	.strip-state .sub {
 		color: var(--ctp-overlay1);
 		font-size: 0.75rem;
+	}
+	/* The counters beside it keep their last value while the panel is unreachable;
+	   this says so, instead of a toast per five-second tick (#78). */
+	.stale {
+		flex-shrink: 0;
 	}
 	.strip-divider {
 		width: 1px;
