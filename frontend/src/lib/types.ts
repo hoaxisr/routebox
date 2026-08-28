@@ -195,9 +195,11 @@ export interface DnsRule {
 // dns.rules that re-asks a second server on an error rcode (#68).
 export interface DnsFallback {
 	enabled: boolean;
-	primary?: string;    // asked first (action: evaluate)
-	fallback?: string;   // re-asked when the primary answers with one of the rcodes
-	rcodes?: string[];   // NXDOMAIN / SERVFAIL / REFUSED / NOTIMP / FORMERR
+	primary?: string;      // asked first (action: evaluate)
+	// Asked in order, each when the one before it answered with one of the rcodes.
+	// The chain stops at the first server that answers with anything else.
+	fallbacks?: string[];
+	rcodes?: string[];     // NXDOMAIN / SERVFAIL / REFUSED / NOTIMP / FORMERR
 }
 
 export interface DnsSettings {

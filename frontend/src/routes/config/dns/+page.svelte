@@ -247,10 +247,41 @@
 			settings.fallback = {
 				enabled: true,
 				primary,
-				fallback: (dnsServers.find((s) => s.tag !== primary) ?? dnsServers[0]).tag,
+				fallbacks: [(dnsServers.find((s) => s.tag !== primary) ?? dnsServers[0]).tag],
 				rcodes: ['NXDOMAIN', 'SERVFAIL', 'REFUSED']
 			};
 		}
+		handleSettingsChange();
+	}
+
+	// Servers not already in the chain — asking one of them twice in a row does
+	// nothing, and the backend refuses a chain that repeats one (#70).
+	const chainFree = $derived(
+		dnsServers.filter(
+			(s) => s.tag !== settings.fallback?.primary && !(settings.fallback?.fallbacks ?? []).includes(s.tag)
+		)
+	);
+
+	function setFallbackAt(index: number, tag: string) {
+		const next = [...(settings.fallback?.fallbacks ?? [])];
+		next[index] = tag;
+		settings.fallback = { ...settings.fallback!, fallbacks: next };
+		handleSettingsChange();
+	}
+
+	function addFallback() {
+		if (chainFree.length === 0) return;
+		settings.fallback = {
+			...settings.fallback!,
+			fallbacks: [...(settings.fallback?.fallbacks ?? []), chainFree[0].tag]
+		};
+		handleSettingsChange();
+	}
+
+	function removeFallback(index: number) {
+		const next = (settings.fallback?.fallbacks ?? []).filter((_, i) => i !== index);
+		if (next.length === 0) return; // a chain with no fallback is the switch being off
+		settings.fallback = { ...settings.fallback!, fallbacks: next };
 		handleSettingsChange();
 	}
 
@@ -483,22 +514,45 @@
 								class="w-full px-3 py-2 bg-[var(--ctp-base)] border border-[var(--ctp-surface2)] rounded-lg text-[var(--ctp-text)] focus:outline-none focus:ring-2 focus:ring-[var(--ctp-primary)]"
 							>
 								{#each dnsServers as srv}
-									<option value={srv.tag} disabled={srv.tag === settings.fallback?.fallback}>{srv.tag}</option>
+									<option value={srv.tag} disabled={(settings.fallback?.fallbacks ?? []).includes(srv.tag)}>{srv.tag}</option>
 								{/each}
 							</select>
 						</div>
 						<div>
-							<label for="fallback-secondary" class="block text-sm text-[var(--ctp-overlay1)] mb-1">{$t('dns.fallbackServer')}</label>
-							<select
-								id="fallback-secondary"
-								bind:value={settings.fallback.fallback}
-								onchange={handleSettingsChange}
-								class="w-full px-3 py-2 bg-[var(--ctp-base)] border border-[var(--ctp-surface2)] rounded-lg text-[var(--ctp-text)] focus:outline-none focus:ring-2 focus:ring-[var(--ctp-primary)]"
-							>
-								{#each dnsServers as srv}
-									<option value={srv.tag} disabled={srv.tag === settings.fallback?.primary}>{srv.tag}</option>
+							<span class="block text-sm text-[var(--ctp-overlay1)] mb-1">{$t('dns.fallbackServer')}</span>
+							<div class="space-y-2">
+								{#each settings.fallback.fallbacks ?? [] as server, i (i)}
+									<div class="flex items-center gap-2">
+										<select
+											value={server}
+											onchange={(e) => setFallbackAt(i, e.currentTarget.value)}
+											aria-label="{$t('dns.fallbackServer')} {i + 1}"
+											class="flex-1 min-w-0 px-3 py-2 bg-[var(--ctp-base)] border border-[var(--ctp-surface2)] rounded-lg text-[var(--ctp-text)] focus:outline-none focus:ring-2 focus:ring-[var(--ctp-primary)]"
+										>
+											{#each dnsServers as srv}
+												<option
+													value={srv.tag}
+													disabled={srv.tag !== server &&
+														(srv.tag === settings.fallback?.primary ||
+															(settings.fallback?.fallbacks ?? []).includes(srv.tag))}
+												>{srv.tag}</option>
+											{/each}
+										</select>
+										{#if (settings.fallback.fallbacks ?? []).length > 1}
+											<button type="button" class="action-btn-danger" onclick={() => removeFallback(i)}
+												title={$t('common.delete')} aria-label="{$t('common.delete')} {server}">
+												<svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12" /></svg>
+											</button>
+										{/if}
+									</div>
 								{/each}
-							</select>
+								{#if chainFree.length > 0}
+									<button type="button" class="text-sm text-[var(--ctp-primary)] hover:underline" onclick={addFallback}>
+										+ {$t('dns.fallbackAddServer')}
+									</button>
+								{/if}
+							</div>
+							<p class="mt-1 text-xs text-[var(--ctp-overlay0)]">{$t('dns.fallbackChainHint')}</p>
 						</div>
 					</div>
 					<div class="mt-3">

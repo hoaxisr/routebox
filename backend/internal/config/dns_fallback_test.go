@@ -22,7 +22,7 @@ func TestDnsFallbackRoundTrip(t *testing.T) {
 	m := fallbackManager(t, `{`+twoServers+`, "rules": [{"domain": ["example.com"], "server": "primary"}]}`)
 
 	err := m.UpdateDnsSettings(map[string]interface{}{"fallback": map[string]interface{}{
-		"enabled": true, "primary": "primary", "fallback": "backup",
+		"enabled": true, "primary": "primary", "fallbacks": []interface{}{"backup"},
 		"rcodes": []interface{}{"NXDOMAIN", "SERVFAIL"},
 	}})
 	if err != nil {
@@ -39,7 +39,7 @@ func TestDnsFallbackRoundTrip(t *testing.T) {
 
 	got := m.GetDnsSettings()["fallback"].(map[string]interface{})
 	want := map[string]interface{}{
-		"enabled": true, "primary": "primary", "fallback": "backup",
+		"enabled": true, "primary": "primary", "fallbacks": []interface{}{"backup"},
 		"rcodes": []interface{}{"NXDOMAIN", "SERVFAIL"},
 	}
 	if !reflect.DeepEqual(got, want) {
@@ -61,7 +61,7 @@ func TestDnsFallbackRoundTrip(t *testing.T) {
 func TestDnsFallbackEmitsExactRuleShape(t *testing.T) {
 	m := fallbackManager(t, `{`+twoServers+`}`)
 	err := m.UpdateDnsSettings(map[string]interface{}{"fallback": map[string]interface{}{
-		"enabled": true, "primary": "primary", "fallback": "backup",
+		"enabled": true, "primary": "primary", "fallbacks": []interface{}{"backup"},
 		"rcodes": []interface{}{"NXDOMAIN", "SERVFAIL"},
 	}})
 	if err != nil {
@@ -75,6 +75,86 @@ func TestDnsFallbackEmitsExactRuleShape(t *testing.T) {
 	}
 	if got := m.getDnsArray("rules"); !reflect.DeepEqual(got, want) {
 		t.Fatalf("tail = %#v\nwant %#v", got, want)
+	}
+}
+
+const threeServers = `"servers": [{"tag": "primary", "type": "udp", "server": "1.1.1.1"}, {"tag": "backup", "type": "udp", "server": "8.8.8.8"}, {"tag": "last", "type": "udp", "server": "9.9.9.9"}]`
+
+// #70: a chain longer than one hop. Every fallback but the last is an `evaluate`,
+// which replaces the response the rules below it match on, so the chain stops at
+// the first server that answers; only the last is a terminal `route`. Verified
+// against the real binary with three local resolvers — this pins the shape that
+// behaviour depends on.
+func TestDnsFallbackChainEmitsExactRuleShape(t *testing.T) {
+	m := fallbackManager(t, `{`+threeServers+`}`)
+	err := m.UpdateDnsSettings(map[string]interface{}{"fallback": map[string]interface{}{
+		"enabled": true, "primary": "primary", "fallbacks": []interface{}{"backup", "last"},
+		"rcodes": []interface{}{"NXDOMAIN", "SERVFAIL"},
+	}})
+	if err != nil {
+		t.Fatalf("UpdateDnsSettings: %v", err)
+	}
+	want := []interface{}{
+		map[string]interface{}{"action": "evaluate", "server": "primary"},
+		map[string]interface{}{"match_response": true, "response_rcode": "NXDOMAIN", "action": "evaluate", "server": "backup"},
+		map[string]interface{}{"match_response": true, "response_rcode": "SERVFAIL", "action": "evaluate", "server": "backup"},
+		map[string]interface{}{"match_response": true, "response_rcode": "NXDOMAIN", "action": "route", "server": "last"},
+		map[string]interface{}{"match_response": true, "response_rcode": "SERVFAIL", "action": "route", "server": "last"},
+		map[string]interface{}{"match_response": true, "action": "respond"},
+	}
+	if got := m.getDnsArray("rules"); !reflect.DeepEqual(got, want) {
+		t.Fatalf("tail = %#v\nwant %#v", got, want)
+	}
+
+	got := m.GetDnsSettings()["fallback"].(map[string]interface{})
+	wantRead := map[string]interface{}{
+		"enabled": true, "primary": "primary", "fallbacks": []interface{}{"backup", "last"},
+		"rcodes": []interface{}{"NXDOMAIN", "SERVFAIL"},
+	}
+	if !reflect.DeepEqual(got, wantRead) {
+		t.Fatalf("read back %#v, want %#v", got, wantRead)
+	}
+}
+
+// Every block written before #70 has a single terminal route hop and no evaluate
+// hops. It must keep reading back — as a one-element chain — or the first save
+// after an upgrade would silently drop the operator's fallback.
+func TestDnsFallbackReadsPreChainBlock(t *testing.T) {
+	m := fallbackManager(t, `{`+twoServers+`, "rules": [
+		{"action": "evaluate", "server": "primary"},
+		{"match_response": true, "response_rcode": "SERVFAIL", "action": "route", "server": "backup"},
+		{"match_response": true, "action": "respond"}]}`)
+	got := m.GetDnsSettings()["fallback"].(map[string]interface{})
+	want := map[string]interface{}{
+		"enabled": true, "primary": "primary", "fallbacks": []interface{}{"backup"},
+		"rcodes": []interface{}{"SERVFAIL"},
+	}
+	if !reflect.DeepEqual(got, want) {
+		t.Fatalf("read back %#v, want %#v", got, want)
+	}
+}
+
+// A server twice in the chain asks it twice in a row for nothing, and a fallback
+// equal to the primary re-asks the server that just failed. Both are useless
+// rather than broken, which is the kind of thing nobody notices.
+func TestDnsFallbackRejectsRepeatedServer(t *testing.T) {
+	for name, chain := range map[string][]interface{}{
+		"a fallback repeated":         {"backup", "backup"},
+		"a fallback equal to primary": {"backup", "primary"},
+	} {
+		t.Run(name, func(t *testing.T) {
+			m := fallbackManager(t, `{`+threeServers+`}`)
+			err := m.UpdateDnsSettings(map[string]interface{}{"fallback": map[string]interface{}{
+				"enabled": true, "primary": "primary", "fallbacks": chain,
+				"rcodes": []interface{}{"NXDOMAIN"},
+			}})
+			if err == nil {
+				t.Fatal("accepted a chain that asks one server twice")
+			}
+			if !strings.Contains(err.Error(), "twice") {
+				t.Fatalf("rejected for some other reason: %v", err)
+			}
+		})
 	}
 }
 
@@ -111,7 +191,7 @@ func TestDnsFallbackIgnoresBlocksItCannotRewrite(t *testing.T) {
 func TestDnsFallbackSurvivesServerRename(t *testing.T) {
 	m := fallbackManager(t, `{`+twoServers+`}`)
 	err := m.UpdateDnsSettings(map[string]interface{}{"fallback": map[string]interface{}{
-		"enabled": true, "primary": "primary", "fallback": "backup", "rcodes": []interface{}{"NXDOMAIN"},
+		"enabled": true, "primary": "primary", "fallbacks": []interface{}{"backup"}, "rcodes": []interface{}{"NXDOMAIN"},
 	}})
 	if err != nil {
 		t.Fatalf("UpdateDnsSettings: %v", err)
@@ -139,7 +219,7 @@ func TestDnsFallbackSurvivesServerRename(t *testing.T) {
 func TestDnsFallbackRefusesToShareWithHandWrittenRules(t *testing.T) {
 	m := fallbackManager(t, `{`+twoServers+`, "rules": [{"action": "evaluate", "server": "primary"}, {"domain": ["example.com"], "server": "backup"}]}`)
 	err := m.UpdateDnsSettings(map[string]interface{}{"fallback": map[string]interface{}{
-		"enabled": true, "primary": "primary", "fallback": "backup", "rcodes": []interface{}{"NXDOMAIN"},
+		"enabled": true, "primary": "primary", "fallbacks": []interface{}{"backup"}, "rcodes": []interface{}{"NXDOMAIN"},
 	}})
 	if err == nil {
 		t.Fatalf("want a refusal, got rules %#v", m.getDnsArray("rules"))
@@ -154,7 +234,7 @@ func TestDnsFallbackRefusesToShareWithHandWrittenRules(t *testing.T) {
 func TestDeleteDnsServerBlockedByFallbackTail(t *testing.T) {
 	m := fallbackManager(t, `{`+twoServers+`}`)
 	err := m.UpdateDnsSettings(map[string]interface{}{"fallback": map[string]interface{}{
-		"enabled": true, "primary": "primary", "fallback": "backup", "rcodes": []interface{}{"NXDOMAIN"},
+		"enabled": true, "primary": "primary", "fallbacks": []interface{}{"backup"}, "rcodes": []interface{}{"NXDOMAIN"},
 	}})
 	if err != nil {
 		t.Fatalf("UpdateDnsSettings: %v", err)
@@ -177,7 +257,7 @@ func TestDnsFallbackRewritesInPlace(t *testing.T) {
 	on := func(t *testing.T, codes ...interface{}) {
 		t.Helper()
 		err := m.UpdateDnsSettings(map[string]interface{}{"fallback": map[string]interface{}{
-			"enabled": true, "primary": "primary", "fallback": "backup", "rcodes": codes,
+			"enabled": true, "primary": "primary", "fallbacks": []interface{}{"backup"}, "rcodes": codes,
 		}})
 		if err != nil {
 			t.Fatalf("UpdateDnsSettings: %v", err)
@@ -199,9 +279,9 @@ func TestDnsFallbackRejectsBadInput(t *testing.T) {
 	cases := map[string]map[string]interface{}{
 		"unknown server":  {"enabled": true, "primary": "primary", "fallback": "nope", "rcodes": []interface{}{"NXDOMAIN"}},
 		"same server":     {"enabled": true, "primary": "primary", "fallback": "primary", "rcodes": []interface{}{"NXDOMAIN"}},
-		"no rcodes":       {"enabled": true, "primary": "primary", "fallback": "backup", "rcodes": []interface{}{}},
-		"unknown rcode":   {"enabled": true, "primary": "primary", "fallback": "backup", "rcodes": []interface{}{"WHATEVER"}},
-		"missing primary": {"enabled": true, "fallback": "backup", "rcodes": []interface{}{"NXDOMAIN"}},
+		"no rcodes":       {"enabled": true, "primary": "primary", "fallbacks": []interface{}{"backup"}, "rcodes": []interface{}{}},
+		"unknown rcode":   {"enabled": true, "primary": "primary", "fallbacks": []interface{}{"backup"}, "rcodes": []interface{}{"WHATEVER"}},
+		"missing primary": {"enabled": true, "fallbacks": []interface{}{"backup"}, "rcodes": []interface{}{"NXDOMAIN"}},
 	}
 	for name, in := range cases {
 		t.Run(name, func(t *testing.T) {
@@ -221,7 +301,7 @@ func TestDnsFallbackRejectsBadInput(t *testing.T) {
 func TestCreateDnsRuleLandsBeforeFallback(t *testing.T) {
 	m := fallbackManager(t, `{`+twoServers+`}`)
 	err := m.UpdateDnsSettings(map[string]interface{}{"fallback": map[string]interface{}{
-		"enabled": true, "primary": "primary", "fallback": "backup", "rcodes": []interface{}{"NXDOMAIN"},
+		"enabled": true, "primary": "primary", "fallbacks": []interface{}{"backup"}, "rcodes": []interface{}{"NXDOMAIN"},
 	}})
 	if err != nil {
 		t.Fatalf("UpdateDnsSettings: %v", err)

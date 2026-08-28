@@ -48,4 +48,40 @@ describe('fallbackStart', () => {
 	])('does not claim a tail: %s', (_name, rules) => {
 		expect(fallbackStart(rules as DnsRule[])).toBe((rules as DnsRule[]).length);
 	});
+
+	// #70: a chain longer than one hop — the extra fallbacks are `evaluate` rules
+	// between the head and the terminal `route`. The whole block must still hide as
+	// one unit, or the page splices the operator's next rule into the middle of it.
+	it('finds the start of a multi-hop chain', () => {
+		const rules: DnsRule[] = [
+			{ domain: ['example.com'], server: 'primary' },
+			{ action: 'evaluate', server: 'primary' },
+			{ match_response: true, response_rcode: 'NXDOMAIN', action: 'evaluate', server: 'fb1' },
+			{ match_response: true, response_rcode: 'SERVFAIL', action: 'evaluate', server: 'fb1' },
+			{ match_response: true, response_rcode: 'NXDOMAIN', action: 'route', server: 'fb2' },
+			{ match_response: true, response_rcode: 'SERVFAIL', action: 'route', server: 'fb2' },
+			{ match_response: true, action: 'respond' }
+		];
+		expect(fallbackStart(rules)).toBe(1);
+	});
+
+	it('refuses a chain that asks one server twice', () => {
+		const rules: DnsRule[] = [
+			{ action: 'evaluate', server: 'primary' },
+			{ match_response: true, response_rcode: 'NXDOMAIN', action: 'evaluate', server: 'fb1' },
+			{ match_response: true, response_rcode: 'NXDOMAIN', action: 'route', server: 'fb1' },
+			{ match_response: true, action: 'respond' }
+		];
+		expect(fallbackStart(rules)).toBe(rules.length);
+	});
+
+	it('refuses a hop whose codes differ from the terminal hop', () => {
+		const rules: DnsRule[] = [
+			{ action: 'evaluate', server: 'primary' },
+			{ match_response: true, response_rcode: 'REFUSED', action: 'evaluate', server: 'fb1' },
+			{ match_response: true, response_rcode: 'NXDOMAIN', action: 'route', server: 'fb2' },
+			{ match_response: true, action: 'respond' }
+		];
+		expect(fallbackStart(rules)).toBe(rules.length);
+	});
 });
