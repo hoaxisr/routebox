@@ -165,3 +165,44 @@ func TestSave_NoOpWhenNotDirty(t *testing.T) {
 		t.Errorf("expected no rewrite; got mtime change: %v -> %v", info1.ModTime(), info2.ModTime())
 	}
 }
+
+// A dual-stack inbound reports an IPv4 client as "::ffff:x". Entries written
+// before #71 carry that form, which is a second entry for a device that already
+// has one — the named one, usually, since the operator named it before the
+// duplicate appeared.
+func TestLoad_FoldsIPv4MappedDuplicates(t *testing.T) {
+	dir := t.TempDir()
+	path := filepath.Join(dir, "clients.toml")
+	body := `[[clients]]
+ip = "192.168.1.14"
+name = "laptop"
+note = "mine"
+first_seen = 1000
+last_seen = 2000
+
+[[clients]]
+ip = "::ffff:192.168.1.14"
+first_seen = 1500
+last_seen = 3000
+`
+	if err := os.WriteFile(path, []byte(body), 0644); err != nil {
+		t.Fatal(err)
+	}
+	m := New(path)
+	if err := m.Load(); err != nil {
+		t.Fatalf("Load: %v", err)
+	}
+	if _, ok := m.Get("::ffff:192.168.1.14"); ok {
+		t.Fatal("the mapped form is still its own entry")
+	}
+	e, ok := m.Get("192.168.1.14")
+	if !ok {
+		t.Fatal("the canonical entry is gone")
+	}
+	if e.Name != "laptop" || e.Note != "mine" {
+		t.Fatalf("the name the operator typed was lost: %+v", e)
+	}
+	if e.FirstSeen != 1000 || e.LastSeen != 3000 {
+		t.Fatalf("merged window = %d..%d, want 1000..3000", e.FirstSeen, e.LastSeen)
+	}
+}

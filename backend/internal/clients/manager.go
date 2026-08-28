@@ -69,6 +69,24 @@ func (m *Manager) Load() error {
 	m.byIP = make(map[string]*Entry, len(doc.Clients))
 	for i := range doc.Clients {
 		e := doc.Clients[i]
+		// Entries written before #71 can carry the IPv4-mapped form a dual-stack
+		// inbound reports ("::ffff:x"), which is a second entry for a device that
+		// already has one. Fold them together on the way in, keeping whichever of
+		// the pair carries a name — that is the one the operator typed.
+		e.IP = util.CanonicalClientIP(e.IP)
+		if prev, ok := m.byIP[e.IP]; ok {
+			if e.Name == "" && prev.Name != "" {
+				e.Name = prev.Name
+				e.Note = prev.Note
+			}
+			if prev.FirstSeen != 0 && (e.FirstSeen == 0 || prev.FirstSeen < e.FirstSeen) {
+				e.FirstSeen = prev.FirstSeen
+			}
+			if prev.LastSeen > e.LastSeen {
+				e.LastSeen = prev.LastSeen
+			}
+			m.dirty = true
+		}
 		m.byIP[e.IP] = &e
 	}
 	return nil

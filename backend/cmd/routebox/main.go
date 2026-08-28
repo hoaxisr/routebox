@@ -1412,8 +1412,10 @@ func runClientDiscovery(mgr *clients.Manager, clashAddr, secret string, stop <-c
 		}
 		now := time.Now()
 		for _, c := range data.Connections {
-			if c.Metadata.SourceIP != "" {
-				mgr.Observe(c.Metadata.SourceIP, now)
+			// Canonical, not raw: a dual-stack inbound reports an IPv4 client as
+			// "::ffff:x", which would become a second client entry for one device (#71).
+			if ip := util.CanonicalClientIP(c.Metadata.SourceIP); ip != "" {
+				mgr.Observe(ip, now)
 			}
 		}
 	}

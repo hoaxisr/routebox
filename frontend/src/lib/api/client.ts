@@ -1,4 +1,5 @@
 import type { ApiResponse, ProcessStatus, SingboxConfig, Endpoint, Outbound, Inbound, RuleSet, RuleSetUsage, RouteRule, RouteSettings, DnsServer, DnsRule, DnsSettings, LogSettings, ExperimentalSettings, ConnectionsResponse, ProxiesResponse, ClashProxy, TestRouteResponse, ConnectTestResponse, SettingsResponse, RouteBoxSettings, SingBoxVersion, DomainSetInfo, RuleSetSource, ClientEntry, TrafficHistoryResponse, TrafficRange, UpdatesStatus, UpdateProgress, UpdateTargetName, Subscription, SubscriptionInput, PanelUser, UserTrafficResponse, AwgStatus, AwgPeer, AwgPeerTraffic, MtprotoState, MtprotoStatus, MtprotoSettings, MtprotoClient, MtprotoConnection, MtprotoLink, MtprotoClientTraffic, DestNaive } from '$lib/types';
+import { canonicalizeConnections } from '$lib/utils/clientIp';
 
 const API_BASE = '/api';
 
@@ -536,7 +537,8 @@ export const api = {
 		requestRaw<{ delay: number }>(`/clash/proxies/${encodeURIComponent(name)}/delay?url=${encodeURIComponent(url)}&timeout=${timeout}`),
 
 	// Clash API proxy - Connections (raw Clash responses, no wrapper)
-	getConnections: () => requestRaw<ConnectionsResponse>('/clash/connections'),
+	getConnections: () =>
+		requestRaw<ConnectionsResponse>('/clash/connections').then(canonicalizeConnections),
 	closeConnection: (id: string) =>
 		requestRaw(`/clash/connections/${encodeURIComponent(id)}`, { method: 'DELETE' }),
 	closeAllConnections: () =>
@@ -805,7 +807,7 @@ export function createConnectionsStream(
 ): StreamHandle {
 	return createReconnectingStream({
 		path: '/api/clash/connections',
-		onMessage: (data) => onMessage(data as ConnectionsResponse),
+		onMessage: (data) => onMessage(canonicalizeConnections(data as ConnectionsResponse)),
 		onError,
 		onStatus: (status) => {
 			onStatus?.(status);

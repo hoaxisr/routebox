@@ -7,6 +7,8 @@ import (
 	"net/http"
 	"sync"
 	"time"
+
+	"routebox/backend/internal/util"
 )
 
 // ConnectionSample is a snapshot of one connection at sample time.
@@ -161,8 +163,10 @@ func (s *Sampler) fetchSnapshot(clashAddr, secret string) ([]ConnectionSample, e
 			}
 		}
 		out[i] = ConnectionSample{
-			ID:       c.ID,
-			Source:   c.Metadata.SourceIP,
+			ID: c.ID,
+			// Canonical, so one device is one history bucket even when a dual-stack
+			// inbound reports it as "::ffff:x" (#71).
+			Source:   util.CanonicalClientIP(c.Metadata.SourceIP),
 			Domain:   domain,
 			Chain:    chain,
 			Upload:   c.Upload,
