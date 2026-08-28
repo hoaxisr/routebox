@@ -3,6 +3,7 @@ package api
 import (
 	"errors"
 	"net/http"
+	"strings"
 
 	"github.com/go-chi/chi/v5"
 
@@ -39,6 +40,14 @@ func (h *Handler) SpeedTestOutbound(w http.ResponseWriter, r *http.Request) {
 			// config is read-only, and the client reacts to it by re-reading that
 			// state. "Come back in a moment" is a different thing entirely.
 			writeError(w, http.StatusTooManyRequests, err.Error())
+			return
+		}
+		// 502 is for a measurement that ran and failed out there. Being unable to
+		// read our own config, or having no binary to run, is ours.
+		if strings.HasPrefix(err.Error(), "read config:") ||
+			strings.Contains(err.Error(), "no amnezia-box binary") ||
+			strings.HasPrefix(err.Error(), "parse config:") {
+			writeError(w, http.StatusInternalServerError, err.Error())
 			return
 		}
 		writeError(w, http.StatusBadGateway, err.Error())

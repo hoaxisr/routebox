@@ -136,6 +136,13 @@
 			]);
 			subs = sb;
 			outbounds = ob;
+			// A measurement belongs to the outbound that was there when it ran.
+			// Keyed by tag it would otherwise outlive a delete and reappear under
+			// a different server that happens to reuse the name.
+			const live = new Set(ob.map((o) => o.tag));
+			speedResults = Object.fromEntries(
+				Object.entries(speedResults).filter(([tag]) => live.has(tag))
+			);
 			endpoints = ep;
 			rules = rl;
 			dnsServers = dns;
@@ -192,6 +199,8 @@
 
 		try {
 			await api.deleteOutbound(tag);
+			const { [tag]: _dropped, ...rest } = speedResults;
+			speedResults = rest;
 			notifications.success($t('outbounds.outboundDeleted'));
 			unsavedChanges.markChanged($t('outbounds.title'), `${$t('common.delete')} "${tag}"`);
 			await fetchData();

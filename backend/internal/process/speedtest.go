@@ -4,8 +4,10 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"math"
 	"os"
 	"os/exec"
+	"path/filepath"
 	"regexp"
 	"strconv"
 	"strings"
@@ -61,6 +63,13 @@ const SpeedTestMaxRuntime = 12
 // rule can apply; dropping them costs nothing and removes that whole class of
 // failure. Outbounds, endpoints and dns are kept whole: a selector's members, a
 // detour chain and the resolver are all reachable from the tag under test.
+//
+// KNOWN, and kept on purpose: endpoints stay, so a wireguard endpoint whose port
+// the running process already holds gets bound twice. Measured — the userspace
+// implementation falls back to an ephemeral port and the test completes; a
+// kernel-mode endpoint would fail service creation instead, and that failure
+// arrives as the tool's own message rather than as a wrong number. Dropping
+// endpoints is not an option: for AWG/WireGuard the endpoint IS the outbound.
 func (m *Manager) RunSpeedTest(ctx context.Context, configPath, outbound string) (SpeedTest, error) {
 	if outbound == "" {
 		return SpeedTest{}, fmt.Errorf("outbound is required")
@@ -88,7 +97,16 @@ func (m *Manager) RunSpeedTest(ctx context.Context, configPath, outbound string)
 	if err != nil {
 		return SpeedTest{}, err
 	}
-	tmp, err := os.CreateTemp("", "routebox-speedtest-*.json")
+	// Beside the config, never /tmp. This copy carries every secret the config
+	// does — wireguard private keys, reality keys, user passwords — and the
+	// `defer` below is not a guarantee: a SIGKILL, an OOM, or a `systemctl
+	// restart` landing mid-run (shutdown waits 5s, this can run for ~37) leaves
+	// the file behind. Next to the config it inherits that directory's
+	// permissions and ownership instead of sitting in a world-listable /tmp, and
+	// the sweep clears whatever an earlier kill left.
+	dir := filepath.Dir(configPath)
+	sweepSpeedTestLeftovers(dir)
+	tmp, err := os.CreateTemp(dir, speedTestTempPrefix+"*.json")
 	if err != nil {
 		return SpeedTest{}, err
 	}
@@ -108,7 +126,14 @@ func (m *Manager) RunSpeedTest(ctx context.Context, configPath, outbound string)
 		if ctx.Err() == context.DeadlineExceeded {
 			return SpeedTest{}, fmt.Errorf("speed test timed out")
 		}
-		return SpeedTest{}, fmt.Errorf("%s", speedTestFailure(string(out)))
+		// The exec error matters when the binary never ran — a path that is a
+		// directory or has lost its exec bit produces NO output, and reporting
+		// only "no output" hides "permission denied" from the one person who
+		// could fix it.
+		if reason := speedTestFailure(string(out)); reason != noSpeedTestOutput {
+			return SpeedTest{}, fmt.Errorf("%s", reason)
+		}
+		return SpeedTest{}, fmt.Errorf("could not run the speed test: %w", err)
 	}
 
 	res, perr := ParseSpeedTest(string(out))
@@ -131,6 +156,10 @@ func TrimConfigForSpeedTest(raw []byte) ([]byte, error) {
 	}
 	delete(cfg, "inbounds")
 	delete(cfg, "experimental")
+	// log.output is a panel setting: leaving it in makes the measuring process
+	// append its own INFO/DEBUG to the service's log file — the very log the
+	// monitor shows. Its output is captured from the pipe anyway.
+	delete(cfg, "log")
 	if route, ok := cfg["route"].(map[string]interface{}); ok {
 		delete(route, "rules")
 		delete(route, "rule_set")
@@ -179,7 +208,7 @@ func ParseSpeedTest(output string) (SpeedTest, error) {
 		if !ok {
 			continue
 		}
-		bps := int64(val * scale)
+		bps := int64(math.Round(val * scale))
 		if m[1] == "Download" {
 			res.DownloadBps, res.DownloadAccuracy = bps, m[4]
 		} else {
@@ -204,6 +233,28 @@ func ParseSpeedTest(output string) (SpeedTest, error) {
 	return res, nil
 }
 
+// noSpeedTestOutput is the sentinel for "nothing was printed at all", which the
+// caller distinguishes so it can fall back to the exec error instead.
+const noSpeedTestOutput = "the speed test produced no output"
+
+// speedTestTempPrefix names the trimmed copies so a sweep can recognise its own
+// leftovers without touching config.json or its backups.
+const speedTestTempPrefix = ".routebox-speedtest-"
+
+// sweepSpeedTestLeftovers removes trimmed copies an earlier run could not clean
+// up because it was killed. Best effort: a failure here must not stop the test.
+func sweepSpeedTestLeftovers(dir string) {
+	entries, err := os.ReadDir(dir)
+	if err != nil {
+		return
+	}
+	for _, e := range entries {
+		if !e.IsDir() && strings.HasPrefix(e.Name(), speedTestTempPrefix) {
+			os.Remove(filepath.Join(dir, e.Name()))
+		}
+	}
+}
+
 // speedTestFailure reduces the tool's output to the one line worth showing.
 // Its own FATAL carries the real cause ("outbound not found", a dial error);
 // without one, the last non-empty line is still better than the whole log.
@@ -218,7 +269,7 @@ func speedTestFailure(output string) string {
 			return s
 		}
 	}
-	return "the speed test produced no output"
+	return noSpeedTestOutput
 }
 
 var reANSI = regexp.MustCompile(`\x1b\[[0-9;]*[a-zA-Z]`)

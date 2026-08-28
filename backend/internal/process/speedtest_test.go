@@ -168,3 +168,60 @@ func TestTrimConfigForSpeedTest_Invalid(t *testing.T) {
 		t.Fatal("invalid JSON was accepted")
 	}
 }
+
+// The trimmed copy carries every secret the config does, so it must not be
+// written to a shared /tmp, and a run that was killed must not leave one behind.
+func TestSweepSpeedTestLeftovers(t *testing.T) {
+	dir := t.TempDir()
+	keep := []string{"config.json", "config.json.bak", "config.json.1700000000.bak"}
+	drop := []string{speedTestTempPrefix + "123.json", speedTestTempPrefix + "abc.json"}
+	for _, n := range append(append([]string{}, keep...), drop...) {
+		if err := os.WriteFile(filepath.Join(dir, n), []byte("{}"), 0600); err != nil {
+			t.Fatal(err)
+		}
+	}
+	sweepSpeedTestLeftovers(dir)
+
+	for _, n := range keep {
+		if _, err := os.Stat(filepath.Join(dir, n)); err != nil {
+			t.Errorf("the sweep took %s, which is not its file", n)
+		}
+	}
+	for _, n := range drop {
+		if _, err := os.Stat(filepath.Join(dir, n)); err == nil {
+			t.Errorf("%s survived the sweep", n)
+		}
+	}
+}
+
+// log.output is a panel setting; left in, the measuring process appends its own
+// lines to the service log the monitor shows.
+func TestTrimConfigForSpeedTest_DropsLog(t *testing.T) {
+	out, err := TrimConfigForSpeedTest([]byte(`{"log":{"level":"info","output":"/var/log/routebox/box.log"},"outbounds":[{"type":"direct","tag":"direct"}]}`))
+	if err != nil {
+		t.Fatalf("TrimConfigForSpeedTest: %v", err)
+	}
+	var cfg map[string]interface{}
+	if err := json.Unmarshal(out, &cfg); err != nil {
+		t.Fatal(err)
+	}
+	if _, ok := cfg["log"]; ok {
+		t.Error("log survived the trim; the test would write into the service's log file")
+	}
+}
+
+// 33.9 Mbps is 33_900_000, not one bit less.
+func TestParseSpeedTest_RoundsRatherThanTruncates(t *testing.T) {
+	got, err := ParseSpeedTest("Download Capacity:       33.9 Mbps           Accuracy: High\n" +
+		"Upload Capacity:         0.0 bps           Accuracy: Low\n")
+	if err != nil {
+		t.Fatalf("ParseSpeedTest: %v", err)
+	}
+	if got.DownloadBps != 33_900_000 {
+		t.Errorf("DownloadBps = %d, want 33900000", got.DownloadBps)
+	}
+	// A summary that really says zero is a result, not a parse failure.
+	if got.UploadBps != 0 {
+		t.Errorf("UploadBps = %d, want 0", got.UploadBps)
+	}
+}
