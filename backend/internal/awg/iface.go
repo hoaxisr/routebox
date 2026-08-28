@@ -162,12 +162,16 @@ func (m *Manager) iface_RemovePeer(ctx context.Context, pub string) error {
 
 // iface_Handshakes returns pubkey -> last-handshake unix-seconds from
 // `awg show <iface> latest-handshakes` (tab-separated "<pubkey>\t<unix>"; 0 = never).
-// Degrades to an empty map on any error so callers just report everyone offline.
-func (m *Manager) iface_Handshakes(ctx context.Context) map[string]int64 {
+//
+// ok is false when the command itself failed — a deleted interface, a missing
+// `awg` tool. The map is empty either way, but "nobody has handshaked" and
+// "nobody could be asked" are different claims, and reporting the second as the
+// first is exactly what #75 was about.
+func (m *Manager) iface_Handshakes(ctx context.Context) (map[string]int64, bool) {
 	out := map[string]int64{}
 	res, _, err := m.run.Run(ctx, "awg", "show", m.iface, "latest-handshakes")
 	if err != nil {
-		return out
+		return out, false
 	}
 	for _, line := range strings.Split(res, "\n") {
 		f := strings.Fields(line)
@@ -180,7 +184,7 @@ func (m *Manager) iface_Handshakes(ctx context.Context) map[string]int64 {
 		}
 		out[f[0]] = ts
 	}
-	return out
+	return out, true
 }
 
 // peerXfer is one peer's cumulative byte counters (since the iface came up).
@@ -188,12 +192,12 @@ type peerXfer struct{ rx, tx int64 }
 
 // iface_Transfer returns pubkey -> {rx,tx} bytes from `awg show <iface> transfer`
 // (tab-separated "<pubkey>\t<rx>\t<tx>"). Cumulative since iface up; resets on
-// awg-quick restart. Degrades to an empty map on any error.
-func (m *Manager) iface_Transfer(ctx context.Context) map[string]peerXfer {
+// awg-quick restart. ok is false when the command failed — see iface_Handshakes.
+func (m *Manager) iface_Transfer(ctx context.Context) (map[string]peerXfer, bool) {
 	out := map[string]peerXfer{}
 	res, _, err := m.run.Run(ctx, "awg", "show", m.iface, "transfer")
 	if err != nil {
-		return out
+		return out, false
 	}
 	for _, line := range strings.Split(res, "\n") {
 		f := strings.Fields(line)
@@ -207,7 +211,7 @@ func (m *Manager) iface_Transfer(ctx context.Context) map[string]peerXfer {
 		}
 		out[f[0]] = peerXfer{rx: rx, tx: tx}
 	}
-	return out
+	return out, true
 }
 
 // iface_ShowPeers returns the live peer pubkeys (for reconcile).

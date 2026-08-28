@@ -418,7 +418,7 @@ func TestHandshakeOnline(t *testing.T) {
 	now := time.Now().Unix()
 	f.outputs["awg show awg-rb0 latest-handshakes"] =
 		"PUBfresh\t" + itoa(now-10) + "\nPUBstale\t" + itoa(now-9999) + "\nPUBnever\t0\n"
-	hs := m.iface_Handshakes(context.Background())
+	hs, _ := m.iface_Handshakes(context.Background())
 	if !isOnline(hs["PUBfresh"], now) {
 		t.Fatal("fresh handshake must be online")
 	}
@@ -434,7 +434,7 @@ func TestIfaceTransferParse(t *testing.T) {
 	f := newFakeRunner()
 	m := newEnableManager(t, f)
 	f.outputs["awg show awg-rb0 transfer"] = "PUBa\t1024\t2048\nPUBb\t0\t0\n"
-	xf := m.iface_Transfer(context.Background())
+	xf, _ := m.iface_Transfer(context.Background())
 	if xf["PUBa"].rx != 1024 || xf["PUBa"].tx != 2048 {
 		t.Fatalf("PUBa = %+v, want {1024 2048}", xf["PUBa"])
 	}

@@ -3,6 +3,7 @@ package awg
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"net/http"
 	"net/http/httptest"
 	"testing"
@@ -192,6 +193,69 @@ func TestListPeersSingbox_RowsSayWhereTheirNumbersCameFrom(t *testing.T) {
 		}
 		if p.LastHandshake != 0 || p.Online {
 			t.Errorf("peer = %+v, want a real never-connected row", p)
+		}
+	})
+}
+
+// The kind says how much the numbers are worth; the reason says why. They are
+// different questions, and the panel's advice hangs on the second: telling an
+// operator to update a binary that is already current, or to check a proxy that
+// is running, is worse than saying nothing.
+func TestListPeersSingbox_ReasonIsNotTheKind(t *testing.T) {
+	newWithPeer := func(t *testing.T) *Manager {
+		t.Helper()
+		m, _, _ := newSingboxMgr(t)
+		if _, err := m.AddPeer(context.Background(), "alice"); err != nil {
+			t.Fatal(err)
+		}
+		return m
+	}
+
+	t.Run("an old binary is unsupported, whether or not traffic can stand in", func(t *testing.T) {
+		m := newWithPeer(t)
+		m.SetPeerStats(peerStatsOf(nil, ErrAwgPeerStatsUnsupported))
+		m.SetPeerLiveness(livenessOf(map[string]int64{}))
+		p := m.ListPeers(context.Background())[0]
+		if p.Stats != PeerStatsApproximate || p.StatsReason != PeerStatsReasonUnsupported {
+			t.Errorf("with liveness: %q/%q, want approximate/unsupported", p.Stats, p.StatsReason)
+		}
+
+		// Monitoring off: nothing to infer from, but the CAUSE is still the binary,
+		// and the advice must stay "update it" rather than "check the proxy".
+		m2 := newWithPeer(t)
+		m2.SetPeerStats(peerStatsOf(nil, ErrAwgPeerStatsUnsupported))
+		p2 := m2.ListPeers(context.Background())[0]
+		if p2.Stats != PeerStatsUnavailable || p2.StatsReason != PeerStatsReasonUnsupported {
+			t.Errorf("without liveness: %q/%q, want unavailable/unsupported", p2.Stats, p2.StatsReason)
+		}
+	})
+
+	t.Run("a current binary that did not answer is unreachable, not out of date", func(t *testing.T) {
+		// What every Apply looks like: amnezia-box restarts, the 5s poll hits a
+		// refused socket. Advising an update here is a false diagnosis.
+		m := newWithPeer(t)
+		m.SetPeerStats(peerStatsOf(nil, errors.New("connection refused")))
+		m.SetPeerLiveness(livenessOf(map[string]int64{}))
+		p := m.ListPeers(context.Background())[0]
+		if p.StatsReason != PeerStatsReasonUnreachable {
+			t.Errorf("StatsReason = %q, want %q", p.StatsReason, PeerStatsReasonUnreachable)
+		}
+	})
+
+	t.Run("nothing wired at all blames neither", func(t *testing.T) {
+		m := newWithPeer(t)
+		p := m.ListPeers(context.Background())[0]
+		if p.Stats != PeerStatsUnavailable || p.StatsReason != PeerStatsReasonNoSource {
+			t.Errorf("%q/%q, want unavailable/no_source", p.Stats, p.StatsReason)
+		}
+	})
+
+	t.Run("a working fetch carries no reason at all", func(t *testing.T) {
+		m := newWithPeer(t)
+		m.SetPeerStats(peerStatsOf(map[string]PeerStat{}, nil))
+		p := m.ListPeers(context.Background())[0]
+		if p.Stats != PeerStatsLive || p.StatsReason != PeerStatsReasonNone {
+			t.Errorf("%q/%q, want live with no reason", p.Stats, p.StatsReason)
 		}
 	})
 }

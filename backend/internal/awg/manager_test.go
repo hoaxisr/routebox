@@ -577,3 +577,43 @@ func TestRenderVPNLinkUnknownPeer(t *testing.T) {
 		t.Fatalf("err = %v, want a not-found error, not ErrLinkUnrepresentable (that maps to HTTP 422, not 404)", err)
 	}
 }
+
+// #75, kernel side: `awg show` failing leaves both maps empty, which reads
+// exactly like a server nobody has connected to. Stamping those rows "live" is
+// the same lie the singbox side was fixed for.
+func TestListPeersKernel_FailedShowIsNotZero(t *testing.T) {
+	withPeer := func(t *testing.T, f *fakeRunner) *Manager {
+		t.Helper()
+		m := newTestManager(t, f)
+		m.backend = "kernel"
+		if err := m.store.Put(Peer{PublicKey: "K1", PrivateKey: "p", Address: "10.10.0.2/32", Name: "alice"}); err != nil {
+			t.Fatal(err)
+		}
+		return m
+	}
+
+	t.Run("a working show is live", func(t *testing.T) {
+		f := newFakeRunner()
+		f.outputs["awg show awg-rb0 latest-handshakes"] = "K1\t100\n"
+		f.outputs["awg show awg-rb0 transfer"] = "K1\t10\t20\n"
+		p := withPeer(t, f).ListPeers(context.Background())[0]
+		if p.Stats != PeerStatsLive || p.StatsReason != PeerStatsReasonNone {
+			t.Fatalf("%q/%q, want live with no reason", p.Stats, p.StatsReason)
+		}
+		if p.Rx != 10 || p.Tx != 20 {
+			t.Errorf("rx/tx = %d/%d, want 10/20", p.Rx, p.Tx)
+		}
+	})
+
+	t.Run("a deleted interface is unavailable, not never-connected", func(t *testing.T) {
+		f := newFakeRunner()
+		f.errsContains["awg show"] = errors.New("Unable to access interface: No such device")
+		p := withPeer(t, f).ListPeers(context.Background())[0]
+		if p.Stats != PeerStatsUnavailable {
+			t.Fatalf("Stats = %q, want %q — an unreadable interface is not a quiet one", p.Stats, PeerStatsUnavailable)
+		}
+		if p.StatsReason != PeerStatsReasonUnreachable {
+			t.Errorf("StatsReason = %q, want %q", p.StatsReason, PeerStatsReasonUnreachable)
+		}
+	})
+}

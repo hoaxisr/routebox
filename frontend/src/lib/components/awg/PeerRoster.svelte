@@ -70,22 +70,29 @@
 		}
 	}
 
-	// The roster's worst provenance: every row comes from the same fetch, so one
-	// note covers the list rather than repeating on each line.
-	const degraded = $derived(
-		peers.some((p) => p.stats === 'unavailable')
-			? 'unavailable'
-			: peers.some((p) => p.stats === 'approximate')
-				? 'approximate'
-				: ''
+	// Every row of one fetch shares a provenance, so the note covers the list
+	// rather than repeating per line. Keyed on the REASON, not on how degraded the
+	// numbers are: "this build has no per-peer route" and "the proxy did not
+	// answer" need opposite advice, and both can land on either kind.
+	const degradedReason = $derived(
+		peers.find((p) => p.stats && p.stats !== 'live')?.stats_reason ?? ''
+	);
+	const degradedNote = $derived(
+		degradedReason === 'unsupported'
+			? $t('awg.statsNoteUnsupported')
+			: degradedReason === 'unreachable'
+				? $t('awg.statsNoteUnreachable')
+				: degradedReason === 'no_source'
+					? $t('awg.statsNoteNoSource')
+					: ''
 	);
 
 	// Why a row shows a dash instead of a figure (#75). Empty for the live path,
 	// where every number on the row was actually measured.
 	function statsHint(p: AwgPeer): string {
-		if (p.stats === 'approximate') return $t('awg.statsApproximate');
-		if (p.stats === 'unavailable') return $t('awg.statsUnavailable');
-		return '';
+		if (!p.stats || p.stats === 'live') return '';
+		if (p.stats_reason === 'unsupported') return $t('awg.statsApproximate');
+		return $t('awg.statsUnavailable');
 	}
 
 	// "last seen" relative label from a unix-seconds handshake (0 = never).
@@ -219,8 +226,8 @@
 
 <!-- One line for the whole roster: a dash per row says "not known", this says
      why, and for the common cause it names the fix (#75). -->
-{#if degraded}
-	<div class="stats-note">{degraded === 'approximate' ? $t('awg.statsApproximateNote') : $t('awg.statsUnavailableNote')}</div>
+{#if degradedNote}
+	<div class="stats-note">{degradedNote}</div>
 {/if}
 
 {#if peers.length === 0}
@@ -237,10 +244,19 @@
 				</span>
 				<div class="peer-info">
 					<div class="peer-name">
+						<!-- The dot is an assertion about connectivity. When the state
+						     could not be read at all it must not make one — grey there
+						     would read as "offline", which is precisely the claim we
+						     do not have (#75). -->
 						<span
 							class="conn-dot"
-							class:on={isLive(p)}
-							title={isLive(p) ? $t('awg.online') : $t('awg.offline')}
+							class:on={isLive(p) && p.stats !== 'unavailable'}
+							class:unknown={p.stats === 'unavailable'}
+							title={p.stats === 'unavailable'
+								? $t('awg.statsUnavailable')
+								: isLive(p)
+									? $t('awg.online')
+									: $t('awg.offline')}
 						></span>
 						{p.name || '(unnamed)'}
 						{#if expiryStatus(p.expires_at, nowSec()) === 'suspended'}
@@ -448,6 +464,10 @@
 		display: flex;
 		align-items: center;
 		gap: 0.45rem;
+	}
+	.conn-dot.unknown {
+		background: transparent;
+		box-shadow: inset 0 0 0 1.5px var(--ctp-overlay0);
 	}
 	.conn-dot {
 		width: 8px;

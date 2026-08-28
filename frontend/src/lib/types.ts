@@ -1170,6 +1170,12 @@ export interface AwgPeer {
 	 * the panel assumed before.
 	 */
 	stats?: 'live' | 'approximate' | 'unavailable';
+	/**
+	 * WHY the numbers are degraded, which is a different question from how much
+	 * they are worth: an old binary and an unreachable one land on the same
+	 * `stats` but need opposite advice.
+	 */
+	stats_reason?: 'unsupported' | 'unreachable' | 'no_source';
 	expires_at: number;     // unix seconds; 0 = never expires
 }
 

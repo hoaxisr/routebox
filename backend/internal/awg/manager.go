@@ -42,8 +42,32 @@ type PeerSummary struct {
 	// peer whose numbers could not be read is indistinguishable from one that
 	// really never connected and moved no bytes — which is what the roster showed,
 	// as fact, on every binary predating the per-peer UAPI route.
-	Stats PeerStatsKind `json:"stats"`
+	//
+	// omitempty because AddPeer returns a summary before any of this is known,
+	// and an empty string is not one of the values the panel's type allows.
+	Stats PeerStatsKind `json:"stats,omitempty"`
+	// StatsReason is WHY the numbers are degraded, which is a different question
+	// from how much they are worth: "this binary has no per-peer route" and "the
+	// proxy did not answer" both land on the same kind but need opposite advice,
+	// and telling an operator to update a binary that is already current — or to
+	// check a process that is running fine — is worse than saying nothing.
+	StatsReason PeerStatsReason `json:"stats_reason,omitempty"`
 }
+
+// PeerStatsReason explains a degraded PeerStatsKind.
+type PeerStatsReason string
+
+const (
+	PeerStatsReasonNone PeerStatsReason = ""
+	// The running amnezia-box predates GET /awg/{tag}/peers. Updating it fixes this.
+	PeerStatsReasonUnsupported PeerStatsReason = "unsupported"
+	// The binary has the route but did not answer — restarting after Apply, a
+	// stopped proxy, a Clash API that moved. Updating changes nothing.
+	PeerStatsReasonUnreachable PeerStatsReason = "unreachable"
+	// Nothing is wired to ask: no per-peer route AND no traffic history to infer
+	// from, which is what monitoring being switched off looks like.
+	PeerStatsReasonNoSource PeerStatsReason = "no_source"
+)
 
 // PeerStatsKind is where a peer row's numbers came from.
 type PeerStatsKind string
@@ -533,8 +557,15 @@ func (m *Manager) ListPeers(ctx context.Context) []PeerSummary {
 	if m.backendIs("singbox") {
 		return m.listPeersSingbox()
 	}
-	hs := m.iface_Handshakes(ctx)
-	xf := m.iface_Transfer(ctx)
+	hs, hsOK := m.iface_Handshakes(ctx)
+	xf, xfOK := m.iface_Transfer(ctx)
+	// `awg show` failing — deleted interface, missing tool — leaves both maps
+	// empty, which is indistinguishable from a quiet server unless the rows say
+	// so. Marking them live here would restate the very lie #75 is about.
+	kernelKind, kernelWhy := PeerStatsLive, PeerStatsReasonNone
+	if !hsOK || !xfOK {
+		kernelKind, kernelWhy = PeerStatsUnavailable, PeerStatsReasonUnreachable
+	}
 	now := time.Now().Unix()
 	out := []PeerSummary{}
 	for _, p := range m.store.List() {
@@ -544,7 +575,7 @@ func (m *Manager) ListPeers(ctx context.Context) []PeerSummary {
 		out = append(out, PeerSummary{
 			Name: p.Name, PublicKey: p.PublicKey, Address: p.Address,
 			LastHandshake: ts, Online: isOnline(ts, now), Rx: x.rx, Tx: x.tx,
-			ExpiresAt: p.ExpiresAt, Stats: PeerStatsLive,
+			ExpiresAt: p.ExpiresAt, Stats: kernelKind, StatsReason: kernelWhy,
 		})
 	}
 	return out
@@ -575,12 +606,19 @@ func (m *Manager) listPeersSingbox() []PeerSummary {
 
 	now := time.Now().Unix()
 	var stats map[string]PeerStat
+	// Why the fetch did not produce numbers, kept apart from whether it did.
+	why := PeerStatsReasonNoSource
 	if statsFn != nil {
 		var err error
 		stats, err = statsFn()
 		errText := ""
 		if err != nil {
 			errText = err.Error()
+			if errors.Is(err, ErrAwgPeerStatsUnsupported) {
+				why = PeerStatsReasonUnsupported
+			} else {
+				why = PeerStatsReasonUnreachable
+			}
 		}
 		if errText != lastErr {
 			if err != nil && !errors.Is(err, ErrAwgPeerStatsUnsupported) {
@@ -596,7 +634,7 @@ func (m *Manager) listPeersSingbox() []PeerSummary {
 	kind := PeerStatsUnavailable
 	switch {
 	case stats != nil:
-		kind = PeerStatsLive
+		kind, why = PeerStatsLive, PeerStatsReasonNone
 	case liveFn != nil:
 		seen = liveFn(now - lastSeenLookbackSec)
 		kind = PeerStatsApproximate
@@ -616,7 +654,7 @@ func (m *Manager) listPeersSingbox() []PeerSummary {
 		out = append(out, PeerSummary{
 			Name: p.Name, PublicKey: p.PublicKey, Address: p.Address,
 			LastHandshake: ts, Online: isOnline(ts, now), Rx: rx, Tx: tx,
-			ExpiresAt: p.ExpiresAt, Stats: kind,
+			ExpiresAt: p.ExpiresAt, Stats: kind, StatsReason: why,
 		})
 	}
 	return out

@@ -450,13 +450,15 @@ func (m *Manager) Status(ctx context.Context) AWGStatus {
 	peers, _ := m.iface_ShowPeers(ctx)
 	online := 0
 	now := time.Now().Unix()
-	for _, ts := range m.iface_Handshakes(ctx) {
+	handshakes, _ := m.iface_Handshakes(ctx)
+	for _, ts := range handshakes {
 		if isOnline(ts, now) {
 			online++
 		}
 	}
 	var rx, tx int64
-	for _, x := range m.iface_Transfer(ctx) {
+	transfer, _ := m.iface_Transfer(ctx)
+	for _, x := range transfer {
 		rx += x.rx
 		tx += x.tx
 	}
