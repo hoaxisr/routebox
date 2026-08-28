@@ -3,7 +3,8 @@
 	import { t } from 'svelte-i18n';
 	import { api } from '$lib/api/client';
 	import { notifications, unsavedChanges } from '$lib/stores';
-	import type { Outbound, Endpoint, RouteRule, DnsServer, RouteSettings, ClashProxy } from '$lib/types';
+	import type { Outbound, Endpoint, RouteRule, DnsServer, RouteSettings, ClashProxy, Subscription } from '$lib/types';
+	import { owningSubscription } from '$lib/utils/subscriptionTags';
 	import Modal from '$lib/components/shared/Modal.svelte';
 	import OutboundForm from '$lib/components/config/OutboundForm.svelte';
 
@@ -30,6 +31,12 @@
 	let realOutbounds = $derived(outbounds.filter(o => !serviceTypes.includes(o.type)));
 
 	let clashProxies = $state<Record<string, ClashProxy>>({});
+
+	// Subscriptions own their outbounds by tag and rewrite them wholesale on every
+	// refresh, so deleting one here lasts only until the next one. The list said
+	// nothing about that, which made the deletion look permanent (#80). A failed
+	// load leaves the list unmarked rather than blocking the page.
+	let subs = $state<Subscription[]>([]);
 
 	async function fetchProxyDelays() {
 		try {
@@ -93,13 +100,15 @@
 
 	async function fetchData() {
 		try {
-			const [ob, ep, rl, dns, rs] = await Promise.all([
+			const [ob, ep, rl, dns, rs, sb] = await Promise.all([
 				api.listOutbounds(),
 				api.listEndpoints(),
 				api.listRules(),
 				api.listDnsServers(),
-				api.getRouteSettings()
+				api.getRouteSettings(),
+				api.getSubscriptions().catch(() => [] as Subscription[])
 			]);
+			subs = sb;
 			outbounds = ob;
 			endpoints = ep;
 			rules = rl;
@@ -149,7 +158,11 @@
 	}
 
 	async function handleDelete(tag: string) {
-		if (!confirm($t('outbounds.confirmDelete', { values: { name: tag } }))) return;
+		const owner = owningSubscription(tag, subs);
+		const question = owner
+			? $t('outbounds.confirmDeleteSubscribed', { values: { name: tag, subscription: owner.name } })
+			: $t('outbounds.confirmDelete', { values: { name: tag } });
+		if (!confirm(question)) return;
 
 		try {
 			await api.deleteOutbound(tag);
@@ -239,6 +252,7 @@
 				<div class="space-y-2">
 					{#each serviceOutbounds as outbound}
 						{@const rulesCount = routeUsage.get(outbound.tag) || 0}
+						{@const subOwner = owningSubscription(outbound.tag, subs)}
 						{@const statusColor = getStatusColor(outbound.tag)}
 						<div class="bg-[var(--ctp-surface0)] rounded-xl p-4 hover:bg-[var(--ctp-surface1)] transition-colors border-l-4" style="border-color: {getTypeColor(outbound.type)}">
 							<div class="flex items-center justify-between">
@@ -254,6 +268,11 @@
 											<span class="px-2 py-0.5 text-xs rounded" style="background-color: color-mix(in srgb, {getTypeColor(outbound.type)} 20%, transparent); color: {getTypeColor(outbound.type)}">
 												{outbound.type}
 											</span>
+											{#if subOwner}
+												<span class="px-2 py-0.5 text-xs rounded" style="background-color: color-mix(in srgb, var(--ctp-primary) 15%, transparent); color: var(--ctp-primary)" title={$t('outbounds.fromSubscriptionHint')}>
+													{$t('outbounds.fromSubscription', { values: { name: subOwner.name } })}
+												</span>
+											{/if}
 											{#if rulesCount > 0}
 												<span class="px-2 py-0.5 text-xs bg-[var(--ctp-surface2)] rounded text-[var(--ctp-subtext1)]" title="{$t('outbounds.usedByRules')}">
 													{rulesCount} {rulesCount === 1 ? $t('outbounds.rule') : $t('outbounds.rules')}
@@ -312,6 +331,7 @@
 					{#each realOutbounds as outbound}
 						{@const rulesCount = routeUsage.get(outbound.tag) || 0}
 						{@const groups = containedIn.get(outbound.tag) || []}
+						{@const subOwner = owningSubscription(outbound.tag, subs)}
 						{@const statusColor = getStatusColor(outbound.tag)}
 						<div class="bg-[var(--ctp-surface0)] rounded-xl p-4 hover:bg-[var(--ctp-surface1)] transition-colors border-l-4" style="border-color: {getTypeColor(outbound.type)}">
 							<div class="flex items-center justify-between">
@@ -327,6 +347,11 @@
 											<span class="px-2 py-0.5 text-xs rounded" style="background-color: color-mix(in srgb, {getTypeColor(outbound.type)} 20%, transparent); color: {getTypeColor(outbound.type)}">
 												{outbound.type}
 											</span>
+											{#if subOwner}
+												<span class="px-2 py-0.5 text-xs rounded" style="background-color: color-mix(in srgb, var(--ctp-primary) 15%, transparent); color: var(--ctp-primary)" title={$t('outbounds.fromSubscriptionHint')}>
+													{$t('outbounds.fromSubscription', { values: { name: subOwner.name } })}
+												</span>
+											{/if}
 											{#if rulesCount > 0}
 												<span class="px-2 py-0.5 text-xs bg-[var(--ctp-surface2)] rounded text-[var(--ctp-subtext1)]" title="{$t('outbounds.usedByRules')}">
 													{rulesCount} {rulesCount === 1 ? $t('outbounds.rule') : $t('outbounds.rules')}

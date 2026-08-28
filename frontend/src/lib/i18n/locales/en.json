@@ -353,6 +353,9 @@
     "pickerGroups": "Groups & basic",
     "editOutbound": "Edit Outbound",
     "deleteOutbound": "Delete Outbound",
+    "fromSubscription": "from {name}",
+    "fromSubscriptionHint": "Managed by a subscription: a refresh rewrites it, so deleting it here only lasts until then.",
+    "confirmDeleteSubscribed": "\"{name}\" comes from the subscription \"{subscription}\", which recreates it on the next refresh. Delete it anyway?",
     "confirmDelete": "Are you sure you want to delete outbound \"{name}\"?",
     "noOutbounds": "No outbounds configured",
     "types": {

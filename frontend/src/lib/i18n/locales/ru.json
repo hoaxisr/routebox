@@ -353,6 +353,9 @@
     "pickerGroups": "Группы и базовые",
     "editOutbound": "Изменить исходящее",
     "deleteOutbound": "Удалить исходящее",
+    "fromSubscription": "из «{name}»",
+    "fromSubscriptionHint": "Принадлежит подписке: обновление переписывает её outbound'ы, поэтому удаление здесь держится только до следующего обновления.",
+    "confirmDeleteSubscribed": "«{name}» принадлежит подписке «{subscription}» и вернётся при следующем её обновлении. Всё равно удалить?",
     "confirmDelete": "Удалить исходящее подключение «{name}»?",
     "noOutbounds": "Нет настроенных исходящих",
     "types": {
