@@ -1733,6 +1733,10 @@
     "trafficLoadFailed": "Failed to load traffic"
   },
   "awg": {
+    "statsApproximate": "Inferred from recorded traffic — this amnezia-box cannot report per-peer state",
+    "statsUnavailable": "Per-peer state could not be read",
+    "statsApproximateNote": "This amnezia-box build cannot report per-peer handshake and traffic, so “last seen” is inferred from recorded traffic and byte counts are shown as “—”. Updating amnezia-box on the Updates page restores the real figures.",
+    "statsUnavailableNote": "Per-peer state could not be read from amnezia-box, so connection and traffic are shown as “—” rather than as zeros. Check that the proxy is running.",
     "title": "AmneziaWG",
     "description": "AmneziaWG server inbound. Add clients and share their configs.",
     "module": "Module",

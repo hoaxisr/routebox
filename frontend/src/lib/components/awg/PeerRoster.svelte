@@ -70,6 +70,24 @@
 		}
 	}
 
+	// The roster's worst provenance: every row comes from the same fetch, so one
+	// note covers the list rather than repeating on each line.
+	const degraded = $derived(
+		peers.some((p) => p.stats === 'unavailable')
+			? 'unavailable'
+			: peers.some((p) => p.stats === 'approximate')
+				? 'approximate'
+				: ''
+	);
+
+	// Why a row shows a dash instead of a figure (#75). Empty for the live path,
+	// where every number on the row was actually measured.
+	function statsHint(p: AwgPeer): string {
+		if (p.stats === 'approximate') return $t('awg.statsApproximate');
+		if (p.stats === 'unavailable') return $t('awg.statsUnavailable');
+		return '';
+	}
+
 	// "last seen" relative label from a unix-seconds handshake (0 = never).
 	function lastSeen(ts: number): string {
 		if (!ts) return $t('awg.never');
@@ -199,6 +217,12 @@
 	</button>
 </div>
 
+<!-- One line for the whole roster: a dash per row says "not known", this says
+     why, and for the common cause it names the fix (#75). -->
+{#if degraded}
+	<div class="stats-note">{degraded === 'approximate' ? $t('awg.statsApproximateNote') : $t('awg.statsUnavailableNote')}</div>
+{/if}
+
 {#if peers.length === 0}
 	<div class="empty-state">
 		<strong>{$t('awg.emptyTitle')}</strong>
@@ -226,9 +250,16 @@
 					<div class="peer-meta">
 						<span class="addr">{p.address}</span>
 						<span class="dot-sep">·</span>
-						<span class="seen">{isLive(p) ? $t('awg.online') : lastSeen(p.last_handshake)}</span>
+						<span class="seen" title={statsHint(p)}>
+							{#if p.stats === 'unavailable'}—{:else}{isLive(p) ? $t('awg.online') : lastSeen(p.last_handshake)}{/if}
+						</span>
 						<span class="dot-sep">·</span>
-						<span class="xfer">↓ {formatBytes(p.rx)} &nbsp;↑ {formatBytes(p.tx)}</span>
+						<!-- Byte counts exist only on the live path. The fallback infers
+						     liveness from recorded traffic and has no counters at all, so
+						     printing 0 B there states a measurement nobody took (#75). -->
+						<span class="xfer" title={statsHint(p)}>
+							{#if p.stats && p.stats !== 'live'}—{:else}↓ {formatBytes(p.rx)} &nbsp;↑ {formatBytes(p.tx)}{/if}
+						</span>
 						{#if singbox}
 							<span class="dot-sep">·</span>
 							{#if !p.expires_at}
@@ -548,6 +579,15 @@
 	}
 	.peer-btn.primary:hover {
 		background: color-mix(in srgb, var(--ctp-primary) 22%, transparent);
+	}
+	.stats-note {
+		margin-bottom: 0.75rem;
+		padding: 0.5rem 0.75rem;
+		border-radius: 0.5rem;
+		background: color-mix(in srgb, var(--ctp-overlay1) 12%, transparent);
+		color: var(--ctp-subtext1);
+		font-size: 0.8125rem;
+		line-height: 1.4;
 	}
 	.empty-state {
 		border: 2px dashed var(--ctp-surface2);

@@ -37,7 +37,28 @@ type PeerSummary struct {
 	Rx            int64  `json:"rx"`             // cumulative bytes received (since iface up)
 	Tx            int64  `json:"tx"`             // cumulative bytes sent (since iface up)
 	ExpiresAt     int64  `json:"expires_at"`     // unix sec; 0 = never expires
+
+	// Stats says how much of the above was actually measured (#75). Without it a
+	// peer whose numbers could not be read is indistinguishable from one that
+	// really never connected and moved no bytes — which is what the roster showed,
+	// as fact, on every binary predating the per-peer UAPI route.
+	Stats PeerStatsKind `json:"stats"`
 }
+
+// PeerStatsKind is where a peer row's numbers came from.
+type PeerStatsKind string
+
+const (
+	// PeerStatsLive: the WireGuard device's own UAPI state. Everything is real.
+	PeerStatsLive PeerStatsKind = "live"
+	// PeerStatsApproximate: no per-peer route on this binary, so liveness is
+	// inferred from when the peer's tunnel IP last moved bytes through the box.
+	// Coarser, blind to a connected-but-idle peer — and byte COUNTS are not
+	// available this way at all, so Rx/Tx are unknown rather than zero.
+	PeerStatsApproximate PeerStatsKind = "approximate"
+	// PeerStatsUnavailable: nothing could be read. Every number is a placeholder.
+	PeerStatsUnavailable PeerStatsKind = "unavailable"
+)
 
 // onlineWindowSec: a peer counts as "online" if its last handshake is newer than
 // this. WireGuard rekeys roughly every ~120s while a tunnel is active, so 180s is a
@@ -519,10 +540,11 @@ func (m *Manager) ListPeers(ctx context.Context) []PeerSummary {
 	for _, p := range m.store.List() {
 		ts := hs[p.PublicKey]
 		x := xf[p.PublicKey]
+		// The kernel path reads `awg show` off a real interface: always measured.
 		out = append(out, PeerSummary{
 			Name: p.Name, PublicKey: p.PublicKey, Address: p.Address,
 			LastHandshake: ts, Online: isOnline(ts, now), Rx: x.rx, Tx: x.tx,
-			ExpiresAt: p.ExpiresAt,
+			ExpiresAt: p.ExpiresAt, Stats: PeerStatsLive,
 		})
 	}
 	return out
@@ -571,13 +593,21 @@ func (m *Manager) listPeersSingbox() []PeerSummary {
 	}
 
 	var seen map[string]int64
-	if stats == nil && liveFn != nil {
+	kind := PeerStatsUnavailable
+	switch {
+	case stats != nil:
+		kind = PeerStatsLive
+	case liveFn != nil:
 		seen = liveFn(now - lastSeenLookbackSec)
+		kind = PeerStatsApproximate
 	}
 
 	out := []PeerSummary{}
 	for _, p := range m.store.List() {
 		var ts, rx, tx int64
+		// A peer the device has but no stats for is a peer that has not handshaked
+		// yet — that IS "never connected", and reporting it as unknown would be
+		// its own lie. Only the whole-fetch failure above makes the row unknown.
 		if stat, ok := stats[p.PublicKey]; ok {
 			ts, rx, tx = stat.LastHandshake, stat.RxBytes, stat.TxBytes
 		} else if stats == nil {
@@ -586,7 +616,7 @@ func (m *Manager) listPeersSingbox() []PeerSummary {
 		out = append(out, PeerSummary{
 			Name: p.Name, PublicKey: p.PublicKey, Address: p.Address,
 			LastHandshake: ts, Online: isOnline(ts, now), Rx: rx, Tx: tx,
-			ExpiresAt: p.ExpiresAt,
+			ExpiresAt: p.ExpiresAt, Stats: kind,
 		})
 	}
 	return out

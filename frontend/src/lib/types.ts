@@ -1158,8 +1158,18 @@ export interface AwgPeer {
 	// that predates that route.
 	last_handshake: number; // unix seconds; 0 = never
 	online: boolean;        // within the server's online window
-	rx: number;             // cumulative bytes received; 0 on the traffic-fallback path
-	tx: number;             // cumulative bytes sent; 0 on the traffic-fallback path
+	rx: number;             // cumulative bytes received; meaningless unless stats === 'live'
+	tx: number;             // cumulative bytes sent; meaningless unless stats === 'live'
+	/**
+	 * Where this row's numbers came from (#75). Without it, "never connected,
+	 * 0 B" reads the same whether it was measured or simply could not be read.
+	 * - live: the WireGuard device's own state. Everything here is real.
+	 * - approximate: liveness inferred from recorded traffic; rx/tx are NOT known.
+	 * - unavailable: nothing could be read; every number is a placeholder.
+	 * Absent on a backend older than this field — treated as 'live', which is what
+	 * the panel assumed before.
+	 */
+	stats?: 'live' | 'approximate' | 'unavailable';
 	expires_at: number;     // unix seconds; 0 = never expires
 }
 
