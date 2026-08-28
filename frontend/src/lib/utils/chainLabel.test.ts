@@ -52,4 +52,28 @@ describe('isGroupOnlyChain', () => {
 	it('claims nothing without a group list', () => {
 		expect(isGroupOnlyChain(['auto'], new Set())).toBe(false);
 	});
+
+	// The walk stops at the FIRST group with no pick, which need not be the only
+	// hop: a selector over an unprobed urltest yields two hops, both groups, and
+	// the carrier is still unknown. Testing the chain's length missed this.
+	it('flags a nested group chain where the carrier is still unknown', () => {
+		expect(isGroupOnlyChain(['auto', 'manual'], groups)).toBe(true);
+		expect(isGroupOnlyChain('auto → manual', groups)).toBe(true);
+	});
+
+	it('leaves a nested chain alone once a real member carries it', () => {
+		expect(isGroupOnlyChain(['d1', 'auto', 'manual'], groups)).toBe(false);
+		expect(isGroupOnlyChain('d1 → auto → manual', groups)).toBe(false);
+	});
+
+	// Tags are operator-chosen. One containing the separator would not survive a
+	// split, so the stored string is matched whole first — otherwise the same
+	// connection is marked in the live view and unmarked in the history.
+	it('handles a group tag that contains the separator', () => {
+		const odd = new Set(['EU → auto']);
+		expect(isGroupOnlyChain('EU → auto', odd)).toBe(true);
+		expect(isGroupOnlyChain(['EU → auto'], odd)).toBe(true);
+		// and a real two-hop chain through it is still complete
+		expect(isGroupOnlyChain('d1 → EU → auto', odd)).toBe(false);
+	});
 });

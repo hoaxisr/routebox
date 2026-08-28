@@ -626,7 +626,7 @@
 			<path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 5l7 7-7 7" />
 		</svg>
 		<span class="font-medium text-sm text-[var(--ctp-text)] truncate">
-			{#if groupByChain}<span class="selection-chip">{key}</span>{#if groupOnly(key)}<span class="chain-partial" title={$t('connections.chainGroupOnlyHint')}>?</span>{/if}
+			{#if groupByChain}<span class="selection-chip">{key}</span>{#if groupOnly(key)}<span class="chain-partial flex-shrink-0" title={$t('connections.chainGroupOnlyHint')}>?</span>{/if}
 			{:else if name}{name}
 			{:else}<span class="font-mono">{key}</span>{/if}
 		</span>

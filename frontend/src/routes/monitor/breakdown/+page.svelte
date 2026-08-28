@@ -660,17 +660,21 @@ import { PRESETS as VOLUME_PRESETS, bytesFromUnit, splitBytes, type VolumeUnit }
 							style="width: {barWidth(b, buckets)};"
 						></div>
 						<div class="relative flex items-baseline justify-between gap-3">
-							<div class="min-w-0 flex-1 truncate text-sm" class:font-medium={active}
+							<!-- The marker sits OUTSIDE the truncating span: inside it, a long
+							     tag pushes it past the clip edge and it disappears. -->
+							<div class="min-w-0 flex-1 flex items-baseline gap-1 text-sm" class:font-medium={active}
 								class:text-[var(--ctp-primary)]={active}
 								class:text-[var(--ctp-text)]={!active}
 								title={b.key}>
-								{#if dim === 'source'}
-									{$clientNames.get(b.key) ?? b.key}
-								{:else}
-									{b.key}
-									{#if dim === 'chain' && isGroupOnlyChain(b.key, groups)}<span
-										class="chain-partial"
-										title={$t('connections.chainGroupOnlyHint')}>?</span>{/if}
+								<span class="truncate">
+									{#if dim === 'source'}
+										{$clientNames.get(b.key) ?? b.key}
+									{:else}
+										{b.key}
+									{/if}
+								</span>
+								{#if dim === 'chain' && isGroupOnlyChain(b.key, groups)}
+									<span class="chain-partial flex-shrink-0" title={$t('connections.chainGroupOnlyHint')}>?</span>
 								{/if}
 							</div>
 							<div class="flex items-baseline gap-2 flex-shrink-0 font-mono tabular-nums text-xs">
