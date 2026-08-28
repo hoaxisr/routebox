@@ -77,6 +77,7 @@
 					upMbps: 0, downMbps: 0, bbrProfile: '', ignoreClientBandwidth: false,
 					obfsType: '', obfsPassword: '',
 					obfsMinPacketSize: 0, obfsMaxPacketSize: 0,
+					naiveQuicCC: '',
 					mieruTransport: 'TCP', mieruListenPorts: '', trafficPattern: '', userHintIsMandatory: false
 				}
 	);

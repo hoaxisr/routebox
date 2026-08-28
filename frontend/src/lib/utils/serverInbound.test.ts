@@ -36,6 +36,7 @@ const base: ServerFormState = {
 	obfsMinPacketSize: 0,
 	obfsMaxPacketSize: 0,
 	transport: { type: 'raw' },
+	naiveQuicCC: '',
 	mieruTransport: 'TCP',
 	mieruListenPorts: '',
 	trafficPattern: '',
@@ -172,6 +173,37 @@ describe('parseServerInbound', () => {
 		const state = parseServerInbound(ib);
 		expect(state.bbrProfile).toBe('aggressive');
 		expect(state.ignoreClientBandwidth).toBe(true);
+	});
+
+	// #73: the naive INBOUND takes quic_congestion_control too, and a missing key
+	// already means "bbr" — writing one for the Default button would state a
+	// default as a choice. Same load-bearing protocol guard as hysteria2's keys:
+	// InboundForm carries one state object across protocol switches.
+	it('omits the naive congestion control when left on Default', () => {
+		const ib = buildServerInbound({
+			...base, type: 'naive', tlsMode: 'manual',
+			tls: { ...base.tls, certificate_path: '/c.pem', key_path: '/k.pem' },
+			users: [{ name: 'p', username: 'u', password: 'pw' }]
+		});
+		expect(ib.quic_congestion_control).toBeUndefined();
+	});
+
+	it('never emits the naive congestion control on another protocol', () => {
+		const ib = buildServerInbound({ ...base, type: 'vless', naiveQuicCC: 'bbr2_variant' });
+		expect(ib.quic_congestion_control).toBeUndefined();
+	});
+
+	it('round-trips the naive congestion control, including the server-only values', () => {
+		for (const cc of ['bbr', 'bbr_standard', 'bbr2', 'bbr2_variant', 'cubic', 'reno']) {
+			const ib = buildServerInbound({
+				...base, type: 'naive', tlsMode: 'manual',
+				tls: { ...base.tls, certificate_path: '/c.pem', key_path: '/k.pem' },
+				users: [{ name: 'p', username: 'u', password: 'pw' }],
+				naiveQuicCC: cc
+			});
+			expect(ib.quic_congestion_control).toBe(cc);
+			expect(parseServerInbound(ib).naiveQuicCC).toBe(cc);
+		}
 	});
 
 	it('round-trips hysteria2 obfs and bandwidth', () => {

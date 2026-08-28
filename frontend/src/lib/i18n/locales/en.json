@@ -924,6 +924,9 @@
       "ccClientDecides": "Off: each client decides. A client that announces its own rates gets Brutal, one that announces none gets BBR.",
       "ccBbrOnly": "On, with no Down limit: every client is put on BBR, whatever it asks for.",
       "ccBrutalOnly": "On, with a Down limit: clients that announce no rate of their own are REFUSED — they get an authentication failure and the server logs it at debug level only. Links issued by this panel carry no rates, so this turns away every client you handed out. Only clients configured with their own Up/Down get in, held to the rates above.",
+      "quicCC": "QUIC congestion control",
+      "quicCCHint": "Governs the HTTP/3 (QUIC) listener only; TCP connections are unaffected. Default is BBR. The server side offers two algorithms the client side does not.",
+      "quicCCName": {"bbr": "BBR", "bbr_standard": "BBR (standard)", "bbr2": "BBRv2", "bbr2_variant": "BBRv2 (variant)", "cubic": "CUBIC", "reno": "Reno"},
       "bbrProfile": "BBR profile",
       "bbrProfileHint": "Only applies to connections that end up on BBR. The default is Standard.",
       "bbr": {

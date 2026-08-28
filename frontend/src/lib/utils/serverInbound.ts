@@ -5,6 +5,15 @@ import { XHTTP_DEFAULT_PADDING } from './xhttp';
 export type TlsMode = 'acme' | 'reality' | 'manual' | 'panel';
 export type ServerInboundType = 'vless' | 'trojan' | 'naive' | 'hysteria2' | 'mieru';
 
+/**
+ * Congestion control a naive INBOUND may run its HTTP/3 listener with (#73).
+ * The fork's inbound takes two algorithms the outbound does not — bbr_standard
+ * (the BBRv1 sender) and bbr2_variant — so this list is deliberately not the
+ * one the outbound form offers. A missing key means "bbr"; anything outside
+ * this set is a decode error that stops the whole config from loading.
+ */
+export const NAIVE_QUIC_CC = ['bbr', 'bbr_standard', 'bbr2', 'bbr2_variant', 'cubic', 'reno'] as const;
+
 export const PANEL_CERT_PATH = '/etc/routebox/panel-cert/fullchain.pem';
 export const PANEL_KEY_PATH = '/etc/routebox/panel-cert/key.pem';
 
@@ -69,6 +78,9 @@ export interface ServerFormState {
 	/** gecko only; 0 = leave hysteria's default (512 / 1200). */
 	obfsMinPacketSize: number;
 	obfsMaxPacketSize: number;
+	/** naive: congestion control of the HTTP/3 listener; '' leaves the fork's
+	 *  default, which is BBR. */
+	naiveQuicCC: string;
 	mieruTransport: 'TCP' | 'UDP';
 	/** Free-text "lo-hi" ranges the mieru server binds on top of listenPort (#37). */
 	mieruListenPorts: string;
@@ -160,6 +172,15 @@ export function buildServerInbound(s: ServerFormState): Inbound {
 		} else if (tr.type === 'grpc') {
 			ib.transport = { type: 'grpc', service_name: tr.service_name?.trim() || '' } as unknown as Inbound['transport'];
 		}
+	}
+
+	// naive (#73). The inbound key exists on the fork exactly as it does on the
+	// outbound, but with two more values (bbr_standard, bbr2_variant), and it only
+	// governs the HTTP/3 listener. '' is left out entirely: the binary reads a
+	// missing key as "bbr", so writing one would state a default rather than a
+	// choice.
+	if (s.type === 'naive' && s.naiveQuicCC) {
+		ib.quic_congestion_control = s.naiveQuicCC;
 	}
 
 	if (s.type === 'hysteria2') {
@@ -330,6 +351,7 @@ export function parseServerInbound(ib: Inbound): ServerFormState {
 		obfsPassword: ib.obfs?.password ?? '',
 		obfsMinPacketSize: ib.obfs?.min_packet_size ?? 0,
 		obfsMaxPacketSize: ib.obfs?.max_packet_size ?? 0,
+		naiveQuicCC: ib.type === 'naive' && typeof ib.quic_congestion_control === 'string' ? ib.quic_congestion_control : '',
 		mieruTransport: (ib.type === 'mieru' && (ib.transport === 'UDP' || ib.transport === 'TCP')) ? ib.transport : 'TCP',
 		mieruListenPorts: formatMieruListenPorts(
 			Array.isArray(ib.listen_ports) ? (ib.listen_ports as string[]) : undefined

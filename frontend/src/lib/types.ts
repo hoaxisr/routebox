@@ -242,6 +242,10 @@ export interface Inbound {
 	ignore_client_bandwidth?: boolean; // hysteria2
 	bbr_profile?: string;              // hysteria2: standard | conservative | aggressive
 	obfs?: { type: string; password?: string; min_packet_size?: number; max_packet_size?: number }; // hysteria2
+	// naive: congestion control for the HTTP/3 (QUIC) listener. Unset behaves as
+	// "bbr". Takes a WIDER set than the naive OUTBOUND, which has no
+	// bbr_standard/bbr2_variant.
+	quic_congestion_control?: string;   // naive: bbr | bbr_standard | bbr2 | bbr2_variant | cubic | reno
 	transport?: TransportConfig | string; // vless/trojan stream transport object; mieru emits a "TCP"/"UDP" string
 	traffic_pattern?: string;           // mieru
 	user_hint_is_mandatory?: boolean;   // mieru
