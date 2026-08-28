@@ -1275,6 +1275,7 @@
     "noLogsMatchFilter": "No logs match the filter"
   },
   "connections": {
+    "chainGroupOnlyHint": "Only the group is recorded, not which member carried the traffic: the connection was opened before the group had picked one (after a start or an Apply, while its health check was still running), and the chain is never revised afterwards.",
     "title": "Connections",
     "description": "View and manage active connections",
     "active": "Active",

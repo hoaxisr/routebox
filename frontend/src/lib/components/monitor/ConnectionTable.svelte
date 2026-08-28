@@ -3,13 +3,23 @@
 	import { t } from 'svelte-i18n';
 	import { formatBytes, clientNames, behindFront } from '$lib/stores';
 	import type { ClashConnection } from '$lib/types';
+	import { isGroupOnlyChain } from '$lib/utils/chainLabel';
 
 	interface Props {
 		connections: ClashConnection[];
 		onClose: (id: string) => void;
+		/** Tags of selector/urltest outbounds, for spotting a chain that names a
+		 *  group and nothing else (#79). Empty = claim nothing. */
+		groups?: Set<string>;
 	}
 
-	let { connections, onClose }: Props = $props();
+	let { connections, onClose, groups = new Set() }: Props = $props();
+
+	// A chain that is only a group says the traffic went through it but not which
+	// member carried it — the connection was opened before the group had picked
+	// one, and the chain is never revised afterwards. Marked rather than silently
+	// shown as if it were a complete path.
+	const groupOnly = (chain: string[] | string) => isGroupOnlyChain(chain, groups);
 
 	// Sorting
 	type SortKey = 'host' | 'network' | 'upload' | 'download' | 'start';
@@ -518,6 +528,9 @@
 							{chain}
 						</span>
 					{/each}
+					{#if groupOnly(conn.chains)}
+						<span class="chain-partial" title={$t('connections.chainGroupOnlyHint')}>?</span>
+					{/if}
 				</div>
 			{/if}
 		</td>
@@ -613,7 +626,7 @@
 			<path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 5l7 7-7 7" />
 		</svg>
 		<span class="font-medium text-sm text-[var(--ctp-text)] truncate">
-			{#if groupByChain}<span class="selection-chip">{key}</span>
+			{#if groupByChain}<span class="selection-chip">{key}</span>{#if groupOnly(key)}<span class="chain-partial" title={$t('connections.chainGroupOnlyHint')}>?</span>{/if}
 			{:else if name}{name}
 			{:else}<span class="font-mono">{key}</span>{/if}
 		</span>
@@ -658,6 +671,9 @@
 				{#each conn.chains as chain}
 					<span class="selection-chip">{chain}</span>
 				{/each}
+				{#if groupOnly(conn.chains)}
+					<span class="chain-partial" title={$t('connections.chainGroupOnlyHint')}>?</span>
+				{/if}
 			{/if}
 			<span class="font-mono tabular-nums">↑ {formatBytes(conn.upload)}</span>
 			<span class="font-mono tabular-nums">↓ {formatBytes(conn.download)}</span>
@@ -687,3 +703,20 @@
 		{filter ? $t('connections.noConnectionsMatchFilter') : $t('connections.noConnections')}
 	</div>
 {/snippet}
+
+<style>
+	/* Deliberately quiet: the row is still real data, only its path is partial. */
+	.chain-partial {
+		display: inline-flex;
+		align-items: center;
+		justify-content: center;
+		width: 1rem;
+		height: 1rem;
+		border-radius: 999px;
+		font-size: 0.65rem;
+		font-weight: 600;
+		cursor: help;
+		background: color-mix(in srgb, var(--ctp-overlay1) 20%, transparent);
+		color: var(--ctp-overlay1);
+	}
+</style>

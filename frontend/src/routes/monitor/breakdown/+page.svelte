@@ -7,6 +7,7 @@
 	import PieChart from '$lib/components/monitor/PieChart.svelte';
 	import type { TrafficRange, TrafficBucket } from '$lib/types';
 	import { apexDomain } from '$lib/utils/apexDomain';
+	import { groupTags, isGroupOnlyChain } from '$lib/utils/chainLabel';
 	import ResetHistoryDialog from '$lib/components/monitor/ResetHistoryDialog.svelte';
 import { PRESETS as VOLUME_PRESETS, bytesFromUnit, splitBytes, type VolumeUnit } from '$lib/utils/volumeThreshold';
 
@@ -375,7 +376,14 @@ import { PRESETS as VOLUME_PRESETS, bytesFromUnit, splitBytes, type VolumeUnit }
 		}
 	}
 
+	// Only to tell a group tag from a plain outbound when marking a chain bucket
+	// that names one and nothing else (#79). Empty on failure — marks nothing.
+	let groups = $state<Set<string>>(new Set());
+
 	onMount(() => {
+		api.listOutbounds()
+			.then((obs) => (groups = groupTags(obs)))
+			.catch(() => {});
 		startStream();
 	});
 
@@ -660,6 +668,9 @@ import { PRESETS as VOLUME_PRESETS, bytesFromUnit, splitBytes, type VolumeUnit }
 									{$clientNames.get(b.key) ?? b.key}
 								{:else}
 									{b.key}
+									{#if dim === 'chain' && isGroupOnlyChain(b.key, groups)}<span
+										class="chain-partial"
+										title={$t('connections.chainGroupOnlyHint')}>?</span>{/if}
 								{/if}
 							</div>
 							<div class="flex items-baseline gap-2 flex-shrink-0 font-mono tabular-nums text-xs">
@@ -690,3 +701,20 @@ import { PRESETS as VOLUME_PRESETS, bytesFromUnit, splitBytes, type VolumeUnit }
 		</div>
 	</div>
 {/snippet}
+
+<style>
+	/* Quiet on purpose: the bucket is real traffic, only its path is partial. */
+	.chain-partial {
+		display: inline-flex;
+		align-items: center;
+		justify-content: center;
+		width: 1rem;
+		height: 1rem;
+		border-radius: 999px;
+		font-size: 0.65rem;
+		font-weight: 600;
+		cursor: help;
+		background: color-mix(in srgb, var(--ctp-overlay1) 20%, transparent);
+		color: var(--ctp-overlay1);
+	}
+</style>

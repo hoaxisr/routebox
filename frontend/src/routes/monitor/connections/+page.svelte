@@ -6,6 +6,7 @@
 	import { notifications, formatBytes } from '$lib/stores';
 	import type { ClashConnection, ConnectionsResponse } from '$lib/types';
 	import ConnectionTable from '$lib/components/monitor/ConnectionTable.svelte';
+	import { groupTags } from '$lib/utils/chainLabel';
 
 	// State
 	let connections = $state<ClashConnection[]>([]);
@@ -112,7 +113,15 @@
 		}
 	}
 
+	// Only to tell a group tag from a plain outbound when marking a chain that
+	// names one and nothing else (#79). A failure leaves the set empty, which
+	// marks nothing — better than mislabelling.
+	let groups = $state<Set<string>>(new Set());
+
 	onMount(() => {
+		api.listOutbounds()
+			.then((obs) => (groups = groupTags(obs)))
+			.catch(() => {});
 		if (useWebSocket) {
 			startStream();
 		} else {
@@ -206,6 +215,6 @@
 			</svg>
 		</div>
 	{:else}
-		<ConnectionTable {connections} onClose={closeConnection} />
+		<ConnectionTable {connections} onClose={closeConnection} {groups} />
 	{/if}
 </div>
