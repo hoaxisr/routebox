@@ -722,6 +722,8 @@ func main() {
 				r.Get("/{tag}", apiHandler.GetOutbound)
 				r.Put("/{tag}", apiHandler.UpdateOutbound)
 				r.Delete("/{tag}", apiHandler.DeleteOutbound)
+				// Measured through the binary's own networkquality tool (#13).
+				r.Post("/{tag}/speedtest", apiHandler.SpeedTestOutbound)
 			})
 
 			// Inbounds CRUD

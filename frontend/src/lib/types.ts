@@ -789,6 +789,24 @@ export interface RuleConditions extends HeadlessRule {
 }
 
 // Rule set usage: which route/dns rules reference each rule set
+/** One `sing-box tools networkquality` run through an outbound (#13). */
+export interface SpeedTestResult {
+	outbound: string;
+	idle_latency_ms: number;
+	download_bps: number;
+	upload_bps: number;
+	/** Responsiveness under load, in round-trips per minute: what says whether
+	 *  the link buffers badly, which a capacity figure never shows. */
+	download_rpm: number;
+	upload_rpm: number;
+	/** The binary's own verdict per measurement: High | Medium | Low. */
+	download_accuracy: string;
+	upload_accuracy: string;
+	download_rpm_accuracy: string;
+	upload_rpm_accuracy: string;
+	duration_sec: number;
+}
+
 export interface RuleSetUsage {
 	route_rules: number[];
 	dns_rules: number[];

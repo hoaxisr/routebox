@@ -1,0 +1,2 @@
+==== NETWORK QUALITY TEST ====
+[31mFATAL[0m[0005] fetch config: Get "https://mensura.cdn-apple.com/api/v1/gm/config": EOF

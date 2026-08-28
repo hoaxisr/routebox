@@ -1,4 +1,4 @@
-import type { ApiResponse, ProcessStatus, SingboxConfig, Endpoint, Outbound, Inbound, RuleSet, RuleSetUsage, RouteRule, RouteSettings, DnsServer, DnsRule, DnsSettings, LogSettings, ExperimentalSettings, ConnectionsResponse, ProxiesResponse, ClashProxy, TestRouteResponse, ConnectTestResponse, SettingsResponse, RouteBoxSettings, SingBoxVersion, DomainSetInfo, RuleSetSource, ClientEntry, TrafficHistoryResponse, TrafficRange, UpdatesStatus, UpdateProgress, UpdateTargetName, Subscription, SubscriptionInput, PanelUser, UserTrafficResponse, AwgStatus, AwgPeer, AwgPeerTraffic, MtprotoState, MtprotoStatus, MtprotoSettings, MtprotoClient, MtprotoConnection, MtprotoLink, MtprotoClientTraffic, DestNaive } from '$lib/types';
+import type { ApiResponse, ProcessStatus, SingboxConfig, Endpoint, Outbound, Inbound, RuleSet, RuleSetUsage, RouteRule, RouteSettings, DnsServer, DnsRule, DnsSettings, LogSettings, ExperimentalSettings, ConnectionsResponse, ProxiesResponse, ClashProxy, TestRouteResponse, ConnectTestResponse, SettingsResponse, RouteBoxSettings, SingBoxVersion, DomainSetInfo, RuleSetSource, ClientEntry, TrafficHistoryResponse, TrafficRange, UpdatesStatus, UpdateProgress, UpdateTargetName, Subscription, SubscriptionInput, PanelUser, UserTrafficResponse, AwgStatus, AwgPeer, AwgPeerTraffic, MtprotoState, MtprotoStatus, MtprotoSettings, MtprotoClient, MtprotoConnection, MtprotoLink, MtprotoClientTraffic, DestNaive, SpeedTestResult } from '$lib/types';
 import { canonicalizeConnections } from '$lib/utils/clientIp';
 
 const API_BASE = '/api';
@@ -533,6 +533,12 @@ export const api = {
 			method: 'PUT',
 			body: JSON.stringify({ name: target })
 		}),
+	// Takes ~15-25s: the measurement itself is bounded server-side, and the
+	// response is the finished summary. No timeout here on purpose — cutting the
+	// request off would leave the run going with nobody to read it.
+	speedTestOutbound: (tag: string) =>
+		request<SpeedTestResult>(`/outbounds/${encodeURIComponent(tag)}/speedtest`, { method: 'POST' }),
+
 	testLatency: (name: string, url = 'http://www.gstatic.com/generate_204', timeout = 5000) =>
 		requestRaw<{ delay: number }>(`/clash/proxies/${encodeURIComponent(name)}/delay?url=${encodeURIComponent(url)}&timeout=${timeout}`),
 
