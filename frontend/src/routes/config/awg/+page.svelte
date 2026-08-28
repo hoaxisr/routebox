@@ -83,14 +83,16 @@
 		}
 	}
 
+	// Only the quiet path swallows. Unguarded before, this rejected inside the
+	// poll's interval callback — an unhandled rejection every five seconds — but
+	// swallowing everywhere would have replaced enable()/apply()'s own message
+	// with a generic one for a failure that is theirs to report.
 	async function refreshPeers(quiet = false) {
 		try {
 			peers = status?.enabled ? await api.getAwgPeers() : [];
 		} catch (e) {
-			// Unguarded before, so a failure here rejected inside the poll's
-			// interval callback — an unhandled rejection every five seconds.
-			if (!quiet) notifications.error(`${$t('awg.loadFailed')}: ${e}`);
 			liveStale = true;
+			if (!quiet) throw e;
 		}
 	}
 
@@ -317,7 +319,7 @@
 			</div>
 			<div class="clients-body">
 				{#if status.enabled}
-					<PeerRoster {peers} subnet={form.subnet} singbox={isSingbox} onChange={async () => { await refreshStatus(); await refreshPeers(); }} />
+					<PeerRoster {peers} subnet={form.subnet} singbox={isSingbox} onChange={async () => { await refreshStatus(); await refreshPeers().catch((e) => notifications.error(`${$t('awg.loadFailed')}: ${e}`)); }} />
 				{:else}
 					<div class="locked-note">{$t('awg.shareLocked')}</div>
 				{/if}
@@ -477,7 +479,7 @@
 					<p class="step-desc">{$t('awg.stepShareDesc')}</p>
 
 					{#if status.enabled}
-						<PeerRoster {peers} subnet={form.subnet} singbox={isSingbox} onChange={async () => { await refreshStatus(); await refreshPeers(); }} />
+						<PeerRoster {peers} subnet={form.subnet} singbox={isSingbox} onChange={async () => { await refreshStatus(); await refreshPeers().catch((e) => notifications.error(`${$t('awg.loadFailed')}: ${e}`)); }} />
 					{:else}
 						<div class="locked-note">{$t('awg.shareLocked')}</div>
 					{/if}

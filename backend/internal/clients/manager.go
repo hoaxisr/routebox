@@ -71,12 +71,23 @@ func (m *Manager) Load() error {
 		e := doc.Clients[i]
 		// Entries written before #71 can carry the IPv4-mapped form a dual-stack
 		// inbound reports ("::ffff:x"), which is a second entry for a device that
-		// already has one. Fold them together on the way in, keeping whichever of
-		// the pair carries a name — that is the one the operator typed.
-		e.IP = util.CanonicalClientIP(e.IP)
+		// already has one. Fold them together on the way in.
+		//
+		// Field by field, not entry by entry: taking one half wholesale threw away
+		// the other's note whenever both were named, and which half that was came
+		// down to file order — which is LastSeen-descending, so it changed by
+		// itself. Anything the operator typed survives regardless of order; only
+		// when BOTH halves carry a value does the earlier one lose, and then it
+		// loses to a real value rather than to a blank.
+		if canonical := util.CanonicalClientIP(e.IP); canonical != e.IP {
+			e.IP = canonical
+			m.dirty = true // the file still spells it the old way
+		}
 		if prev, ok := m.byIP[e.IP]; ok {
-			if e.Name == "" && prev.Name != "" {
+			if e.Name == "" {
 				e.Name = prev.Name
+			}
+			if e.Note == "" {
 				e.Note = prev.Note
 			}
 			if prev.FirstSeen != 0 && (e.FirstSeen == 0 || prev.FirstSeen < e.FirstSeen) {
@@ -140,6 +151,7 @@ func (m *Manager) writeLocked() error {
 
 // Observe is called whenever an IP is seen in traffic. Creates or updates the entry.
 func (m *Manager) Observe(ip string, when time.Time) {
+	ip = util.CanonicalClientIP(ip)
 	if ip == "" {
 		return
 	}
@@ -160,6 +172,10 @@ func (m *Manager) Observe(ip string, when time.Time) {
 
 // SetName updates the friendly name and note for an IP, creating an entry if needed.
 func (m *Manager) SetName(ip, name, note string) error {
+	// Same key Observe uses: a panel tab open across an upgrade still sends the
+	// IPv4-mapped form, and naming through it would recreate the duplicate entry
+	// #71 exists to remove.
+	ip = util.CanonicalClientIP(ip)
 	if ip == "" {
 		return fmt.Errorf("ip is required")
 	}

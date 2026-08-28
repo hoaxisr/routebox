@@ -61,7 +61,41 @@ func OpenStore(path string) (*Store, error) {
 		db.Close()
 		return nil, err
 	}
+	if err := foldMappedSources(db); err != nil {
+		db.Close()
+		return nil, err
+	}
 	return &Store{db: db}, nil
+}
+
+// foldMappedSources rewrites rows written before #71, when a dual-stack inbound's
+// IPv4 client was recorded under its IPv4-mapped address ("::ffff:x"). Left alone
+// they stay a second Breakdown row for a device that already has one, and a
+// client deleted by its canonical address never purges them.
+//
+// The rewrite can collide with a row the canonical address already has for the
+// same minute, so it ADDS into the existing row and deletes the source rather
+// than blindly renaming it — the primary key is (bucket_ts, source, domain,
+// chain), and a plain UPDATE would fail on the first overlapping minute.
+func foldMappedSources(db *sql.DB) error {
+	tx, err := db.Begin()
+	if err != nil {
+		return err
+	}
+	defer tx.Rollback()
+	if _, err := tx.Exec(`
+		INSERT INTO traffic_minute (bucket_ts, source, domain, chain, upload, download)
+		SELECT bucket_ts, substr(source, 8), domain, chain, upload, download
+		  FROM traffic_minute WHERE source LIKE '::ffff:%'
+		ON CONFLICT(bucket_ts, source, domain, chain) DO UPDATE SET
+		  upload   = upload   + excluded.upload,
+		  download = download + excluded.download`); err != nil {
+		return err
+	}
+	if _, err := tx.Exec(`DELETE FROM traffic_minute WHERE source LIKE '::ffff:%'`); err != nil {
+		return err
+	}
+	return tx.Commit()
 }
 
 func (s *Store) Close() error {

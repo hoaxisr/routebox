@@ -3,7 +3,7 @@
 	import { t } from 'svelte-i18n';
 	import { api } from '$lib/api/client';
 	import { notifications, unsavedChanges, featureFlags, configReadOnly } from '$lib/stores';
-	import type { RouteRule, RuleSet, Outbound, Inbound, RouteSettings, Endpoint } from '$lib/types';
+	import type { RouteRule, RuleSet, Outbound, Inbound, RouteSettings, Endpoint, RuleSetUsage } from '$lib/types';
 	import RuleForm from '$lib/components/config/RuleForm.svelte';
 	import RuleTemplates from '$lib/components/config/RuleTemplates.svelte';
 	import RuleWizard from '$lib/components/config/RuleWizard.svelte';
@@ -62,16 +62,18 @@
 
 	async function fetchData() {
 		try {
-			const [rulesData, ruleSetsData, outboundsData, endpointsData, inboundsData, settingsData] = await Promise.all([
+			const [rulesData, ruleSetsData, outboundsData, endpointsData, inboundsData, settingsData, usageData] = await Promise.all([
 				api.listRules(),
 				api.listRuleSets(),
 				api.listOutbounds(),
 				api.listEndpoints(),
 				api.listInbounds(),
-				api.getRouteSettings()
+				api.getRouteSettings(),
+				api.getRuleSetsUsage().catch(() => ({}) as Record<string, RuleSetUsage>)
 			]);
 			rules = rulesData;
 			ruleSets = ruleSetsData;
+			ruleSetUsage = usageData;
 			outbounds = outboundsData;
 			endpoints = endpointsData;
 			inbounds = inboundsData;
@@ -107,6 +109,12 @@
 	// Rule-sets with no rule at all: nothing to order, so they sit apart and
 	// their picker CREATES the mapping (appended last, then draggable).
 	let unassignedRuleSets = $derived(ruleSets.filter((rs) => !assignedTags.has(rs.tag)));
+	// "No route" is about route rules only, but a DNS rule can reference the same
+	// tag and the backend refuses to delete a rule-set that one does. Without this
+	// the trash below offered an action that always failed, under a question that
+	// claimed nothing was using it (#86).
+	let ruleSetUsage = $state<Record<string, RuleSetUsage>>({});
+	const dnsRuleCount = (tag: string) => ruleSetUsage[tag]?.dns_rules?.length ?? 0;
 
 	// Every rule mutation is addressed by POSITION, and a position captured when
 	// the user clicked stops being true as soon as another mutation lands. Two
@@ -197,6 +205,11 @@
 	// Deleting an UNASSIGNED rule-set deletes the rule-set itself, not a route
 	// rule — it has none, which is why it sits here (#86). Deliberately a
 	// different question from the one above: that one only takes the route away.
+	//
+	// Outside runExclusive on purpose: this touches route.rule_set and never
+	// route.rules, so it cannot move a position another queued mutation is
+	// holding, and the backend rejects both orderings of "assign then delete"
+	// server-side. The queue exists for position-addressed rule edits.
 	async function handleDeleteRuleSet(tag: string) {
 		if (!confirm($t('routes.deleteRuleSetEntirelyConfirm', { values: { tag } }))) return;
 		try {
@@ -581,6 +594,7 @@
 						</div>
 						<div class="rounded-lg border border-dashed border-[var(--ctp-surface2)] divide-y divide-[var(--ctp-surface2)]">
 							{#each unassignedRuleSets as ruleSet (ruleSet.tag)}
+								{@const dnsUses = dnsRuleCount(ruleSet.tag)}
 								<div class="px-3 py-2 flex items-center gap-2 flex-wrap">
 									<span class="px-2 py-0.5 text-xs rounded bg-[var(--ctp-surface2)] text-[var(--ctp-overlay1)] flex-shrink-0">
 										{ruleSet.type}
@@ -609,7 +623,10 @@
 									<button
 										type="button"
 										class="action-btn-danger ml-auto"
-										title={$t('routes.deleteRuleSetEntirely', { values: { tag: ruleSet.tag } })}
+										disabled={dnsUses > 0}
+										title={dnsUses > 0
+											? $t('routes.ruleSetUsedByDns', { values: { count: dnsUses } })
+											: $t('routes.deleteRuleSetEntirely', { values: { tag: ruleSet.tag } })}
 										aria-label={$t('routes.deleteRuleSetEntirely', { values: { tag: ruleSet.tag } })}
 										onclick={() => handleDeleteRuleSet(ruleSet.tag)}
 									>

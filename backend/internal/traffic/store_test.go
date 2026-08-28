@@ -174,3 +174,59 @@ func TestStore_PruneOlderThan(t *testing.T) {
 		t.Errorf("after prune got %+v, want one row at ts=120", rows)
 	}
 }
+
+// Rows written before #71 recorded a dual-stack inbound's IPv4 client under its
+// IPv4-mapped address. They have to fold into the canonical source on open, or
+// Breakdown keeps a second row per device and DeleteSource never reaches them.
+func TestStore_FoldsMappedSourcesOnOpen(t *testing.T) {
+	tmp := t.TempDir()
+	path := filepath.Join(tmp, "t.db")
+
+	s, err := OpenStore(path)
+	if err != nil {
+		t.Fatalf("OpenStore: %v", err)
+	}
+	// One minute the canonical form also has (must be summed, not lost to the
+	// primary key), one it does not, and an untouched IPv6 client.
+	if err := s.Upsert(60, "192.168.1.14", "example.com", "direct", 10, 20); err != nil {
+		t.Fatal(err)
+	}
+	for _, r := range []struct {
+		ts               int64
+		source           string
+		upload, download int64
+	}{
+		{60, "::ffff:192.168.1.14", 1, 2},
+		{120, "::ffff:192.168.1.14", 100, 200},
+		{60, "2001:db8::1", 7, 8},
+	} {
+		if err := s.Upsert(r.ts, r.source, "example.com", "direct", r.upload, r.download); err != nil {
+			t.Fatal(err)
+		}
+	}
+	s.Close()
+
+	s, err = OpenStore(path) // the migration runs here
+	if err != nil {
+		t.Fatalf("reopen: %v", err)
+	}
+	defer s.Close()
+
+	rows, err := s.QueryAggregate(0, 9999999999, "", "", "")
+	if err != nil {
+		t.Fatalf("QueryAggregate: %v", err)
+	}
+	got := map[string][2]int64{}
+	for _, r := range rows {
+		got[r.Source] = [2]int64{r.Upload, r.Download}
+	}
+	if _, ok := got["::ffff:192.168.1.14"]; ok {
+		t.Fatalf("the mapped source is still its own row: %+v", rows)
+	}
+	if want := ([2]int64{111, 222}); got["192.168.1.14"] != want {
+		t.Fatalf("192.168.1.14 = %v, want %v (10+1+100 / 20+2+200)", got["192.168.1.14"], want)
+	}
+	if want := ([2]int64{7, 8}); got["2001:db8::1"] != want {
+		t.Fatalf("a real IPv6 client was touched: %v, want %v", got["2001:db8::1"], want)
+	}
+}

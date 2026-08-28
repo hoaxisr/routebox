@@ -206,3 +206,96 @@ last_seen = 3000
 		t.Fatalf("merged window = %d..%d, want 1000..3000", e.FirstSeen, e.LastSeen)
 	}
 }
+
+// The fold merges FIELDS, not entries. Taking one half wholesale lost the other's
+// note whenever both were named, and which half that was came down to file order.
+func TestLoad_FoldKeepsEveryTypedField(t *testing.T) {
+	write := func(body string) *Manager {
+		t.Helper()
+		path := filepath.Join(t.TempDir(), "clients.toml")
+		if err := os.WriteFile(path, []byte(body), 0644); err != nil {
+			t.Fatal(err)
+		}
+		m := New(path)
+		if err := m.Load(); err != nil {
+			t.Fatalf("Load: %v", err)
+		}
+		return m
+	}
+
+	t.Run("a note on the half with no name survives", func(t *testing.T) {
+		m := write(`[[clients]]
+ip = "192.168.1.14"
+note = "behind the TV"
+
+[[clients]]
+ip = "::ffff:192.168.1.14"
+name = "shelf"
+`)
+		e, _ := m.Get("192.168.1.14")
+		if e.Name != "shelf" || e.Note != "behind the TV" {
+			t.Fatalf("merged %+v, want both the name and the note", e)
+		}
+	})
+
+	t.Run("both halves named: neither order loses the note", func(t *testing.T) {
+		for _, body := range []string{
+			`[[clients]]
+ip = "192.168.1.14"
+name = "plain"
+
+[[clients]]
+ip = "::ffff:192.168.1.14"
+name = "mapped"
+note = "the only note here"
+`,
+			`[[clients]]
+ip = "::ffff:192.168.1.14"
+name = "mapped"
+note = "the only note here"
+
+[[clients]]
+ip = "192.168.1.14"
+name = "plain"
+`,
+		} {
+			e, _ := write(body).Get("192.168.1.14")
+			if e.Note != "the only note here" {
+				t.Fatalf("note lost for this file order: %+v", e)
+			}
+			if e.Name == "" {
+				t.Fatalf("name lost: %+v", e)
+			}
+		}
+	})
+
+	t.Run("a lone mapped entry is rewritten and marked for saving", func(t *testing.T) {
+		m := write(`[[clients]]
+ip = "::ffff:10.0.0.9"
+name = "solo"
+`)
+		if _, ok := m.Get("::ffff:10.0.0.9"); ok {
+			t.Fatal("the mapped form is still its own entry")
+		}
+		if !m.dirty {
+			t.Fatal("the file still spells it the old way but nothing will rewrite it")
+		}
+	})
+}
+
+// SetName has to key by the same canonical form Observe does, or a stale panel
+// tab naming through the mapped address recreates the duplicate.
+func TestSetName_CanonicalisesTheKey(t *testing.T) {
+	m := New("")
+	m.Observe("192.168.1.14", time.Unix(1000, 0))
+	if err := m.SetName("::ffff:192.168.1.14", "laptop", "mine"); err != nil {
+		t.Fatalf("SetName: %v", err)
+	}
+	if _, ok := m.Get("::ffff:192.168.1.14"); ok {
+		t.Fatal("naming through the mapped form created a second entry")
+	}
+	e, ok := m.Get("192.168.1.14")
+	if !ok || e.Name != "laptop" || e.Note != "mine" {
+		t.Fatalf("the name did not land on the canonical entry: %+v (found=%v)", e, ok)
+	}
+}
