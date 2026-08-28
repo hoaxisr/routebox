@@ -503,7 +503,7 @@
 					</div>
 					<div class="mt-3">
 						<span class="block text-sm text-[var(--ctp-overlay1)] mb-2">{$t('dns.fallbackRcodes')}</span>
-						<div class="flex flex-wrap gap-2">
+						<div class="flex flex-wrap gap-2 rcodes">
 							{#each FALLBACK_RCODES as code}
 								<button
 									type="button"
@@ -789,3 +789,14 @@
 		</div>
 	</div>
 {/if}
+
+<style>
+	/* .toggle-btn is flex:1 globally, which stretched five rcodes across the full
+	   width of a desktop row. Here they are five short words — size them to the
+	   words. */
+	.rcodes :global(.toggle-btn) {
+		flex: 0 0 auto;
+		padding: 0.3125rem 0.75rem;
+		font-size: 0.8125rem;
+	}
+</style>

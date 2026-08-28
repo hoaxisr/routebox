@@ -386,13 +386,12 @@ code, pre {
 	color: var(--ctp-overlay1);
 }
 
-/* AWG 3.0: top tier — same translucent coral as 1.x, set apart by ring + weight
-   (solid coral read as a dark block next to the other badges). */
+/* AWG 3.0: top tier — same translucent coral as 1.x, set apart by the ring alone
+   (solid coral read as a dark block, bold read as shouting next to AWG 2.0). */
 .status-badge.awg3 {
 	background-color: color-mix(in srgb, var(--ctp-primary) 20%, transparent);
 	color: var(--ctp-primary);
 	box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--ctp-primary) 50%, transparent);
-	font-weight: 600;
 }
 
 /* Move-up / move-down step buttons on reorderable rule rows. Drag&drop never

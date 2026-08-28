@@ -233,15 +233,17 @@
 			ondragleave={handleDragLeave}
 			ondrop={(e) => handleDrop(e, index)}
 			ondragend={handleDragEnd}
-			class="group relative flex flex-wrap sm:flex-nowrap items-center gap-x-3 gap-y-2 p-3 bg-[var(--ctp-surface0)] rounded-lg border transition-all cursor-move
+			class="group relative flex flex-wrap sm:flex-nowrap items-center gap-x-3 gap-y-2 p-3 pointer-fine:py-2 bg-[var(--ctp-surface0)] rounded-lg border transition-all cursor-move
 				{draggedIndex === index ? 'opacity-50 border-[var(--ctp-primary)]' : 'border-[var(--ctp-surface2)]'}
 				{dropTargetIndex === index ? 'border-[var(--ctp-primary)] border-dashed' : ''}
 				hover:border-[var(--ctp-overlay0)]"
 		>
 			<!-- Drag handle, plus step buttons: HTML5 drag&drop never fires on touch,
-			     so on a phone the arrows are the only way to reorder at all (#44). -->
+			     so on a phone the arrows are the only way to reorder at all (#44).
+			     With a mouse they are dead weight stacked three-high, and that
+			     stack alone set the row height (#82) — so hide them there. -->
 			<div class="flex flex-col items-center flex-shrink-0 text-[var(--ctp-overlay1)] group-hover:text-[var(--ctp-text)]">
-				<button type="button" draggable="false" class="step-btn" disabled={index === 0}
+				<button type="button" draggable="false" class="step-btn pointer-fine:hidden" disabled={index === 0}
 					title={$t('routes.moveUp')} aria-label={$t('routes.moveUp')}
 					onclick={() => onReorder(index, index - 1)}>
 					<svg class="w-4 h-4" fill="none" stroke="currentColor" stroke-width="2.5" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M5 15l7-7 7 7" /></svg>
@@ -251,7 +253,7 @@
 				<svg class="w-5 h-5 hidden sm:block" fill="currentColor" viewBox="0 0 20 20">
 					<path d="M7 2a2 2 0 1 0 .001 4.001A2 2 0 0 0 7 2zm0 6a2 2 0 1 0 .001 4.001A2 2 0 0 0 7 8zm0 6a2 2 0 1 0 .001 4.001A2 2 0 0 0 7 14zm6-8a2 2 0 1 0-.001-4.001A2 2 0 0 0 13 6zm0 2a2 2 0 1 0 .001 4.001A2 2 0 0 0 13 8zm0 6a2 2 0 1 0 .001 4.001A2 2 0 0 0 13 14z" />
 				</svg>
-				<button type="button" draggable="false" class="step-btn" disabled={index === rules.length - 1}
+				<button type="button" draggable="false" class="step-btn pointer-fine:hidden" disabled={index === rules.length - 1}
 					title={$t('routes.moveDown')} aria-label={$t('routes.moveDown')}
 					onclick={() => onReorder(index, index + 1)}>
 					<svg class="w-4 h-4" fill="none" stroke="currentColor" stroke-width="2.5" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M19 9l-7 7-7-7" /></svg>

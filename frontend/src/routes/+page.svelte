@@ -426,7 +426,7 @@
 										{:else}<span class="font-mono">{conn.metadata.sourceIP}</span>{/if}
 									</div>
 								{/if}
-								<div class="hidden sm:flex items-center justify-end gap-1 w-[10rem] flex-shrink-0">
+								<div class="hidden sm:flex items-center justify-end gap-1 w-[13.5rem] flex-shrink-0">
 									{#each conn.chains as chain}
 										<span class="selection-chip">{chain}</span>
 									{/each}
