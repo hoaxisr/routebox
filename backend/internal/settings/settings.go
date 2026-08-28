@@ -249,6 +249,19 @@ type SingboxSettings struct {
 	// into experimental.v2ray_api and dials for per-user traffic. MUST be
 	// loopback (never exposed). Empty => 127.0.0.1:8081.
 	V2RayAPI string `toml:"v2ray_api" json:"v2ray_api"`
+
+	// Autostart brings amnezia-box up when RouteBox itself starts, so a reboot
+	// does not leave the proxy down until someone opens the panel and presses
+	// Start. It only ever applies where nothing else would do the job: a
+	// detected systemd unit owns the process instead, and a missing config or
+	// binary means there is nothing to start (see shouldAutoStartAmneziaBox).
+	//
+	// Default true. It used to be vps-only and unconditional, on the reasoning
+	// that a router's config comes from the setup wizard, which starts the
+	// process itself — true on the first run, and no help at all on every
+	// reboot after it (#87). A router that never finished the wizard has no
+	// config for the guard to find; one that did gets its tunnel back on boot.
+	Autostart bool `toml:"autostart" json:"autostart"`
 }
 
 // AdvancedSettings for power users
@@ -304,6 +317,7 @@ func Default() Settings {
 			ConfigPath: "",
 			ClashAPI:   "",
 			V2RayAPI:   "127.0.0.1:8081",
+			Autostart:  true,
 		},
 		Advanced: AdvancedSettings{
 			WsPingIntervalSec: 30,
@@ -871,6 +885,12 @@ func (m *Manager) Update(updates map[string]interface{}) error {
 			staged.Server.FrontPort = v
 
 		// Advanced runtime settings
+		case "singbox.autostart":
+			v, ok := value.(bool)
+			if !ok {
+				return fmt.Errorf("setting %s: value must be a boolean", key)
+			}
+			staged.Singbox.Autostart = v
 		case "advanced.ws_ping_interval_sec":
 			v, ok := toInt(value)
 			if !ok {

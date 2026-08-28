@@ -997,6 +997,9 @@ export interface NetworkSettings {
 export interface SingboxSettings {
 	config_path: string;
 	clash_api: string;
+	/** Start amnezia-box when RouteBox starts. Ignored where a systemd unit owns
+	 *  the process, or when there is no config/binary to start. */
+	autostart?: boolean;
 }
 
 export interface AdvancedSettings {

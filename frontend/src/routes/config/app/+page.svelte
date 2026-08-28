@@ -65,6 +65,11 @@
 				updates['updates.auto_check'] = settings.updates.auto_check;
 			}
 
+			// amnezia-box autostart (backend ships the field; guard for older backends)
+			if (settings.singbox?.autostart !== undefined) {
+				updates['singbox.autostart'] = settings.singbox.autostart;
+			}
+
 			// Server settings (panel public host used for client share links)
 			updates['server.public_host'] = settings.server?.public_host ?? '';
 
@@ -451,6 +456,20 @@
 						</select>
 						<p class="text-xs text-[var(--ctp-overlay0)] mt-1">{$t('settings.serverModeHint')}</p>
 					</div>
+
+					{#if settings.singbox?.autostart !== undefined}
+						<div class="mb-4">
+							<label class="flex items-center gap-3 cursor-pointer">
+								<input
+									type="checkbox"
+									bind:checked={settings.singbox.autostart}
+									class="w-4 h-4 rounded border-[var(--ctp-surface2)] text-[var(--ctp-primary)] focus:ring-[var(--ctp-primary)]"
+								/>
+								<span class="text-sm text-[var(--ctp-text)]">{$t('settings.autostart')}</span>
+							</label>
+							<p class="text-xs text-[var(--ctp-overlay0)] mt-1">{$t('settings.autostartHint')}</p>
+						</div>
+					{/if}
 
 					<div>
 						<label class="block text-sm font-medium text-[var(--ctp-subtext1)] mb-1">Public host</label>

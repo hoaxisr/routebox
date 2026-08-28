@@ -113,51 +113,51 @@ func TestACMEDirectoryURL(t *testing.T) {
 }
 
 func TestShouldAutoStartAmneziaBox(t *testing.T) {
-	// The state a container comes up in: vps mode, no systemd, config scaffolded,
+	// The state an install comes up in: autostart on, no systemd, config present,
 	// binary present, nothing running. This is the one case that must start.
-	container := func() (string, process.Status, bool, bool) {
-		return "vps", process.Status{}, true, true
+	fresh := func() (bool, process.Status, bool, bool) {
+		return true, process.Status{}, true, true
 	}
 
 	t.Run("no systemd unit and nothing running => start", func(t *testing.T) {
-		if !shouldAutoStartAmneziaBox(container()) {
-			t.Fatal("a panel with no supervisor must start amnezia-box itself")
+		if !shouldAutoStartAmneziaBox(fresh()) {
+			t.Fatal("an install with no supervisor must start amnezia-box itself")
 		}
 	})
 
 	t.Run("systemd unit detected => leave it to systemd", func(t *testing.T) {
-		mode, st, cfgOK, binOK := container()
+		on, st, cfgOK, binOK := fresh()
 		st.ServiceName = "amnezia-box" // unit exists, currently stopped
-		if shouldAutoStartAmneziaBox(mode, st, cfgOK, binOK) {
+		if shouldAutoStartAmneziaBox(on, st, cfgOK, binOK) {
 			t.Fatal("starting here races the unit systemd is about to start")
 		}
 	})
 
 	t.Run("already running => no second process", func(t *testing.T) {
-		mode, st, cfgOK, binOK := container()
+		on, st, cfgOK, binOK := fresh()
 		st.Running = true
-		if shouldAutoStartAmneziaBox(mode, st, cfgOK, binOK) {
+		if shouldAutoStartAmneziaBox(on, st, cfgOK, binOK) {
 			t.Fatal("must not start a process that is already up")
 		}
 	})
 
-	t.Run("router mode => wizard's job", func(t *testing.T) {
-		_, st, cfgOK, binOK := container()
-		if shouldAutoStartAmneziaBox("router", st, cfgOK, binOK) {
-			t.Fatal("router mode must not bring a TUN up unprompted")
+	t.Run("autostart off => operator's job", func(t *testing.T) {
+		_, st, cfgOK, binOK := fresh()
+		if shouldAutoStartAmneziaBox(false, st, cfgOK, binOK) {
+			t.Fatal("autostart is off; nothing may start the process on boot")
 		}
 	})
 
 	t.Run("no config => nothing to start with", func(t *testing.T) {
-		mode, st, _, binOK := container()
-		if shouldAutoStartAmneziaBox(mode, st, false, binOK) {
+		on, st, _, binOK := fresh()
+		if shouldAutoStartAmneziaBox(on, st, false, binOK) {
 			t.Fatal("must not start without a config file")
 		}
 	})
 
 	t.Run("no binary => nothing to start", func(t *testing.T) {
-		mode, st, cfgOK, _ := container()
-		if shouldAutoStartAmneziaBox(mode, st, cfgOK, false) {
+		on, st, cfgOK, _ := fresh()
+		if shouldAutoStartAmneziaBox(on, st, cfgOK, false) {
 			t.Fatal("must not attempt a start with no amnezia-box installed")
 		}
 	})

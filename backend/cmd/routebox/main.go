@@ -598,7 +598,7 @@ func main() {
 	// the AWG wiring above so the process starts on the config those steps may
 	// have just synced, and before SyncRejectRuleAndReload so user lifecycle
 	// enforcement lands on a running process instead of waiting for a reload.
-	if shouldAutoStartAmneziaBox(effectiveMode, procMgr.GetStatus(), fileExists(resolvedConfigPath), procMgr.IsBinaryInstalled()) {
+	if shouldAutoStartAmneziaBox(settingsMgr.Get().Singbox.Autostart, procMgr.GetStatus(), fileExists(resolvedConfigPath), procMgr.IsBinaryInstalled()) {
 		if err := procMgr.Start(resolvedConfigPath); err != nil {
 			log.Printf("amnezia-box did not start automatically: %v — the panel's Start button reports the same failure with the logs", err)
 		} else {
@@ -1131,12 +1131,15 @@ func main() {
 // and the panel would otherwise come up with the proxy down until someone
 // pressed Start — after every restart, not just the first.
 //
-// vps-only, for the same reason the root check is router-only: a router's
-// config is written by the setup wizard, which starts the process as part of
-// itself, and bringing a half-configured router's TUN up unprompted is not the
-// same harmless act as starting a panel's proxy on the config it already has.
-func shouldAutoStartAmneziaBox(mode string, st process.Status, configExists, binaryInstalled bool) bool {
-	if mode != "vps" || !configExists || !binaryInstalled {
+// It was vps-only, on the reasoning that a router's config is written by the
+// setup wizard, which starts the process as part of itself. That holds for the
+// first run and for no reboot after it, which is what #87 asked about — so the
+// mode check is now the singbox.autostart setting (default on, switchable per
+// install). The guards that made the old rule safe are unchanged: a router that
+// never finished the wizard has no config file, and one whose process is
+// already running or owned by a unit is left alone.
+func shouldAutoStartAmneziaBox(autostart bool, st process.Status, configExists, binaryInstalled bool) bool {
+	if !autostart || !configExists || !binaryInstalled {
 		return false
 	}
 	// ServiceName is the DETECTED unit, set even when this particular process

@@ -4,6 +4,7 @@
 	import { configReadOnly } from '$lib/stores';
 	import { isValidKeepalive } from '$lib/utils';
 	import ObfuscationControl from './ObfuscationControl.svelte';
+	import { tunnelGateway } from './subnet';
 
 	interface Props {
 		form: AwgServerSettings;
@@ -41,6 +42,17 @@
 			.split(',')
 			.map((s) => s.trim())
 			.filter(Boolean);
+	}
+
+	// The address the server answers on inside the tunnel. Empty DNS deliberately
+	// means "the client keeps its own resolver" (#45), which on a router sends
+	// lookups straight past the routing rules — so the value that fixes that is
+	// one click away rather than something the operator derives from the subnet
+	// by hand (#85).
+	let gateway = $derived(tunnelGateway(form.subnet));
+	function useGateway() {
+		dnsText = gateway;
+		syncDns();
 	}
 </script>
 
@@ -84,7 +96,12 @@
 	</div>
 	<div class="field">
 		<label for="awg-dns">{$t('awg.dns')}</label>
-		<input id="awg-dns" type="text" bind:value={dnsText} oninput={syncDns} onblur={syncDns} />
+		<div class="dns-row">
+			<input id="awg-dns" type="text" bind:value={dnsText} oninput={syncDns} onblur={syncDns} />
+			{#if gateway && dnsText.trim() !== gateway}
+				<button type="button" class="toggle-btn gw-btn" onclick={useGateway}>{$t('awg.dnsUseGateway')}</button>
+			{/if}
+		</div>
 		<span class="hint">{$t('awg.dnsHint')}</span>
 	</div>
 	<div class="field">
@@ -144,6 +161,23 @@
 
 <style>
 	.locked { opacity: 0.7; cursor: not-allowed; }
+	/* The button sits beside the input, not under it, so the field keeps the same
+	   height as every other one in the grid. */
+	.dns-row {
+		display: flex;
+		gap: 0.5rem;
+		align-items: stretch;
+	}
+	.dns-row input {
+		flex: 1;
+		min-width: 0;
+	}
+	.gw-btn {
+		flex: 0 0 auto;
+		padding: 0 0.75rem;
+		font-size: 0.8125rem;
+		white-space: nowrap;
+	}
 	.field-grid {
 		display: grid;
 		grid-template-columns: repeat(2, 1fr);

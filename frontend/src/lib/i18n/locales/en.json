@@ -1126,6 +1126,8 @@
   },
   "settings": {
     "title": "App Settings",
+    "autostart": "Start amnezia-box on boot",
+    "autostartHint": "RouteBox brings the proxy up when it starts, so a reboot does not leave it down until someone presses Start. Skipped where a systemd unit already manages the process.",
     "serverMode": "Operating mode",
     "serverModeRouter": "Router (LAN gateway)",
     "serverModeVps": "Panel (VPS server)",
@@ -1766,7 +1768,8 @@
     "mtuHint": "Lower if you see fragmentation.",
     "clientKeepalive": "Client keepalive",
     "clientKeepaliveHint": "Seconds, or an AWG 3.0 range like 22-30. Empty = 25.",
-    "dnsHint": "Pushed to every client config.",
+    "dnsUseGateway": "Tunnel gateway",
+    "dnsHint": "Pushed to every client config. Empty means the client keeps its own resolver — on a router that sends lookups past the routing rules, so the tunnel gateway is usually what you want here.",
     "wanIfaceHint": "Leave empty to auto-detect.",
     "wanAuto": "auto-detect",
     "obfuscation": "Obfuscation",
