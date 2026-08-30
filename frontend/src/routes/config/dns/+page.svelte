@@ -517,6 +517,22 @@
 									<option value={srv.tag} disabled={(settings.fallback?.fallbacks ?? []).includes(srv.tag)}>{srv.tag}</option>
 								{/each}
 							</select>
+							<!-- Under the primary select, not in a row of its own: that leaves the
+							     codes level with "+ Add a server" instead of stranded below the grid. -->
+							<div class="mt-3">
+								<span class="block text-sm text-[var(--ctp-overlay1)] mb-2">{$t('dns.fallbackRcodes')}</span>
+								<div class="flex flex-wrap gap-2 rcodes">
+									{#each FALLBACK_RCODES as code}
+										<button
+											type="button"
+											class="toggle-btn {settings.fallback?.rcodes?.includes(code) ? 'selected' : ''}"
+											onclick={() => toggleRcode(code)}
+										>
+											{code}
+										</button>
+									{/each}
+								</div>
+							</div>
 						</div>
 						<div>
 							<span class="block text-sm text-[var(--ctp-overlay1)] mb-1">{$t('dns.fallbackServer')}</span>
@@ -547,26 +563,12 @@
 									</div>
 								{/each}
 								{#if chainFree.length > 0}
-									<button type="button" class="text-sm text-[var(--ctp-primary)] hover:underline" onclick={addFallback}>
+									<button type="button" class="text-sm text-[var(--ctp-primary)]" onclick={addFallback}>
 										+ {$t('dns.fallbackAddServer')}
 									</button>
 								{/if}
 							</div>
 							<p class="mt-1 text-xs text-[var(--ctp-overlay0)]">{$t('dns.fallbackChainHint')}</p>
-						</div>
-					</div>
-					<div class="mt-3">
-						<span class="block text-sm text-[var(--ctp-overlay1)] mb-2">{$t('dns.fallbackRcodes')}</span>
-						<div class="flex flex-wrap gap-2 rcodes">
-							{#each FALLBACK_RCODES as code}
-								<button
-									type="button"
-									class="toggle-btn {settings.fallback?.rcodes?.includes(code) ? 'selected' : ''}"
-									onclick={() => toggleRcode(code)}
-								>
-									{code}
-								</button>
-							{/each}
 						</div>
 					</div>
 				{/if}

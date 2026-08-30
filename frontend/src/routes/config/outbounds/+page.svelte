@@ -381,7 +381,9 @@
 										{$t('outbounds.speedLatency')} <span class="font-mono">{speed.idle_latency_ms} ms</span>
 									</span>
 									<span class="text-[var(--ctp-subtext1)]" title={$t('outbounds.speedRpmHint')}>
-										RPM <span class="font-mono">{speed.download_rpm} / {speed.upload_rpm}</span>
+										{$t('outbounds.speedRpm')}
+										<span class="font-mono">↓{speed.download_rpm} / ↑{speed.upload_rpm}</span>
+										{$t('outbounds.speedRpmUnit')}
 									</span>
 								</div>
 							{/if}
@@ -504,7 +506,9 @@
 										{$t('outbounds.speedLatency')} <span class="font-mono">{speed.idle_latency_ms} ms</span>
 									</span>
 									<span class="text-[var(--ctp-subtext1)]" title={$t('outbounds.speedRpmHint')}>
-										RPM <span class="font-mono">{speed.download_rpm} / {speed.upload_rpm}</span>
+										{$t('outbounds.speedRpm')}
+										<span class="font-mono">↓{speed.download_rpm} / ↑{speed.upload_rpm}</span>
+										{$t('outbounds.speedRpmUnit')}
 									</span>
 								</div>
 							{/if}
