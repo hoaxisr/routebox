@@ -3,7 +3,7 @@
 	import { t } from 'svelte-i18n';
 	import { api } from '$lib/api/client';
 	import { notifications, unsavedChanges } from '$lib/stores';
-	import type { Outbound, Endpoint, RouteRule, DnsServer, RouteSettings, ClashProxy, Subscription, SpeedTestResult } from '$lib/types';
+	import type { Outbound, Endpoint, RouteRule, DnsServer, RouteSettings, ClashProxy, Subscription } from '$lib/types';
 	import { owningSubscription } from '$lib/utils/subscriptionTags';
 	import Modal from '$lib/components/shared/Modal.svelte';
 	import OutboundForm from '$lib/components/config/OutboundForm.svelte';
@@ -37,32 +37,6 @@
 	// nothing about that, which made the deletion look permanent (#80). A failed
 	// load leaves the list unmarked rather than blocking the page.
 	let subs = $state<Subscription[]>([]);
-
-	// Speed test (#13). One run at a time — the server enforces it too, because
-	// two measurements share one uplink and both come back wrong.
-	let speedRunning = $state('');
-	let speedResults = $state<Record<string, SpeedTestResult>>({});
-
-	async function runSpeedTest(tag: string) {
-		if (speedRunning) return;
-		speedRunning = tag;
-		try {
-			const res = await api.speedTestOutbound(tag);
-			speedResults = { ...speedResults, [tag]: res };
-		} catch (e) {
-			notifications.error(`${$t('outbounds.speedTestFailed')}: ${e}`);
-		} finally {
-			speedRunning = '';
-		}
-	}
-
-	// Decimal, the way the tool measures and the way links are sold.
-	function formatBits(bps: number): string {
-		if (bps >= 1e9) return `${(bps / 1e9).toFixed(2)} Gbps`;
-		if (bps >= 1e6) return `${(bps / 1e6).toFixed(1)} Mbps`;
-		if (bps >= 1e3) return `${(bps / 1e3).toFixed(0)} Kbps`;
-		return `${bps} bps`;
-	}
 
 	async function fetchProxyDelays() {
 		try {
@@ -136,13 +110,6 @@
 			]);
 			subs = sb;
 			outbounds = ob;
-			// A measurement belongs to the outbound that was there when it ran.
-			// Keyed by tag it would otherwise outlive a delete and reappear under
-			// a different server that happens to reuse the name.
-			const live = new Set(ob.map((o) => o.tag));
-			speedResults = Object.fromEntries(
-				Object.entries(speedResults).filter(([tag]) => live.has(tag))
-			);
 			endpoints = ep;
 			rules = rl;
 			dnsServers = dns;
@@ -199,8 +166,6 @@
 
 		try {
 			await api.deleteOutbound(tag);
-			const { [tag]: _dropped, ...rest } = speedResults;
-			speedResults = rest;
 			notifications.success($t('outbounds.outboundDeleted'));
 			unsavedChanges.markChanged($t('outbounds.title'), `${$t('common.delete')} "${tag}"`);
 			await fetchData();
@@ -326,25 +291,7 @@
 								</div>
 
 								<div class="flex items-center gap-2">
-									<button
-										onclick={() => runSpeedTest(outbound.tag)}
-										disabled={!!speedRunning}
-										class="p-2 hover:bg-[var(--ctp-surface2)] rounded-lg transition-colors disabled:opacity-40"
-										title={$t('outbounds.speedTest')}
-										aria-label="{$t('outbounds.speedTest')} {outbound.tag}"
-									>
-										{#if speedRunning === outbound.tag}
-											<svg class="w-5 h-5 animate-spin text-[var(--ctp-primary)]" fill="none" viewBox="0 0 24 24">
-												<circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle>
-												<path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z"></path>
-											</svg>
-										{:else}
-											<svg class="w-5 h-5 text-[var(--ctp-overlay1)]" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-												<path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13 10V3L4 14h7v7l9-11h-7z" />
-											</svg>
-										{/if}
-									</button>
-									<button
+<button
 										onclick={() => openEdit(outbound)}
 										class="p-2 hover:bg-[var(--ctp-surface2)] rounded-lg transition-colors"
 										title={$t('common.edit')}
@@ -364,29 +311,6 @@
 									</button>
 								</div>
 							</div>
-
-							{#if speedResults[outbound.tag]}
-								{@const speed = speedResults[outbound.tag]}
-								<!-- Accuracy comes from the binary, and a Low-accuracy figure is
-								     shown as such rather than dressed up as a measurement. -->
-								<div class="mt-3 pt-3 border-t border-[var(--ctp-surface2)] flex items-center gap-4 flex-wrap text-sm">
-									<span class="text-[var(--ctp-overlay0)] text-xs uppercase tracking-wide">{$t('outbounds.speedTest')}</span>
-									<span class="text-[var(--ctp-text)]" title="{$t('outbounds.speedAccuracy')}: {speed.download_accuracy}">
-										↓ <span class="font-mono">{formatBits(speed.download_bps)}</span>
-									</span>
-									<span class="text-[var(--ctp-text)]" title="{$t('outbounds.speedAccuracy')}: {speed.upload_accuracy}">
-										↑ <span class="font-mono">{formatBits(speed.upload_bps)}</span>
-									</span>
-									<span class="text-[var(--ctp-subtext1)]" title={$t('outbounds.speedLatencyHint')}>
-										{$t('outbounds.speedLatency')} <span class="font-mono">{speed.idle_latency_ms} ms</span>
-									</span>
-									<span class="text-[var(--ctp-subtext1)]" title={$t('outbounds.speedRpmHint')}>
-										{$t('outbounds.speedRpm')}
-										<span class="font-mono">↓{speed.download_rpm} / ↑{speed.upload_rpm}</span>
-										{$t('outbounds.speedRpmUnit')}
-									</span>
-								</div>
-							{/if}
 						</div>
 					{/each}
 				</div>
@@ -451,25 +375,7 @@
 								</div>
 
 								<div class="flex items-center gap-2">
-									<button
-										onclick={() => runSpeedTest(outbound.tag)}
-										disabled={!!speedRunning}
-										class="p-2 hover:bg-[var(--ctp-surface2)] rounded-lg transition-colors disabled:opacity-40"
-										title={$t('outbounds.speedTest')}
-										aria-label="{$t('outbounds.speedTest')} {outbound.tag}"
-									>
-										{#if speedRunning === outbound.tag}
-											<svg class="w-5 h-5 animate-spin text-[var(--ctp-primary)]" fill="none" viewBox="0 0 24 24">
-												<circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle>
-												<path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z"></path>
-											</svg>
-										{:else}
-											<svg class="w-5 h-5 text-[var(--ctp-overlay1)]" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-												<path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13 10V3L4 14h7v7l9-11h-7z" />
-											</svg>
-										{/if}
-									</button>
-									<button
+<button
 										onclick={() => openEdit(outbound)}
 										class="p-2 hover:bg-[var(--ctp-surface2)] rounded-lg transition-colors"
 										title={$t('common.edit')}
@@ -489,29 +395,6 @@
 									</button>
 								</div>
 							</div>
-
-							{#if speedResults[outbound.tag]}
-								{@const speed = speedResults[outbound.tag]}
-								<!-- Accuracy comes from the binary, and a Low-accuracy figure is
-								     shown as such rather than dressed up as a measurement. -->
-								<div class="mt-3 pt-3 border-t border-[var(--ctp-surface2)] flex items-center gap-4 flex-wrap text-sm">
-									<span class="text-[var(--ctp-overlay0)] text-xs uppercase tracking-wide">{$t('outbounds.speedTest')}</span>
-									<span class="text-[var(--ctp-text)]" title="{$t('outbounds.speedAccuracy')}: {speed.download_accuracy}">
-										↓ <span class="font-mono">{formatBits(speed.download_bps)}</span>
-									</span>
-									<span class="text-[var(--ctp-text)]" title="{$t('outbounds.speedAccuracy')}: {speed.upload_accuracy}">
-										↑ <span class="font-mono">{formatBits(speed.upload_bps)}</span>
-									</span>
-									<span class="text-[var(--ctp-subtext1)]" title={$t('outbounds.speedLatencyHint')}>
-										{$t('outbounds.speedLatency')} <span class="font-mono">{speed.idle_latency_ms} ms</span>
-									</span>
-									<span class="text-[var(--ctp-subtext1)]" title={$t('outbounds.speedRpmHint')}>
-										{$t('outbounds.speedRpm')}
-										<span class="font-mono">↓{speed.download_rpm} / ↑{speed.upload_rpm}</span>
-										{$t('outbounds.speedRpmUnit')}
-									</span>
-								</div>
-							{/if}
 						</div>
 					{/each}
 				</div>

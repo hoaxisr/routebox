@@ -1,8 +1,10 @@
 <script lang="ts">
 	import { t } from 'svelte-i18n';
-	import type { ClashProxy } from '$lib/types';
+	import type { ClashProxy, SpeedTestResult } from '$lib/types';
 	import { api } from '$lib/api/client';
 	import { notifications } from '$lib/stores';
+	import SpeedTestButton from '$lib/components/shared/SpeedTestButton.svelte';
+	import SpeedTestSummary from '$lib/components/shared/SpeedTestSummary.svelte';
 
 	interface Props {
 		proxy: ClashProxy;
@@ -16,6 +18,23 @@
 	let delay = $state<number | null>(proxy.history?.[proxy.history.length - 1]?.delay ?? null);
 
 	const isGroup = $derived(proxy.type === 'Selector' || proxy.type === 'URLTest');
+
+	// Speed test (#13, moved here from Outbounds by #90). Nothing to measure
+	// through a proxy that answers by dropping the connection.
+	let speedRunning = $state(false);
+	let speed = $state<SpeedTestResult | null>(null);
+	const canSpeedTest = $derived(!['Reject', 'Block'].includes(proxy.type));
+
+	async function runSpeedTest() {
+		speedRunning = true;
+		try {
+			speed = await api.speedTestOutbound(proxy.name);
+		} catch (err) {
+			notifications.error(`${$t('outbounds.speedTestFailed')}: ${err}`);
+		} finally {
+			speedRunning = false;
+		}
+	}
 
 	const effectiveDelay = $derived.by((): number | null => {
 		if (isGroup && proxy.now && allProxies) {
@@ -114,8 +133,15 @@
 					</svg>
 				{/if}
 			</button>
+			{#if canSpeedTest}
+				<SpeedTestButton tag={proxy.name} running={speedRunning} onclick={runSpeedTest} />
+			{/if}
 		</div>
 	</div>
+
+	{#if speed}
+		<SpeedTestSummary {speed} />
+	{/if}
 
 	{#if isGroup && proxy.all}
 		<div class="mt-3 pt-3 border-t border-[var(--ctp-surface2)]">

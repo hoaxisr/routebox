@@ -713,6 +713,10 @@ func main() {
 				r.Get("/{tag}", apiHandler.GetEndpoint)
 				r.Put("/{tag}", apiHandler.UpdateEndpoint)
 				r.Delete("/{tag}", apiHandler.DeleteEndpoint)
+				// Same measurement as an outbound's (#92): the tool resolves a tag
+				// through the outbound manager, which falls back to endpoints, and
+				// for AWG/WireGuard the endpoint IS the outbound.
+				r.Post("/{tag}/speedtest", apiHandler.SpeedTestOutbound)
 			})
 
 			// Outbounds CRUD

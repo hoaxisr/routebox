@@ -539,6 +539,11 @@ export const api = {
 	speedTestOutbound: (tag: string) =>
 		request<SpeedTestResult>(`/outbounds/${encodeURIComponent(tag)}/speedtest`, { method: 'POST' }),
 
+	// Same measurement, honest URL (#92): for AWG/WireGuard the endpoint is the
+	// outbound, and the binary resolves either kind of tag.
+	speedTestEndpoint: (tag: string) =>
+		request<SpeedTestResult>(`/endpoints/${encodeURIComponent(tag)}/speedtest`, { method: 'POST' }),
+
 	testLatency: (name: string, url = 'http://www.gstatic.com/generate_204', timeout = 5000) =>
 		requestRaw<{ delay: number }>(`/clash/proxies/${encodeURIComponent(name)}/delay?url=${encodeURIComponent(url)}&timeout=${timeout}`),
 

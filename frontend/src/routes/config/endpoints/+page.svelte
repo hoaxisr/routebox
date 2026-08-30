@@ -3,8 +3,10 @@
 	import { t } from 'svelte-i18n';
 	import { api } from '$lib/api/client';
 	import { notifications, unsavedChanges } from '$lib/stores';
-	import type { Endpoint, Outbound, DnsServer, RouteSettings, ClashProxy } from '$lib/types';
+	import type { Endpoint, Outbound, DnsServer, RouteSettings, ClashProxy, SpeedTestResult } from '$lib/types';
 	import Modal from '$lib/components/shared/Modal.svelte';
+	import SpeedTestButton from '$lib/components/shared/SpeedTestButton.svelte';
+	import SpeedTestSummary from '$lib/components/shared/SpeedTestSummary.svelte';
 	import EndpointForm from '$lib/components/config/EndpointForm.svelte';
 	import { getAWGVersion } from '$lib/utils/awgVersion';
 
@@ -23,6 +25,23 @@
 	let hasDefaultResolver = $derived(!!routeSettings?.default_domain_resolver);
 
 	let proxyDelays = $state<Map<string, number | null>>(new Map());
+
+	// Speed test (#92). One run at a time — the server enforces it too, because
+	// two measurements share one uplink and both come back wrong.
+	let speedRunning = $state('');
+	let speedResults = $state<Record<string, SpeedTestResult>>({});
+
+	async function runSpeedTest(tag: string) {
+		if (speedRunning) return;
+		speedRunning = tag;
+		try {
+			speedResults = { ...speedResults, [tag]: await api.speedTestEndpoint(tag) };
+		} catch (e) {
+			notifications.error(`${$t('outbounds.speedTestFailed')}: ${e}`);
+		} finally {
+			speedRunning = '';
+		}
+	}
 
 	async function fetchProxyDelays() {
 		try {
@@ -233,6 +252,12 @@
 						</div>
 
 						<div class="flex items-center gap-2">
+							<SpeedTestButton
+								tag={endpoint.tag}
+								running={speedRunning === endpoint.tag}
+								disabled={!!speedRunning}
+								onclick={() => runSpeedTest(endpoint.tag)}
+							/>
 							<button
 								onclick={() => openEdit(endpoint)}
 								disabled={managed}
@@ -255,6 +280,10 @@
 							</button>
 						</div>
 					</div>
+
+					{#if speedResults[endpoint.tag]}
+						<SpeedTestSummary speed={speedResults[endpoint.tag]} />
+					{/if}
 
 					{#if endpoint.type === 'awg' || endpoint.type === 'wireguard'}
 						{@const awgVersion = getAWGVersion(endpoint)}
