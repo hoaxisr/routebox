@@ -11,7 +11,7 @@
 	import DraggableRuleList from '$lib/components/config/DraggableRuleList.svelte';
 	import HelpTooltip from '$lib/components/shared/HelpTooltip.svelte';
 	import {
-		assignedRuleSetTags,
+		referencedRuleSetTags,
 		simpleRuleSetTag,
 		applyMappingOutbound,
 		reorderArray
@@ -105,16 +105,24 @@
 	// same route.rules array and only their global order decides what matches
 	// first. Two separately-numbered sections made that order unrepresentable:
 	// a full rule could never be placed above a rule-set one.
-	let assignedTags = $derived(assignedRuleSetTags(rules));
-	// Rule-sets with no rule at all: nothing to order, so they sit apart and
-	// their picker CREATES the mapping (appended last, then draggable).
-	let unassignedRuleSets = $derived(ruleSets.filter((rs) => !assignedTags.has(rs.tag)));
+	// Rule-sets no rule mentions AT ALL: nothing to order, so they sit apart and
+	// their picker CREATES the mapping (appended last, then draggable). Keyed on
+	// every reference, not just plain mappings — a rule-set used by a rule with
+	// one extra condition on it does have a route, and listing it here said the
+	// opposite and offered a delete the backend refuses (#86).
+	let referencedTags = $derived(referencedRuleSetTags(rules));
+	let unassignedRuleSets = $derived(ruleSets.filter((rs) => !referencedTags.has(rs.tag)));
 	// "No route" is about route rules only, but a DNS rule can reference the same
 	// tag and the backend refuses to delete a rule-set that one does. Without this
 	// the trash below offered an action that always failed, under a question that
 	// claimed nothing was using it (#86).
 	let ruleSetUsage = $state<Record<string, RuleSetUsage>>({});
 	const dnsRuleCount = (tag: string) => ruleSetUsage[tag]?.dns_rules?.length ?? 0;
+	// The server's own count of route rules naming this tag. The section above
+	// already excludes everything referenced by the rules ON SCREEN; this catches
+	// the case where the two disagree (a stale list, another tab) instead of
+	// letting the delete fail with the backend's own wording (#86).
+	const routeRuleCount = (tag: string) => ruleSetUsage[tag]?.route_rules?.length ?? 0;
 
 	// Every rule mutation is addressed by POSITION, and a position captured when
 	// the user clicked stops being true as soon as another mutation lands. Two
@@ -595,6 +603,7 @@
 						<div class="rounded-lg border border-dashed border-[var(--ctp-surface2)] divide-y divide-[var(--ctp-surface2)]">
 							{#each unassignedRuleSets as ruleSet (ruleSet.tag)}
 								{@const dnsUses = dnsRuleCount(ruleSet.tag)}
+								{@const routeUses = routeRuleCount(ruleSet.tag)}
 								<div class="px-3 py-2 flex items-center gap-2 flex-wrap">
 									<span class="px-2 py-0.5 text-xs rounded bg-[var(--ctp-surface2)] text-[var(--ctp-overlay1)] flex-shrink-0">
 										{ruleSet.type}
@@ -623,10 +632,12 @@
 									<button
 										type="button"
 										class="action-btn-danger ml-auto"
-										disabled={dnsUses > 0}
+										disabled={dnsUses > 0 || routeUses > 0}
 										title={dnsUses > 0
 											? $t('routes.ruleSetUsedByDns', { values: { count: dnsUses } })
-											: $t('routes.deleteRuleSetEntirely', { values: { tag: ruleSet.tag } })}
+											: routeUses > 0
+												? $t('routes.ruleSetUsedByRoute', { values: { count: routeUses } })
+												: $t('routes.deleteRuleSetEntirely', { values: { tag: ruleSet.tag } })}
 										aria-label={$t('routes.deleteRuleSetEntirely', { values: { tag: ruleSet.tag } })}
 										onclick={() => handleDeleteRuleSet(ruleSet.tag)}
 									>
@@ -750,7 +761,7 @@
 					{ruleSets}
 					outbounds={allOutbounds}
 					inbounds={sourceInbounds}
-					usedRuleSets={assignedTags}
+					usedRuleSets={referencedTags}
 					onSave={handleWizardSave}
 					onCancel={() => showWizard = false}
 					onCreateRuleSet={() => { showWizard = false; }}

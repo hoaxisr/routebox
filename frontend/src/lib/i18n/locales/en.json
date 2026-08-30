@@ -585,6 +585,7 @@
     "ruleGone": "That rule is no longer in the list — it was changed or removed while this action was waiting. Nothing was applied.",
     "finalFallback": "{outbound} (default)",
     "ruleSetUsedByDns": "Used by {count} DNS rule(s) — remove those first",
+    "ruleSetUsedByRoute": "Used by {count} route rule(s) — remove those first",
     "deleteRuleSetEntirely": "Delete the rule set \"{tag}\"",
     "deleteRuleSetEntirelyConfirm": "Delete the rule set \"{tag}\" itself? No route points at it any more — this removes it from the config.",
     "unassignedRuleSets": "Rule sets with no route",

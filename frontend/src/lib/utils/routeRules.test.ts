@@ -1,7 +1,7 @@
 import { describe, it, expect } from 'vitest';
 import {
+	referencedRuleSetTags,
 	simpleRuleSetTag,
-	assignedRuleSetTags,
 	mappingOutboundValue,
 	applyMappingOutbound,
 	reorderArray,
@@ -174,19 +174,48 @@ describe('ruleSetRowTag', () => {
 	});
 });
 
-describe('assignedRuleSetTags', () => {
-	it('collects only the plainly mapped tags', () => {
+// "Has a route" is a question about the config, not about how the panel draws a
+// row. The plain-mapping test above decides the row; this decides whether the
+// rule-set belongs under "Rule sets with no route" — and getting that wrong put
+// a live rule-set under a heading saying the opposite, with a delete button the
+// backend refuses ("referenced by route rule[N]"). Issue #86.
+describe('referencedRuleSetTags', () => {
+	it('collects every tag any rule mentions, plain mapping or not', () => {
 		const rules: RouteRule[] = [
 			{ rule_set: ['ads'], action: 'reject' },
-			{ rule_set: ['ru'], domain_suffix: ['ru'], outbound: 'direct' }, // not plain
+			{ rule_set: ['ru'], domain_suffix: ['ru'], outbound: 'direct' }, // not plain, still routed
+			{ rule_set: ['a', 'b'], outbound: 'vpn' }, // two sets: not plain either
 			{ domain: ['x.com'], outbound: 'vpn' },
 			{ rule_set: ['streaming'], outbound: 'vpn-de' }
 		];
-		expect([...assignedRuleSetTags(rules)].sort()).toEqual(['ads', 'streaming']);
+		expect([...referencedRuleSetTags(rules)].sort()).toEqual([
+			'a',
+			'ads',
+			'b',
+			'ru',
+			'streaming'
+		]);
+	});
+
+	it('descends into a logical rule\'s nested rules', () => {
+		const rules: RouteRule[] = [
+			{
+				type: 'logical',
+				mode: 'and',
+				rules: [{ rule_set: ['ads'] }, { rules: [{ rule_set: ['deep'] }] }],
+				outbound: 'direct'
+			} as RouteRule
+		];
+		expect([...referencedRuleSetTags(rules)].sort()).toEqual(['ads', 'deep']);
+	});
+
+	it('ignores empty and non-string entries', () => {
+		const rules = [{ rule_set: ['', 7, 'ok'] }] as unknown as RouteRule[];
+		expect([...referencedRuleSetTags(rules)]).toEqual(['ok']);
 	});
 
 	it('is empty for an empty rules array', () => {
-		expect(assignedRuleSetTags([]).size).toBe(0);
+		expect(referencedRuleSetTags([]).size).toBe(0);
 	});
 });
 

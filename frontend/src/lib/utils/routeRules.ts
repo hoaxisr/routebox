@@ -76,13 +76,33 @@ export function ruleSetRowTag(
 	return tag && knownTags.has(tag) ? tag : null;
 }
 
-/** Tags that already have a plain mapping somewhere in the rules array. */
-export function assignedRuleSetTags(rules: RouteRule[]): Set<string> {
+/**
+ * Every rule-set tag ANY rule mentions, however the rule is shaped.
+ *
+ * "Has a route" is a question about the config, not about how the panel chose to
+ * draw a row. A rule-set named by a rule with a second condition on it — or by
+ * one of two, or from inside a logical rule's nested `rules` — is not a plain
+ * mapping, so simpleRuleSetTag says nothing about it; listing it as having no
+ * route put a live rule-set under a heading that says the opposite, and offered
+ * a delete the backend refuses ("referenced by route rule[N]").
+ */
+export function referencedRuleSetTags(rules: RouteRule[]): Set<string> {
 	const out = new Set<string>();
-	for (const rule of rules) {
-		const tag = simpleRuleSetTag(rule);
-		if (tag) out.add(tag);
-	}
+	const walk = (list: RouteRule[] | undefined) => {
+		if (!Array.isArray(list)) return;
+		for (const rule of list) {
+			if (!rule || typeof rule !== 'object') continue;
+			if (Array.isArray(rule.rule_set)) {
+				for (const tag of rule.rule_set) {
+					if (typeof tag === 'string' && tag !== '') out.add(tag);
+				}
+			}
+			// Logical rules carry their operands in `rules`, and a rule-set named
+			// only in there is just as referenced.
+			walk((rule as { rules?: RouteRule[] }).rules);
+		}
+	};
+	walk(rules);
 	return out;
 }
 
