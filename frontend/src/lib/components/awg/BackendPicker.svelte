@@ -3,7 +3,9 @@
 	interface Props {
 		value: 'kernel' | 'singbox';
 		disabled?: boolean;
-		/** Router mode is sing-box-only: pass false to hide the kernel option. */
+		/** False hides the kernel option — pass the host's own capability, never
+		 *  the install mode: what decides is whether the tools are there or
+		 *  RouteBox can install them (#93), not router vs vps. */
 		allowKernel?: boolean;
 		/** Why the kernel backend is unavailable here, shown in its place. */
 		kernelReason?: string;

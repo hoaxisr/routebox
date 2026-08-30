@@ -8,6 +8,7 @@ import (
 	"path/filepath"
 	"strings"
 	"sync"
+	"time"
 )
 
 // State is the module install lifecycle.
@@ -43,6 +44,11 @@ const (
 	amneziaSourcesFile = "/etc/apt/sources.list.d/amnezia-awg.sources"
 	amneziaKeyserver   = "keyserver.ubuntu.com"
 )
+
+// moduleInstallTimeout bounds the whole install. Generous on purpose — a DKMS
+// build on a small VM is minutes, not seconds — but finite, so a wedged apt
+// cannot leave the manager stuck in StateInstalling forever.
+const moduleInstallTimeout = 30 * time.Minute
 
 // ModuleManager installs/loads the amneziawg kernel module on demand.
 type ModuleManager struct {
@@ -104,6 +110,16 @@ func (m *ModuleManager) Ensure(ctx context.Context) error {
 		m.setState(StateReady)
 		return nil
 	}
+	// From here on the caller's cancellation is dropped. This runs from an HTTP
+	// request that can take minutes (apt + a DKMS build), and killing apt or dkms
+	// halfway because a browser tab timed out or was closed leaves a half-configured
+	// package for the operator to unpick by hand. The install is idempotent, so
+	// finishing it is always the better answer. A ceiling still applies: without
+	// one, an apt waiting on a lock or a dead mirror would hold the single-flight
+	// claim below for as long as the process lives, and every later attempt would
+	// be refused with "install already in progress".
+	ctx, cancel := context.WithTimeout(context.WithoutCancel(ctx), moduleInstallTimeout)
+	defer cancel()
 	// Single-flight: atomically check-and-claim the installing state under ONE lock
 	// hold (closes the TOCTOU window between check and set).
 	m.mu.Lock()
@@ -142,12 +158,18 @@ func (m *ModuleManager) Ensure(ctx context.Context) error {
 		{"apt-get", "update"},
 		{"apt-get", "install", "-y", "gnupg2"},
 		{"apt-get", "install", "-y", "dirmngr"},
-		{"apt-get", "install", "-y", "linux-headers-" + ver},
 	}
 	for _, args := range prep {
 		if _, stderr, err := m.run.Run(ctx, args[0], args[1:]...); err != nil {
 			return m.fail(fmt.Sprintf("install step %q failed: %v %s", strings.Join(args, " "), err, stderr))
 		}
+	}
+	// Headers are their own step so the failure can name the package. The DKMS
+	// build needs headers for the RUNNING kernel, and which package carries them
+	// depends on whose kernel it is (#93).
+	hdr := headersPackage(ver)
+	if _, stderr, err := m.run.Run(ctx, "apt-get", "install", "-y", hdr); err != nil {
+		return m.fail(fmt.Sprintf("installing %s failed: %v %s — the module is built by DKMS and needs headers matching the running kernel (%s). Install them from the repository that ships this kernel, then try again, or use the singbox backend, which needs no module", hdr, err, stderr, ver))
 	}
 	// VERIFY BEFORE TRUST: receive the PPA key into a scratch keyring, assert its
 	// fingerprint matches the pin, and ONLY THEN export it to the trusted keyring
@@ -176,7 +198,22 @@ func (m *ModuleManager) Ensure(ctx context.Context) error {
 	return nil
 }
 
-// unameR returns the running kernel release (for the linux-headers package).
+// headersPackage names the kernel-headers package for a running kernel release.
+//
+// Proxmox VE runs its own kernel and ships the headers as pve-headers-*; asking
+// apt for linux-headers-<pve release> there fails with "no installation
+// candidate", which is what made the kernel backend look broken on Proxmox and
+// got it switched off for whole install modes. An Ubuntu VM *inside* Proxmox
+// runs an ordinary kernel and is unaffected — the running release is the only
+// thing that decides.
+func headersPackage(release string) string {
+	if strings.HasSuffix(release, "-pve") {
+		return "pve-headers-" + release
+	}
+	return "linux-headers-" + release
+}
+
+// unameR returns the running kernel release (for the kernel-headers package).
 func (m *ModuleManager) unameR(ctx context.Context) (string, error) {
 	out, _, err := m.run.Run(ctx, "uname", "-r")
 	return strings.TrimSpace(out), err
@@ -239,16 +276,8 @@ func (m *ModuleManager) writeSources(codename string) error {
 
 // codename reads VERSION_CODENAME from the injected os-release (e.g. "noble").
 func (m *ModuleManager) codename() string {
-	data, err := os.ReadFile(m.osReleasePath)
-	if err != nil {
-		return ""
-	}
-	for _, line := range strings.Split(string(data), "\n") {
-		if v, ok := strings.CutPrefix(line, "VERSION_CODENAME="); ok {
-			return strings.Trim(v, `"`)
-		}
-	}
-	return ""
+	_, _, codename := readOSRelease(m.osReleasePath)
+	return codename
 }
 
 // loaded reports whether the module is present AND the tools are usable.
@@ -263,9 +292,17 @@ func (m *ModuleManager) loaded(ctx context.Context) bool {
 
 // distro reads ID / ID_LIKE from the injected os-release.
 func (m *ModuleManager) distro() (id, idLike string) {
-	data, err := os.ReadFile(m.osReleasePath)
+	id, idLike, _ = readOSRelease(m.osReleasePath)
+	return id, idLike
+}
+
+// readOSRelease pulls ID / ID_LIKE / VERSION_CODENAME out of an os-release
+// file. Shared with the capability probe, which has to answer "could Ensure run
+// here?" without a ModuleManager to ask.
+func readOSRelease(path string) (id, idLike, codename string) {
+	data, err := os.ReadFile(path)
 	if err != nil {
-		return "", ""
+		return "", "", ""
 	}
 	for _, line := range strings.Split(string(data), "\n") {
 		if v, ok := strings.CutPrefix(line, "ID="); ok {
@@ -274,8 +311,11 @@ func (m *ModuleManager) distro() (id, idLike string) {
 		if v, ok := strings.CutPrefix(line, "ID_LIKE="); ok {
 			idLike = strings.Trim(v, `"`)
 		}
+		if v, ok := strings.CutPrefix(line, "VERSION_CODENAME="); ok {
+			codename = strings.Trim(v, `"`)
+		}
 	}
-	return id, idLike
+	return id, idLike, codename
 }
 
 func isDebianFamily(id, idLike string) bool {

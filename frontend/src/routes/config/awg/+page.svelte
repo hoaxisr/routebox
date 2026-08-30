@@ -2,12 +2,14 @@
 	import { onMount, onDestroy } from 'svelte';
 	import { t } from 'svelte-i18n';
 	import { api } from '$lib/api/client';
-	import { notifications, routerMode } from '$lib/stores';
+	import { notifications } from '$lib/stores';
 	import { formatBytes } from '$lib/stores/settings';
 	import type { AwgStatus, AwgPeer, AwgServerSettings } from '$lib/types';
 	import ServerSettingsForm from '$lib/components/awg/ServerSettingsForm.svelte';
 	import PeerRoster from '$lib/components/awg/PeerRoster.svelte';
 	import BackendPicker from '$lib/components/awg/BackendPicker.svelte';
+	import EnableProgress from '$lib/components/awg/EnableProgress.svelte';
+	import { isEnableInFlight } from '$lib/utils/awgPhase';
 
 	let status = $state<AwgStatus | null>(null);
 	let settings = $state<AwgServerSettings | null>(null);
@@ -26,6 +28,10 @@
 	// Offering a backend this system cannot run means every click on it ends in
 	// the same refusal at save time. The server says why; say it instead.
 	const kernelUnavailable = $derived(status?.kernel_unavailable ?? '');
+	// The orchestrator is mid-flight. Read from the status, so a browser that gave
+	// up on the long POST still sees the work continuing and cannot fire a second
+	// Enable into it.
+	const busyPhase = $derived(isEnableInFlight(status?.phase));
 	const backendValue = $derived<'kernel' | 'singbox'>(isSingbox ? 'singbox' : 'kernel');
 	// AWG3 controls (header protection, CPA/RAT) are available on singbox always,
 	// and on the kernel backend only when the host's module + awg-quick/tools have
@@ -198,7 +204,16 @@
 		// The online dots and traffic figures are only meaningful live — poll while
 		// the tab is open, skipping a tick that would race a save/enable in flight.
 		poll = setInterval(() => {
-			if (!loading && !saving && !enabling) refreshLive(true);
+			if (loading || saving) return;
+			// A kernel enable installs a DKMS module and can run for minutes (#93).
+			// Keep reading the status through it — that is the only place the phase
+			// shows up — but leave the peers alone: there are none until it is up,
+			// and the enable request is still holding the settings.
+			if (enabling) {
+				refreshStatus(true);
+				return;
+			}
+			refreshLive(true);
 		}, 5000);
 	});
 
@@ -225,7 +240,7 @@
 			<p>{$t('awg.description')}</p>
 		</div>
 
-		<BackendPicker value={backendValue} disabled={status.enabled} allowKernel={!$routerMode && !kernelUnavailable} kernelReason={kernelUnavailable} onChange={changeBackend} />
+		<BackendPicker value={backendValue} disabled={status.enabled} allowKernel={!kernelUnavailable} kernelReason={kernelUnavailable} onChange={changeBackend} />
 
 		<!-- Status strip -->
 		<div class="status-strip">
@@ -281,12 +296,14 @@
 					{$t('awg.disable')}
 				</button>
 			{:else}
-				<button type="button" class="btn-enable" onclick={enable} disabled={enabling}>
+				<button type="button" class="btn-enable" onclick={enable} disabled={enabling || busyPhase}>
 					<svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M18.36 6.64a9 9 0 1 1-12.73 0" /><line x1="12" y1="2" x2="12" y2="12" /></svg>
 					{enabling ? $t('awg.enabling') : $t('awg.enable')}
 				</button>
 			{/if}
 		</div>
+
+		<EnableProgress phase={status.phase} module={status.module} {enabling} />
 
 		{#if status.last_error}
 			<div class="status-badge error err-line">{status.last_error}</div>
@@ -368,12 +385,17 @@
 			{/if}
 		</div>
 
-		<BackendPicker value={backendValue} disabled={status.enabled} allowKernel={!$routerMode && !kernelUnavailable} kernelReason={kernelUnavailable} onChange={changeBackend} />
+		<BackendPicker value={backendValue} disabled={status.enabled} allowKernel={!kernelUnavailable} kernelReason={kernelUnavailable} onChange={changeBackend} />
 
 		<div class="spine">
 			<!-- STEP 1 — Setup / readiness (kernel backend only) -->
 			{#if !isSingbox}
-				<section class="step done">
+				<!-- The module is no longer a precondition the operator had to satisfy
+				     before picking this backend (#93) — RouteBox installs it on the
+				     first Turn on. So this step reports, it does not claim: a green
+				     tick over "not-installed" was the old lie. -->
+				{@const moduleReady = status.module === 'ready'}
+				<section class="step" class:done={moduleReady} class:active={!moduleReady}>
 					<div class="step-marker" aria-hidden="true">
 						<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 13l4 4L19 7" /></svg>
 					</div>
@@ -383,14 +405,22 @@
 								<div class="step-eyebrow">{$t('awg.stepSetup')}</div>
 								<h3 class="step-title">{$t('awg.stepReadinessTitle')}</h3>
 							</div>
-							<span class="status-badge success">{$t('awg.ready')}</span>
+							<span class="status-badge {moduleReady ? 'success' : 'info'}">
+								{moduleReady ? $t('awg.ready') : $t('awg.moduleNotReady')}
+							</span>
 						</div>
-						<p class="step-desc">{$t('awg.stepReadinessDesc')}</p>
+						<p class="step-desc">{moduleReady ? $t('awg.stepReadinessDesc') : $t('awg.moduleWillInstall')}</p>
 						<div class="ready-row">
 							<div class="ready-chip">
-								<span class="ok"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 13l4 4L19 7" /></svg></span>
+								<span class="ok" class:pending={!moduleReady}>
+									{#if moduleReady}
+										<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 13l4 4L19 7" /></svg>
+									{:else}
+										<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor"><circle cx="12" cy="12" r="9" stroke-width="2" /></svg>
+									{/if}
+								</span>
 								<span>{$t('awg.kernelModule')}</span>
-								<span class="status-badge {status.module === 'loaded' ? 'success' : 'info'}">{status.module}</span>
+								<span class="status-badge {moduleReady ? 'success' : status.module === 'failed' ? 'error' : 'info'}">{status.module}</span>
 							</div>
 						</div>
 					</div>
@@ -449,10 +479,11 @@
 							<button type="button" class="btn-danger" onclick={disable}>{$t('awg.disable')}</button>
 						</div>
 					{:else}
-						<button type="button" class="btn-turnon" onclick={enable} disabled={enabling}>
+						<button type="button" class="btn-turnon" onclick={enable} disabled={enabling || busyPhase}>
 							<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 2v8" /><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6.3 6.3a8 8 0 1011.4 0" /></svg>
 							{enabling ? $t('awg.enabling') : $t('awg.turnOnNow')}
 						</button>
+						<EnableProgress phase={status.phase} module={status.module} {enabling} />
 					{/if}
 				</div>
 			</section>
@@ -929,6 +960,10 @@
 	.ready-chip .ok {
 		color: var(--ctp-green);
 		display: inline-flex;
+	}
+
+	.ready-chip .ok.pending {
+		color: var(--ctp-overlay1);
 	}
 
 	.power-card {

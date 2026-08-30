@@ -1,6 +1,7 @@
 package awg
 
 import (
+	"fmt"
 	"os"
 	"os/exec"
 	"strconv"
@@ -55,14 +56,29 @@ func hasNetAdmin() bool {
 	return v&capNetAdmin != 0
 }
 
+// osReleaseFile is where the installability probe reads the distro from (tests
+// point it at a fixture).
+var osReleaseFile = "/etc/os-release"
+
+// geteuid is the root check's seam. apt needs root, and so does modprobe.
+var geteuid = os.Geteuid
+
 // KernelBackendUnsupported reports why the kernel backend cannot work in this
 // installation, or "" when it can.
 //
 // It asks what RouteBox's kernel path actually needs, not where it is running.
 // That path renders /etc/amnezia/amneziawg/<iface>.conf and hands it to
-// awg-quick, which creates the interface — so the tools have to be present and
-// this process has to be allowed to configure interfaces. systemd is no longer
-// required: iface_Up drives awg-quick directly when there is no unit.
+// awg-quick, which creates the interface — so the tools have to be reachable
+// and this process has to be allowed to configure interfaces. systemd is no
+// longer required: iface_Up drives awg-quick directly when there is no unit.
+//
+// "Reachable" is not the same as "already installed" (#93). RouteBox ships the
+// installer — ModuleManager.Ensure adds the PPA and installs `amneziawg`, tools
+// included — but it only runs on the kernel backend, which this function used
+// to refuse for want of the very tools that install would have brought. A clean
+// host could therefore never reach the installer at all. So a missing awg-quick
+// refuses nothing where Ensure can run; where it cannot, the reason names both
+// halves.
 //
 // Containers are deliberately not a criterion. An image that ships the tools
 // and is granted CAP_NET_ADMIN passes this like any host; one that is not says
@@ -70,10 +86,29 @@ func hasNetAdmin() bool {
 // a command error.
 var KernelBackendUnsupported = func() string {
 	if _, err := lookPath("awg-quick"); err != nil {
-		return "awg-quick is not installed (amneziawg-tools)"
+		if reason := kernelToolsInstallable(); reason != "" {
+			return "awg-quick is not installed (amneziawg-tools), and " + reason
+		}
 	}
 	if !hasNetAdmin() {
 		return "this process has no CAP_NET_ADMIN, so it cannot create the interface (in Docker: add cap_add: [NET_ADMIN] and recreate the container)"
+	}
+	return ""
+}
+
+// kernelToolsInstallable reports why RouteBox could not install the tools here,
+// or "" when it could. It mirrors what ModuleManager.Ensure actually requires,
+// so the picker never offers a path that ends in a failed install.
+func kernelToolsInstallable() string {
+	id, idLike, codename := readOSRelease(osReleaseFile)
+	if !isDebianFamily(id, idLike) {
+		return fmt.Sprintf("RouteBox cannot install them here (distro %q; the installer supports Debian/Ubuntu). Install amneziawg-tools yourself, or use the singbox backend, which needs neither", id)
+	}
+	if codename == "" {
+		return "RouteBox cannot install them here (VERSION_CODENAME is absent from " + osReleaseFile + ", so the PPA suite is unknown)"
+	}
+	if geteuid() != 0 {
+		return "RouteBox is not running as root, so it cannot install them"
 	}
 	return ""
 }
