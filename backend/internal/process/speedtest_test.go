@@ -225,3 +225,34 @@ func TestParseSpeedTest_RoundsRatherThanTruncates(t *testing.T) {
 		t.Errorf("UploadBps = %d, want 0", got.UploadBps)
 	}
 }
+
+// #91: the AWG server endpoint's listen_port is already held by the running
+// process, so the measuring process died on "bind: address already in use"
+// before it measured anything. The endpoints themselves must survive — for
+// AWG/WireGuard the endpoint IS the outbound.
+func TestTrimConfigForSpeedTest_DropsEndpointListenPort(t *testing.T) {
+	out, err := TrimConfigForSpeedTest([]byte(`{"endpoints":[
+	  {"type":"awg","tag":"awg-server","listen_port":44566,"peers":[{"public_key":"k"}]},
+	  {"type":"wireguard","tag":"wg-client","address":["10.0.0.2/32"]}
+	]}`))
+	if err != nil {
+		t.Fatalf("TrimConfigForSpeedTest: %v", err)
+	}
+	var cfg map[string]interface{}
+	if err := json.Unmarshal(out, &cfg); err != nil {
+		t.Fatal(err)
+	}
+	eps, _ := cfg["endpoints"].([]interface{})
+	if len(eps) != 2 {
+		t.Fatalf("endpoints = %d, want 2 (a wireguard outbound could not dial without them)", len(eps))
+	}
+	for _, e := range eps {
+		ep, _ := e.(map[string]interface{})
+		if _, ok := ep["listen_port"]; ok {
+			t.Errorf("listen_port survived the trim on %v; the test binds a port the service holds", ep["tag"])
+		}
+		if _, ok := ep["peers"]; ep["tag"] == "awg-server" && !ok {
+			t.Error("peers were dropped along with the port")
+		}
+	}
+}

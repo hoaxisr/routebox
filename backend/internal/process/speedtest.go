@@ -64,12 +64,10 @@ const SpeedTestMaxRuntime = 12
 // failure. Outbounds, endpoints and dns are kept whole: a selector's members, a
 // detour chain and the resolver are all reachable from the tag under test.
 //
-// KNOWN, and kept on purpose: endpoints stay, so a wireguard endpoint whose port
-// the running process already holds gets bound twice. Measured — the userspace
-// implementation falls back to an ephemeral port and the test completes; a
-// kernel-mode endpoint would fail service creation instead, and that failure
-// arrives as the tool's own message rather than as a wrong number. Dropping
-// endpoints is not an option: for AWG/WireGuard the endpoint IS the outbound.
+// Endpoints stay whole except for their listen_port: for AWG/WireGuard the
+// endpoint IS the outbound, so dropping them is not an option, but binding a
+// port the running process already holds is what made every test on an
+// AWG-serving host fail (#91). See TrimConfigForSpeedTest.
 func (m *Manager) RunSpeedTest(ctx context.Context, configPath, outbound string) (SpeedTest, error) {
 	if outbound == "" {
 		return SpeedTest{}, fmt.Errorf("outbound is required")
@@ -163,6 +161,19 @@ func TrimConfigForSpeedTest(raw []byte) ([]byte, error) {
 	if route, ok := cfg["route"].(map[string]interface{}); ok {
 		delete(route, "rules")
 		delete(route, "rule_set")
+	}
+	// listen_port goes too (#91). The running process already holds it, so the
+	// measuring process binding the same port fails outright — "IPC error -98
+	// ... address already in use" — and the AWG *server* endpoint, which always
+	// has one, kills every test on a host that serves peers. Nothing listens
+	// during a measurement: a client endpoint dials fine from an ephemeral port,
+	// and the server endpoint has no one to serve for those twelve seconds.
+	if eps, ok := cfg["endpoints"].([]interface{}); ok {
+		for _, e := range eps {
+			if ep, ok := e.(map[string]interface{}); ok {
+				delete(ep, "listen_port")
+			}
+		}
 	}
 	return json.Marshal(cfg)
 }
