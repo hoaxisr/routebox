@@ -354,14 +354,15 @@
 									<svg class="w-4 h-4 transition-transform text-[var(--ctp-overlay1)] {expandedGroups.has(group.sourceIP) ? 'rotate-90' : ''}" fill="none" stroke="currentColor" viewBox="0 0 24 24">
 										<path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 5l7 7-7 7" />
 									</svg>
-									<!-- Name, address and count are their own columns: inside one span a
-									     long client name pushes the address and the count sideways, and
-									     they no longer line up between rows. -->
+									<!-- Name, address and count are their own columns of FIXED width:
+									     inside one span a long client name pushed the address and the count
+									     sideways, and a min-width only padded the short names — the long
+									     ones still shoved. Truncated with the full name on hover. -->
 									{#if groupName}
-										<span class="font-medium text-[var(--ctp-text)] sm:min-w-[9rem]">{groupName}</span>
-										<span class="font-mono text-xs text-[var(--ctp-overlay0)] sm:min-w-[7.5rem]">({group.sourceIP})</span>
+										<span class="font-medium text-[var(--ctp-text)] sm:w-[9rem] sm:shrink-0 truncate" title={groupName}>{groupName}</span>
+										<span class="font-mono text-xs text-[var(--ctp-overlay0)] sm:w-[7.5rem] sm:shrink-0">({group.sourceIP})</span>
 									{:else}
-										<span class="font-medium font-mono text-[var(--ctp-text)] sm:min-w-[17rem]">{group.sourceIP}</span>
+										<span class="font-medium font-mono text-[var(--ctp-text)] sm:w-[17rem] sm:shrink-0">{group.sourceIP}</span>
 									{/if}
 									<span class="text-xs text-[var(--ctp-overlay0)] tabular-nums">
 										({group.connections.length})

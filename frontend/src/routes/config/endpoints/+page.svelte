@@ -29,6 +29,11 @@
 	// Speed test (#92). One run at a time — the server enforces it too, because
 	// two measurements share one uplink and both come back wrong.
 	let speedRunning = $state('');
+	// The measurement runs against the APPLIED config, but this page lists the
+	// draft — an endpoint created and not yet applied is not dialable, and the
+	// binary would answer "outbound not found". proxyDelays comes from the Clash
+	// API, i.e. from what is actually running, so it is the honest gate.
+	const measurable = $derived((tag: string) => proxyDelays.has(tag));
 	let speedResults = $state<Record<string, SpeedTestResult>>({});
 
 	async function runSpeedTest(tag: string) {
@@ -106,6 +111,12 @@
 				api.getRouteSettings()
 			]);
 			endpoints = ep;
+			// A measurement belongs to the endpoint that was there when it ran.
+			// Keyed by tag alone it would outlive a delete and reappear under a new
+			// endpoint that happens to reuse the name — or survive an edit that
+			// repointed this one at a different server. Any change to the list drops
+			// the lot; a measurement is twelve seconds away.
+			speedResults = {};
 			outbounds = ob;
 			dnsServers = dns;
 			routeSettings = rs;
@@ -255,7 +266,7 @@
 							<SpeedTestButton
 								tag={endpoint.tag}
 								running={speedRunning === endpoint.tag}
-								disabled={!!speedRunning}
+								disabled={!!speedRunning || !measurable(endpoint.tag)}
 								onclick={() => runSpeedTest(endpoint.tag)}
 							/>
 							<button

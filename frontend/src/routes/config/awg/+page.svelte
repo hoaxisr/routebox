@@ -32,6 +32,16 @@
 	// up on the long POST still sees the work continuing and cannot fire a second
 	// Enable into it.
 	const busyPhase = $derived(isEnableInFlight(status?.phase));
+	// The module state is a backend enum (not-installed|installing|ready|failed).
+	// Rendered raw it was the one untranslated string on a translated page, and
+	// "not installed yet" over an install in progress said the wrong thing.
+	const moduleLabel = (m: string) =>
+		({
+			'not-installed': $t('awg.moduleNotReady'),
+			installing: $t('awg.moduleInstalling'),
+			ready: $t('awg.ready'),
+			failed: $t('awg.moduleFailed')
+		})[m] ?? m;
 	const backendValue = $derived<'kernel' | 'singbox'>(isSingbox ? 'singbox' : 'kernel');
 	// AWG3 controls (header protection, CPA/RAT) are available on singbox always,
 	// and on the kernel backend only when the host's module + awg-quick/tools have
@@ -209,7 +219,7 @@
 			// Keep reading the status through it — that is the only place the phase
 			// shows up — but leave the peers alone: there are none until it is up,
 			// and the enable request is still holding the settings.
-			if (enabling) {
+			if (enabling || busyPhase) {
 				refreshStatus(true);
 				return;
 			}
@@ -240,7 +250,7 @@
 			<p>{$t('awg.description')}</p>
 		</div>
 
-		<BackendPicker value={backendValue} disabled={status.enabled} allowKernel={!kernelUnavailable} kernelReason={kernelUnavailable} onChange={changeBackend} />
+		<BackendPicker value={backendValue} disabled={status.enabled || busyPhase || enabling} allowKernel={!kernelUnavailable} kernelReason={kernelUnavailable} onChange={changeBackend} />
 
 		<!-- Status strip -->
 		<div class="status-strip">
@@ -362,7 +372,7 @@
 		{#if !isSingbox}
 			<div class="dep-note">
 				<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" width="14" height="14"><polyline points="20 6 9 17 4 12" /></svg>
-				{$t('awg.depNote', { values: { module: status.module } })}
+				{$t('awg.depNote', { values: { module: moduleLabel(status.module) } })}
 			</div>
 		{/if}
 	</div>
@@ -385,7 +395,7 @@
 			{/if}
 		</div>
 
-		<BackendPicker value={backendValue} disabled={status.enabled} allowKernel={!kernelUnavailable} kernelReason={kernelUnavailable} onChange={changeBackend} />
+		<BackendPicker value={backendValue} disabled={status.enabled || busyPhase || enabling} allowKernel={!kernelUnavailable} kernelReason={kernelUnavailable} onChange={changeBackend} />
 
 		<div class="spine">
 			<!-- STEP 1 — Setup / readiness (kernel backend only) -->
@@ -405,8 +415,8 @@
 								<div class="step-eyebrow">{$t('awg.stepSetup')}</div>
 								<h3 class="step-title">{$t('awg.stepReadinessTitle')}</h3>
 							</div>
-							<span class="status-badge {moduleReady ? 'success' : 'info'}">
-								{moduleReady ? $t('awg.ready') : $t('awg.moduleNotReady')}
+							<span class="status-badge {moduleReady ? 'success' : status.module === 'failed' ? 'error' : 'info'}">
+								{moduleReady ? $t('awg.ready') : moduleLabel(status.module)}
 							</span>
 						</div>
 						<p class="step-desc">{moduleReady ? $t('awg.stepReadinessDesc') : $t('awg.moduleWillInstall')}</p>
@@ -420,7 +430,7 @@
 									{/if}
 								</span>
 								<span>{$t('awg.kernelModule')}</span>
-								<span class="status-badge {moduleReady ? 'success' : status.module === 'failed' ? 'error' : 'info'}">{status.module}</span>
+								<span class="status-badge {moduleReady ? 'success' : status.module === 'failed' ? 'error' : 'info'}">{moduleLabel(status.module)}</span>
 							</div>
 						</div>
 					</div>

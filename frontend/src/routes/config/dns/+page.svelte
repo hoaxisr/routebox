@@ -563,7 +563,7 @@
 									</div>
 								{/each}
 								{#if chainFree.length > 0}
-									<button type="button" class="text-sm text-[var(--ctp-primary)]" onclick={addFallback}>
+									<button type="button" class="text-sm text-[var(--ctp-primary)] cursor-pointer hover:opacity-70 transition-opacity" onclick={addFallback}>
 										+ {$t('dns.fallbackAddServer')}
 									</button>
 								{/if}

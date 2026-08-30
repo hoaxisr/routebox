@@ -10,9 +10,14 @@
 		proxy: ClashProxy;
 		allProxies?: Record<string, ClashProxy>;
 		onUpdate?: () => void;
+		/** Tag currently being speed-tested, page-wide. The server runs one at a
+		 *  time and answers the second with a 429, so every other card's button is
+		 *  disabled rather than letting the operator collect error toasts. */
+		speedRunning?: string;
+		onSpeedRunning?: (tag: string) => void;
 	}
 
-	let { proxy, allProxies, onUpdate }: Props = $props();
+	let { proxy, allProxies, onUpdate, speedRunning = '', onSpeedRunning }: Props = $props();
 
 	let testing = $state(false);
 	let delay = $state<number | null>(proxy.history?.[proxy.history.length - 1]?.delay ?? null);
@@ -20,19 +25,31 @@
 	const isGroup = $derived(proxy.type === 'Selector' || proxy.type === 'URLTest');
 
 	// Speed test (#13, moved here from Outbounds by #90). Nothing to measure
-	// through a proxy that answers by dropping the connection.
-	let speedRunning = $state(false);
+	// through a proxy that drops the connection or answers DNS, and GLOBAL is not
+	// an outbound at all — the Clash API synthesises it for its own dashboard, so
+	// `-o GLOBAL` can only ever come back "outbound not found".
 	let speed = $state<SpeedTestResult | null>(null);
-	const canSpeedTest = $derived(!['Reject', 'Block'].includes(proxy.type));
+	const canSpeedTest = $derived(
+		proxy.name !== 'GLOBAL' && !['Reject', 'Block', 'DNS'].includes(proxy.type)
+	);
+
+	// A result belongs to the path that was measured. A group re-pointed to another
+	// member is a different path, and this card survives the refresh (keyed by
+	// name) — so the old figure would otherwise sit under the new member.
+	let measuredVia = $state<string | undefined>(undefined);
+	$effect(() => {
+		if (speed && proxy.now !== measuredVia) speed = null;
+	});
 
 	async function runSpeedTest() {
-		speedRunning = true;
+		onSpeedRunning?.(proxy.name);
 		try {
+			measuredVia = proxy.now;
 			speed = await api.speedTestOutbound(proxy.name);
 		} catch (err) {
 			notifications.error(`${$t('outbounds.speedTestFailed')}: ${err}`);
 		} finally {
-			speedRunning = false;
+			onSpeedRunning?.('');
 		}
 	}
 
@@ -134,7 +151,12 @@
 				{/if}
 			</button>
 			{#if canSpeedTest}
-				<SpeedTestButton tag={proxy.name} running={speedRunning} onclick={runSpeedTest} />
+				<SpeedTestButton
+					tag={proxy.name}
+					running={speedRunning === proxy.name}
+					disabled={!!speedRunning}
+					onclick={runSpeedTest}
+				/>
 			{/if}
 		</div>
 	</div>

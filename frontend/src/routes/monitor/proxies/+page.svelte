@@ -10,6 +10,10 @@
 	let proxies = $state<ClashProxy[]>([]);
 	let loading = $state(true);
 	let testingAll = $state(false);
+	// The tag being speed-tested, page-wide: the server measures one at a time and
+	// answers the second with a 429, so the other cards' buttons go disabled
+	// instead of handing the operator an error toast per click.
+	let speedRunning = $state('');
 
 	// Filters
 	let filterType = $state('all');
@@ -241,7 +245,13 @@
 	{:else}
 		<div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
 			{#each filteredProxies() as proxy (proxy.name)}
-				<ProxyCard {proxy} allProxies={proxiesMap} onUpdate={fetchProxies} />
+				<ProxyCard
+					{proxy}
+					allProxies={proxiesMap}
+					onUpdate={fetchProxies}
+					{speedRunning}
+					onSpeedRunning={(tag) => (speedRunning = tag)}
+				/>
 			{/each}
 		</div>
 	{/if}

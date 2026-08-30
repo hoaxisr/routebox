@@ -1757,6 +1757,8 @@
     "enabling": "Enabling…",
     "enabled": "AmneziaWG server enabled",
     "moduleNotReady": "Not installed yet",
+    "moduleInstalling": "Installing…",
+    "moduleFailed": "Install failed",
     "moduleWillInstall": "RouteBox installs the amneziawg kernel module itself when you turn the server on — apt plus a DKMS build, a few minutes on first run.",
     "phaseValidating": "Checking the settings…",
     "phaseInstalling": "Installing the kernel module…",

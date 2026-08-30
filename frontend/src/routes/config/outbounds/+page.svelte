@@ -291,7 +291,7 @@
 								</div>
 
 								<div class="flex items-center gap-2">
-<button
+									<button
 										onclick={() => openEdit(outbound)}
 										class="p-2 hover:bg-[var(--ctp-surface2)] rounded-lg transition-colors"
 										title={$t('common.edit')}
@@ -375,7 +375,7 @@
 								</div>
 
 								<div class="flex items-center gap-2">
-<button
+									<button
 										onclick={() => openEdit(outbound)}
 										class="p-2 hover:bg-[var(--ctp-surface2)] rounded-lg transition-colors"
 										title={$t('common.edit')}
