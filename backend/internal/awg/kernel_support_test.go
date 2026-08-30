@@ -64,6 +64,9 @@ func TestKernelBackendUnsupported(t *testing.T) {
 	// the runtime.
 	t.Run("no amneziawg-tools and no installer => unsupported, and says which tool", func(t *testing.T) {
 		lookPath = present()
+		origCt := inContainer
+		inContainer = func() bool { return false }
+		defer func() { inContainer = origCt }()
 		// Pinned to a distro RouteBox cannot install on, so the assertion is about
 		// the message and not about whatever /etc/os-release this machine has.
 		// Where the installer CAN run, missing tools are no longer a refusal —
@@ -143,12 +146,15 @@ func TestStatusReportsWhyTheKernelBackendIsUnavailable(t *testing.T) {
 // host unable to ever reach the installer. Missing tools must refuse nothing
 // where Ensure can run, and name both halves where it cannot.
 func TestKernelBackendUnsupported_MissingToolsRouteBoxCanInstall(t *testing.T) {
-	origLook, origCap, origUID, origOS := lookPath, capEffective, geteuid, osReleaseFile
-	t.Cleanup(func() { lookPath, capEffective, geteuid, osReleaseFile = origLook, origCap, origUID, origOS })
+	origLook, origCap, origUID, origOS, origCt := lookPath, capEffective, geteuid, osReleaseFile, inContainer
+	t.Cleanup(func() {
+		lookPath, capEffective, geteuid, osReleaseFile, inContainer = origLook, origCap, origUID, origOS, origCt
+	})
 
 	lookPath = func(string) (string, error) { return "", errors.New("not found") }
 	capEffective = func() string { return "0000003fffffffff" }
 	geteuid = func() int { return 0 }
+	inContainer = func() bool { return false }
 
 	osRelease := func(t *testing.T, body string) string {
 		t.Helper()
@@ -188,6 +194,35 @@ func TestKernelBackendUnsupported_MissingToolsRouteBoxCanInstall(t *testing.T) {
 		reason := KernelBackendUnsupported()
 		if !strings.Contains(reason, "root") {
 			t.Fatalf("reason %q should say it cannot install without root", reason)
+		}
+	})
+
+	// Review finding #4: the comment under this probe promises the operator is
+	// never sent down a path that "fails later at Enable with a command error".
+	// In a container apt runs, the PPA is added, and only the DKMS build fails —
+	// against a kernel the container does not own. Refuse it up front.
+	t.Run("container => refused, and says whose kernel it is", func(t *testing.T) {
+		osReleaseFile = osRelease(t, "ID=ubuntu\nID_LIKE=debian\nVERSION_CODENAME=noble\n")
+		inContainer = func() bool { return true }
+		defer func() { inContainer = func() bool { return false } }()
+		reason := KernelBackendUnsupported()
+		if !strings.Contains(reason, "container") || !strings.Contains(reason, "host") {
+			t.Fatalf("reason %q should say the kernel belongs to the host", reason)
+		}
+	})
+
+	// A container that SHIPS the tools is a supported arrangement — the module is
+	// the host's and awg-quick is right there. It must not be caught by the check
+	// above, which only ever runs when the tools are missing.
+	t.Run("container WITH the tools installed => supported", func(t *testing.T) {
+		lookPath = func(string) (string, error) { return "/usr/bin/awg-quick", nil }
+		inContainer = func() bool { return true }
+		defer func() {
+			lookPath = func(string) (string, error) { return "", errors.New("not found") }
+			inContainer = func() bool { return false }
+		}()
+		if reason := KernelBackendUnsupported(); reason != "" {
+			t.Fatalf("a container with the tools must pass like any host, got %q", reason)
 		}
 	})
 

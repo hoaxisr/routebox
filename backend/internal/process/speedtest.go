@@ -64,10 +64,10 @@ const SpeedTestMaxRuntime = 12
 // failure. Outbounds, endpoints and dns are kept whole: a selector's members, a
 // detour chain and the resolver are all reachable from the tag under test.
 //
-// Endpoints stay whole except for their listen_port: for AWG/WireGuard the
-// endpoint IS the outbound, so dropping them is not an option, but binding a
-// port the running process already holds is what made every test on an
-// AWG-serving host fail (#91). See TrimConfigForSpeedTest.
+// Endpoints stay whole except for the two fields that would make the measuring
+// process fight the running one over a kernel resource — listen_port (#91) and
+// system. For AWG/WireGuard the endpoint IS the outbound, so dropping them
+// outright is not an option. See TrimConfigForSpeedTest.
 func (m *Manager) RunSpeedTest(ctx context.Context, configPath, outbound string) (SpeedTest, error) {
 	if outbound == "" {
 		return SpeedTest{}, fmt.Errorf("outbound is required")
@@ -162,16 +162,27 @@ func TrimConfigForSpeedTest(raw []byte) ([]byte, error) {
 		delete(route, "rules")
 		delete(route, "rule_set")
 	}
-	// listen_port goes too (#91). The running process already holds it, so the
-	// measuring process binding the same port fails outright — "IPC error -98
-	// ... address already in use" — and the AWG *server* endpoint, which always
-	// has one, kills every test on a host that serves peers. Nothing listens
-	// during a measurement: a client endpoint dials fine from an ephemeral port,
-	// and the server endpoint has no one to serve for those twelve seconds.
+	// Two fields go from every endpoint, both for the same reason: the measuring
+	// process must not contend with the running one for a kernel resource.
+	//
+	// listen_port (#91) — the service already holds it, so binding it again fails
+	// outright ("IPC error -98 ... address already in use"), and the AWG *server*
+	// endpoint, which always has one, killed every test on a host that serves
+	// peers. Nothing listens during a measurement: a client endpoint dials fine
+	// from an ephemeral port, and the server endpoint has no one to serve for
+	// those twelve seconds.
+	//
+	// system — RouteBox lets an operator tick "system interface" on a client
+	// endpoint, and that makes sing-box create a REAL kernel interface and install
+	// routes for its allowed_ips instead of a netstack one. A second process doing
+	// that behind the first collides on the interface name where one is set, and
+	// duplicates the routes where it is not. The endpoints themselves stay: for
+	// AWG/WireGuard the endpoint IS the outbound, and it dials the same either way.
 	if eps, ok := cfg["endpoints"].([]interface{}); ok {
 		for _, e := range eps {
 			if ep, ok := e.(map[string]interface{}); ok {
 				delete(ep, "listen_port")
+				delete(ep, "system")
 			}
 		}
 	}

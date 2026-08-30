@@ -96,10 +96,44 @@ var KernelBackendUnsupported = func() string {
 	return ""
 }
 
+// inContainer reports whether this process runs inside a container. Best effort:
+// the two runtime marker files, then PID 1's environment, which systemd-nspawn
+// and LXC stamp with container=. Unreadable /proc/1/environ (not root, hidepid)
+// yields no signal and therefore no refusal — the probe exists to name a certain
+// failure, not to invent one.
+var inContainer = func() bool {
+	for _, marker := range []string{"/.dockerenv", "/run/.containerenv"} {
+		if _, err := os.Stat(marker); err == nil {
+			return true
+		}
+	}
+	data, err := os.ReadFile("/proc/1/environ")
+	if err != nil {
+		return false
+	}
+	for _, kv := range strings.Split(string(data), "\x00") {
+		if strings.HasPrefix(kv, "container=") {
+			return true
+		}
+	}
+	return false
+}
+
 // kernelToolsInstallable reports why RouteBox could not install the tools here,
-// or "" when it could. It mirrors what ModuleManager.Ensure actually requires,
-// so the picker never offers a path that ends in a failed install.
+// or "" when it could. It is not a full dry run of ModuleManager.Ensure — it
+// cannot know whether a headers package exists for this exact kernel, and that
+// failure is reported by name when it happens — but it does cover every case
+// Ensure is certain to fail: the wrong distro, no release codename, no root, and
+// a container.
 func kernelToolsInstallable() string {
+	// The container check comes first because it is the one that does damage: apt
+	// would run, the PPA would be added, and only the DKMS build would fail —
+	// against a kernel this container does not own. Note that a container which
+	// SHIPS the tools never reaches this function at all: awg-quick is on PATH,
+	// the module is the host's, and that arrangement works.
+	if inContainer() {
+		return "RouteBox cannot install them in a container: the kernel belongs to the host, so there is nothing for DKMS to build against. Install amneziawg on the host and load the module there (the image needs amneziawg-tools too), or use the singbox backend, which needs neither"
+	}
 	id, idLike, codename := readOSRelease(osReleaseFile)
 	if !isDebianFamily(id, idLike) {
 		return fmt.Sprintf("RouteBox cannot install them here (distro %q; the installer supports Debian/Ubuntu). Install amneziawg-tools yourself, or use the singbox backend, which needs neither", id)

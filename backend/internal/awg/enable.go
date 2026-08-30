@@ -12,6 +12,12 @@ import (
 	"time"
 )
 
+// enableTimeout bounds a whole Enable run once its context is detached from the
+// caller's. Generous — it has to cover moduleInstallTimeout plus bring-up — but
+// finite, so a wedged apt or a hung awg-quick cannot leave the manager in-flight
+// forever.
+const enableTimeout = 40 * time.Minute
+
 // EnablePhase is the orchestrator's current step, surfaced via Status so the UI
 // can show progress while the [ensure→keygen→render→up→health-gate] tail runs.
 type EnablePhase string
@@ -131,14 +137,26 @@ func (m *Manager) setPhase(p EnablePhase) {
 // rendered ONLY from canonical (validated) values.
 //
 // Enable is single-flight (concurrent triggers are refused) and tracks a phase so
-// Status() can report progress. The trigger returns the orchestrator's terminal
-// result; the Task-10 HTTP handler runs Enable in a goroutine so its own request
-// returns promptly while Status() reflects each phase.
+// Status() can report progress. The HTTP handler calls it synchronously and the
+// panel polls Status() alongside, which is what makes the caller's cancellation
+// dangerous: on the kernel backend this runs for minutes (apt + a DKMS build),
+// and a browser tab that gave up, or a reverse proxy that timed out, would
+// otherwise cancel the request's context in the middle of the orchestrator.
+//
+// So the context is detached HERE, once, for the whole run — not around the
+// install alone. Cancelling after the install completes is just as bad: keygen,
+// iface_Up and the health gate would fail instantly with "context canceled" over
+// a module that installed fine, and a cancel landing after iface_Up would take
+// the teardown commands down with it and leave exactly the orphan NAT the rest
+// of this file exists to prevent. A ceiling still applies, so a wedged run
+// cannot hold the single-flight claim for the life of the process.
 func (m *Manager) Enable(ctx context.Context, in EnableInput) error {
 	if !m.beginEnable() {
 		return fmt.Errorf("enable already in progress")
 	}
 	defer m.endEnable()
+	ctx, cancel := context.WithTimeout(context.WithoutCancel(ctx), enableTimeout)
+	defer cancel()
 	m.setPhase(PhaseValidating)
 
 	if m.backendIs("singbox") {

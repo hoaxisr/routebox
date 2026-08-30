@@ -233,7 +233,7 @@ func TestParseSpeedTest_RoundsRatherThanTruncates(t *testing.T) {
 func TestTrimConfigForSpeedTest_DropsEndpointListenPort(t *testing.T) {
 	out, err := TrimConfigForSpeedTest([]byte(`{"endpoints":[
 	  {"type":"awg","tag":"awg-server","listen_port":44566,"peers":[{"public_key":"k"}]},
-	  {"type":"wireguard","tag":"wg-client","address":["10.0.0.2/32"]}
+	  {"type":"wireguard","tag":"wg-client","listen_port":51820,"system":true,"name":"wg0","address":["10.0.0.2/32"]}
 	]}`))
 	if err != nil {
 		t.Fatalf("TrimConfigForSpeedTest: %v", err)
@@ -250,6 +250,14 @@ func TestTrimConfigForSpeedTest_DropsEndpointListenPort(t *testing.T) {
 		ep, _ := e.(map[string]interface{})
 		if _, ok := ep["listen_port"]; ok {
 			t.Errorf("listen_port survived the trim on %v; the test binds a port the service holds", ep["tag"])
+		}
+		// system:true makes sing-box create a real kernel interface and install
+		// routes; a second one behind the running service collides on the name.
+		if _, ok := ep["system"]; ok {
+			t.Errorf("system survived the trim on %v; the test would stand up a second kernel interface", ep["tag"])
+		}
+		if _, ok := ep["address"]; ep["tag"] == "wg-client" && !ok {
+			t.Error("the endpoint's own addresses were dropped; it could no longer dial")
 		}
 		if _, ok := ep["peers"]; ep["tag"] == "awg-server" && !ok {
 			t.Error("peers were dropped along with the port")

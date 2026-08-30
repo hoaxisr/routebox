@@ -474,3 +474,50 @@ func TestEnableRestartsIface(t *testing.T) {
 		t.Fatalf("Enable must restart the iface to apply conf changes; calls=%v", f.calls)
 	}
 }
+
+// ctxAwareRunner is what exec.CommandContext behaves like: a cancelled context
+// fails the command at Start, before it does anything.
+type ctxAwareRunner struct {
+	*fakeRunner
+	refused int
+}
+
+func (r *ctxAwareRunner) Run(ctx context.Context, name string, args ...string) (string, string, error) {
+	if err := ctx.Err(); err != nil {
+		r.refused++
+		return "", "", err
+	}
+	return r.fakeRunner.Run(ctx, name, args...)
+}
+
+// Review finding #1: detaching only the module install left every step AFTER it
+// on the caller's context. On the kernel backend Enable runs for minutes (apt +
+// a DKMS build), and the request that started it is routinely gone by then — a
+// closed tab, a reverse proxy's read timeout. Keygen, iface_Up and the health
+// gate would then fail instantly with "context canceled" over a module that had
+// just installed fine, and a cancel landing after iface_Up would take the
+// teardown down with it: orphan NAT, the one outcome this orchestrator exists to
+// prevent. Enable must own its context for the whole run.
+func TestEnableSurvivesTheCallersCancellation(t *testing.T) {
+	f := newFakeRunner()
+	r := &ctxAwareRunner{fakeRunner: f}
+	m := newEnableManager(t, f)
+	m.run = r
+	m.module = NewModuleManager(r, writeOSRelease(t, "ubuntu"))
+	f.outputs["awg show awg-rb0"] = "interface: awg-rb0\n  listening port: 51820\n"
+	f.outputs["iptables -t nat -S"] = "-N RBOX-AWG-NAT\n"
+
+	ctx, cancel := context.WithCancel(context.Background())
+	cancel() // the browser gave up before we even started
+
+	if err := m.Enable(ctx, goodEnableInput()); err != nil {
+		t.Fatalf("Enable with a dead caller context: %v", err)
+	}
+	if r.refused > 0 {
+		t.Fatalf("%d commands were refused on the caller's cancelled context", r.refused)
+	}
+	st := m.Status(context.Background())
+	if !st.Enabled || st.Phase != PhaseReady {
+		t.Fatalf("status after enable: enabled=%v phase=%q, want enabled and %q", st.Enabled, st.Phase, PhaseReady)
+	}
+}

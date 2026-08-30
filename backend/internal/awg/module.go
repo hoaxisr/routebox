@@ -110,15 +110,12 @@ func (m *ModuleManager) Ensure(ctx context.Context) error {
 		m.setState(StateReady)
 		return nil
 	}
-	// From here on the caller's cancellation is dropped. This runs from an HTTP
-	// request that can take minutes (apt + a DKMS build), and killing apt or dkms
-	// halfway because a browser tab timed out or was closed leaves a half-configured
-	// package for the operator to unpick by hand. The install is idempotent, so
-	// finishing it is always the better answer. A ceiling still applies: without
-	// one, an apt waiting on a lock or a dead mirror would hold the single-flight
-	// claim below for as long as the process lives, and every later attempt would
-	// be refused with "install already in progress".
-	ctx, cancel := context.WithTimeout(context.WithoutCancel(ctx), moduleInstallTimeout)
+	// Bound the install itself. Enable already detached the caller's cancellation
+	// for the whole run (killing apt or dkms halfway leaves a half-configured
+	// package to unpick by hand), so what is added here is only the ceiling: an
+	// apt waiting on a lock or a dead mirror must not hold the single-flight claim
+	// below for as long as the process lives.
+	ctx, cancel := context.WithTimeout(ctx, moduleInstallTimeout)
 	defer cancel()
 	// Single-flight: atomically check-and-claim the installing state under ONE lock
 	// hold (closes the TOCTOU window between check and set).
@@ -305,6 +302,9 @@ func readOSRelease(path string) (id, idLike, codename string) {
 		return "", "", ""
 	}
 	for _, line := range strings.Split(string(data), "\n") {
+		// A CRLF file would otherwise yield codename "noble\r", which lands in the
+		// .sources Suites: line and makes apt fetch a release that does not exist.
+		line = strings.TrimRight(line, "\r")
 		if v, ok := strings.CutPrefix(line, "ID="); ok {
 			id = strings.Trim(v, `"`)
 		}
