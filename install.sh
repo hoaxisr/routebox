@@ -370,6 +370,11 @@ AEOF
 
     systemctl daemon-reload
     systemctl enable ${SERVICE_NAME}
+    # amnezia-box must come back on its own after a reboot (#94). Not --now:
+    # there is no config.json until the panel writes one.
+    if [ -f /etc/systemd/system/${AMNEZIABOX_SERVICE}.service ]; then
+        systemctl enable ${AMNEZIABOX_SERVICE}
+    fi
 
     echo ""
     echo -e "${YELLOW}Start the service with:${NC}"
