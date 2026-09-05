@@ -516,6 +516,12 @@ func (m *Manager) serverKeypair(ctx context.Context) (priv, pub string, err erro
 	m.mu.Lock()
 	persisted := m.serverPriv
 	m.mu.Unlock()
+	if persisted == "" {
+		// A restored backup (#97) lands the key in peers.toml before the first
+		// Enable on this host; without this the kernel path would mint a new
+		// identity and orphan every client .conf the backup was taken for.
+		persisted = m.store.ServerKey()
+	}
 	if persisted != "" {
 		if pub, err = PublicFromPrivate(persisted); err == nil {
 			return persisted, pub, nil

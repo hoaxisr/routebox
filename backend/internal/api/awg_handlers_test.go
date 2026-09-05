@@ -98,6 +98,8 @@ func newAWGTestHandler(t *testing.T) (*Handler, http.Handler) {
 		r.Get("/peers/{publicKey}/config", h.GetAWGPeerConfig)
 		r.Get("/peers/{publicKey}/vpn-link", h.GetAWGPeerVPNLink)
 		r.Patch("/peers/{publicKey}/expiry", h.SetAWGPeerExpiry)
+		r.Get("/backup", h.GetAWGBackup)
+		r.Post("/restore", h.RestoreAWGBackup)
 	})
 	return h, r
 }
@@ -349,11 +351,15 @@ func TestAWGRoutesRequireAuth(t *testing.T) {
 				r.Post("/peers", h.CreateAWGPeer)
 				r.Get("/peers/traffic", h.GetAWGPeersTraffic)
 				r.Delete("/peers/{publicKey}", h.DeleteAWGPeer)
+				r.Get("/backup", h.GetAWGBackup)
+				r.Post("/restore", h.RestoreAWGBackup)
 			})
 		})
 	})
 
 	for _, tc := range []struct{ method, path string }{
+		{http.MethodGet, "/api/awg/backup"},
+		{http.MethodPost, "/api/awg/restore"},
 		{http.MethodPost, "/api/awg/enable"},
 		{http.MethodPost, "/api/awg/disable"},
 		{http.MethodGet, "/api/awg/peers"},

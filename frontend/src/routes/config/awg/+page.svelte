@@ -209,6 +209,28 @@
 		}
 	}
 
+	// Backup/restore (#97). Restore is refused by the server while it is up,
+	// so the button is locked too; the file is parsed here only to fail early.
+	let restoring = $state(false);
+	async function restoreBackup(event: Event) {
+		const input = event.target as HTMLInputElement;
+		const file = input.files?.[0];
+		input.value = '';
+		if (!file) return;
+		if (!confirm($t('awg.backupRestoreConfirm'))) return;
+		restoring = true;
+		try {
+			const backup = JSON.parse(await file.text());
+			const res = await api.restoreAwgBackup(backup);
+			notifications.success($t('awg.backupRestored', { values: { count: res.peers } }));
+			await loadAll();
+		} catch (e) {
+			notifications.error(`${$t('awg.backupRestoreFailed')}: ${e}`);
+		} finally {
+			restoring = false;
+		}
+	}
+
 	onMount(() => {
 		loadAll();
 		// The online dots and traffic figures are only meaningful live — poll while
@@ -233,6 +255,22 @@
 </script>
 
 <svelte:head><title>{$t('awg.title')} - RouteBox</title></svelte:head>
+
+{#snippet backupCard(enabled: boolean)}
+	<div class="card backup-card">
+		<div class="backup-text">
+			<h2>{$t('awg.backup')}</h2>
+			<p>{enabled ? $t('awg.backupRestoreLocked') : $t('awg.backupSub')}</p>
+		</div>
+		<div class="backup-actions">
+			<button type="button" class="type-btn" onclick={api.exportAwgBackup}>{$t('awg.backupExport')}</button>
+			<label class="type-btn" class:disabled={enabled || restoring}>
+				{restoring ? $t('awg.backupRestoring') : $t('awg.backupRestore')}
+				<input type="file" accept=".json,application/json" hidden disabled={enabled || restoring} onchange={restoreBackup} />
+			</label>
+		</div>
+	</div>
+{/snippet}
 
 {#if loading}
 	<div class="awg-page">
@@ -375,6 +413,8 @@
 				{$t('awg.depNote', { values: { module: moduleLabel(status.module) } })}
 			</div>
 		{/if}
+
+		{@render backupCard(status.enabled)}
 	</div>
 {:else}
 	<!-- ================= WIZARD (Concept C — Guided Lifecycle) ================= -->
@@ -527,6 +567,8 @@
 				</div>
 			</section>
 		</div>
+
+		{@render backupCard(status.enabled)}
 	</div>
 {/if}
 
@@ -782,6 +824,40 @@
 		text-align: center;
 		border: 1px dashed var(--ctp-surface2);
 		border-radius: 0.5rem;
+	}
+
+	/* ---- backup / restore ---- */
+	.backup-card {
+		display: flex;
+		align-items: center;
+		justify-content: space-between;
+		gap: 1rem;
+		flex-wrap: wrap;
+		margin-top: 1.25rem;
+	}
+	.backup-text h2 {
+		font-size: 1rem;
+		font-weight: 600;
+		margin: 0 0 0.25rem;
+		color: var(--ctp-text);
+	}
+	.backup-text p {
+		margin: 0;
+		font-size: 0.85rem;
+		color: var(--ctp-overlay1);
+	}
+	.backup-actions {
+		display: flex;
+		gap: 0.5rem;
+		flex-wrap: wrap;
+	}
+	.backup-actions label.type-btn {
+		cursor: pointer;
+	}
+	.backup-actions label.type-btn.disabled {
+		opacity: 0.5;
+		cursor: default;
+		pointer-events: none;
 	}
 
 	/* ---- disclosure (steady settings) ---- */

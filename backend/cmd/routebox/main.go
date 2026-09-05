@@ -819,6 +819,9 @@ func main() {
 				r.Get("/peers/{publicKey}/vpn-link", apiHandler.GetAWGPeerVPNLink)
 				r.Get("/peers/{publicKey}/singbox", apiHandler.GetAWGPeerSingbox)
 				r.Patch("/peers/{publicKey}/expiry", apiHandler.SetAWGPeerExpiry)
+				// Server backup/restore (#97): the store + awg settings as one JSON.
+				r.Get("/backup", apiHandler.GetAWGBackup)
+				r.Post("/restore", apiHandler.RestoreAWGBackup)
 			})
 
 			// Telegram MTProto proxy (vps mode). Inside the auth group, like

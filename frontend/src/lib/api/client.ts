@@ -315,6 +315,12 @@ export const api = {
 			method: 'PATCH',
 			body: JSON.stringify({ expires_at: expiresAt })
 		}),
+	// Server backup/restore (#97): settings + peers.toml as one JSON file.
+	exportAwgBackup: () => {
+		window.location.href = '/api/awg/backup';
+	},
+	restoreAwgBackup: (backup: object) =>
+		request<{ peers: number }>('/awg/restore', { method: 'POST', body: JSON.stringify(backup) }),
 
 	// Telegram MTProto proxy (panel/vps mode)
 	mtprotoStatus: () => request<MtprotoState>('/mtproto'),

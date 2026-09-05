@@ -1927,7 +1927,16 @@
     "randomTrailersConfirmReissue": "Client configs and links will have to be reissued.",
     "randomTrailersConfirmAccept": "Turn on",
     "disableCookies": "Do not answer cookies (DisableCookies)",
-    "disableCookiesHint": "Stops the server answering the challenge packet it sends under load. One-sided, does not break compatibility."
+    "disableCookiesHint": "Stops the server answering the challenge packet it sends under load. One-sided, does not break compatibility.",
+    "backup": "Backup",
+    "backupSub": "Server key, settings and every client with its secrets, as one JSON file. Restore it on a fresh server, then press Enable.",
+    "backupRestoreLocked": "Export any time. To restore a backup, disable the server first.",
+    "backupExport": "Export backup",
+    "backupRestore": "Restore from file",
+    "backupRestoring": "Restoring…",
+    "backupRestoreConfirm": "Restore replaces the server key, settings and the whole client list on this server. Continue?",
+    "backupRestored": "Restored {count} clients. Press Enable to bring the server up.",
+    "backupRestoreFailed": "Failed to restore backup"
   },
   "monitor": {
     "perUserTitle": "Per-User Traffic",

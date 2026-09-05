@@ -14,13 +14,13 @@ import (
 // Peer is one client's stored secret material. The [Peer] in awg-rb0.conf holds
 // only the PUBLIC half; this sidecar holds the secrets needed to re-render .conf/QR.
 type Peer struct {
-	PublicKey    string `toml:"public_key"`
-	PrivateKey   string `toml:"private_key"`
-	PresharedKey string `toml:"preshared_key"`
-	Address      string `toml:"address"` // "<ip>/32"
-	Name         string `toml:"name"`
-	CreatedAt    int64  `toml:"created_at"`
-	ExpiresAt    int64  `toml:"expires_at"` // unix sec; 0 = never expires
+	PublicKey    string `toml:"public_key" json:"public_key"`
+	PrivateKey   string `toml:"private_key" json:"private_key"`
+	PresharedKey string `toml:"preshared_key" json:"preshared_key"`
+	Address      string `toml:"address" json:"address"` // "<ip>/32"
+	Name         string `toml:"name" json:"name"`
+	CreatedAt    int64  `toml:"created_at" json:"created_at"`
+	ExpiresAt    int64  `toml:"expires_at" json:"expires_at"` // unix sec; 0 = never expires
 }
 
 // Store persists peer secrets to peers.toml (0600, dir 0700), atomically, mirroring
@@ -166,6 +166,28 @@ func (s *Store) Put(p Peer) error {
 		} else {
 			delete(s.byPK, p.PublicKey)
 		}
+		return err
+	}
+	return nil
+}
+
+// Replace swaps the whole store for a backup's content and persists; on save
+// failure the previous content stays. Callers validate before calling.
+func (s *Store) Replace(serverKey, headerKey, ulaPrefix string, peers []Peer) error {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	prevKey, prevHdr, prevULA, prevPeers := s.serverKey, s.headerKey, s.ulaPrefix, s.byPK
+	s.serverKey, s.headerKey, s.ulaPrefix = serverKey, headerKey, ulaPrefix
+	s.byPK = make(map[string]*Peer, len(peers))
+	for i := range peers {
+		p := peers[i]
+		if p.CreatedAt == 0 {
+			p.CreatedAt = s.now()
+		}
+		s.byPK[p.PublicKey] = &p
+	}
+	if err := s.saveLocked(); err != nil {
+		s.serverKey, s.headerKey, s.ulaPrefix, s.byPK = prevKey, prevHdr, prevULA, prevPeers
 		return err
 	}
 	return nil
