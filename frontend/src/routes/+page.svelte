@@ -5,7 +5,9 @@
 	import { notifications, formatBytes, formatSpeed, clientNames, panelMode, routerMode, behindFront, refreshStatus } from '$lib/stores';
 	import { singboxVersion, loadVersion } from '$lib/stores/version';
 	import PendingChanges from '$lib/components/shared/PendingChanges.svelte';
-	import type { ProcessStatus, ClashConnection } from '$lib/types';
+	import LiveStrip from '$lib/components/shared/LiveStrip.svelte';
+	import { splitUnit } from '$lib/utils/sparkline';
+	import type { ProcessStatus, ClashConnection, SystemInfo } from '$lib/types';
 
 	// Svelte 5 reactive state
 	let status = $state<ProcessStatus>({ running: false });
@@ -19,6 +21,34 @@
 	let topConnections = $state<ClashConnection[]>([]);
 	let trafficStream: { close: () => void } | null = null;
 	let connectionsStream: { close: () => void } | null = null;
+
+	// Live strips: the last minute of each metric. Traffic ticks once a second
+	// from the stream (60 points); host metrics are polled every 2 s (30 points).
+	const TRAFFIC_POINTS = 60;
+	const SYSTEM_POINTS = 30;
+	let downHist = $state<number[]>([]);
+	let upHist = $state<number[]>([]);
+	let cpuHist = $state<number[]>([]);
+	let memHist = $state<number[]>([]);
+	let system = $state<SystemInfo | null>(null);
+	// One scale for both traffic strips, so a 6 KB/s upload does not look as
+	// tall as a 60 KB/s download next to it.
+	let trafficMax = $derived(Math.max(1024, ...downHist, ...upHist) * 1.15);
+	const avg = (xs: number[]) => (xs.length ? xs.reduce((a, b) => a + b, 0) / xs.length : 0);
+	let rate = $derived({ down: splitUnit(formatSpeed(trafficDown)), up: splitUnit(formatSpeed(trafficUp)) });
+	let memPct = $derived(system && system.mem_total ? Math.round((system.mem_used / system.mem_total) * 100) : null);
+	let cpuPct = $derived(system?.cpu_percent == null ? null : Math.round(system.cpu_percent));
+
+	async function pollSystem() {
+		try {
+			const s = await api.getSystem();
+			system = s;
+			if (s.cpu_percent != null) cpuHist = [...cpuHist.slice(-(SYSTEM_POINTS - 1)), s.cpu_percent];
+			if (s.mem_total) memHist = [...memHist.slice(-(SYSTEM_POINTS - 1)), (s.mem_used / s.mem_total) * 100];
+		} catch {
+			// Host metrics are a nicety: keep the last reading, say nothing.
+		}
+	}
 
 	// The config file the LIVE process was started with, straight from the one
 	// config-path state in the status. It is not necessarily the file RouteBox
@@ -131,6 +161,8 @@
 		trafficStream = createTrafficStream((data) => {
 			trafficUp = data.up;
 			trafficDown = data.down;
+			downHist = [...downHist.slice(-(TRAFFIC_POINTS - 1)), data.down];
+			upHist = [...upHist.slice(-(TRAFFIC_POINTS - 1)), data.up];
 		});
 	}
 
@@ -140,6 +172,8 @@
 			trafficStream = null;
 			trafficUp = 0;
 			trafficDown = 0;
+			downHist = [];
+			upHist = [];
 		}
 	}
 
@@ -169,9 +203,14 @@
 		fetchStatus();
 		// Poll status every 5 seconds
 		const interval = setInterval(fetchStatus, 5000);
+		// Host metrics every 2 s while the page is open — CPU is a delta
+		// between polls, so the cadence is the sparkline's resolution.
+		pollSystem();
+		const sysInterval = setInterval(pollSystem, 2000);
 
 		return () => {
 			clearInterval(interval);
+			clearInterval(sysInterval);
 			stopTrafficStream();
 			stopConnectionsStream();
 		};
@@ -385,21 +424,32 @@
 				</div>
 			</div>
 
-			<!-- Traffic stats -->
-			<div class="grid grid-cols-2 gap-3 sm:gap-4 mb-6">
-				<div class="bg-[var(--ctp-surface1)] rounded-lg p-3 sm:p-4">
-					<div class="text-xs sm:text-sm text-[var(--ctp-overlay1)]">Traffic Rate</div>
-					<div class="text-[var(--ctp-text)] text-sm sm:text-lg">
-						<div><span class="text-[var(--ctp-overlay0)]">↑</span> {formatSpeed(trafficUp)}</div>
-						<div><span class="text-[var(--ctp-overlay0)]">↓</span> {formatSpeed(trafficDown)}</div>
+			<!-- Live strips: traffic + host, last minute -->
+			<div class="bg-[var(--ctp-surface1)] rounded-lg py-4 sm:py-5 mb-6">
+				<div class="grid grid-cols-2 sm:grid-cols-4 gap-y-5">
+					<div class="px-4 sm:px-5">
+						<LiveStrip label="↓ {$t('dashboard.download')}" value={rate.down.value} unit={rate.down.unit} sub="{$t('dashboard.avg')} {formatSpeed(avg(downHist))}" values={downHist} max={trafficMax} />
+					</div>
+					<div class="px-4 sm:px-5 border-l border-[var(--ctp-surface2)]">
+						<LiveStrip label="↑ {$t('dashboard.upload')}" value={rate.up.value} unit={rate.up.unit} sub="{$t('dashboard.avg')} {formatSpeed(avg(upHist))}" values={upHist} max={trafficMax} color="var(--ctp-upload)" />
+					</div>
+					<div class="px-4 sm:px-5 sm:border-l border-[var(--ctp-surface2)]">
+						<LiveStrip label="CPU" value={cpuPct == null ? '—' : String(cpuPct)} unit={cpuPct == null ? '' : '%'} sub={system ? `${system.cores} ${$t('dashboard.cores')} · ${$t('dashboard.load')} ${system.load1.toFixed(2)}` : ''} values={cpuHist} max={100} />
+					</div>
+					<div class="px-4 sm:px-5 border-l border-[var(--ctp-surface2)]">
+						<LiveStrip label={$t('dashboard.memory')} value={memPct == null ? '—' : String(memPct)} unit={memPct == null ? '' : '%'} sub={system ? $t('dashboard.ofTotal', { values: { used: formatBytes(system.mem_used), total: formatBytes(system.mem_total) } }) : ''} values={memHist} max={100} />
 					</div>
 				</div>
-				<div class="bg-[var(--ctp-surface1)] rounded-lg p-3 sm:p-4">
-					<div class="text-xs sm:text-sm text-[var(--ctp-overlay1)]">Total Transfer</div>
-					<div class="text-[var(--ctp-text)] text-sm sm:text-lg">
-						<div><span class="text-[var(--ctp-overlay0)]">↑</span> {formatBytes(uploadTotal)}</div>
-						<div><span class="text-[var(--ctp-overlay0)]">↓</span> {formatBytes(downloadTotal)}</div>
-					</div>
+				<div class="flex flex-wrap gap-x-6 gap-y-1 px-4 sm:px-5 pt-3 mt-4 border-t border-[var(--ctp-surface2)] text-xs text-[var(--ctp-overlay1)]">
+					<span>{$t('dashboard.totalDown')} <span class="text-[var(--ctp-text)] tabular-nums">{formatBytes(downloadTotal)}</span></span>
+					<span>{$t('dashboard.totalUp')} <span class="text-[var(--ctp-text)] tabular-nums">{formatBytes(uploadTotal)}</span></span>
+					{#if system?.process_rss}
+						<span>{$t('dashboard.processRss')} <span class="text-[var(--ctp-text)] tabular-nums">{formatBytes(system.process_rss)}</span></span>
+					{/if}
+					{#if system?.disk_total}
+						<span>{$t('dashboard.disk')} <span class="text-[var(--ctp-text)] tabular-nums">{$t('dashboard.ofTotal', { values: { used: formatBytes(system.disk_used), total: formatBytes(system.disk_total) } })}</span></span>
+					{/if}
+					<span class="ml-auto text-[var(--ctp-overlay0)]">{$t('dashboard.lastMinute')}</span>
 				</div>
 			</div>
 

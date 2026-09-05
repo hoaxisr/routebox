@@ -912,6 +912,7 @@ func main() {
 
 			// Status & Control
 			r.Get("/status", apiHandler.GetStatus)
+			r.Get("/system", apiHandler.GetSystem)
 			r.Post("/control/start", apiHandler.Start)
 			r.Post("/control/stop", apiHandler.Stop)
 			r.Post("/control/restart", apiHandler.Restart)

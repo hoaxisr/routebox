@@ -214,7 +214,18 @@
     "editSettings": "Edit settings",
     "serverInbounds": "Server Inbounds",
     "serverInboundsHint": "VLESS, NaiveProxy, Hysteria2, Mieru",
-    "manageInbounds": "Manage inbounds"
+    "manageInbounds": "Manage inbounds",
+    "download": "Download",
+    "upload": "Upload",
+    "avg": "avg",
+    "cores": "cores",
+    "load": "load",
+    "ofTotal": "{used} of {total}",
+    "totalDown": "Total ↓",
+    "totalUp": "Total ↑",
+    "processRss": "amnezia-box RSS",
+    "disk": "Disk /",
+    "lastMinute": "last 60 s"
   },
   "configMismatch": {
     "title": "Config path mismatch",

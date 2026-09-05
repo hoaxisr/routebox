@@ -214,7 +214,18 @@
     "editSettings": "Изменить настройки",
     "serverInbounds": "Входящие сервера",
     "serverInboundsHint": "VLESS, NaiveProxy, Hysteria2, Mieru",
-    "manageInbounds": "Управление входящими"
+    "manageInbounds": "Управление входящими",
+    "download": "Приём",
+    "upload": "Отдача",
+    "avg": "средн.",
+    "cores": "ядра",
+    "load": "load",
+    "ofTotal": "{used} из {total}",
+    "totalDown": "Всего ↓",
+    "totalUp": "Всего ↑",
+    "processRss": "RSS amnezia-box",
+    "disk": "Диск /",
+    "lastMinute": "последние 60 с"
   },
   "configMismatch": {
     "title": "Пути конфига разошлись",

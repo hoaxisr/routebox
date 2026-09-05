@@ -10,6 +10,7 @@ import (
 	"routebox/backend/internal/process"
 	"routebox/backend/internal/settings"
 	"routebox/backend/internal/subscriptions"
+	"routebox/backend/internal/sysinfo"
 	"routebox/backend/internal/traffic"
 	"routebox/backend/internal/updates"
 	"routebox/backend/internal/users"
@@ -35,6 +36,7 @@ type Handler struct {
 	subLimiter      *auth.Limiter
 	awg             *awg.Manager
 	mtproto         *mtproto.Manager
+	sys             sysinfo.Sampler // host metrics for the dashboard; zero value reads /proc
 
 	// panelMode is the effective operating mode ("router" or "vps"), as resolved
 	// at startup — the CLI flag can override what the settings file says, so it

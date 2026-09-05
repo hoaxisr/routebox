@@ -43,6 +43,7 @@
 	/* Primary accent - Anthropic coral */
 	--ctp-primary: #da7756;
 	--ctp-primary-hover: #e08a6c;
+	--ctp-upload: #6d9fcf;     /* Second chart series (upload) beside the coral download line */
 
 	/* Semantic colors - minimal */
 	--ctp-green: #3d9970;      /* Only for "Running" status */
@@ -88,6 +89,7 @@
 	/* Primary accent - darker for light theme */
 	--ctp-primary: #c45d3e;
 	--ctp-primary-hover: #b5502f;
+	--ctp-upload: #3f7fb8;
 
 	/* Semantic colors */
 	--ctp-green: #1e7a4a;

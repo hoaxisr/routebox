@@ -29,6 +29,21 @@ export interface SystemChecks {
 }
 
 // Process status
+// Host metrics for the dashboard strips (GET /api/system). Bytes; cpu_percent
+// is null on the first poll after a RouteBox start (delta between two reads).
+export interface SystemInfo {
+	cpu_percent: number | null;
+	cores: number;
+	load1: number;
+	load5: number;
+	load15: number;
+	mem_total: number;
+	mem_used: number;
+	process_rss: number;
+	disk_total: number;
+	disk_used: number;
+}
+
 export interface ProcessStatus {
 	running: boolean;
 	pid?: number;
