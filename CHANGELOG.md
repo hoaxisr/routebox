@@ -6,6 +6,17 @@ All notable changes to RouteBox are documented here.
 
 ### Fixes
 
+- **Установка модуля ядра больше не падает на свежей ВМ из-за занятого dpkg
+  (#96).** Сразу после загрузки `unattended-upgrades` держит замок apt по
+  нескольку минут — ровно тогда, когда оператор нажимает «Enable AWG server».
+  `apt-get` умирал на месте с `Could not get lock /var/lib/dpkg/lock-frontend`.
+  Теперь каждый вызов ждёт замок до десяти минут (`DPkg::Lock::Timeout`).
+
+- **`install.sh` включает юнит amnezia-box в автозапуск (#94).** Юнит
+  создавался, но `systemctl enable` получал только routebox; после
+  перезагрузки ВМ amnezia-box не поднимался. Исправлено на ветке `main`,
+  как в `vps-install.sh`.
+
 - **«Rule sets with no route» больше не показывает наборы, у которых маршрут
   есть (#86).** В секцию попадало всё, на что нет *простого* правила «набор →
   outbound». Но набор, названный правилом с любым дополнительным условием — или

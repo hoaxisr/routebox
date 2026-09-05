@@ -120,6 +120,13 @@ func TestModuleInstallsOnDebian(t *testing.T) {
 	if !f.sawContains("apt-get") || !f.sawContains("amneziawg") {
 		t.Fatalf("must run apt-get install amneziawg; calls=%v", f.calls)
 	}
+	// Every apt-get must wait for the dpkg lock: on a fresh VM
+	// unattended-upgrades holds it for minutes right after boot (#96).
+	for _, c := range f.calls {
+		if c[0] == "apt-get" && !strings.Contains(strings.Join(c, " "), "-o DPkg::Lock::Timeout=") {
+			t.Fatalf("apt-get without DPkg::Lock::Timeout: %v", c)
+		}
+	}
 	if !f.sawContains("linux-headers-6.8.0-110-generic") {
 		t.Fatalf("must install kernel headers for the running kernel; calls=%v", f.calls)
 	}

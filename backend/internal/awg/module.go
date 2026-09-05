@@ -152,11 +152,12 @@ func (m *ModuleManager) Ensure(ctx context.Context) error {
 	// LONGER used — the PPA is wired up explicitly (verified keyring + deb822
 	// .sources) below.
 	prep := [][]string{
-		{"apt-get", "update"},
-		{"apt-get", "install", "-y", "gnupg2"},
-		{"apt-get", "install", "-y", "dirmngr"},
+		{"update"},
+		{"install", "-y", "gnupg2"},
+		{"install", "-y", "dirmngr"},
 	}
 	for _, args := range prep {
+		args = aptGet(args...)
 		if _, stderr, err := m.run.Run(ctx, args[0], args[1:]...); err != nil {
 			return m.fail(fmt.Sprintf("install step %q failed: %v %s", strings.Join(args, " "), err, stderr))
 		}
@@ -165,7 +166,7 @@ func (m *ModuleManager) Ensure(ctx context.Context) error {
 	// build needs headers for the RUNNING kernel, and which package carries them
 	// depends on whose kernel it is (#93).
 	hdr := headersPackage(ver)
-	if _, stderr, err := m.run.Run(ctx, "apt-get", "install", "-y", hdr); err != nil {
+	if _, stderr, err := m.run.Run(ctx, "apt-get", aptGet("install", "-y", hdr)[1:]...); err != nil {
 		return m.fail(fmt.Sprintf("installing %s failed: %v %s — the module is built by DKMS and needs headers matching the running kernel (%s). Install them from the repository that ships this kernel, then try again, or use the singbox backend, which needs no module", hdr, err, stderr, ver))
 	}
 	// VERIFY BEFORE TRUST: receive the PPA key into a scratch keyring, assert its
@@ -180,10 +181,11 @@ func (m *ModuleManager) Ensure(ctx context.Context) error {
 		return m.fail(err.Error())
 	}
 	post := [][]string{
-		{"apt-get", "update"},
-		{"apt-get", "install", "-y", "amneziawg"},
+		{"update"},
+		{"install", "-y", "amneziawg"},
 	}
 	for _, args := range post {
+		args = aptGet(args...)
 		if _, stderr, err := m.run.Run(ctx, args[0], args[1:]...); err != nil {
 			return m.fail(fmt.Sprintf("install step %q failed: %v %s", strings.Join(args, " "), err, stderr))
 		}
@@ -325,4 +327,15 @@ func isDebianFamily(id, idLike string) bool {
 		}
 	}
 	return false
+}
+
+// aptLockTimeout makes apt-get wait for the dpkg lock instead of failing on
+// the spot. On a fresh VM unattended-upgrades holds it for minutes right after
+// boot, which is exactly when the user clicks "Enable AWG server" (#96).
+var aptLockTimeout = []string{"-o", "DPkg::Lock::Timeout=600"}
+
+// aptGet builds an apt-get argv with the lock timeout appended (trailing so
+// the leading "apt-get install -y <pkg>" stays greppable).
+func aptGet(args ...string) []string {
+	return append(append([]string{"apt-get"}, args...), aptLockTimeout...)
 }
