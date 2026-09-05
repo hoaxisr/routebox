@@ -26,9 +26,10 @@
 
 <div class="flex flex-col gap-2.5 min-w-0">
 	<div class="text-xs uppercase tracking-wide text-[var(--ctp-overlay1)] truncate">{label}</div>
-	<div class="flex items-baseline gap-2 min-w-0">
+	<!-- The note wraps under the number on narrow screens instead of being cut. -->
+	<div class="flex flex-wrap items-baseline gap-x-2 gap-y-0.5 min-w-0">
 		<span class="text-[28px] leading-none font-semibold text-[var(--ctp-text)] tabular-nums">{value}</span>
-		<span class="text-xs text-[var(--ctp-overlay1)] truncate">{unit}{unit && sub ? ' · ' : ''}{sub}</span>
+		<span class="text-xs text-[var(--ctp-overlay1)]">{unit}{unit && sub ? ' · ' : ''}{sub}</span>
 	</div>
 	<svg viewBox="0 0 {W} {H}" preserveAspectRatio="none" class="block w-full h-11" aria-hidden="true">
 		{#if paths.line}
