@@ -42,3 +42,19 @@ describe('getAwgPeerVpnLink', () => {
 		await expect(api.getAwgPeerVpnLink('k')).rejects.toThrow(/^HTTP 404$/);
 	});
 });
+
+describe('restoreAwgBackup', () => {
+	it('POSTs the backup to /api/awg/restore and unwraps data', async () => {
+		const fetchMock = vi
+			.fn()
+			.mockResolvedValue(new Response(JSON.stringify({ success: true, data: { peers: 3 } }), { status: 200 }));
+		vi.stubGlobal('fetch', fetchMock);
+
+		const res = await api.restoreAwgBackup({ version: 1 });
+		expect(res.peers).toBe(3);
+		const [url, init] = fetchMock.mock.calls[0];
+		expect(url).toBe('/api/awg/restore');
+		expect(init.method).toBe('POST');
+		expect(JSON.parse(init.body)).toEqual({ version: 1 });
+	});
+});

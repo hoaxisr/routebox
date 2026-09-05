@@ -123,7 +123,7 @@ func TestModuleInstallsOnDebian(t *testing.T) {
 	// Every apt-get must wait for the dpkg lock: on a fresh VM
 	// unattended-upgrades holds it for minutes right after boot (#96).
 	for _, c := range f.calls {
-		if c[0] == "apt-get" && !strings.Contains(strings.Join(c, " "), "-o DPkg::Lock::Timeout=") {
+		if c[0] == "apt-get" && !strings.Contains(strings.Join(c, " "), "-o DPkg::Lock::Timeout=600") {
 			t.Fatalf("apt-get without DPkg::Lock::Timeout: %v", c)
 		}
 	}

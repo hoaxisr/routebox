@@ -513,14 +513,16 @@ func (m *Manager) detectWAN(ctx context.Context) (string, error) {
 // in-Go Generate (the deterministic, tested fallback). The returned private key is
 // canonical std-base64 (never raw operator input).
 func (m *Manager) serverKeypair(ctx context.Context) (priv, pub string, err error) {
-	m.mu.Lock()
-	persisted := m.serverPriv
-	m.mu.Unlock()
+	// peers.toml first: a restored backup (#97) lands the key there, and it
+	// must beat whatever is in memory — Enable set that, Disable kept it, and
+	// Rehydrate refills it from the OLD .conf on every boot. Otherwise the
+	// kernel path would bring the server up under the old identity and orphan
+	// every client .conf the backup was taken for.
+	persisted := m.store.ServerKey()
 	if persisted == "" {
-		// A restored backup (#97) lands the key in peers.toml before the first
-		// Enable on this host; without this the kernel path would mint a new
-		// identity and orphan every client .conf the backup was taken for.
-		persisted = m.store.ServerKey()
+		m.mu.Lock()
+		persisted = m.serverPriv
+		m.mu.Unlock()
 	}
 	if persisted != "" {
 		if pub, err = PublicFromPrivate(persisted); err == nil {
