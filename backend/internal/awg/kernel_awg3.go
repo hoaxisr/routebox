@@ -71,7 +71,7 @@ func awg3MajorAtLeast3(s string) bool {
 // FAIL-CLOSED throughout: any read/exec/parse error is "no", matching
 // KernelBackendUnsupported's stance of refusing rather than guessing.
 var KernelSupportsAWG3 = func() bool {
-	return kernelAndToolsClear(awg3MajorAtLeast3)
+	return probeKernel().clears(awg3MajorAtLeast3)
 }
 
 // awg3AtLeast reports whether s carries a "[v]X.Y..." version token at or above
@@ -94,30 +94,127 @@ func awg3AtLeast(s string, major, minor int) bool {
 // two device flags that version added (RandomTrailers, DisableCookies). Same
 // sources, same loaded-vs-on-disk arbitration, same fail-closed stance.
 var KernelSupportsAWG31 = func() bool {
-	return kernelAndToolsClear(func(s string) bool { return awg3AtLeast(s, 3, 1) })
+	return probeKernel().clears(awg31Bar)
 }
 
-// kernelAndToolsClear holds the version arbitration both gates share: which
-// module version counts (see the comment on KernelSupportsAWG3), that the tools
-// binary has to clear the same bar independently, and that every read/exec/parse
-// error is a "no". Kept in one place so the two gates cannot drift apart on the
-// fail-closed rules — those are the subtle part, not the comparison.
-func kernelAndToolsClear(clears func(string) bool) bool {
+// awg31Bar is the 3.1 comparison as a named function so the gate and the
+// combined probe below cannot pass subtly different closures.
+func awg31Bar(s string) bool { return awg3AtLeast(s, 3, 1) }
+
+// kernelProbe is ONE resolution of the two version sources every module
+// question shares. Resolving them together is what lets a caller that needs
+// more than one answer — Status needs three (the version and both bars) — pay a
+// single sysfs read and at most one modinfo fork instead of one per answer.
+// That fork is the whole cost on a host without the module, and the AWG page
+// polls Status every 5s.
+type kernelProbe struct {
+	module  string // per the loaded-vs-on-disk rules; "" when unresolvable
+	tools   string
+	modOK   bool
+	loaded  bool // module version came from sysfs, i.e. the kernel is running it
+	toolsOK bool
+}
+
+// probeKernel resolves both versions FAIL-CLOSED: an unresolvable source leaves
+// its ok false and clears() then answers "no" for every bar. The tools binary
+// is consulted only once the module resolved, since no bar can be cleared
+// without the module anyway — one less fork on a host that has neither.
+//
+// It does give up one short-circuit the two gates had separately: they returned
+// before running `awg --version` when the module missed the bar, and this runs
+// it either way. That is one extra fork per standalone gate call on a host with
+// a pre-3.0 module — the Enable path, called once — against two fewer module
+// resolutions per Status, which the open AWG page polls every 5s.
+func probeKernel() kernelProbe {
+	mod, loaded, ok := resolvedModuleVersion()
+	if !ok {
+		return kernelProbe{}
+	}
+	tools, err := kernelToolsVersion()
+	if err != nil {
+		return kernelProbe{module: mod, modOK: true, loaded: loaded}
+	}
+	return kernelProbe{module: mod, tools: tools, modOK: true, loaded: loaded, toolsOK: true}
+}
+
+// clears holds the arbitration both gates share: the module version that counts
+// (see the comment on KernelSupportsAWG3), that the tools binary has to clear
+// the same bar independently, and that every read/exec/parse error is a "no".
+// Kept in one place so the gates cannot drift apart on the fail-closed rules —
+// those are the subtle part, not the comparison.
+func (p kernelProbe) clears(bar func(string) bool) bool {
+	return p.modOK && p.toolsOK && bar(p.module) && bar(p.tools)
+}
+
+// resolvedModuleVersion is the loaded-vs-on-disk arbitration from
+// KernelSupportsAWG3's doc comment. Separate from the bar comparison so the
+// UI's plain "what version is installed" read shares the exact same
+// fail-closed rules instead of re-deriving them and risking drift.
+//
+// loaded says WHICH source answered: true for sysfs (the kernel is running this
+// module), false for modinfo (a .ko on disk that modprobe would try). The gates
+// do not care — either way it is the version `awg-quick up` will face — but a
+// caller reporting readiness does: a package that is installed and cannot load
+// (unsigned under Secure Boot, built for another kernel) answers modinfo just
+// as happily as one that works.
+func resolvedModuleVersion() (version string, loaded, ok bool) {
 	modOut, err := sysfsModuleVersion()
 	if err != nil {
 		if !errors.Is(err, fs.ErrNotExist) {
-			return false
+			return "", false, false
 		}
 		if modOut, err = kernelModuleVersion(); err != nil {
-			return false
+			return "", false, false
 		}
+		if v := strings.TrimSpace(modOut); v != "" {
+			return v, false, true
+		}
+		return "", false, false
 	}
-	if !clears(modOut) {
-		return false
+	v := strings.TrimSpace(modOut)
+	if v == "" {
+		return "", false, false
 	}
-	toolsOut, err := kernelToolsVersion()
-	if err != nil || !clears(toolsOut) {
-		return false
+	return v, true, true
+}
+
+// KernelModuleInfo answers every module question Status asks, from one probe.
+type KernelModuleInfo struct {
+	// Version is the installed module's version for display, "" when it could
+	// not be resolved.
+	Version string
+	// Detected reports that a version was actually read. False covers TWO
+	// different worlds: the module is genuinely absent, and the module is
+	// loaded but its version is unreadable (the fail-closed non-ENOENT sysfs
+	// case — a container with /sys restricted, say). So !Detected is NOT proof
+	// of "not installed", and the UI must not render it as one; Status settles
+	// presence separately, from the module state and a live interface.
+	Detected bool
+	// Loaded narrows Detected to the one source that proves the module WORKS:
+	// /sys/module/amneziawg/version, which exists only while the kernel runs it.
+	// Detected alone would also be true for a .ko sitting on disk that cannot
+	// load at all (unsigned under Secure Boot, built for another kernel), and
+	// calling that "ready" hides both the warning and its remedy until Enable
+	// fails. Only Loaded may upgrade a module state.
+	Loaded bool
+	// SupportsAWG3/SupportsAWG31 are the two capability bars, identical to
+	// KernelSupportsAWG3/KernelSupportsAWG31 by construction (same probe, same
+	// clears) — this type just answers all three at once.
+	SupportsAWG3  bool
+	SupportsAWG31 bool
+}
+
+// DetectKernelModule reports the installed amneziawg module's version and both
+// capability bars from a single probe. Wired into the Manager by
+// SetKernelModuleInfo; the per-gate KernelSupportsAWG3/AWG31 remain for the
+// Enable path, which asks one bar at a time.
+var DetectKernelModule = func() KernelModuleInfo {
+	p := probeKernel()
+	return KernelModuleInfo{
+		Version:       p.module,
+		Detected:      p.modOK,
+		Loaded:        p.loaded,
+		SupportsAWG3:  p.clears(awg3MajorAtLeast3),
+		SupportsAWG31: p.clears(awg31Bar),
 	}
-	return true
 }

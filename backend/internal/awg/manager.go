@@ -175,6 +175,15 @@ type Manager struct {
 	// module clears that one and still ignores these flags without an error.
 	kernelSupports31Fn func() bool
 
+	// kernelModuleFn answers Status's three module questions (the installed
+	// version and both capability bars) from ONE probe — see
+	// DetectKernelModule. It sits beside the two gates above rather than
+	// replacing them because Enable asks for one bar at a time, at a different
+	// moment; wired, it collapses what would otherwise be three separate
+	// sysfs/modinfo resolutions per Status, on a page that polls every 5s.
+	// nil (unset) = fall back to the two gates, with no version to report.
+	kernelModuleFn func() KernelModuleInfo
+
 	// peerStatsFn is the singbox backend's real handshake/tx/rx signal: the
 	// WireGuard device's own UAPI state via amnezia-box's /awg/{tag}/peers
 	// (see SetPeerStats). Returns ErrAwgPeerStatsUnsupported on a pre-patch

@@ -162,3 +162,13 @@ func (m *Manager) SetKernelSupportsAWG31(fn func() bool) {
 	m.kernelSupports31Fn = fn
 	m.mu.Unlock()
 }
+
+// SetKernelModuleInfo wires the combined module probe Status prefers: the
+// installed version plus both capability bars from one sysfs/modinfo
+// resolution (DetectKernelModule). nil (unset) = Status falls back to the two
+// boolean gates above and reports no version.
+func (m *Manager) SetKernelModuleInfo(fn func() KernelModuleInfo) {
+	m.mu.Lock()
+	m.kernelModuleFn = fn
+	m.mu.Unlock()
+}

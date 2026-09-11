@@ -62,8 +62,14 @@ type AWGStatus struct {
 	// KernelAWG31Available is the same for AWG 3.1, which added the two device
 	// flags. Separate because a 3.0 pairing clears the field above and still
 	// ignores those flags without an error.
-	KernelAWG31Available bool   `json:"kernel_awg31_available,omitempty"`
-	LastError            string `json:"last_error,omitempty"`
+	KernelAWG31Available bool `json:"kernel_awg31_available,omitempty"`
+	// KernelModuleVersion is the installed amneziawg kernel module's version
+	// (see DetectKernelModule), for display only. Empty when the module is
+	// absent, when it is present but its version could not be read, and on the
+	// singbox backend, which needs no module — so it answers "which version",
+	// never "is it installed". Module is that answer.
+	KernelModuleVersion string `json:"kernel_module_version,omitempty"`
+	LastError           string `json:"last_error,omitempty"`
 }
 
 // EnableInput is the RAW operator submission; Enable canonicalises every field.
@@ -416,12 +422,23 @@ func (m *Manager) Status(ctx context.Context) AWGStatus {
 	enabled, lastErr, port, phase, wan := m.enabled, m.lastErr, m.listenPort, m.phase, m.wan
 	subnet, mtu, obf, desired, obfPreset := m.subnet, m.mtu, m.obf, m.desired, m.obfPreset
 	hp, kernelSupports3Fn := m.headerProtection, m.kernelSupports3Fn
-	kernelSupports31Fn := m.kernelSupports31Fn
+	kernelSupports31Fn, kernelModuleFn := m.kernelSupports31Fn, m.kernelModuleFn
 	m.mu.Unlock()
 	if phase == "" {
 		phase = PhaseIdle
 	}
-	kAwg3 := kernelSupports3Fn != nil && kernelSupports3Fn()
+	// Every module answer below (both bars and the version) comes from one
+	// probe when the combined seam is wired; the two boolean gates are the
+	// fallback for callers that injected only those. Same arbitration either
+	// way — DetectKernelModule and the gates share probeKernel/clears.
+	modInfo := KernelModuleInfo{}
+	if kernelModuleFn != nil {
+		modInfo = kernelModuleFn()
+	} else {
+		modInfo.SupportsAWG3 = kernelSupports3Fn != nil && kernelSupports3Fn()
+		modInfo.SupportsAWG31 = kernelSupports31Fn != nil && kernelSupports31Fn()
+	}
+	kAwg3 := modInfo.SupportsAWG3
 	// ConfigDirty = enabled and the saved settings differ from what is running, on
 	// any field that needs an interface restart (subnet/port/mtu/wan/obf). DNS is
 	// client-only (regenerated at config download), so it never marks dirty.
@@ -438,7 +455,7 @@ func (m *Manager) Status(ctx context.Context) AWGStatus {
 			// this one once the host is awg3-capable.
 			dObf.stripAwg3()
 			runObf.stripAwg3()
-		} else if !(kernelSupports31Fn != nil && kernelSupports31Fn()) {
+		} else if !modInfo.SupportsAWG31 {
 			// Same argument one version up: Enable strips the 3.1 flags on a host
 			// whose module clears 3.0 but not 3.1, so leaving them in the saved
 			// operand alone makes the banner permanent (#74 on the kernel backend —
@@ -488,6 +505,16 @@ func (m *Manager) Status(ctx context.Context) AWGStatus {
 	// by Ensure()/loaded() and is stale-NotInstalled after a clean boot (no re-enable).
 	if ifaceUp && mod != StateReady {
 		mod = StateReady
+	} else if mod == StateNotInstalled && modInfo.Loaded {
+		// A version read out of sysfs proves it too — the module is in the kernel
+		// right now — and that is the only signal after a clean boot with the
+		// interface still down. Module is the UI's "is it installed" answer;
+		// KernelModuleVersion is not, since it is also empty when the module IS
+		// there and its version is unreadable (see KernelModuleInfo.Detected).
+		// Narrow twice on purpose: Loaded, not Detected, so a .ko on disk that
+		// cannot load never claims readiness; and only NotInstalled is upgraded,
+		// so an install in flight or one that failed keeps saying so.
+		mod = StateReady
 	}
 	return AWGStatus{
 		Backend:           "kernel",
@@ -496,7 +523,8 @@ func (m *Manager) Status(ctx context.Context) AWGStatus {
 		PublicHost: m.publicHost, PeerCount: len(peers), Online: online, Rx: rx, Tx: tx, WANIface: wan,
 		NATOrphan: rulesPresent && !ifaceUp, ConfigDirty: configDirty, LastError: lastErr,
 		KernelAWG3Available:  kAwg3,
-		KernelAWG31Available: m.kernelSupports31Fn != nil && m.kernelSupports31Fn(),
+		KernelAWG31Available: modInfo.SupportsAWG31,
+		KernelModuleVersion:  modInfo.Version,
 	}
 }
 

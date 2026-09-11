@@ -137,6 +137,98 @@ func TestSysfsModuleVersionDefault(t *testing.T) {
 	}
 }
 
+func TestDetectKernelModule(t *testing.T) {
+	origSysfs, origMod, origTools := sysfsModuleVersion, kernelModuleVersion, kernelToolsVersion
+	t.Cleanup(func() {
+		sysfsModuleVersion, kernelModuleVersion, kernelToolsVersion = origSysfs, origMod, origTools
+	})
+
+	notLoaded := func() (string, error) { return "", fs.ErrNotExist }
+	kernelToolsVersion = func() (string, error) { return "amneziawg-tools v3.0.20260730 - https://amnezia.org\n", nil }
+
+	t.Run("loaded => sysfs version, trimmed, modinfo not consulted", func(t *testing.T) {
+		sysfsModuleVersion = func() (string, error) { return "3.0.20260731-04\n", nil }
+		kernelModuleVersion = func() (string, error) {
+			t.Error("modinfo must not be consulted when the module is loaded")
+			return "", nil
+		}
+		info := DetectKernelModule()
+		if !info.Detected || info.Version != "3.0.20260731-04" {
+			t.Fatalf("got (%q, %v), want (\"3.0.20260731-04\", true)", info.Version, info.Detected)
+		}
+		if !info.Loaded {
+			t.Fatal("Loaded must be true when the version came from sysfs")
+		}
+	})
+
+	// Same version, weaker claim: modinfo describes a file, not a running
+	// module, and Status may not turn this one into "ready".
+	t.Run("not loaded, on disk => modinfo version, trimmed, not Loaded", func(t *testing.T) {
+		sysfsModuleVersion = notLoaded
+		kernelModuleVersion = func() (string, error) { return "3.1.20260812\n", nil }
+		info := DetectKernelModule()
+		if !info.Detected || info.Version != "3.1.20260812" {
+			t.Fatalf("got (%q, %v), want (\"3.1.20260812\", true)", info.Version, info.Detected)
+		}
+		if info.Loaded {
+			t.Fatal("Loaded must be false for a version modinfo read off the disk")
+		}
+	})
+
+	t.Run("not loaded, not on disk => not detected", func(t *testing.T) {
+		sysfsModuleVersion = notLoaded
+		kernelModuleVersion = func() (string, error) { return "", errors.New("modinfo: ERROR: Module amneziawg not found") }
+		if info := DetectKernelModule(); info.Detected {
+			t.Fatal("expected not detected when neither sysfs nor modinfo has a version")
+		}
+	})
+
+	t.Run("sysfs fails for another reason => fail closed, no modinfo fallback", func(t *testing.T) {
+		sysfsModuleVersion = func() (string, error) { return "", fs.ErrPermission }
+		kernelModuleVersion = func() (string, error) {
+			t.Error("modinfo must not be a fallback for an unreadable sysfs")
+			return "3.1.20260812\n", nil
+		}
+		if info := DetectKernelModule(); info.Detected {
+			t.Fatal("expected not detected on a non-ENOENT sysfs error")
+		}
+	})
+
+	// The bars must agree with the standalone gates, since Status takes them
+	// from here and Enable from there — a disagreement is a config that renders
+	// one way and enables another.
+	t.Run("bars agree with the standalone gates", func(t *testing.T) {
+		kernelModuleVersion = notLoaded
+		for _, mv := range []string{"1.0.20260725\n", "3.0.20260731-04\n", "3.1.20260812\n"} {
+			sysfsModuleVersion = func() (string, error) { return mv, nil }
+			info := DetectKernelModule()
+			if info.SupportsAWG3 != KernelSupportsAWG3() || info.SupportsAWG31 != KernelSupportsAWG31() {
+				t.Fatalf("module %q: DetectKernelModule bars (%v, %v) disagree with the gates (%v, %v)",
+					mv, info.SupportsAWG3, info.SupportsAWG31, KernelSupportsAWG3(), KernelSupportsAWG31())
+			}
+		}
+	})
+
+	// A tools binary that cannot be run clears no bar, but must not erase the
+	// module version the UI shows.
+	t.Run("tools unreadable => version kept, bars false", func(t *testing.T) {
+		sysfsModuleVersion = func() (string, error) { return "3.1.20260812\n", nil }
+		kernelToolsVersion = func() (string, error) { return "", errors.New("exec: awg: not found") }
+		t.Cleanup(func() {
+			kernelToolsVersion = func() (string, error) {
+				return "amneziawg-tools v3.0.20260730 - https://amnezia.org\n", nil
+			}
+		})
+		info := DetectKernelModule()
+		if !info.Detected || info.Version != "3.1.20260812" {
+			t.Fatalf("version must survive an unusable tools binary, got (%q, %v)", info.Version, info.Detected)
+		}
+		if info.SupportsAWG3 || info.SupportsAWG31 {
+			t.Fatalf("bars must be false without a readable tools version, got (%v, %v)", info.SupportsAWG3, info.SupportsAWG31)
+		}
+	})
+}
+
 func TestAwg3AtLeast(t *testing.T) {
 	cases := []struct {
 		name         string

@@ -1191,6 +1191,12 @@ export interface AwgStatus {
 	// the port is fixed: the mapping lives in docker-compose.yml, and the API
 	// refuses any other value.
 	listen_port_fixed?: string;
+	// Installed amneziawg kernel module version (see
+	// backend/internal/awg/kernel_awg3.go DetectKernelModule), for display only.
+	// Empty/omitted when the module is absent, when it is there but its version
+	// could not be read, and on singbox (needs no kernel module) — so it answers
+	// "which version", never "is it installed". `module` is that answer.
+	kernel_module_version?: string;
 }
 
 export interface AwgPeer {

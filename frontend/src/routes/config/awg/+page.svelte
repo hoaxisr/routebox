@@ -11,6 +11,11 @@
 	import EnableProgress from '$lib/components/awg/EnableProgress.svelte';
 	import { isEnableInFlight } from '$lib/utils/awgPhase';
 
+	// Where the readiness step points while the module is missing: the upstream
+	// kernel module project's own per-distro instructions, not a RouteBox doc —
+	// outside the Debian/Ubuntu apt+DKMS path it is not RouteBox's to install.
+	const AMNEZIAWG_MODULE_REPO = 'https://github.com/amnezia-vpn/amneziawg-linux-kernel-module';
+
 	let status = $state<AwgStatus | null>(null);
 	let settings = $state<AwgServerSettings | null>(null);
 	let form = $state<AwgServerSettings | null>(null);
@@ -408,9 +413,22 @@
 		</div>
 
 		{#if !isSingbox}
+			<!-- The module state leads, the version only refines it. A version is
+			     readable in every state — including a failed DKMS rebuild with the
+			     old module still loaded — so branching on it first would announce
+			     "installed" over exactly the failure the state was reporting. -->
 			<div class="dep-note">
 				<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" width="14" height="14"><polyline points="20 6 9 17 4 12" /></svg>
-				{$t('awg.depNote', { values: { module: moduleLabel(status.module) } })}
+				{#if status.module !== 'ready'}
+					{$t('awg.depNote', { values: { module: moduleLabel(status.module) } })}
+				{:else if status.kernel_module_version}
+					{$t('awg.depNoteVersion', { values: { version: status.kernel_module_version } })}
+				{:else}
+					<!-- Ready, but the version could not be read (restricted /sys in a
+					     container, no modinfo on PATH). Saying "not installed" here
+					     would be a flat contradiction of the running tunnel above. -->
+					{$t('awg.depNoteVersionUnknown')}
+				{/if}
 			</div>
 		{/if}
 
@@ -459,7 +477,14 @@
 								{moduleReady ? $t('awg.ready') : moduleLabel(status.module)}
 							</span>
 						</div>
-						<p class="step-desc">{moduleReady ? $t('awg.stepReadinessDesc') : $t('awg.moduleWillInstall')}</p>
+						<p class="step-desc">
+							{moduleReady ? $t('awg.stepReadinessDesc') : $t('awg.moduleWillInstall')}
+							{#if !moduleReady}
+								<!-- apt + DKMS is the Debian/Ubuntu path only. Everywhere else the
+								     module is the operator's to install, so say where from. -->
+								<a href={AMNEZIAWG_MODULE_REPO} target="_blank" rel="noopener noreferrer">{$t('awg.installInstructions')}</a>
+							{/if}
+						</p>
 						<div class="ready-row">
 							<div class="ready-chip">
 								<span class="ok" class:pending={!moduleReady}>
@@ -470,7 +495,14 @@
 									{/if}
 								</span>
 								<span>{$t('awg.kernelModule')}</span>
-								<span class="status-badge {moduleReady ? 'success' : status.module === 'failed' ? 'error' : 'info'}">{moduleLabel(status.module)}</span>
+								<!-- Once ready, the version IS the readiness answer. In every
+								     other state the label has to stay: a red badge reading only
+								     "v1.0.20260725" is a colour with no word behind it. -->
+								<span class="status-badge {moduleReady ? 'success' : status.module === 'failed' ? 'error' : 'info'}">
+									{moduleReady && status.kernel_module_version
+										? `v${status.kernel_module_version}`
+										: moduleLabel(status.module)}
+								</span>
 							</div>
 						</div>
 					</div>
@@ -1026,6 +1058,11 @@
 		color: var(--ctp-overlay1);
 		font-size: 0.85rem;
 		margin: 0 0 1rem;
+	}
+	.step-desc a {
+		color: var(--ctp-primary);
+		text-decoration: underline;
+		white-space: nowrap;
 	}
 	.ready-row {
 		display: flex;
