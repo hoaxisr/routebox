@@ -94,6 +94,17 @@
 		return text.split(',').map(s => s.trim()).filter(Boolean);
 	}
 
+	// The form reads `conditions` once, at init, and owns the state from then on
+	// — so a tag someone adds to conditions.rule_set from outside (RuleForm does
+	// exactly that after creating a rule set from inside the form) was never
+	// checked in the list and was wiped by the next sync below. Pick such tags
+	// up. Converges: once selectedRuleSets holds them, the sync writes back the
+	// same list and this finds nothing to add.
+	$effect(() => {
+		const added = (conditions.rule_set ?? []).filter(tag => !selectedRuleSets.includes(tag));
+		if (added.length) selectedRuleSets = [...selectedRuleSets, ...added];
+	});
+
 	// Sync form state to conditions object
 	$effect(() => {
 		const newConditions: RuleConditions = {};
