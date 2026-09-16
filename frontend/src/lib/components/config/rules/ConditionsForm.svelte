@@ -75,6 +75,13 @@
 		return text.split('\n').map(s => s.trim()).filter(s => s);
 	}
 
+	// Port ranges accept commas too: the field next to them takes a comma-separated
+	// list of ports, and typing "50000:50099, 19200:19400" here used to be saved as
+	// one bogus entry that only sing-box rejected, at apply time.
+	function parseRanges(text: string): string[] {
+		return text.split(/[\n,]/).map(s => s.trim()).filter(s => s);
+	}
+
 	function parsePorts(text: string): number[] {
 		return text.split(',').map(s => parseInt(s.trim())).filter(n => !isNaN(n) && n > 0 && n <= 65535);
 	}
@@ -106,7 +113,7 @@
 		if (selectedInbounds.length > 0) newConditions.inbound = selectedInbounds;
 		if (sourceIpCidr.trim()) newConditions.source_ip_cidr = parseLines(sourceIpCidr);
 		if (sourcePorts.trim()) newConditions.source_port = parsePorts(sourcePorts);
-		if (sourcePortRange.trim()) newConditions.source_port_range = parseLines(sourcePortRange);
+		if (sourcePortRange.trim()) newConditions.source_port_range = parseRanges(sourcePortRange);
 		if (authUser.trim()) newConditions.auth_user = parseLines(authUser);
 
 		// Advanced
@@ -120,7 +127,7 @@
 		if (domain.trim()) newConditions.domain = parseLines(domain);
 		if (domainKeyword.trim()) newConditions.domain_keyword = parseLines(domainKeyword);
 		if (domainRegex.trim()) newConditions.domain_regex = parseLines(domainRegex);
-		if (portRange.trim()) newConditions.port_range = parseLines(portRange);
+		if (portRange.trim()) newConditions.port_range = parseRanges(portRange);
 		if (processPath.trim()) newConditions.process_path = parseLines(processPath);
 		if (processPathRegex.trim()) newConditions.process_path_regex = parseLines(processPathRegex);
 		if (user.trim()) newConditions.user = parseLines(user);

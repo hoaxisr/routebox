@@ -98,9 +98,13 @@
 				class="w-full px-3 py-2 bg-[var(--ctp-surface0)] border border-[var(--ctp-surface2)] rounded-lg text-[var(--ctp-text)] placeholder-[var(--ctp-overlay0)] focus:outline-none focus:ring-2 focus:ring-[var(--ctp-primary)]" />
 		</div>
 		<div>
+			<!-- No inline hint here: this field shares a two-column row with "Source
+			     port", and in Russian the label plus the hint wraps to a second line,
+			     leaving the pair misaligned. The two-line placeholder says it. -->
 			<label for="source-port-range" class="block text-sm font-medium text-[var(--ctp-subtext1)] mb-1">{$t('routes.sourcePortRange')}</label>
-			<input id="source-port-range" type="text" bind:value={sourcePortRange} placeholder="1000:2000"
-				class="w-full px-3 py-2 bg-[var(--ctp-surface0)] border border-[var(--ctp-surface2)] rounded-lg text-[var(--ctp-text)] placeholder-[var(--ctp-overlay0)] focus:outline-none focus:ring-2 focus:ring-[var(--ctp-primary)]" />
+			<textarea id="source-port-range" bind:value={sourcePortRange} rows={2} placeholder="50000:50099&#10;19200:19400"
+				class="w-full px-3 py-2 bg-[var(--ctp-surface0)] border border-[var(--ctp-surface2)] rounded-lg text-[var(--ctp-text)] placeholder-[var(--ctp-overlay0)] focus:outline-none focus:ring-2 focus:ring-[var(--ctp-primary)] font-mono text-sm"
+			></textarea>
 		</div>
 	</div>
 

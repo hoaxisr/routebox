@@ -96,8 +96,8 @@
 		if (rule.ip_is_private) types.push('private');
 		if (rule.domain?.length || rule.domain_suffix?.length || rule.domain_keyword?.length || rule.domain_regex?.length) types.push('domain');
 		if (rule.ip_cidr?.length || rule.source_ip_cidr?.length) types.push('ip');
-		if (rule.port?.length || rule.port_range?.length || rule.source_port?.length) types.push('port');
-		if (rule.process_name?.length || rule.process_path?.length) types.push('process');
+		if (rule.port?.length || rule.port_range?.length || rule.source_port?.length || rule.source_port_range?.length) types.push('port');
+		if (rule.process_name?.length || rule.process_path?.length || rule.process_path_regex?.length) types.push('process');
 		if (rule.rule_set?.length) types.push('ruleset');
 		if (rule.protocol?.length) types.push('protocol');
 		if (rule.network) types.push('network');
@@ -161,6 +161,14 @@
 		if (rule.port_range?.length) {
 			details.push(`ports ${formatList(rule.port_range, 2)}`);
 		}
+		// Without these a rule matching only on source ports rendered as "All
+		// traffic" — the one description that is never true of it (#104).
+		if (rule.source_port?.length) {
+			details.push(`src port ${formatList(rule.source_port.map(String), 4)}`);
+		}
+		if (rule.source_port_range?.length) {
+			details.push(`src ports ${formatList(rule.source_port_range, 2)}`);
+		}
 
 		// Protocol
 		if (rule.protocol?.length) {
@@ -180,6 +188,38 @@
 		// Process
 		if (rule.process_name?.length) {
 			details.push(`app: ${formatList(rule.process_name, 2)}`);
+		}
+		if (rule.process_path?.length) {
+			details.push(`path: ${formatList(rule.process_path, 2)}`);
+		}
+		if (rule.process_path_regex?.length) {
+			details.push(`path regex: ${formatList(rule.process_path_regex, 2)}`);
+		}
+
+		// The rest of what a rule can match on. Left out, a rule that matches only
+		// on one of these described itself as "All traffic" — and with action
+		// reject that reads as a box-wide kill switch, which is how the auth_user
+		// rules the user lifecycle writes would have looked (#104 review).
+		if (rule.source_ip_is_private) {
+			details.push('from private IP (LAN)');
+		}
+		if (rule.ip_version) {
+			details.push(`IPv${rule.ip_version}`);
+		}
+		if (rule.clash_mode) {
+			details.push(`clash mode: ${rule.clash_mode}`);
+		}
+		if (rule.client?.length) {
+			details.push(`client: ${formatList(rule.client, 2)}`);
+		}
+		if (rule.auth_user?.length) {
+			details.push(`user: ${formatList(rule.auth_user, 2)}`);
+		}
+		if (rule.user?.length) {
+			details.push(`os user: ${formatList(rule.user, 2)}`);
+		}
+		if (rule.user_id?.length) {
+			details.push(`uid: ${formatList(rule.user_id.map(String), 3)}`);
 		}
 
 		// Build main description if not set

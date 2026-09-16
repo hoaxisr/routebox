@@ -60,6 +60,11 @@
 		// Port conditions
 		if (cond.port?.length) parts.push(`port: ${cond.port.slice(0, 3).join(', ')}${cond.port.length > 3 ? '...' : ''}`);
 		if (cond.source_port?.length) parts.push(`src port: ${cond.source_port.slice(0, 3).join(', ')}${cond.source_port.length > 3 ? '...' : ''}`);
+		// A card whose only condition is a port range read as "no conditions set"
+		// while the empty-card warning correctly stayed off — two answers to one
+		// question. Discord needs exactly such a rule (#104).
+		if (cond.port_range?.length) parts.push(`ports: ${cond.port_range.slice(0, 2).join(', ')}${cond.port_range.length > 2 ? '...' : ''}`);
+		if (cond.source_port_range?.length) parts.push(`src ports: ${cond.source_port_range.slice(0, 2).join(', ')}${cond.source_port_range.length > 2 ? '...' : ''}`);
 
 		// Protocol/network
 		if (cond.protocol?.length) parts.push(`proto: ${cond.protocol.join(', ')}`);
@@ -70,6 +75,18 @@
 
 		// Process
 		if (cond.process_name?.length) parts.push(`proc: ${cond.process_name.slice(0, 2).join(', ')}${cond.process_name.length > 2 ? '...' : ''}`);
+		if (cond.process_path?.length) parts.push(`path: ${cond.process_path.slice(0, 2).join(', ')}${cond.process_path.length > 2 ? '...' : ''}`);
+		if (cond.process_path_regex?.length) parts.push(`path regex: ${cond.process_path_regex.length}`);
+
+		// Everything else hasConditions() counts, so a card can never be summarised
+		// as "no conditions set" while the empty-card warning stays off (#104 review).
+		if (cond.domain_regex?.length) parts.push(`regex: ${cond.domain_regex.length}`);
+		if (cond.ip_version) parts.push(`IPv${cond.ip_version}`);
+		if (cond.clash_mode) parts.push(`clash mode: ${cond.clash_mode}`);
+		if (cond.client?.length) parts.push(`client: ${cond.client.slice(0, 2).join(', ')}${cond.client.length > 2 ? '...' : ''}`);
+		if (cond.auth_user?.length) parts.push(`user: ${cond.auth_user.slice(0, 2).join(', ')}${cond.auth_user.length > 2 ? '...' : ''}`);
+		if (cond.user?.length) parts.push(`os user: ${cond.user.slice(0, 2).join(', ')}${cond.user.length > 2 ? '...' : ''}`);
+		if (cond.user_id?.length) parts.push(`uid: ${cond.user_id.slice(0, 3).join(', ')}${cond.user_id.length > 3 ? '...' : ''}`);
 
 		// Inbound
 		if (cond.inbound?.length) parts.push(`inbound: ${cond.inbound.slice(0, 2).join(', ')}${cond.inbound.length > 2 ? '...' : ''}`);
