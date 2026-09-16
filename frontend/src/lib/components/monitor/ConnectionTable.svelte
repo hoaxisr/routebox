@@ -354,15 +354,20 @@
 									<svg class="w-4 h-4 transition-transform text-[var(--ctp-overlay1)] {expandedGroups.has(group.sourceIP) ? 'rotate-90' : ''}" fill="none" stroke="currentColor" viewBox="0 0 24 24">
 										<path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 5l7 7-7 7" />
 									</svg>
-									<!-- Name and address read as one phrase, the count sits in its own
-									     right-aligned slot so the numbers line up between rows. Fixed-width
-									     columns did the aligning too, but left gaps after short names (#90). -->
-									<span class="min-w-0 truncate font-medium text-[var(--ctp-text)]" title={groupName ? `${groupName} (${group.sourceIP})` : group.sourceIP}>
-										{#if groupName}{groupName} <span class="font-mono text-xs text-[var(--ctp-overlay0)]">({group.sourceIP})</span>
-										{:else}<span class="font-mono">{group.sourceIP}</span>
-										{/if}
-									</span>
-									<span class="ml-auto shrink-0 pl-2 text-xs text-[var(--ctp-overlay0)] tabular-nums">
+									<!-- Name, address and count read as one phrase. The count sat in a
+									     right-aligned slot for a while so the numbers lined up between rows,
+									     but after a short name that left half a row of empty space and the
+									     number belonged to nothing (#107). Same order as the mobile card. -->
+									{#if groupName}
+										<!-- Only the NAME truncates: with the address inside the same span a
+										     long name clipped it away and the row ended in "… (11)", where the
+										     count read as the identifier. -->
+										<span class="min-w-0 truncate font-medium text-[var(--ctp-text)]" title={`${groupName} (${group.sourceIP})`}>{groupName}</span>
+										<span class="shrink-0 font-mono text-xs text-[var(--ctp-overlay0)]">({group.sourceIP})</span>
+									{:else}
+										<span class="min-w-0 truncate font-mono font-medium text-[var(--ctp-text)]" title={group.sourceIP}>{group.sourceIP}</span>
+									{/if}
+									<span class="shrink-0 text-xs text-[var(--ctp-overlay0)] tabular-nums">
 										({group.connections.length})
 									</span>
 								</div>
@@ -399,7 +404,7 @@
 										<path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 5l7 7-7 7" />
 									</svg>
 									<span class="selection-chip">{group.chain}</span>
-									<span class="text-xs text-[var(--ctp-overlay0)]">
+									<span class="shrink-0 text-xs text-[var(--ctp-overlay0)] tabular-nums">
 										({group.connections.length})
 									</span>
 								</div>
