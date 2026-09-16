@@ -5,11 +5,12 @@
 	import { notifications, formatBytes, formatSpeed, clientNames, panelMode, routerMode, behindFront, refreshStatus } from '$lib/stores';
 	import { singboxVersion, loadVersion } from '$lib/stores/version';
 	import PendingChanges from '$lib/components/shared/PendingChanges.svelte';
-	import LiveStrip from '$lib/components/shared/LiveStrip.svelte';
+	import PieChart from '$lib/components/monitor/PieChart.svelte';
 	import { splitUnit, areaPaths } from '$lib/utils/sparkline';
 	import { seriesRates } from '$lib/utils/trafficSeries';
-	import { liveHistory, type DashboardPeriod } from '$lib/stores/liveHistory';
-	import type { ProcessStatus, ClashConnection, SystemInfo } from '$lib/types';
+	import { liveHistory, type DashboardPeriod, type DashboardDim } from '$lib/stores/liveHistory';
+	import { localSourceConnections } from '$lib/utils/clientIp';
+	import type { ProcessStatus, ClashConnection, SystemInfo, TrafficBucket } from '$lib/types';
 
 	// Svelte 5 reactive state
 	let status = $state<ProcessStatus>({ running: false });
@@ -21,6 +22,10 @@
 	let downloadTotal = $state(0);
 	let connectionCount = $state(0);
 	let topConnections = $state<ClashConnection[]>([]);
+	// Every live connection, for the breakdown beside the graph (#101). Filtered
+	// the same way the Breakdown page filters its live view: a remote source is
+	// not a device of this box (#102).
+	let liveConns = $state<ClashConnection[]>([]);
 	let trafficStream: { close: () => void } | null = null;
 	let connectionsStream: { close: () => void } | null = null;
 
@@ -41,10 +46,14 @@
 	let histDown = $state<number[]>([]);
 	let histUp = $state<number[]>([]);
 	let histError = $state('');
+	// The same response already carries the per (source, domain, chain) buckets
+	// the breakdown beside the graph needs, so 1h/24h costs no extra request.
+	let histBuckets = $state<TrafficBucket[]>([]);
 	async function loadHistory(p: '1h' | '24h') {
 		try {
 			const r = await api.getTrafficHistory(p, { series: true });
 			({ down: histDown, up: histUp } = seriesRates(r.series, r.start_ts, r.end_ts, r.step ?? 60, 240));
+			histBuckets = r.buckets ?? [];
 			histError = '';
 		} catch (e) {
 			// 503 = no traffic store (Clash API address unset); anything else is
@@ -52,6 +61,7 @@
 			histError = String(e);
 			histDown = [];
 			histUp = [];
+			histBuckets = [];
 		}
 	}
 	$effect(() => {
@@ -75,12 +85,83 @@
 	let periodLabel = $derived(
 		period === '60s' ? $t('dashboard.lastMinute') : period === '1h' ? $t('dashboard.lastHour') : $t('dashboard.lastDay')
 	);
+	// Breakdown beside the graph (#101): one ring, switched between clients and
+	// chains, counted over the SAME period the graph shows — live connections for
+	// the minute, history buckets for 1h/24h.
+	let sideDim = $state<DashboardDim>(liveHistory.dim);
+	$effect(() => {
+		liveHistory.dim = sideDim;
+	});
+	let sideItems = $derived.by(() => {
+		const totals = new Map<string, number>();
+		const add = (key: string, bytes: number) => totals.set(key, (totals.get(key) ?? 0) + bytes);
+		if (period === '60s') {
+			for (const c of liveConns) {
+				add(
+					sideDim === 'source'
+						? c.metadata.sourceIP || 'unknown'
+						: c.chains?.length
+							? c.chains.join(' → ')
+							: '-',
+					c.upload + c.download
+				);
+			}
+		} else {
+			for (const b of histBuckets) {
+				add(sideDim === 'source' ? b.source || 'unknown' : b.chain || '-', b.upload + b.download);
+			}
+		}
+		return [...totals]
+			.filter(([, value]) => value > 0)
+			.map(([key, value]) => ({
+				key,
+				label: sideDim === 'source' ? ($clientNames.get(key) ?? key) : key,
+				value
+			}));
+	});
+
+	// Hovering the graph reads out the moment under the cursor. The readout sits
+	// in the fixed slot at the end of the legend row, where the period label
+	// otherwise is: numbers that chase the cursor cover the very line being read.
+	let hoverIdx = $state<number | null>(null);
+	let hoverPoint = $derived.by(() => {
+		const i = hoverIdx;
+		if (i == null || i >= graphDown.length) return null;
+		const points = graphDown.length;
+		const windowSec = period === '60s' ? 60 : period === '1h' ? 3600 : 86400;
+		// Per point, not per gap: the live minute is one sample a second even
+		// while it is still filling, and a resampled 24 h is one point per step.
+		const step = period === '60s' ? 1 : windowSec / points;
+		const back = Math.round((points - 1 - i) * step);
+		return {
+			ago:
+				back === 0
+					? $t('dashboard.now')
+					: back < 60
+						? $t('dashboard.agoSec', { values: { v: back } })
+						: back < 5400
+							? $t('dashboard.agoMin', { values: { v: Math.round(back / 60) } })
+							: $t('dashboard.agoHour', { values: { v: Math.round(back / 3600) } }),
+			down: formatSpeed(graphDown[i] ?? 0),
+			up: formatSpeed(graphUp[i] ?? 0)
+		};
+	});
+	function trackHover(ev: PointerEvent) {
+		const box = (ev.currentTarget as HTMLElement).getBoundingClientRect();
+		if (!box.width || graphDown.length < 2) return;
+		const ratio = Math.min(Math.max((ev.clientX - box.left) / box.width, 0), 1);
+		hoverIdx = Math.round(ratio * (graphDown.length - 1));
+	}
+
 	const avg = (xs: number[]) => (xs.length ? xs.reduce((a, b) => a + b, 0) / xs.length : 0);
 	const peak = (xs: number[]) => (xs.length ? Math.max(...xs) : 0);
 	const trafficNote = (xs: number[]) => `${$t('dashboard.avg')} ${formatSpeed(avg(xs))} · ${$t('dashboard.peak')} ${formatSpeed(peak(xs))}`;
 	let rate = $derived({ down: splitUnit(formatSpeed(trafficDown)), up: splitUnit(formatSpeed(trafficUp)) });
 	let memPct = $derived(system && system.mem_total ? Math.round((system.mem_used / system.mem_total) * 100) : null);
 	let cpuPct = $derived(system?.cpu_percent == null ? null : Math.round(system.cpu_percent));
+	// CPU keeps its shape in the footer, at 40x12. Scaled to its own peak with a
+	// floor of 20 %, so an idle box is a quiet line instead of magnified noise.
+	let cpuSpark = $derived(areaPaths(cpuHist, Math.max(20, ...cpuHist), 40, 12));
 
 	async function pollSystem() {
 		try {
@@ -221,13 +302,17 @@
 	function startConnectionsStream() {
 		if (connectionsStream) return;
 		connectionsStream = createConnectionsStream((data) => {
-			connectionCount = data.connections?.length ?? 0;
 			uploadTotal = data.uploadTotal ?? 0;
 			downloadTotal = data.downloadTotal ?? 0;
 			// Get top 5 by download
-			topConnections = (data.connections ?? [])
-				.sort((a, b) => b.download - a.download)
-				.slice(0, 5);
+			// Router mode only: on a panel every client's source IS a public
+			// address, and filtering here would leave the ring empty beside a busy
+			// graph — the same disagreement #102 removed, mirror-imaged.
+			liveConns = $routerMode ? localSourceConnections(data.connections ?? []) : (data.connections ?? []);
+			// Same roster as the ring, so the card does not name a source the ring
+			// above it just excluded. Copy before sorting: sort mutates.
+			topConnections = [...liveConns].sort((a, b) => b.download - a.download).slice(0, 5);
+			connectionCount = liveConns.length;
 		});
 	}
 
@@ -237,6 +322,7 @@
 			connectionsStream = null;
 			connectionCount = 0;
 			topConnections = [];
+			liveConns = [];
 		}
 	}
 
@@ -490,7 +576,9 @@
 								{/each}
 							</div>
 						</div>
-						<svg viewBox="0 0 {GW} {GH}" preserveAspectRatio="none" class="block w-full h-24 sm:h-28 mt-3" aria-hidden="true">
+					<!-- svelte-ignore a11y_no_static_element_interactions -->
+					<div class="mt-3" onpointerdown={trackHover} onpointermove={trackHover} onpointerleave={() => (hoverIdx = null)}>
+						<svg viewBox="0 0 {GW} {GH}" preserveAspectRatio="none" class="block w-full h-24 sm:h-28" aria-hidden="true">
 							{#if downPaths.line || upPaths.line}
 								<path d={downPaths.area} fill="var(--ctp-primary)" opacity="0.14" />
 								<path d={upPaths.area} fill="var(--ctp-upload)" opacity="0.14" />
@@ -499,25 +587,51 @@
 							{:else}
 								<line x1="0" y1={GH - 0.5} x2={GW} y2={GH - 0.5} stroke="var(--ctp-surface2)" stroke-width="1" vector-effect="non-scaling-stroke" />
 							{/if}
+							{#if hoverIdx != null && graphDown.length > 1}
+								{@const x = (hoverIdx / (graphDown.length - 1)) * GW}
+								<line x1={x} y1="0" x2={x} y2={GH} stroke="var(--ctp-overlay0)" stroke-width="1" stroke-dasharray="3 3" vector-effect="non-scaling-stroke" />
+								<circle cx={x} cy={GH - (Math.min(graphDown[hoverIdx] ?? 0, graphMax) / graphMax) * GH} r="3" fill="var(--ctp-primary)" vector-effect="non-scaling-stroke" />
+								<circle cx={x} cy={GH - (Math.min(graphUp[hoverIdx] ?? 0, graphMax) / graphMax) * GH} r="3" fill="var(--ctp-upload)" vector-effect="non-scaling-stroke" />
+							{/if}
 						</svg>
+					</div>
 						<div class="flex flex-wrap gap-x-5 gap-y-1 mt-2 pb-4 sm:pb-5 text-xs text-[var(--ctp-overlay1)]">
 							<span class="flex items-center gap-1.5"><span class="w-2 h-2 rounded-full inline-block" style="background: var(--ctp-primary)"></span>{$t('dashboard.download')} · {trafficNote(graphDown)}</span>
 							<span class="flex items-center gap-1.5"><span class="w-2 h-2 rounded-full inline-block" style="background: var(--ctp-upload)"></span>{$t('dashboard.upload')} · {trafficNote(graphUp)}</span>
-							<span class="ml-auto text-[var(--ctp-overlay0)]" title={histError}>{period !== '60s' && histError ? $t('dashboard.noHistory') : periodLabel}</span>
+							<!-- One slot, always the same width: a pill that appears on hover
+							     would otherwise re-wrap this row and push the card down under
+							     the very cursor reading it. -->
+							<span class="ml-auto flex min-h-[22px] w-[230px] max-w-full items-center justify-end">
+								{#if hoverPoint}
+									<span class="inline-flex items-baseline gap-2 whitespace-nowrap rounded-full border border-[var(--ctp-surface2)] bg-[var(--ctp-base)] px-2.5 py-0.5 tabular-nums">
+										<span class="text-[var(--ctp-overlay1)]">{hoverPoint.ago}</span>
+										<span class="text-[var(--ctp-primary)]">↓ {hoverPoint.down}</span>
+										<span class="text-[var(--ctp-upload)]">↑ {hoverPoint.up}</span>
+									</span>
+								{:else}
+									<span class="truncate text-[var(--ctp-overlay0)]" title={histError}>{period !== '60s' && histError ? $t('dashboard.noHistory') : periodLabel}</span>
+								{/if}
+							</span>
 						</div>
 					</div>
-					<div class="sm:w-48 shrink-0 border-t sm:border-t-0 sm:border-l border-[var(--ctp-surface2)] px-4 sm:px-5 py-4 sm:py-5 flex flex-row sm:flex-col gap-5">
-						<div class="flex-1 min-w-0">
-							<LiveStrip label="CPU" value={cpuPct == null ? '—' : String(cpuPct)} unit={cpuPct == null ? '' : '%'} sub={system ? `${system.cores} ${$t('dashboard.cores')} · ${$t('dashboard.load')} ${system.load1.toFixed(2)}` : ''} values={cpuHist} max={100} />
-						</div>
-						<div class="flex-1 min-w-0 flex flex-col gap-2.5">
-							<div class="text-xs uppercase tracking-wide text-[var(--ctp-overlay1)] truncate">{$t('dashboard.memory')}</div>
-							<div class="flex items-baseline gap-x-2">
-								<span class="text-[28px] leading-none font-semibold text-[var(--ctp-text)] tabular-nums">{memPct == null ? '—' : memPct}</span>
-								<span class="text-xs text-[var(--ctp-overlay1)]">{memPct == null ? '' : '%'}</span>
+					<div class="sm:w-64 shrink-0 border-t sm:border-t-0 sm:border-l border-[var(--ctp-surface2)] px-4 sm:px-5 py-4 sm:py-5 flex flex-col gap-3">
+						<div class="flex flex-wrap items-baseline gap-x-2 gap-y-1">
+							<div class="flex gap-1" role="group" aria-label={$t('dashboard.breakdown')}>
+								<button type="button" class="toggle-btn !py-1 !px-2.5 text-xs {sideDim === 'source' ? 'selected' : ''}" onclick={() => (sideDim = 'source')}>{$t('dashboard.byClients')}</button>
+								<button type="button" class="toggle-btn !py-1 !px-2.5 text-xs {sideDim === 'chain' ? 'selected' : ''}" onclick={() => (sideDim = 'chain')}>{$t('dashboard.byChains')}</button>
 							</div>
-							{#if system?.mem_total}
-								<div class="text-xs text-[var(--ctp-overlay1)]">{$t('dashboard.ofTotal', { values: { used: formatBytes(system.mem_used), total: formatBytes(system.mem_total) } })}</div>
+							<!-- The minute view sums the counters of connections that are open
+							     NOW, each since it opened — the Breakdown page calls that Live.
+							     Only 1h/24h are the graph's own window. -->
+							<span class="text-[10px] uppercase tracking-wide text-[var(--ctp-overlay0)]">{period === '60s' ? $t('dashboard.ringLive') : periodLabel}</span>
+						</div>
+						<!-- Fixed box: clients and chains rarely have the same number of rows,
+						     and without it switching moved everything below (#101). -->
+						<div class="min-h-[196px] sm:min-h-[96px]">
+							{#if sideItems.length > 0}
+								<PieChart items={sideItems} centerNumber={sideItems.length} topN={4} size={88} />
+							{:else}
+								<div class="text-xs text-[var(--ctp-overlay0)]">{$t('dashboard.noTrafficYet')}</div>
 							{/if}
 						</div>
 					</div>
@@ -528,6 +642,23 @@
 					{#if system?.disk_total}
 						<span>{$t('dashboard.disk')} <span class="text-[var(--ctp-text)] tabular-nums">{$t('dashboard.ofTotal', { values: { used: formatBytes(system.disk_used), total: formatBytes(system.disk_total) } })}</span></span>
 					{/if}
+					<!-- CPU and memory moved down here from the column the breakdown now
+					     occupies (#101). CPU keeps a sparkline: the spike is what it is
+					     looked at for, and a bare number never shows one. -->
+					<span class="flex items-center gap-1.5">CPU
+						<span class="text-[var(--ctp-text)] tabular-nums">{cpuPct == null ? '—' : `${cpuPct} %`}</span>
+						{#if cpuSpark.line}
+							<svg viewBox="0 0 40 12" class="w-10 h-3 shrink-0" aria-hidden="true">
+								<path d={cpuSpark.area} fill="var(--ctp-primary)" opacity="0.14" />
+								<path d={cpuSpark.line} fill="none" stroke="var(--ctp-primary)" stroke-width="1" vector-effect="non-scaling-stroke" />
+							</svg>
+						{/if}
+						{#if system}<span>{system.cores} {$t('dashboard.cores')} · {$t('dashboard.load')} {system.load1.toFixed(2)}</span>{/if}
+					</span>
+					<span>{$t('dashboard.memory')}
+						<span class="text-[var(--ctp-text)] tabular-nums">{memPct == null ? '—' : `${memPct} %`}</span>
+						{#if system?.mem_total}<span>{$t('dashboard.ofTotal', { values: { used: formatBytes(system.mem_used), total: formatBytes(system.mem_total) } })}</span>{/if}
+					</span>
 				</div>
 			</div>
 

@@ -22,7 +22,17 @@ const REQUIRED_KEYS = [
 	'dashboard.period1h',
 	'dashboard.period24h',
 	'dashboard.noHistory',
-	'dashboard.memory'
+	'dashboard.memory',
+	// The breakdown beside the graph and the hover readout (#101).
+	'dashboard.byClients',
+	'dashboard.byChains',
+	'dashboard.breakdown',
+	'dashboard.ringLive',
+	'dashboard.noTrafficYet',
+	'dashboard.now',
+	'dashboard.agoSec',
+	'dashboard.agoMin',
+	'dashboard.agoHour'
 ];
 
 function lookup(obj: unknown, path: string): unknown {
@@ -36,6 +46,13 @@ describe('i18n: dashboard strip keys', () => {
 			expect(typeof lookup(ru, key)).toBe('string');
 		});
 	}
+	it('the ago readouts carry their placeholder in both locales', () => {
+		for (const l of [en, ru]) {
+			for (const key of ['dashboard.agoSec', 'dashboard.agoMin', 'dashboard.agoHour']) {
+				expect(String(lookup(l, key))).toContain('{v}');
+			}
+		}
+	});
 	it('ofTotal carries both placeholders in both locales', () => {
 		for (const l of [en, ru]) {
 			const s = lookup(l, 'dashboard.ofTotal') as string;
