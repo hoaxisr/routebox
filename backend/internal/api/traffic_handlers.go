@@ -6,6 +6,7 @@ import (
 	"time"
 
 	"routebox/backend/internal/traffic"
+	"routebox/backend/internal/util"
 )
 
 type trafficResponse struct {
@@ -66,14 +67,35 @@ func (h *Handler) GetTrafficHistory(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusInternalServerError, err.Error())
 		return
 	}
+	// One parse per request, not per row: the tunnel subnet is a setting.
+	//
+	// VPS mode keeps every row: there the source of a bucket IS a remote client.
+	// Breakdown is a router-only page today, so this only decides what an API
+	// caller sees — but "the buckets are empty" is the wrong answer to give one.
+	local, filterSources := h.tunnelPrefixes(), h.panelMode != "vps"
 	out := trafficResponse{
 		Range:   rng,
 		StartTs: start,
 		EndTs:   now,
-		Buckets: make([]trafficBucket, len(rows)),
+		Buckets: make([]trafficBucket, 0, len(rows)),
 	}
-	for i, row := range rows {
-		out.Buckets[i] = trafficBucket(row)
+	for _, row := range rows {
+		// Breakdown is a view of this box's devices. A public source is not one:
+		// sing-box reports the occasional connection whose source is a remote
+		// address, and unfiltered it became a client row named after a Google
+		// front-end (#102). Dropping the row here keeps by-client, by-domain and
+		// by-chain telling the same story. Rows recorded before the sampler
+		// started filtering are on disk and stay there — this hides them.
+		//
+		// The series below is deliberately NOT filtered: it is the dashboard
+		// graph, which both modes show, and in VPS mode every byte in it comes
+		// from a source this test would reject.
+		// An empty source is one of sing-box's own dials, shown as "unknown"
+		// since long before this filter; it stays.
+		if filterSources && row.Source != "" && !util.IsLocalClientIP(row.Source, local...) {
+			continue
+		}
+		out.Buckets = append(out.Buckets, trafficBucket(row))
 	}
 	if q.Get("series") == "1" {
 		// Only the source filter applies: the series is per (bucket, source)

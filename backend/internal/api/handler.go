@@ -1,6 +1,7 @@
 package api
 
 import (
+	"net/netip"
 	"routebox/backend/internal/auth"
 	"routebox/backend/internal/awg"
 	"routebox/backend/internal/clients"
@@ -14,6 +15,7 @@ import (
 	"routebox/backend/internal/traffic"
 	"routebox/backend/internal/updates"
 	"routebox/backend/internal/users"
+	"routebox/backend/internal/util"
 )
 
 // Handler holds API dependencies
@@ -38,6 +40,12 @@ type Handler struct {
 	mtproto         *mtproto.Manager
 	sys             sysinfo.Sampler // host metrics for the dashboard; zero value reads /proc
 
+	// panelMode is a boot-time snapshot: a mode changed in the panel reaches the
+	// traffic sampler on its next tick but not the read filter in
+	// GetTrafficHistory, which keeps answering as the mode it started in until
+	// RouteBox restarts. Every other component here is frozen the same way, so
+	// unfreezing this one alone would only split the answer further.
+	//
 	// panelMode is the effective operating mode ("router" or "vps"), as resolved
 	// at startup — the CLI flag can override what the settings file says, so it
 	// is passed in rather than read back from settings. Empty means router, the
@@ -150,4 +158,16 @@ func NewHandler(cfg *config.Manager, proc *process.Manager, clashAddr string, ge
 		clients:   clientsMgr,
 		traffic:   trafficStore,
 	}
+}
+
+// tunnelPrefixes are the address ranges this box hands out itself — today the
+// AWG tunnel subnet, which is configurable and need not be RFC1918. Reads that
+// ask util.IsLocalClientIP whether a source is one of this box's devices widen
+// the answer with these (#102). Empty when there is no settings manager (tests)
+// or the setting is unparseable.
+func (h *Handler) tunnelPrefixes() []netip.Prefix {
+	if h.settings == nil {
+		return nil
+	}
+	return util.ParsePrefixes(h.settings.Get().Awg.Subnet)
 }

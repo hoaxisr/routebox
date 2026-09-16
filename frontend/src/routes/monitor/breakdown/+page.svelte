@@ -1,4 +1,5 @@
 <script lang="ts">
+	import { localSourceConnections } from '$lib/utils/clientIp';
 	import { onMount, onDestroy } from 'svelte';
 	import { t } from 'svelte-i18n';
 	import { createConnectionsStream, api } from '$lib/api/client';
@@ -338,7 +339,10 @@ import { PRESETS as VOLUME_PRESETS, bytesFromUnit, splitBytes, type VolumeUnit }
 	function startStream() {
 		stream = createConnectionsStream(
 			(data) => {
-				connections = data.connections || [];
+				// Same roster as the historical ranges below: without this the page
+				// answered its own range switcher two ways — a public source sat in
+				// "By client" in Live and vanished on 1h (#102).
+				connections = localSourceConnections(data.connections || []);
 				loading = false;
 			},
 			undefined,
@@ -359,7 +363,7 @@ import { PRESETS as VOLUME_PRESETS, bytesFromUnit, splitBytes, type VolumeUnit }
 		const tick = async () => {
 			try {
 				const data = await api.getConnections();
-				connections = data.connections || [];
+				connections = localSourceConnections(data.connections || []);
 				loading = false;
 			} catch {
 				/* ignore */

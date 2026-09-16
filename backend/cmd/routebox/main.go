@@ -101,14 +101,9 @@ func main() {
 	}
 	cfg := settingsMgr.Get()
 
-	// Resolve effective mode: CLI flag > settings > default
-	effectiveMode := cfg.Server.Mode
-	if *modeFlag != "" {
-		effectiveMode = *modeFlag
-	}
-	if effectiveMode == "" {
-		effectiveMode = "router"
-	}
+	// Resolve effective mode: CLI flag > settings > default. Same ladder the
+	// sampler asks per tick — one function, so the two can never drift.
+	effectiveMode := resolveMode(*modeFlag, func() string { return cfg.Server.Mode })
 
 	// Root is only required in router mode, where routebox itself creates the
 	// TUN interface. VPS mode never touches TUN — amnezia-box's own inbounds
@@ -323,9 +318,22 @@ func main() {
 	clientsDone := make(chan struct{})
 	go clientsMgr.StartPersistLoop(30*time.Second, stopClients, clientsDone)
 
+	// The operating mode as it stands right now: the flag if it was given, else
+	// whatever the settings file says at this moment. Settings are editable in
+	// the panel, and the field there promises it takes effect on save.
+	liveMode := func() string {
+		return resolveMode(*modeFlag, func() string { return settingsMgr.Get().Server.Mode })
+	}
+
+	// Which sources count as devices of this box. Read per call, so a tunnel
+	// subnet changed in the panel is honoured without a restart (#102).
+	isLocalSource := func(ip string) bool {
+		return util.IsLocalClientIP(ip, util.ParsePrefixes(settingsMgr.Get().Awg.Subnet)...)
+	}
+
 	// Auto-discover LAN clients from Clash /connections
 	stopDiscovery := make(chan struct{})
-	go runClientDiscovery(clientsMgr, resolvedClashAddr, resolvedClashSecret, stopDiscovery)
+	go runClientDiscovery(clientsMgr, resolvedClashAddr, resolvedClashSecret, isLocalSource, stopDiscovery)
 
 	// Open traffic history store (next to settings file)
 	var trafficStore *traffic.Store
@@ -342,6 +350,18 @@ func main() {
 	stopSampler := make(chan struct{})
 	if trafficStore != nil {
 		sampler := traffic.NewSampler(trafficStore)
+		// Router mode has no remote clients, so a connection whose source is a
+		// public address is not a device and does not belong in the history at
+		// all (#102). VPS mode is the opposite case — see Sampler.KeepSource.
+		//
+		// The flag wins, then the settings value, then router — the same order
+		// effectiveMode resolves at startup, but read per tick. --mode is what the
+		// VPS image passes on the command line, and a /config volume from an older
+		// image has no mode in its toml at all, so reading settings alone would
+		// leave that box recording nothing; freezing the answer instead would
+		// leave a box switched to panel mode in the UI ("takes effect on save")
+		// recording nothing until someone restarted it.
+		sampler.KeepSource = samplerKeepSource(liveMode, isLocalSource)
 		go sampler.Run(resolvedClashAddr, resolvedClashSecret, 35, stopSampler)
 	}
 
@@ -1405,9 +1425,36 @@ func isNonLoopback(addr string) bool {
 	return host != "" && host != "127.0.0.1" && host != "::1" && host != "localhost"
 }
 
+// resolveMode is the operating mode in force: the --mode flag if it was given,
+// else what the settings say right now, else router. The flag wins because the
+// VPS image passes it on every boot and a /config volume from an older image can
+// have no [server] section at all; settings are read through a func rather than
+// copied so a mode changed in the panel — where the field promises it takes
+// effect on save — reaches the caller without a restart.
+func resolveMode(flag string, fromSettings func() string) string {
+	if flag != "" {
+		return flag
+	}
+	if m := fromSettings(); m != "" {
+		return m
+	}
+	return "router"
+}
+
+// samplerKeepSource is the traffic sampler's source filter: the locality test in
+// router mode, everything in VPS mode, where the public address of a connecting
+// user is the source of every row worth having (#102). The mode is asked at
+// every call, so switching it in the panel does not need a restart.
+func samplerKeepSource(mode func() string, isLocal func(string) bool) func(string) bool {
+	return func(ip string) bool {
+		return mode() == "vps" || isLocal(ip)
+	}
+}
+
 // runClientDiscovery polls the Clash /connections endpoint every 60s and feeds
-// observed source IPs into the clients manager. Exits cleanly when stop closes.
-func runClientDiscovery(mgr *clients.Manager, clashAddr, secret string, stop <-chan struct{}) {
+// observed source IPs into the clients manager, keeping the ones isLocal
+// accepts. Exits cleanly when stop closes.
+func runClientDiscovery(mgr *clients.Manager, clashAddr, secret string, isLocal func(string) bool, stop <-chan struct{}) {
 	if clashAddr == "" {
 		return
 	}
@@ -1454,7 +1501,14 @@ func runClientDiscovery(mgr *clients.Manager, clashAddr, secret string, stop <-c
 		for _, c := range data.Connections {
 			// Canonical, not raw: a dual-stack inbound reports an IPv4 client as
 			// "::ffff:x", which would become a second client entry for one device (#71).
-			if ip := util.CanonicalClientIP(c.Metadata.SourceIP); ip != "" {
+			//
+			// Only local sources: Clash lists the occasional connection from a
+			// public address, and the roster this feeds is the LAN device list —
+			// router-only, and nothing there can name a Google front-end (#102).
+			// Filtered in VPS mode too, unlike the sampler: that page is not
+			// reachable there, so a roster of remote addresses would be a file
+			// that grows for nobody.
+			if ip := util.CanonicalClientIP(c.Metadata.SourceIP); isLocal(ip) {
 				mgr.Observe(ip, now)
 			}
 		}

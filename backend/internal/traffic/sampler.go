@@ -55,6 +55,18 @@ type Sampler struct {
 	// yielding endless 401s — produces one diagnostic line, not one per tick.
 	// Touched only from the single Run goroutine; no locking needed.
 	lastSampleErr string
+
+	// KeepSource, when set, decides which connections are worth recording by
+	// their source address. Router mode passes the locality test: there a remote
+	// source is never a device, and recording it only grows Breakdown a row
+	// nobody owns (#102). In VPS mode the predicate accepts everything — there
+	// the public address of a connecting user IS the source, and the dashboard
+	// graph sums those rows. nil means the same thing and is what a caller that
+	// has no mode to consult (tests) leaves it at.
+	//
+	// Set before Run and not touched afterwards: the goroutine that reads it
+	// starts after the assignment.
+	KeepSource func(source string) bool
 }
 
 func NewSampler(store *Store) *Sampler {
@@ -143,8 +155,16 @@ func (s *Sampler) fetchSnapshot(clashAddr, secret string) ([]ConnectionSample, e
 	if err := json.NewDecoder(resp.Body).Decode(&data); err != nil {
 		return nil, err
 	}
-	out := make([]ConnectionSample, len(data.Connections))
-	for i, c := range data.Connections {
+	out := make([]ConnectionSample, 0, len(data.Connections))
+	for _, c := range data.Connections {
+		source := util.CanonicalClientIP(c.Metadata.SourceIP)
+		// A connection with no source is one of sing-box's own dials (a DNS
+		// query through an outbound, a urltest probe, a subscription fetch). It
+		// has been in the history as "unknown" all along and is not what #102 is
+		// about, so the filter never sees it.
+		if source != "" && s.KeepSource != nil && !s.KeepSource(source) {
+			continue
+		}
 		domain := c.Metadata.Host
 		if domain == "" {
 			domain = c.Metadata.DestinationIP
@@ -162,16 +182,16 @@ func (s *Sampler) fetchSnapshot(clashAddr, secret string) ([]ConnectionSample, e
 				chain += ch
 			}
 		}
-		out[i] = ConnectionSample{
+		out = append(out, ConnectionSample{
 			ID: c.ID,
 			// Canonical, so one device is one history bucket even when a dual-stack
 			// inbound reports it as "::ffff:x" (#71).
-			Source:   util.CanonicalClientIP(c.Metadata.SourceIP),
+			Source:   source,
 			Domain:   domain,
 			Chain:    chain,
 			Upload:   c.Upload,
 			Download: c.Download,
-		}
+		})
 	}
 	return out, nil
 }

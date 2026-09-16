@@ -1,6 +1,6 @@
 import { describe, it, expect } from 'vitest';
 import type { ConnectionsResponse } from '$lib/types';
-import { canonicalClientIp, canonicalizeConnections } from './clientIp';
+import { canonicalClientIp, canonicalizeConnections, isLocalClientIp, localSourceConnections } from './clientIp';
 
 describe('canonicalClientIp', () => {
 	it('unmaps what a dual-stack inbound reports for an IPv4 client', () => {
@@ -43,5 +43,39 @@ describe('canonicalizeConnections', () => {
 		expect(() => canonicalizeConnections({} as ConnectionsResponse)).not.toThrow();
 		const empty = { connections: [], downloadTotal: 0, uploadTotal: 0 };
 		expect(canonicalizeConnections(empty).connections).toEqual([]);
+	});
+});
+
+describe('isLocalClientIp', () => {
+	it('keeps addresses this box can own', () => {
+		for (const ip of [
+			'192.168.1.14',
+			'10.10.64.2',
+			'172.16.0.5',
+			'100.64.0.7',
+			'127.0.0.1',
+			'169.254.1.1',
+			'::ffff:192.168.1.14',
+			'fd00::1',
+			'::1',
+			'2001:db8::1' // a client's IPv6 is routable by design — see the backend twin
+		]) {
+			expect(isLocalClientIp(ip), ip).toBe(true);
+		}
+	});
+
+	it('drops the public IPv4 sources issue #102 is about', () => {
+		for (const ip of ['172.217.116.4', '8.8.8.8', '::ffff:172.217.116.4', '172.32.0.1', '']) {
+			expect(isLocalClientIp(ip), ip).toBe(false);
+		}
+	});
+
+	it('keeps a connection with no source — the box\'s own dials', () => {
+		const conns = [
+			{ metadata: { sourceIP: '192.168.1.14' } },
+			{ metadata: { sourceIP: '172.217.116.4' } },
+			{ metadata: {} }
+		];
+		expect(localSourceConnections(conns)).toHaveLength(2);
 	});
 });

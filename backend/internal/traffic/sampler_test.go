@@ -7,6 +7,7 @@ import (
 	"net/http/httptest"
 	"os"
 	"path/filepath"
+	"routebox/backend/internal/util"
 	"strings"
 	"sync"
 	"testing"
@@ -232,5 +233,45 @@ func TestSamplerDoesNotRunWithoutAClashAddr(t *testing.T) {
 	}
 	if logged.Len() != 0 {
 		t.Errorf("nothing to complain about, got log output:\n%s", logged.String())
+	}
+}
+
+// Issue #102: in router mode a connection whose source is a public address is
+// not a device, and recording it grows Breakdown a row nobody owns. VPS mode
+// leaves KeepSource nil, because there the remote address IS the client.
+func TestFetchSnapshot_KeepSourceDropsRejectedSources(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Write([]byte(`{"connections":[
+			{"id":"lan","upload":1,"download":2,"chains":["direct"],"metadata":{"sourceIP":"192.168.1.14","host":"a.com"}},
+			{"id":"peer","upload":1,"download":2,"chains":["direct"],"metadata":{"sourceIP":"::ffff:10.10.64.2","host":"b.com"}},
+			{"id":"remote","upload":1,"download":2,"chains":["direct"],"metadata":{"sourceIP":"172.217.116.4","destinationIP":"127.0.0.1"}},
+			{"id":"own","upload":1,"download":2,"chains":["direct"],"metadata":{"host":"probe.example"}}
+		]}`))
+	}))
+	defer srv.Close()
+	addr := strings.TrimPrefix(srv.URL, "http://")
+
+	s := NewSampler(nil)
+	ids := func() []string {
+		snap, err := s.fetchSnapshot(addr, "")
+		if err != nil {
+			t.Fatalf("fetchSnapshot: %v", err)
+		}
+		var out []string
+		for _, c := range snap {
+			out = append(out, c.ID)
+		}
+		return out
+	}
+
+	if got := ids(); len(got) != 4 {
+		t.Fatalf("without KeepSource = %v, want all four", got)
+	}
+	s.KeepSource = func(src string) bool { return util.IsLocalClientIP(src) }
+	// "own" has no source at all — one of sing-box's own dials, recorded as
+	// "unknown" long before this filter and none of its business.
+	got := ids()
+	if len(got) != 3 || got[0] != "lan" || got[1] != "peer" || got[2] != "own" {
+		t.Fatalf("with KeepSource = %v, want [lan peer own]", got)
 	}
 }

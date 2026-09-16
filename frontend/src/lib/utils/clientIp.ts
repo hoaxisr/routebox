@@ -32,3 +32,45 @@ export function canonicalizeConnections(resp: ConnectionsResponse): ConnectionsR
 		)
 	};
 }
+
+/**
+ * Whether an address can be a device of this box: the LAN, a tunnel, or the box
+ * itself. Mirrors util.IsLocalClientIP on the backend, which decides the same
+ * for the traffic history and the client roster (#102) — the live Breakdown
+ * reads the Clash stream directly, so without this the page contradicted its own
+ * historical ranges: a Google front-end that vanishes when you click "1h".
+ *
+ * IPv6 goes the other way on purpose, exactly as the backend does: a client's
+ * IPv6 address is globally routable by design, so the address alone cannot tell
+ * a device from a stranger and refusing one would hide a real device.
+ *
+ * One difference from the backend, which has the settings at hand: a tunnel
+ * subnet configured outside the private ranges is not known here, so such a peer
+ * is missing from the live view until the range switcher is used. The AWG
+ * default is 10.10.0.0/24.
+ */
+export function isLocalClientIp(ip: string): boolean {
+	const addr = canonicalClientIp(ip);
+	const v4 = /^(\d{1,3})\.(\d{1,3})\.(\d{1,3})\.(\d{1,3})$/.exec(addr);
+	if (!v4) return addr.includes(':') && !/^(ff|::$)/i.test(addr);
+	const [a, b] = v4.slice(1).map(Number);
+	if (v4.slice(1).some((o) => Number(o) > 255)) return false;
+	return (
+		a === 10 ||
+		a === 127 ||
+		(a === 192 && b === 168) ||
+		(a === 172 && b >= 16 && b <= 31) ||
+		(a === 169 && b === 254) ||
+		(a === 100 && b >= 64 && b <= 127) // RFC 6598
+	);
+}
+
+/**
+ * Drops connections whose source is not a device of this box, keeping the ones
+ * with no source at all — those are the box's own dials, shown as "unknown".
+ */
+export function localSourceConnections<T extends { metadata?: { sourceIP?: string } }>(
+	conns: T[]
+): T[] {
+	return conns.filter((c) => !c.metadata?.sourceIP || isLocalClientIp(c.metadata.sourceIP));
+}

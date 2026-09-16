@@ -9,6 +9,7 @@ import (
 	"github.com/go-chi/chi/v5"
 
 	"routebox/backend/internal/clients"
+	"routebox/backend/internal/util"
 )
 
 type clientResponse struct {
@@ -26,9 +27,17 @@ func (h *Handler) ListClients(w http.ResponseWriter, r *http.Request) {
 	}
 	now := time.Now().Unix()
 	all := h.clients.List()
-	out := make([]clientResponse, len(all))
-	for i, e := range all {
-		out[i] = clientResponse{Entry: e, Online: now-e.LastSeen <= onlineThresholdSeconds}
+	local := h.tunnelPrefixes() // one parse per request, not per entry
+	out := make([]clientResponse, 0, len(all))
+	for _, e := range all {
+		// Discovery no longer observes remote addresses (#102), but the entries
+		// it wrote before that are still in clients.toml. They stay there — the
+		// roster only offers what can actually be named — and DELETE /api/clients
+		// still removes one by IP if anybody wants the file tidy.
+		if !util.IsLocalClientIP(e.IP, local...) {
+			continue
+		}
+		out = append(out, clientResponse{Entry: e, Online: now-e.LastSeen <= onlineThresholdSeconds})
 	}
 	writeSuccess(w, out)
 }
