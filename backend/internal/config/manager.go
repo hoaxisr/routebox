@@ -292,6 +292,19 @@ func (m *Manager) Load() error {
 		return fmt.Errorf("failed to parse config: %w", err)
 	}
 
+	// One-time migration, run before anything can start the process on this
+	// file: a config still carrying tun "stack" either runs the old slow stack
+	// or (gvisor/mixed) does not start at all on a fork built without gVisor.
+	if stripTunStack(config) {
+		if data, err := encodeConfig(config); err == nil {
+			if err := m.noteWrite(m.writeActiveLocked(data)); err != nil {
+				log.Printf("could not rewrite %s without the deprecated tun \"stack\" option: %v — RouteBox runs on the migrated config in memory", m.path, err)
+			} else {
+				log.Printf("removed the deprecated tun \"stack\" option from %s — sing-box 1.15's own stack is faster and is what runs when the option is absent", m.path)
+			}
+		}
+	}
+
 	m.activeConfig = config
 	m.draftConfig = nil
 	m.hasDraft = false

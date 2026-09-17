@@ -42,7 +42,6 @@
 	let autoRoute = $state(inbound?.auto_route ?? true);
 	let autoRedirect = $state(inbound?.auto_redirect ?? false);
 	let strictRoute = $state(inbound?.strict_route ?? true);
-	let stack = $state<'system' | 'gvisor' | 'mixed'>(inbound?.stack ?? 'system');
 
 	// Mixed/SOCKS/HTTP specific
 	let listen = $state(inbound?.listen ?? '127.0.0.1');
@@ -59,8 +58,6 @@
 	function isServerType(ty: string): ty is ServerInboundType {
 		return (serverTypes as readonly string[]).includes(ty);
 	}
-
-	const stackOptions = ['system', 'gvisor', 'mixed'] as const;
 
 	let serverState = $state<ServerFormState>(
 		inbound && isServerType(inbound.type)
@@ -170,7 +167,6 @@
 			ib.auto_route = autoRoute;
 			ib.auto_redirect = autoRedirect;
 			ib.strict_route = strictRoute;
-			ib.stack = stack;
 		} else {
 			ib.listen = listen.trim();
 			ib.listen_port = listenPort;
@@ -257,22 +253,6 @@
 				{#if errors['addresses']}
 					<p class="mt-1 text-sm text-[var(--ctp-red)]">{errors['addresses']}</p>
 				{/if}
-			</div>
-
-			<div>
-				<label class="block text-sm font-medium text-[var(--ctp-subtext1)] mb-2">{$t('inbounds.stack')}</label>
-				<div class="grid grid-cols-3 gap-2">
-					{#each stackOptions as stackOption}
-						<button
-							type="button"
-							onclick={() => stack = stackOption}
-							class="type-btn text-center {stack === stackOption ? 'selected' : ''}"
-						>
-							<div class="type-label text-sm">{$t(`inbounds.stacks.${stackOption}`)}</div>
-							<div class="type-desc">{$t(`inbounds.stackDescriptions.${stackOption}`)}</div>
-						</button>
-					{/each}
-				</div>
 			</div>
 
 			<div class="bg-[var(--ctp-surface0)] rounded-lg p-4 space-y-3">

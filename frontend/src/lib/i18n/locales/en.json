@@ -897,16 +897,6 @@
       "socks": "SOCKS5 proxy server. Configure applications to use this as their SOCKS5 proxy.",
       "http": "HTTP proxy server. Configure applications to use this as their HTTP proxy."
     },
-    "stacks": {
-      "system": "System",
-      "gvisor": "gVisor",
-      "mixed": "Mixed"
-    },
-    "stackDescriptions": {
-      "system": "Uses system network stack",
-      "gvisor": "Userspace network stack",
-      "mixed": "System for TCP, gVisor for UDP"
-    },
     "tunSettings": "TUN Settings",
     "interfaceName": "Interface Name",
     "inet4Address": "IPv4 Address",
@@ -920,7 +910,6 @@
     "strictRoute": "Strict Route",
     "strictRouteHint": "prevent traffic leaks",
     "routingOptions": "Routing Options",
-    "stack": "Stack",
     "mtu": "MTU",
     "sniff": "Sniff",
     "sniffOverrideDestination": "Override Destination",

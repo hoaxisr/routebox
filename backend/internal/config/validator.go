@@ -733,6 +733,13 @@ func validateInbound(ib map[string]interface{}, index int) []string {
 		if !hasAddress {
 			errors = append(errors, fmt.Sprintf("%s: TUN requires 'address' array or 'inet4_address'/'inet6_address'", prefix))
 		}
+		// amnezia-box is built without with_gvisor since 1.15.0-alpha.5: these
+		// two fail at startup, not at check time, so catch them here. The
+		// option as a whole is deprecated — dropping it picks sing-box 1.15's
+		// own stack, which is faster than all of them.
+		if stack, _ := ib["stack"].(string); stack == "gvisor" || stack == "mixed" {
+			errors = append(errors, fmt.Sprintf("%s: stack '%s' needs a gVisor build — amnezia-box no longer ships one; remove 'stack' to use the built-in stack", prefix, stack))
+		}
 	case "mixed", "socks", "http":
 		// Should have listen_port
 		if _, ok := ib["listen_port"].(float64); !ok {

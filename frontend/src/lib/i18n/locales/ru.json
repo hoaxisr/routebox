@@ -897,16 +897,6 @@
       "socks": "Сервер SOCKS5-прокси. Укажите его в приложениях как SOCKS5-прокси.",
       "http": "Сервер HTTP-прокси. Укажите его в приложениях как HTTP-прокси."
     },
-    "stacks": {
-      "system": "System",
-      "gvisor": "gVisor",
-      "mixed": "Mixed"
-    },
-    "stackDescriptions": {
-      "system": "Использует системный сетевой стек",
-      "gvisor": "Сетевой стек в пространстве пользователя",
-      "mixed": "System для TCP, gVisor для UDP"
-    },
     "tunSettings": "Настройки TUN",
     "interfaceName": "Имя интерфейса",
     "inet4Address": "IPv4-адрес",
@@ -920,7 +910,6 @@
     "strictRoute": "Строгий маршрут",
     "strictRouteHint": "предотвращает утечки трафика",
     "routingOptions": "Параметры маршрутизации",
-    "stack": "Стек",
     "mtu": "MTU",
     "sniff": "Sniff",
     "sniffOverrideDestination": "Переопределять назначение",

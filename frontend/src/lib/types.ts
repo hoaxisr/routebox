@@ -242,7 +242,6 @@ export interface Inbound {
 	auto_route?: boolean;
 	auto_redirect?: boolean;
 	strict_route?: boolean;
-	stack?: 'system' | 'gvisor' | 'mixed';
 	// DEPRECATED: keep for backward compat
 	inet4_address?: string;
 	inet6_address?: string;
