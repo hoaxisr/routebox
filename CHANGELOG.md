@@ -2,7 +2,7 @@
 
 All notable changes to RouteBox are documented here.
 
-## [Unreleased]
+## [0.37.1]
 
 ### Fixes
 
