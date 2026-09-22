@@ -1235,7 +1235,7 @@ func (m *Manager) Reload() error {
 		if output, err := cmd.CombinedOutput(); err != nil {
 			return fmt.Errorf("systemctl SIGHUP reload failed: %s", string(output))
 		}
-		return nil
+		return reloadOutcome(status.PID, m.liveness, reloadWatch, reloadStep)
 	}
 
 	// Otherwise, send SIGHUP directly
@@ -1248,9 +1248,36 @@ func (m *Manager) Reload() error {
 		return fmt.Errorf("failed to send SIGHUP: %w", err)
 	}
 
-	// Give it a moment to reload
-	time.Sleep(100 * time.Millisecond)
+	return reloadOutcome(status.PID, m.liveness, reloadWatch, reloadStep)
+}
 
+// A config sing-box cannot start (1.15 turns the 1.14 deprecations into a
+// start-time Fatal) makes it exit on SIGHUP instead of reloading, and a
+// supervisor may respawn it under a new PID. Reload used to report success
+// either way; now it watches the process for reloadWatch after the signal.
+const (
+	reloadWatch = 2 * time.Second
+	reloadStep  = 100 * time.Millisecond
+)
+
+func (m *Manager) liveness() (bool, int) {
+	pid := m.findPID()
+	return pid != 0, pid
+}
+
+// reloadOutcome fails when the process is gone or has a different PID within
+// the watch window. PURE apart from the injected status source.
+func reloadOutcome(pidBefore int, status func() (bool, int), watch, step time.Duration) error {
+	for elapsed := time.Duration(0); elapsed < watch; elapsed += step {
+		time.Sleep(step)
+		running, pid := status()
+		if !running {
+			return fmt.Errorf("amnezia-box exited during reload — see its log (a config sing-box cannot start is the usual cause)")
+		}
+		if pid != pidBefore {
+			return fmt.Errorf("amnezia-box was restarted (pid %d → %d) during reload — see its log (a config sing-box cannot start is the usual cause)", pidBefore, pid)
+		}
+	}
 	return nil
 }
 
