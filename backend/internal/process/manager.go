@@ -1323,12 +1323,7 @@ func (m *Manager) startLocked(configPath string) error {
 		// Wait and verify
 		time.Sleep(500 * time.Millisecond)
 		if !m.GetStatus().Running {
-			// Try to get more info from journalctl
-			journalCmd := exec.Command("journalctl", "-u", m.serviceName+".service", "-n", "10", "--no-pager")
-			if logs, err := journalCmd.Output(); err == nil {
-				return fmt.Errorf("service started but exited immediately. Logs:\n%s", string(logs))
-			}
-			return fmt.Errorf("service started but exited immediately")
+			return fmt.Errorf("service started but exited immediately%s", m.journalTail())
 		}
 		return nil
 	}
@@ -1427,6 +1422,23 @@ func (m *Manager) stopLocked() error {
 }
 
 // Restart restarts the amnezia-box process
+// unitActive reports `systemctl is-active` == active for the managed unit
+// (not activating / auto-restart, which findPID cannot tell from healthy).
+func (m *Manager) unitActive() bool {
+	out, err := exec.Command("systemctl", "is-active", m.serviceName+".service").Output()
+	return err == nil && strings.TrimSpace(string(out)) == "active"
+}
+
+// journalTail returns the unit's last journal lines formatted for appending
+// to an error, or "" when the journal is unavailable.
+func (m *Manager) journalTail() string {
+	out, err := exec.Command("journalctl", "-u", m.serviceName+".service", "-n", "10", "--no-pager").Output()
+	if err != nil || len(strings.TrimSpace(string(out))) == 0 {
+		return ""
+	}
+	return ". Logs:\n" + strings.TrimSpace(string(out))
+}
+
 func (m *Manager) Restart(configPath string) error {
 	m.opMu.Lock()
 	defer m.opMu.Unlock()
@@ -1442,10 +1454,12 @@ func (m *Manager) Restart(configPath string) error {
 			return fmt.Errorf("systemctl restart failed: %s", string(output))
 		}
 
-		// Wait and verify
-		time.Sleep(500 * time.Millisecond)
-		if !m.GetStatus().Running {
-			return fmt.Errorf("service restarted but is not running")
+		// Watch as long as Reload does: a binary that rejects the config at
+		// start (sing-box 1.15 fatals that `check` misses) dies later than
+		// 500ms on slow routers, and under Restart= findPID sees the respawn.
+		time.Sleep(reloadWatch)
+		if !m.GetStatus().Running || !m.unitActive() {
+			return fmt.Errorf("service restarted but is not running%s", m.journalTail())
 		}
 		return nil
 	}

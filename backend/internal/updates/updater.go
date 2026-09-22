@@ -35,6 +35,10 @@ var ErrBusy = errors.New("another update is already in progress")
 
 // Progress is a snapshot of the current/last Apply, polled by the UI.
 type Progress struct {
+	// Seq increments on every Apply. A client that lost its apply response
+	// compares it with the value it saw before sending: an unchanged Seq means
+	// the request never reached the server, so done/error here are stale.
+	Seq             int64  `json:"seq"`
 	Target          string `json:"target"`
 	Phase           Phase  `json:"phase"`
 	DownloadedBytes int64  `json:"downloaded_bytes"`
@@ -104,6 +108,9 @@ func (u *Updater) Apply(t Target, rel ReleaseInfo) (ApplyResult, error) {
 	}
 	defer u.applyMu.Unlock()
 
+	u.progMu.Lock()
+	u.progress.Seq++
+	u.progMu.Unlock()
 	u.setBytes(0, 0)
 	res, err := u.apply(t, rel)
 	if err != nil {
@@ -190,12 +197,12 @@ func (u *Updater) apply(t Target, rel ReleaseInfo) (ApplyResult, error) {
 			}
 			if rerr := t.Restart(); rerr != nil {
 				return ApplyResult{}, fmt.Errorf(
-					"%s %s does not start (%v) and restoring the previous version also failed: %w — check the service logs",
+					"%s %s did not start (%v) and restoring the previous version failed too: %w — the service is down, check its logs",
 					t.Name, rel.Version, err, rerr)
 			}
 			return ApplyResult{}, fmt.Errorf(
-				"%s %s does not start with the current config, the previous version was restored and is running: %w — check the service logs (journalctl -u %s)",
-				t.Name, rel.Version, err, t.Name)
+				"%s %s did not start, the previous version was restored and is running. Reason: %w",
+				t.Name, rel.Version, err)
 		}
 	}
 	return ApplyResult{}, nil

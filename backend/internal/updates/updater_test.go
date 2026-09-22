@@ -310,13 +310,25 @@ func TestApplyRollbackOnRestartFailure(t *testing.T) {
 	srv := assetServer(t, "fake-asset", newBytes, sha256Hex(newBytes))
 
 	u := NewUpdater()
+	seqBefore := u.Progress().Seq
 	_, err := u.Apply(target, ReleaseInfo{
+		Version:   "v9.9.9",
 		AssetName: "fake-asset",
 		AssetURL:  srv.URL + "/asset",
 		Sha256URL: srv.URL + "/checksums.txt",
 	})
 	if err == nil {
 		t.Fatal("Apply must surface restart failure")
+	}
+	// The UI shows this verbatim: it must name the version that failed, say
+	// the old one is back, and carry the restart error.
+	for _, want := range []string{"v9.9.9 did not start", "previous version was restored", "boom"} {
+		if !strings.Contains(err.Error(), want) {
+			t.Errorf("error %q must contain %q", err, want)
+		}
+	}
+	if p := u.Progress(); p.Seq != seqBefore+1 || p.Phase != PhaseError || p.Error != err.Error() {
+		t.Errorf("progress after failed apply = %+v, want seq %d, phase error, same text", p, seqBefore+1)
 	}
 	got, _ := os.ReadFile(path)
 	if string(got) != string(oldBytes) {

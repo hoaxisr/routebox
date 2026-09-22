@@ -1113,6 +1113,7 @@ export interface UpdatesStatus {
 }
 
 export interface UpdateProgress {
+	seq: number;
 	target: UpdateTargetName | '';
 	phase: UpdatePhase;
 	downloaded_bytes: number;

@@ -4,6 +4,7 @@
 	import { notifications } from '$lib/stores';
 	import { t } from 'svelte-i18n';
 	import { copyText } from '$lib/utils/clipboard';
+	import { recoverAfterDisconnect as recoverLostApply } from '$lib/utils/updateRecovery';
 	import type { UpdatesStatus, UpdateTarget, UpdateProgress, UpdateTargetName } from '$lib/types';
 
 	let loading = $state(true);
@@ -15,6 +16,10 @@
 	let updatedToVersion = $state('');
 	let manualRestart = $state(false);
 	let now = $state(Date.now());
+	// Last apply outcome on the server, shown on the card after a lost
+	// connection or a page reload (the toast alone is gone by then).
+	let lastProgress = $state<UpdateProgress | null>(null);
+	let alive = true;
 
 	let progressTimer: ReturnType<typeof setInterval> | null = null;
 	let clockTimer: ReturnType<typeof setInterval> | null = null;
@@ -66,9 +71,15 @@
 		} finally {
 			loading = false;
 		}
+		try {
+			lastProgress = await api.getUpdateProgress();
+		} catch {
+			// best-effort
+		}
 	});
 
 	onDestroy(() => {
+		alive = false;
 		stopProgressPolling();
 		if (clockTimer) clearInterval(clockTimer);
 	});
@@ -131,56 +142,27 @@
 		manualRestart = true;
 	}
 
-	// The apply request died without a response. Poll progress until the
-	// server reports a terminal phase; tolerate ~90s of unreachability
-	// (the tunnel coming back after the proxy restart).
-	// ponytail: a stale done/error from an earlier run of the same target is
-	// indistinguishable here; add a run id to Progress if that bites.
-	async function recoverAfterDisconnect(target: UpdateTarget) {
-		let unreachableSince: number | null = null;
-		let delay = 1000;
-		for (;;) {
-			await sleep(delay);
-			let p: UpdateProgress;
-			try {
-				p = await api.getUpdateProgress();
-			} catch {
-				unreachableSince ??= Date.now();
-				if (Date.now() - unreachableSince > 90000) {
-					notifications.error($t('updates.connectionLost'));
-					return;
-				}
-				delay = Math.min(Math.round(delay * 1.5), 5000);
-				continue;
-			}
-			unreachableSince = null;
-			delay = 1000;
-			progress = p;
-			if (p.target !== target.name) continue;
-			if (p.phase === 'error') {
-				notifications.error($t('updates.updateFailed', { values: { error: p.error || '' } }));
-				return;
-			}
-			if (p.phase === 'done') {
-				notifications.success(
-					$t('updates.updatedTo', { values: { version: target.latest || '' } })
-				);
-				try {
-					status = await api.getUpdatesStatus();
-					now = Date.now();
-				} catch {
-					// status refresh is best-effort
-				}
-				return;
-			}
-		}
-	}
-
 	async function copyCommand(command: string) {
 		if (await copyText(command)) {
 			notifications.success($t('common.copied'));
 		} else {
 			notifications.error($t('common.copyFailed'));
+		}
+	}
+
+	// The apply response never arrived: no HTTP response at all (TypeError —
+	// the panel is usually reached through the very proxy being restarted),
+	// or a reverse proxy in front gave up on the long request.
+	function outcomeUnknown(err: unknown): boolean {
+		return err instanceof TypeError || /^HTTP 50[234]$|^HTTP 524$/.test(String((err as Error)?.message));
+	}
+
+	async function refreshStatus() {
+		try {
+			status = await api.getUpdatesStatus();
+			now = Date.now();
+		} catch {
+			// status refresh is best-effort
 		}
 	}
 
@@ -192,6 +174,13 @@
 		progress = null;
 		manualRestart = false;
 		updatedToVersion = '';
+		// Baseline: an apply that never reached the server leaves seq unchanged.
+		let seqBefore = -1;
+		try {
+			seqBefore = (await api.getUpdateProgress()).seq;
+		} catch {
+			// unreachable now — the apply itself will tell
+		}
 		startProgressPolling();
 		try {
 			const result = await api.applyUpdate(target.name);
@@ -207,27 +196,62 @@
 				notifications.success(
 					$t('updates.updatedTo', { values: { version: target.latest || '' } })
 				);
-				try {
-					status = await api.getUpdatesStatus();
-					now = Date.now();
-				} catch {
-					// status refresh is best-effort
-				}
+				await refreshStatus();
 			}
 		} catch (err) {
 			stopProgressPolling();
-			if (err instanceof TypeError) {
-				// fetch got no HTTP response: the connection dropped mid-update
-				// (typically the panel is reached through the proxy being
-				// restarted). The server keeps going — recover the outcome.
-				await recoverAfterDisconnect(target);
+			if (!outcomeUnknown(err)) {
+				notifications.error($t('updates.updateFailed', { values: { error: String(err) } }), 0);
+			} else if (target.name === 'routebox') {
+				// Self-update re-execs the process: sessions are gone and the new
+				// updater starts at seq 0, so progress cannot be trusted. Wait for
+				// the new process the same way a successful response does.
+				restartWait = true;
+				await waitForRestart(target.latest || '');
 			} else {
-				notifications.error($t('updates.updateFailed', { values: { error: String(err) } }));
+				await recoverAfterDisconnect(target, seqBefore, String(err));
 			}
 		} finally {
 			stopProgressPolling();
 			applying = null;
 			progress = null;
+		}
+	}
+
+	// Outcome of an apply whose response was lost — see $lib/utils/updateRecovery.
+	async function recoverAfterDisconnect(target: UpdateTarget, seqBefore: number, origError: string) {
+		const out = await recoverLostApply(target.name, seqBefore, {
+			poll: api.getUpdateProgress,
+			sleep,
+			now: Date.now,
+			alive: () => alive,
+			onProgress: (p) => {
+				progress = p;
+			}
+		});
+		if (!alive) return;
+		switch (out.kind) {
+			case 'done':
+				lastProgress = out.progress;
+				notifications.success($t('updates.updatedTo', { values: { version: target.latest || '' } }));
+				await refreshStatus();
+				break;
+			case 'error':
+				lastProgress = out.progress;
+				notifications.error($t('updates.updateFailed', { values: { error: out.progress.error || '' } }), 0);
+				await refreshStatus();
+				break;
+			case 'not-started':
+				notifications.error(
+					$t('updates.updateFailed', {
+						values: { error: $t('updates.notStarted', { values: { error: origError } }) }
+					}),
+					0
+				);
+				break;
+			case 'lost':
+				notifications.error($t('updates.connectionLost'), 0);
+				break;
 		}
 	}
 </script>
@@ -334,6 +358,11 @@
 
 					{#if target.error}
 						<div class="mt-3 text-sm text-[var(--ctp-red)]">{target.error}</div>
+					{/if}
+					{#if applying !== target.name && lastProgress?.target === target.name && lastProgress.phase === 'error'}
+						<div class="mt-3 text-sm text-[var(--ctp-red)] whitespace-pre-wrap break-words">
+							{$t('updates.lastAttemptFailed', { values: { error: lastProgress.error || '' } })}
+						</div>
 					{/if}
 
 					{#if target.update_available && target.docker_managed && target.update_command}
