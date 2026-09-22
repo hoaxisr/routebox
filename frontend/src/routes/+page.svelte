@@ -360,7 +360,12 @@
 
 <!-- No page heading: the process card is the headline, and on a 1080p screen
      the heading was what pushed the top connections under the fold (#108). -->
-<div class="space-y-4">
+<!-- Desktop: the page is exactly the viewport minus the header and the main
+     padding, and only the Top Connections list gives way (scrolls inside).
+     Everything else keeps its height; the card cannot go below its fixed
+     content plus two connection rows (min-h), so on a too-short screen the
+     page scrolls instead of the graph overlapping the links below. -->
+<div class="space-y-4 lg:h-[calc(100dvh-6.5rem)] lg:flex lg:flex-col">
 	<!-- System Requirements Warning -->
 	{#if status.system_checks && !status.system_checks.all_checks_passed}
 		<div class="bg-[var(--ctp-red)] rounded-xl p-6 shadow-lg">
@@ -456,7 +461,7 @@
 	<PendingChanges />
 
 	<!-- Status Card -->
-	<div class="bg-[var(--ctp-surface0)] rounded-xl p-6">
+	<div class="bg-[var(--ctp-surface0)] rounded-xl p-6 lg:flex lg:flex-col {topConnections.length > 0 ? 'lg:min-h-[39.5rem]' : ''}">
 		<div class="flex items-center justify-between mb-4">
 			<h2 class="text-lg font-semibold text-[var(--ctp-subtext1)]">amnezia-box</h2>
 			{#if loading}
@@ -664,12 +669,12 @@
 
 			<!-- Top Connections Preview -->
 			{#if topConnections.length > 0}
-				<div>
-					<div class="flex items-center justify-between mb-2">
+				<div class="lg:min-h-0 lg:flex lg:flex-col">
+					<div class="flex items-center justify-between mb-2 shrink-0">
 						<h3 class="text-sm font-medium text-[var(--ctp-subtext1)]">Top Connections</h3>
 						<a href="/monitor/connections" class="text-sm text-[var(--ctp-primary)] hover:underline">View all</a>
 					</div>
-					<div class="bg-[var(--ctp-surface1)] rounded-lg divide-y divide-[var(--ctp-surface2)]">
+					<div class="bg-[var(--ctp-surface1)] rounded-lg divide-y divide-[var(--ctp-surface2)] lg:min-h-[4.75rem] lg:overflow-y-auto">
 						{#each topConnections as conn}
 							{@const sourceName = $clientNames.get(conn.metadata.sourceIP)}
 							<!-- Behind the front every source is the loopback (see the

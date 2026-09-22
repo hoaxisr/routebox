@@ -458,8 +458,10 @@
 
 		<!-- Main content (with HTTP warning banner in normal flow) -->
 		<main class="pt-14 {isMobile ? 'pl-0' : 'pl-56'}">
-			<!-- HTTP warning banner (non-localhost HTTP, in normal flow to push content down) -->
-			{#if typeof window !== 'undefined' && window.location.protocol === 'http:' && window.location.hostname !== 'localhost' && window.location.hostname !== '127.0.0.1'}
+			<!-- HTTP warning banner: panel (vps) mode only — a router's panel lives
+			     on the LAN and is not meant to be exposed; the banner only cost it
+			     a line of height (the dashboard is sized to fit without scrolling). -->
+			{#if $panelMode && typeof window !== 'undefined' && window.location.protocol === 'http:' && window.location.hostname !== 'localhost' && window.location.hostname !== '127.0.0.1'}
 				<div class="bg-[var(--ctp-red)] text-white text-xs text-center py-1 px-2">
 					{$t('auth.insecureWarning')}
 				</div>
