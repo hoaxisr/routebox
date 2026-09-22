@@ -131,6 +131,51 @@
 		manualRestart = true;
 	}
 
+	// The apply request died without a response. Poll progress until the
+	// server reports a terminal phase; tolerate ~90s of unreachability
+	// (the tunnel coming back after the proxy restart).
+	// ponytail: a stale done/error from an earlier run of the same target is
+	// indistinguishable here; add a run id to Progress if that bites.
+	async function recoverAfterDisconnect(target: UpdateTarget) {
+		let unreachableSince: number | null = null;
+		let delay = 1000;
+		for (;;) {
+			await sleep(delay);
+			let p: UpdateProgress;
+			try {
+				p = await api.getUpdateProgress();
+			} catch {
+				unreachableSince ??= Date.now();
+				if (Date.now() - unreachableSince > 90000) {
+					notifications.error($t('updates.connectionLost'));
+					return;
+				}
+				delay = Math.min(Math.round(delay * 1.5), 5000);
+				continue;
+			}
+			unreachableSince = null;
+			delay = 1000;
+			progress = p;
+			if (p.target !== target.name) continue;
+			if (p.phase === 'error') {
+				notifications.error($t('updates.updateFailed', { values: { error: p.error || '' } }));
+				return;
+			}
+			if (p.phase === 'done') {
+				notifications.success(
+					$t('updates.updatedTo', { values: { version: target.latest || '' } })
+				);
+				try {
+					status = await api.getUpdatesStatus();
+					now = Date.now();
+				} catch {
+					// status refresh is best-effort
+				}
+				return;
+			}
+		}
+	}
+
 	async function copyCommand(command: string) {
 		if (await copyText(command)) {
 			notifications.success($t('common.copied'));
@@ -171,7 +216,14 @@
 			}
 		} catch (err) {
 			stopProgressPolling();
-			notifications.error($t('updates.updateFailed', { values: { error: String(err) } }));
+			if (err instanceof TypeError) {
+				// fetch got no HTTP response: the connection dropped mid-update
+				// (typically the panel is reached through the proxy being
+				// restarted). The server keeps going — recover the outcome.
+				await recoverAfterDisconnect(target);
+			} else {
+				notifications.error($t('updates.updateFailed', { values: { error: String(err) } }));
+			}
 		} finally {
 			stopProgressPolling();
 			applying = null;

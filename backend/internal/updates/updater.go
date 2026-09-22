@@ -190,9 +190,12 @@ func (u *Updater) apply(t Target, rel ReleaseInfo) (ApplyResult, error) {
 			}
 			if rerr := t.Restart(); rerr != nil {
 				return ApplyResult{}, fmt.Errorf(
-					"restart with new binary failed (%v); rollback restart also failed: %w", err, rerr)
+					"%s %s does not start (%v) and restoring the previous version also failed: %w — check the service logs",
+					t.Name, rel.Version, err, rerr)
 			}
-			return ApplyResult{}, fmt.Errorf("restart with new binary failed, rolled back: %w", err)
+			return ApplyResult{}, fmt.Errorf(
+				"%s %s does not start with the current config, the previous version was restored and is running: %w — check the service logs (journalctl -u %s)",
+				t.Name, rel.Version, err, t.Name)
 		}
 	}
 	return ApplyResult{}, nil

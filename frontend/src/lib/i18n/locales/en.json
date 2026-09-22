@@ -1622,6 +1622,7 @@
     "restartingBanner": "RouteBox is restarting, waiting for it to come back...",
     "updatedTo": "Updated to {version}",
     "manualRestartNeeded": "Binary replaced. Restart RouteBox manually to finish the update.",
+    "connectionLost": "Connection to RouteBox was lost during the update and did not come back. If you open the panel through this proxy (VPN), its restart dropped your tunnel. Reconnect and reload the page: the update finished on the server, its result is shown on the card.",
     "updateFailed": "Update failed: {error}",
     "checkFailed": "Check failed: {error}",
     "loadFailed": "Failed to load update status: {error}",
