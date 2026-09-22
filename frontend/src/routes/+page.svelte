@@ -133,15 +133,12 @@
 		// while it is still filling, and a resampled 24 h is one point per step.
 		const step = period === '60s' ? 1 : windowSec / points;
 		const back = Math.round((points - 1 - i) * step);
+		// Wall-clock time of the point, not "−7 min": the reader compares it with
+		// logs and connection times, which are absolute (#108). Seconds only
+		// where the resolution is seconds.
+		const at = new Date(Date.now() - back * 1000);
 		return {
-			ago:
-				back === 0
-					? $t('dashboard.now')
-					: back < 60
-						? $t('dashboard.agoSec', { values: { v: back } })
-						: back < 5400
-							? $t('dashboard.agoMin', { values: { v: Math.round(back / 60) } })
-							: $t('dashboard.agoHour', { values: { v: Math.round(back / 3600) } }),
+			time: at.toLocaleTimeString([], period === '24h' ? { hourCycle: 'h23', hour: '2-digit', minute: '2-digit' } : { hourCycle: 'h23', hour: '2-digit', minute: '2-digit', second: '2-digit' }),
 			down: formatSpeed(graphDown[i] ?? 0),
 			up: formatSpeed(graphUp[i] ?? 0)
 		};
@@ -361,9 +358,9 @@
 	});
 </script>
 
-<div class="space-y-6">
-	<h1 class="text-2xl font-bold text-[var(--ctp-text)]">{$t('dashboard.title')}</h1>
-
+<!-- No page heading: the process card is the headline, and on a 1080p screen
+     the heading was what pushed the top connections under the fold (#108). -->
+<div class="space-y-4">
 	<!-- System Requirements Warning -->
 	{#if status.system_checks && !status.system_checks.all_checks_passed}
 		<div class="bg-[var(--ctp-red)] rounded-xl p-6 shadow-lg">
@@ -477,7 +474,7 @@
 
 		{#if status.running}
 			<!-- Control buttons first -->
-			<div class="flex gap-3 flex-wrap mb-6">
+			<div class="flex gap-3 flex-wrap mb-4">
 				<button
 					onclick={handleStop}
 					disabled={actionLoading !== ''}
@@ -525,7 +522,7 @@
 			{/if}
 
 			<!-- System metrics bar -->
-			<div class="bg-[var(--ctp-surface1)] rounded-lg px-4 py-3 grid grid-cols-2 gap-x-3 gap-y-2.5 sm:flex sm:items-center sm:gap-5 sm:flex-wrap mb-6">
+			<div class="bg-[var(--ctp-surface1)] rounded-lg px-4 py-3 grid grid-cols-2 gap-x-3 gap-y-2.5 sm:flex sm:items-center sm:gap-5 sm:flex-wrap mb-4">
 				<div class="min-w-0 flex flex-col sm:flex-row sm:items-baseline sm:gap-1.5">
 					<span class="text-[10px] uppercase tracking-wide text-[var(--ctp-overlay1)] flex-shrink-0">Managed by</span>
 					{#if status.managed_by === 'systemd'}
@@ -554,7 +551,7 @@
 			<!-- Traffic graph with the host beside it (#99): one graph for both
 			     directions with a period switch; CPU keeps a mini graph, memory is a
 			     number; totals and disk in the footer. -->
-			<div class="bg-[var(--ctp-surface1)] rounded-lg mb-6">
+			<div class="bg-[var(--ctp-surface1)] rounded-lg mb-4">
 				<div class="flex flex-col sm:flex-row">
 					<div class="flex-1 min-w-0 px-4 sm:px-5 pt-4 sm:pt-5">
 						<div class="flex flex-wrap items-start justify-between gap-x-4 gap-y-2">
@@ -589,9 +586,10 @@
 							{/if}
 							{#if hoverIdx != null && graphDown.length > 1}
 								{@const x = (hoverIdx / (graphDown.length - 1)) * GW}
-								<line x1={x} y1="0" x2={x} y2={GH} stroke="var(--ctp-overlay0)" stroke-width="1" stroke-dasharray="3 3" vector-effect="non-scaling-stroke" />
-								<circle cx={x} cy={GH - (Math.min(graphDown[hoverIdx] ?? 0, graphMax) / graphMax) * GH} r="3" fill="var(--ctp-primary)" vector-effect="non-scaling-stroke" />
-								<circle cx={x} cy={GH - (Math.min(graphUp[hoverIdx] ?? 0, graphMax) / graphMax) * GH} r="3" fill="var(--ctp-upload)" vector-effect="non-scaling-stroke" />
+								<!-- Quiet cursor: the line being read must stay the loudest thing (#108). -->
+								<line x1={x} y1="0" x2={x} y2={GH} stroke="var(--ctp-overlay0)" stroke-opacity="0.45" stroke-width="1" stroke-dasharray="3 3" vector-effect="non-scaling-stroke" />
+								<circle cx={x} cy={GH - (Math.min(graphDown[hoverIdx] ?? 0, graphMax) / graphMax) * GH} r="2" fill="var(--ctp-primary)" fill-opacity="0.7" vector-effect="non-scaling-stroke" />
+								<circle cx={x} cy={GH - (Math.min(graphUp[hoverIdx] ?? 0, graphMax) / graphMax) * GH} r="2" fill="var(--ctp-upload)" fill-opacity="0.7" vector-effect="non-scaling-stroke" />
 							{/if}
 						</svg>
 					</div>
@@ -604,7 +602,7 @@
 							<span class="ml-auto flex min-h-[22px] w-[230px] max-w-full items-center justify-end">
 								{#if hoverPoint}
 									<span class="inline-flex items-baseline gap-2 whitespace-nowrap rounded-full border border-[var(--ctp-surface2)] bg-[var(--ctp-base)] px-2.5 py-0.5 tabular-nums">
-										<span class="text-[var(--ctp-overlay1)]">{hoverPoint.ago}</span>
+										<span class="text-[var(--ctp-overlay1)]">{hoverPoint.time}</span>
 										<span class="text-[var(--ctp-primary)]">↓ {hoverPoint.down}</span>
 										<span class="text-[var(--ctp-upload)]">↑ {hoverPoint.up}</span>
 									</span>
@@ -614,7 +612,9 @@
 							</span>
 						</div>
 					</div>
-					<div class="sm:w-64 shrink-0 border-t sm:border-t-0 sm:border-l border-[var(--ctp-surface2)] px-4 sm:px-5 py-4 sm:py-5 flex flex-col gap-3">
+					<!-- Wide enough for a chain name next to the ring; the ring itself is
+					     centred in what is left under the switch (#108). -->
+					<div class="sm:w-80 shrink-0 border-t sm:border-t-0 sm:border-l border-[var(--ctp-surface2)] px-4 sm:px-5 py-4 sm:py-5 flex flex-col gap-3">
 						<div class="flex flex-wrap items-baseline gap-x-2 gap-y-1">
 							<div class="flex gap-1" role="group" aria-label={$t('dashboard.breakdown')}>
 								<button type="button" class="toggle-btn !py-1 !px-2.5 text-xs {sideDim === 'source' ? 'selected' : ''}" onclick={() => (sideDim = 'source')}>{$t('dashboard.byClients')}</button>
@@ -627,9 +627,9 @@
 						</div>
 						<!-- Fixed box: clients and chains rarely have the same number of rows,
 						     and without it switching moved everything below (#101). -->
-						<div class="min-h-[196px] sm:min-h-[96px]">
+						<div class="min-h-[196px] sm:min-h-[112px] flex-1 flex items-center">
 							{#if sideItems.length > 0}
-								<PieChart items={sideItems} centerNumber={sideItems.length} topN={4} size={88} />
+								<PieChart items={sideItems} centerNumber={sideItems.length} topN={4} size={112} />
 							{:else}
 								<div class="text-xs text-[var(--ctp-overlay0)]">{$t('dashboard.noTrafficYet')}</div>
 							{/if}

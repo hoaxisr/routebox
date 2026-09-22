@@ -232,13 +232,9 @@
     "lastHour": "last hour",
     "lastDay": "last 24 h",
     "ringLive": "live",
-    "agoHour": "−{v} h",
     "byClients": "Clients",
     "byChains": "Chains",
     "breakdown": "Breakdown",
-    "now": "now",
-    "agoSec": "−{v} s",
-    "agoMin": "−{v} min",
     "noTrafficYet": "No traffic yet",
     "noHistory": "no history: Clash API address is not set"
   },

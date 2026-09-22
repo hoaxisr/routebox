@@ -232,13 +232,9 @@
     "lastHour": "последний час",
     "lastDay": "последние 24 ч",
     "ringLive": "сейчас",
-    "agoHour": "−{v} ч",
     "byClients": "Клиенты",
     "byChains": "Цепочки",
     "breakdown": "Разбивка",
-    "now": "сейчас",
-    "agoSec": "−{v} с",
-    "agoMin": "−{v} мин",
     "noTrafficYet": "Пока нет трафика",
     "noHistory": "истории нет: адрес Clash API не задан"
   },
