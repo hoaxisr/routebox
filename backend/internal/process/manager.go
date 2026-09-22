@@ -874,7 +874,11 @@ func (m *Manager) hasBuildTag(tag string) bool {
 			return parseHasBuildTag(out, tag)
 		}
 	}
-	// Fall back to PATH lookups, mirroring GetVersion's discovery order.
+	// Fall back to PATH lookups, mirroring GetVersion's discovery order —
+	// but never past an explicit pin (GetVersion does not either).
+	if m.binaryIsPinned() {
+		return false
+	}
 	for _, name := range []string{"amnezia-box", "sing-box"} {
 		if path, err := exec.LookPath(name); err == nil {
 			if out, err := m.runVersionFull(path); err == nil {
@@ -1524,6 +1528,7 @@ func (m *Manager) GetFeatureFlags() map[string]bool {
 			"domain_resolver":          false,
 			"bypass_action":            false,
 			"icmp_network":             false,
+			"trusttunnel":              false,
 		}
 	}
 

@@ -1,10 +1,13 @@
 package process
 
 import (
+	"fmt"
+	"os"
 	"os/exec"
 	"strings"
 	"syscall"
 	"testing"
+	"time"
 )
 
 // Reload must report a process that died on SIGHUP (sing-box exits when the
@@ -48,8 +51,16 @@ func TestReloadReportsProcessThatExitsOnSighup(t *testing.T) {
 		if err != nil {
 			t.Skip("sh not available")
 		}
-		// Ignored dispositions survive exec: sleep ignores SIGHUP.
+		// Ignored dispositions survive exec: sleep ignores SIGHUP. Wait until
+		// sh has exec'd into sleep, or the signal lands on sh before the trap.
 		m := run(t, exec.Command(shPath, "-c", `trap "" HUP; exec "$0" 60`, sleepPath))
+		for i := 0; i < 100; i++ {
+			comm, _ := os.ReadFile(fmt.Sprintf("/proc/%d/comm", m.pidFinder()))
+			if strings.TrimSpace(string(comm)) == "sleep" {
+				break
+			}
+			time.Sleep(10 * time.Millisecond)
+		}
 		if err := m.Reload(); err != nil {
 			t.Fatalf("Reload = %v, want nil", err)
 		}

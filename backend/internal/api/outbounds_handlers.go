@@ -88,7 +88,13 @@ func (h *Handler) ParseOutboundLink(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusBadRequest, fmt.Sprintf("Invalid JSON: %v", err))
 		return
 	}
-	nodes, skipped := subscriptions.ParseLinks([]string{strings.TrimSpace(req.Link)})
+	var lines []string
+	for _, l := range strings.Split(req.Link, "\n") {
+		if l = strings.TrimSpace(l); l != "" {
+			lines = append(lines, l)
+		}
+	}
+	nodes, skipped := subscriptions.ParseLinks(lines)
 	if len(nodes) == 0 {
 		writeError(w, http.StatusBadRequest, "unsupported or malformed link")
 		return

@@ -1,11 +1,33 @@
 package subscriptions
 
 import (
+	"crypto/ecdsa"
+	"crypto/elliptic"
+	"crypto/rand"
+	"crypto/x509"
+	"crypto/x509/pkix"
 	"encoding/base64"
+	"math/big"
 	"reflect"
 	"strings"
 	"testing"
+	"time"
 )
+
+func selfSignedDER(t *testing.T) []byte {
+	t.Helper()
+	key, err := ecdsa.GenerateKey(elliptic.P256(), rand.Reader)
+	if err != nil {
+		t.Fatal(err)
+	}
+	tmpl := &x509.Certificate{SerialNumber: big.NewInt(1), Subject: pkix.Name{CommonName: "tt"},
+		NotBefore: time.Now(), NotAfter: time.Now().Add(time.Hour)}
+	der, err := x509.CreateCertificate(rand.Reader, tmpl, tmpl, &key.PublicKey, key)
+	if err != nil {
+		t.Fatal(err)
+	}
+	return der
+}
 
 // tlv encodes one TLV entry with single-byte varints (values < 64).
 func tlv(tag byte, val []byte) []byte {
@@ -95,6 +117,40 @@ func TestParseTrustTunnelRejects(t *testing.T) {
 		if _, err := parseTrustTunnel("tt://?" + payload); err == nil {
 			t.Errorf("%s: want error", name)
 		}
+	}
+}
+
+// Values ≥ 64 bytes need the 2-byte varint length prefix (0x40|hi, lo);
+// certificates and long hostnames always do.
+func TestParseTrustTunnelMultiByteVarintCertificateAndPadding(t *testing.T) {
+	longHost := strings.Repeat("h", 70) + ".example"
+	tlv2 := func(tag byte, val []byte) []byte {
+		return append([]byte{tag, 0x40 | byte(len(val)>>8), byte(len(val))}, val...)
+	}
+	der := selfSignedDER(t)
+	raw := append(append(append(append(
+		tlv2(ttTagHostname, []byte(longHost)),
+		tlv(ttTagAddresses, []byte("1.2.3.4:443"))...),
+		tlv(ttTagUsername, []byte("u"))...),
+		tlv(ttTagPassword, []byte("p"))...),
+		tlv2(ttTagCertificate, der)...)
+	raw = append(raw, tlv(ttTagSkipVerify, []byte{0})...)
+	// Standard alphabet WITH padding must decode like base64url without it.
+	padded := base64.StdEncoding.EncodeToString(raw)
+	nodes, err := parseTrustTunnel("tt://?" + padded)
+	if err != nil {
+		t.Fatal(err)
+	}
+	tls := nodes[0].Outbound["tls"].(map[string]interface{})
+	if tls["server_name"] != longHost {
+		t.Errorf("2-byte length hostname: %v", tls["server_name"])
+	}
+	cert, _ := tls["certificate"].([]string)
+	if len(cert) < 3 || cert[0] != "-----BEGIN CERTIFICATE-----" || cert[len(cert)-1] != "-----END CERTIFICATE-----" {
+		t.Errorf("certificate must be PEM split into lines: %v", cert)
+	}
+	if _, has := tls["insecure"]; has {
+		t.Errorf("skip_verification=0 must not set insecure: %v", tls)
 	}
 }
 

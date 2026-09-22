@@ -115,7 +115,10 @@ func decodeTTPayload(b64 string) (ttEndpoint, error) {
 	if b64 == "" {
 		return ttEndpoint{}, errors.New("trusttunnel: empty payload")
 	}
-	raw, err := base64.RawURLEncoding.DecodeString(strings.TrimRight(b64, "="))
+	// base64url per DEEP_LINK.md; the standard alphabet is tolerated like
+	// awg-manager does, padding optional either way.
+	b64 = strings.NewReplacer("-", "+", "_", "/").Replace(strings.TrimRight(b64, "="))
+	raw, err := base64.StdEncoding.DecodeString(b64 + strings.Repeat("=", (4-len(b64)%4)%4))
 	if err != nil {
 		return ttEndpoint{}, fmt.Errorf("trusttunnel: base64url: %w", err)
 	}
