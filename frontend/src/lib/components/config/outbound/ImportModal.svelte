@@ -13,12 +13,14 @@
 		type ParsedHysteria2,
 		type ParsedShadowsocks,
 		type ParsedNaive,
-		type ParsedMieru
+		type ParsedMieru,
+		type ParsedTrustTunnel
 	} from '$lib/utils/parsers';
+	import { api } from '$lib/api/client';
 
 	interface Props {
-		protocol: 'vless' | 'trojan' | 'hysteria2' | 'shadowsocks' | 'naive' | 'mieru';
-		onImport: (config: ParsedVless | ParsedTrojan | ParsedHysteria2 | ParsedShadowsocks | ParsedNaive | ParsedMieru) => void;
+		protocol: 'vless' | 'trojan' | 'hysteria2' | 'shadowsocks' | 'naive' | 'mieru' | 'trusttunnel';
+		onImport: (config: ParsedVless | ParsedTrojan | ParsedHysteria2 | ParsedShadowsocks | ParsedNaive | ParsedMieru | ParsedTrustTunnel) => void;
 		onClose: () => void;
 	}
 
@@ -34,7 +36,8 @@
 		hysteria2: 'Hysteria2',
 		shadowsocks: 'Shadowsocks',
 		naive: 'NaiveProxy',
-		mieru: 'Mieru'
+		mieru: 'Mieru',
+		trusttunnel: 'TrustTunnel'
 	};
 
 	const placeholders = {
@@ -43,7 +46,8 @@
 		hysteria2: 'hy2://password@server:port?params#name',
 		shadowsocks: 'ss://BASE64(method:password)@server:port#name',
 		naive: 'naive+https://user:password@server:port#name',
-		mieru: 'mierus://user:pass@host?profile=name&port=443&protocol=TCP'
+		mieru: 'mierus://user:pass@host?profile=name&port=443&protocol=TCP',
+		trusttunnel: 'tt://?<deep link> or https://host/?d=<deep link>'
 	};
 
 	const linkPrefixes = {
@@ -52,8 +56,41 @@
 		hysteria2: 'hy2:// or hysteria2://',
 		shadowsocks: 'ss://',
 		naive: 'naive+https:// or naive+quic://',
-		mieru: 'mierus://'
+		mieru: 'mierus://',
+		trusttunnel: 'tt://'
 	};
+
+	// TrustTunnel deep link (tt://?TLV) or connect URL (http(s)://…?d=TLV):
+	// decoded by the backend, one parser for paste-import and subscriptions.
+	function isTrustTunnelLink(text: string): boolean {
+		if (text.startsWith('tt://')) return true;
+		if (!/^https?:\/\//i.test(text)) return false;
+		try {
+			return new URL(text).searchParams.get('d') !== null;
+		} catch {
+			return false;
+		}
+	}
+
+	async function importTrustTunnel(text: string) {
+		try {
+			const res = await api.parseOutboundLink(text);
+			const first = res.outbounds[0];
+			if (!first) {
+				importError = $t('outbounds.importParseFailed', { values: { protocol: protocolNames.trusttunnel } });
+				return;
+			}
+			onImport({ type: 'trusttunnel', name: first.name, outbound: first.outbound });
+			if (res.outbounds.length > 1) {
+				notifications.info($t('outbounds.trustTunnelForm.multiAddress', { values: { count: res.outbounds.length } }));
+			} else {
+				notifications.success($t('outbounds.importSuccess', { values: { protocol: protocolNames.trusttunnel } }));
+			}
+			onClose();
+		} catch (e) {
+			importError = e instanceof Error ? e.message : $t('outbounds.importParseFailed', { values: { protocol: protocolNames.trusttunnel } });
+		}
+	}
 
 	function parseImportLink() {
 		importError = '';
@@ -65,6 +102,11 @@
 			return;
 		}
 
+		// Try TrustTunnel (backend parser)
+		if (isTrustTunnelLink(text)) {
+			void importTrustTunnel(text);
+			return;
+		}
 		// Try VLESS
 		if (text.startsWith('vless://')) {
 			const result = parseVless(text);

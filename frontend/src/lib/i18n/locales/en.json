@@ -479,6 +479,16 @@
     "enableQuic": "Use QUIC",
     "quicCongestionControl": "QUIC Congestion Control",
     "importFromNaive": "Import from naive+https:// link",
+    "importFromTrustTunnel": "Import from tt:// deep link",
+    "trusttunnel": "TrustTunnel",
+    "trusttunnelDesc": "TrustTunnel client (HTTPS / QUIC, login + password)",
+    "trustTunnelForm": {
+      "insecure": "Skip certificate verification",
+      "antiDpi": "Anti-DPI (TLS fragment)",
+      "antiDpiHint": "Anti-DPI splits the TLS ClientHello into fragments (tls.fragment); health check keeps the tunnel probed while idle.",
+      "healthCheck": "Health check",
+      "multiAddress": "This TrustTunnel endpoint has {count} addresses: the first one was imported, add the others the same way."
+    },
     "importFromMieru": "Import from mierus:// link",
     "mieruForm": {
       "serverPortHint": "0 = use port ranges only",
@@ -524,7 +534,7 @@
     "importSuccess": "{protocol} configuration imported",
     "importEmptyLink": "Please paste a link",
     "importParseFailed": "Failed to parse {protocol} link",
-    "importUnknownFormat": "Unknown link format. Supported: vless://, hy2://, hysteria2://, ss://, naive+https://, naive+quic://, mierus://"
+    "importUnknownFormat": "Unknown link format. Supported: vless://, hy2://, hysteria2://, ss://, naive+https://, naive+quic://, mierus://, tt://"
   },
   "ruleSets": {
     "title": "Rule Sets",

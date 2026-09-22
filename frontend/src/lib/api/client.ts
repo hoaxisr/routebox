@@ -231,6 +231,11 @@ export const api = {
 			method: 'PUT',
 			body: JSON.stringify(outbound)
 		}),
+	parseOutboundLink: (link: string) =>
+		request<{ outbounds: { outbound: Outbound; name: string }[]; skipped: number }>('/outbounds/parse-link', {
+			method: 'POST',
+			body: JSON.stringify({ link })
+		}),
 	deleteOutbound: (tag: string) =>
 		request<{ message: string }>(`/outbounds/${encodeURIComponent(tag)}`, {
 			method: 'DELETE'

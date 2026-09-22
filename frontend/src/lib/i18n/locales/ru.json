@@ -479,6 +479,16 @@
     "enableQuic": "Использовать QUIC",
     "quicCongestionControl": "Контроль перегрузки QUIC",
     "importFromNaive": "Импорт из ссылки naive+https://",
+    "importFromTrustTunnel": "Импорт из ссылки tt://",
+    "trusttunnel": "TrustTunnel",
+    "trusttunnelDesc": "Клиент TrustTunnel (HTTPS / QUIC, логин + пароль)",
+    "trustTunnelForm": {
+      "insecure": "Не проверять сертификат",
+      "antiDpi": "Anti-DPI (фрагментация TLS)",
+      "antiDpiHint": "Anti-DPI режет TLS ClientHello на фрагменты (tls.fragment); health check держит туннель под проверкой в простое.",
+      "healthCheck": "Health check",
+      "multiAddress": "У этого TrustTunnel-сервера {count} адресов: импортирован первый, остальные добавьте так же."
+    },
     "importFromMieru": "Импорт из ссылки mierus://",
     "mieruForm": {
       "serverPortHint": "0 = использовать только диапазоны портов",
@@ -524,7 +534,7 @@
     "importSuccess": "Конфигурация {protocol} импортирована",
     "importEmptyLink": "Вставьте ссылку",
     "importParseFailed": "Не удалось разобрать ссылку {protocol}",
-    "importUnknownFormat": "Неизвестный формат ссылки. Поддерживаются: vless://, hy2://, hysteria2://, ss://, naive+https://, naive+quic://, mierus://"
+    "importUnknownFormat": "Неизвестный формат ссылки. Поддерживаются: vless://, hy2://, hysteria2://, ss://, naive+https://, naive+quic://, mierus://, tt://"
   },
   "ruleSets": {
     "title": "Наборы правил",

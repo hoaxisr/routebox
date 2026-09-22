@@ -1,8 +1,8 @@
 <script lang="ts">
 	import type { Outbound, Endpoint, DnsServer, TLSConfig, TransportConfig, MultiplexConfig, ObfsConfig, ObfsType } from '$lib/types';
-	import { notifications, configReadOnly } from '$lib/stores';
+	import { notifications, configReadOnly, featureFlags } from '$lib/stores';
 	import { parsePortRanges, parseKeyValuePairs, formatKeyValuePairs, normalizeMieruPort } from '$lib/utils/parsers';
-	import type { ParsedVless, ParsedTrojan, ParsedHysteria2, ParsedShadowsocks, ParsedNaive, ParsedMieru } from '$lib/utils/parsers';
+	import type { ParsedVless, ParsedTrojan, ParsedHysteria2, ParsedShadowsocks, ParsedNaive, ParsedMieru, ParsedTrustTunnel } from '$lib/utils/parsers';
 	import {
 		validateRequired,
 		validatePort,
@@ -23,6 +23,7 @@
 	import AnytlsForm from './outbound/AnytlsForm.svelte';
 	import NaiveForm from './outbound/NaiveForm.svelte';
 	import MieruForm from './outbound/MieruForm.svelte';
+	import TrustTunnelForm from './outbound/TrustTunnelForm.svelte';
 	import ImportModal from './outbound/ImportModal.svelte';
 
 	interface Props {
@@ -187,6 +188,17 @@
 	let nvQuicCC = $state(outbound?.quic_congestion_control ?? '');
 	let nvUdpOverTcp = $state(outbound?.udp_over_tcp ?? false);
 
+	// TrustTunnel state (server/serverPort are the shared fields above — naive pattern)
+	let ttUsername = $state(outbound?.type === 'trusttunnel' ? (outbound.username ?? '') : '');
+	let ttPassword = $state(outbound?.type === 'trusttunnel' ? (outbound.password ?? '') : '');
+	let ttSni = $state(outbound?.type === 'trusttunnel' ? (outbound.tls?.server_name ?? '') : '');
+	let ttInsecure = $state(outbound?.type === 'trusttunnel' ? (outbound.tls?.insecure ?? false) : false);
+	let ttCaCert = $state(outbound?.type === 'trusttunnel' ? (outbound.tls?.certificate?.join('\n') ?? '') : '');
+	let ttAntiDpi = $state(outbound?.type === 'trusttunnel' ? (outbound.tls?.fragment ?? false) : false);
+	let ttQuic = $state(outbound?.type === 'trusttunnel' ? (outbound.quic ?? false) : false);
+	let ttQuicCC = $state(outbound?.type === 'trusttunnel' ? (outbound.quic_congestion_control ?? '') : '');
+	let ttHealthCheck = $state(outbound?.type === 'trusttunnel' ? (outbound.health_check ?? false) : false);
+
 	// Mieru state (server/serverPort are the shared fields above — naive pattern)
 	let mieruPorts = $state(outbound?.type === 'mieru' ? (outbound.server_ports ?? []).join(', ') : '');
 	let mieruTransport = $state<'TCP' | 'UDP'>(outbound?.type === 'mieru' && outbound.transport === 'UDP' ? 'UDP' : 'TCP');
@@ -207,8 +219,10 @@
 	});
 
 	// Import handlers
-	function handleImport(config: ParsedVless | ParsedTrojan | ParsedHysteria2 | ParsedShadowsocks | ParsedNaive | ParsedMieru) {
-		if (config.type === 'vless') {
+	function handleImport(config: ParsedVless | ParsedTrojan | ParsedHysteria2 | ParsedShadowsocks | ParsedNaive | ParsedMieru | ParsedTrustTunnel) {
+		if (config.type === 'trusttunnel') {
+			applyTrustTunnelConfig(config);
+		} else if (config.type === 'vless') {
 			applyVlessConfig(config);
 		} else if (config.type === 'trojan') {
 			applyTrojanConfig(config);
@@ -324,6 +338,23 @@
 		nvUdpOverTcp = false;
 	}
 
+	function applyTrustTunnelConfig(config: ParsedTrustTunnel) {
+		const ob = config.outbound;
+		type = 'trusttunnel';
+		tag = (config.name || ob.tag || `trusttunnel-${ob.server ?? ''}`).replace(/[^a-zA-Z0-9-_]/g, '-');
+		server = ob.server ?? '';
+		serverPort = ob.server_port ?? 443;
+		ttUsername = ob.username ?? '';
+		ttPassword = ob.password ?? '';
+		ttSni = ob.tls?.server_name ?? '';
+		ttInsecure = ob.tls?.insecure ?? false;
+		ttCaCert = ob.tls?.certificate?.join('\n') ?? '';
+		ttAntiDpi = ob.tls?.fragment ?? false;
+		ttQuic = ob.quic ?? false;
+		ttQuicCC = ob.quic_congestion_control ?? '';
+		ttHealthCheck = ob.health_check ?? false;
+	}
+
 	function applyMieruConfig(config: ParsedMieru) {
 		type = 'mieru';
 		tag = (config.name || `mieru-${config.server}`).replace(/[^a-zA-Z0-9-_]/g, '-');
@@ -348,7 +379,7 @@
 			if (!outboundsResult.valid) errors['outbounds'] = outboundsResult.error!;
 		}
 
-		const serverBasedTypes = ['vless', 'trojan', 'hysteria2', 'shadowsocks', 'shadowtls', 'anytls', 'naive'];
+		const serverBasedTypes = ['vless', 'trojan', 'hysteria2', 'shadowsocks', 'shadowtls', 'anytls', 'naive', 'trusttunnel'];
 		if (serverBasedTypes.includes(type)) {
 			const serverResult = validateRequired(server, 'Server');
 			if (!serverResult.valid) errors['server'] = serverResult.error!;
@@ -403,6 +434,13 @@
 				errors['username'] = $t('validation.credentialsPaired');
 				errors['password'] = $t('validation.credentialsPaired');
 			}
+		}
+
+		if (type === 'trusttunnel') {
+			const userResult = validateRequired(ttUsername, 'Username');
+			if (!userResult.valid) errors['username'] = userResult.error!;
+			const pwResult = validateRequired(ttPassword, 'Password');
+			if (!pwResult.valid) errors['password'] = pwResult.error!;
 		}
 
 		if (type === 'mieru') {
@@ -639,6 +677,27 @@
 			if (nvUdpOverTcp) ob.udp_over_tcp = true;
 		}
 
+		if (type === 'trusttunnel') {
+			ob.server = server.trim();
+			ob.server_port = serverPort;
+			ob.username = ttUsername.trim();
+			ob.password = ttPassword;
+			ob.tls = {
+				enabled: true,
+				server_name: ttSni.trim() || server.trim()
+			};
+			if (ttInsecure) ob.tls.insecure = true;
+			if (ttCaCert.trim()) {
+				ob.tls.certificate = ttCaCert.trim().split('\n').filter((line) => line.trim().length > 0);
+			}
+			if (ttAntiDpi) ob.tls.fragment = true;
+			if (ttQuic) {
+				ob.quic = true;
+				if (ttQuicCC) ob.quic_congestion_control = ttQuicCC;
+			}
+			if (ttHealthCheck) ob.health_check = true;
+		}
+
 		if (type === 'mieru') {
 			ob.server = server.trim();
 			if (serverPort > 0) ob.server_port = serverPort;
@@ -657,7 +716,7 @@
 		}
 
 		// Add domain_resolver for server-based outbounds
-		const serverBasedTypes = ['vless', 'trojan', 'hysteria2', 'shadowsocks', 'shadowtls', 'anytls', 'naive', 'mieru'];
+		const serverBasedTypes = ['vless', 'trojan', 'hysteria2', 'shadowsocks', 'shadowtls', 'anytls', 'naive', 'mieru', 'trusttunnel'];
 		if (serverBasedTypes.includes(type) && domainResolver.trim()) {
 			ob.domain_resolver = domainResolver.trim();
 		}
@@ -668,12 +727,17 @@
 	// Proxy protocols (2x2 block). Trojan/Shadowsocks/ShadowTLS/AnyTLS are deprecated in
 	// RouteBox and removed from the picker (#22); their forms/parsers/validators stay so
 	// existing configs still load and edit.
-	const protocolTypes = [
+	// TrustTunnel needs the with_trusttunnel build tag: hidden from the picker
+	// without it, but an existing outbound of that type still edits.
+	const protocolTypes = $derived([
 		{ value: 'vless', labelKey: 'outbounds.vless', descKey: 'outbounds.vlessDesc' },
 		{ value: 'hysteria2', labelKey: 'outbounds.hysteria2', descKey: 'outbounds.hysteria2Desc' },
 		{ value: 'naive', labelKey: 'outbounds.naive', descKey: 'outbounds.naiveDesc' },
-		{ value: 'mieru', labelKey: 'outbounds.mieru', descKey: 'outbounds.mieruDesc' }
-	];
+		{ value: 'mieru', labelKey: 'outbounds.mieru', descKey: 'outbounds.mieruDesc' },
+		...($featureFlags['trusttunnel'] || type === 'trusttunnel'
+			? [{ value: 'trusttunnel', labelKey: 'outbounds.trusttunnel', descKey: 'outbounds.trusttunnelDesc' }]
+			: [])
+	]);
 	// Groups (selector/urltest) and built-in outbounds (direct/block).
 	const groupTypes = [
 		{ value: 'selector', labelKey: 'outbounds.types.selector', descKey: 'outbounds.selectorDesc' },
@@ -866,6 +930,27 @@
 		/>
 	{/if}
 
+	{#if type === 'trusttunnel'}
+		<TrustTunnelForm
+			bind:server
+			bind:serverPort
+			bind:username={ttUsername}
+			bind:password={ttPassword}
+			bind:sni={ttSni}
+			bind:insecure={ttInsecure}
+			bind:caCert={ttCaCert}
+			bind:antiDpi={ttAntiDpi}
+			bind:quic={ttQuic}
+			bind:quicCongestionControl={ttQuicCC}
+			bind:healthCheck={ttHealthCheck}
+			bind:domainResolver
+			{dnsServers}
+			{hasDefaultResolver}
+			{errors}
+			onImport={() => showImport = true}
+		/>
+	{/if}
+
 	{#if type === 'mieru'}
 		<MieruForm
 			bind:server
@@ -918,7 +1003,7 @@
 <!-- Import Modal -->
 {#if showImport}
 	<ImportModal
-		protocol={type as 'vless' | 'trojan' | 'hysteria2' | 'shadowsocks' | 'naive' | 'mieru'}
+		protocol={type as 'vless' | 'trojan' | 'hysteria2' | 'shadowsocks' | 'naive' | 'mieru' | 'trusttunnel'}
 		onImport={handleImport}
 		onClose={() => showImport = false}
 	/>

@@ -1,6 +1,6 @@
 // Link parsers for VPN configuration import
 
-import type { Endpoint, OutboundTyped } from '$lib/types';
+import type { Endpoint, Outbound, OutboundTyped } from '$lib/types';
 
 export interface ParsedVless {
 	type: 'vless';
@@ -81,6 +81,15 @@ export interface ParsedNaive {
 	username?: string;
 	password?: string;
 	quic?: boolean;
+}
+
+// TrustTunnel links (tt:// deep link, connect URL with ?d=) are decoded by the
+// backend (POST /api/outbounds/parse-link); the form receives the sing-box
+// outbound as is.
+export interface ParsedTrustTunnel {
+	type: 'trusttunnel';
+	name: string;
+	outbound: Outbound;
 }
 
 export interface ParsedMieru {

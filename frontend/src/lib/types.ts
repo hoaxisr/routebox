@@ -357,6 +357,7 @@ export interface TLSConfig {
 	enabled?: boolean;
 	server_name?: string;
 	insecure?: boolean;
+	fragment?: boolean;
 	alpn?: string[];
 	min_version?: string;
 	max_version?: string;
@@ -465,6 +466,8 @@ export interface Outbound {
 	extra_headers?: Record<string, string>;
 	quic?: boolean;
 	quic_congestion_control?: string;
+	// TrustTunnel specific
+	health_check?: boolean;
 	// VLESS specific
 	uuid?: string;
 	flow?: string;
