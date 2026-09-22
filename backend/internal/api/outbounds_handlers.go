@@ -4,8 +4,11 @@ import (
 	"encoding/json"
 	"fmt"
 	"net/http"
+	"strings"
 
 	"github.com/go-chi/chi/v5"
+
+	"routebox/backend/internal/subscriptions"
 )
 
 // --- Outbounds CRUD ---
@@ -71,4 +74,28 @@ func (h *Handler) DeleteOutbound(w http.ResponseWriter, r *http.Request) {
 	}
 
 	writeSuccess(w, map[string]string{"message": fmt.Sprintf("outbound '%s' deleted", tag)})
+}
+
+// ParseOutboundLink turns one pasted share link into sing-box outbounds with
+// the same parser the subscription refresh uses. The UI needs it for formats
+// it does not parse itself (TrustTunnel deep links carry a binary TLV payload
+// and may expand into several outbounds).
+func (h *Handler) ParseOutboundLink(w http.ResponseWriter, r *http.Request) {
+	var req struct {
+		Link string `json:"link"`
+	}
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		writeError(w, http.StatusBadRequest, fmt.Sprintf("Invalid JSON: %v", err))
+		return
+	}
+	nodes, skipped := subscriptions.ParseLinks([]string{strings.TrimSpace(req.Link)})
+	if len(nodes) == 0 {
+		writeError(w, http.StatusBadRequest, "unsupported or malformed link")
+		return
+	}
+	out := make([]map[string]interface{}, 0, len(nodes))
+	for _, n := range nodes {
+		out = append(out, map[string]interface{}{"outbound": n.Outbound, "name": n.Name})
+	}
+	writeSuccess(w, map[string]interface{}{"outbounds": out, "skipped": skipped})
 }

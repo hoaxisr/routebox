@@ -685,6 +685,15 @@ func ParseLinks(lines []string) (outbounds []ParsedNode, skipped int) {
 			ob, name, err = parseNaive(line)
 		case strings.HasPrefix(line, "mierus://"):
 			ob, name, err = parseMieru(line)
+		case isTrustTunnelLink(line):
+			// One endpoint may carry several addresses → several outbounds.
+			nodes, terr := parseTrustTunnel(line)
+			if terr != nil {
+				skipped++
+				continue
+			}
+			outbounds = append(outbounds, nodes...)
+			continue
 		default:
 			skipped++
 			continue

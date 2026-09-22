@@ -430,9 +430,33 @@ func validateOutbound(ob map[string]interface{}, index int) []string {
 		errors = append(errors, validateOutboundVisionFlow(ob, prefix)...)
 	case "mieru":
 		errors = append(errors, validateMieruOutbound(ob, prefix)...)
+	case "trusttunnel":
+		errors = append(errors, validateTrustTunnelOutbound(ob, prefix)...)
 	}
 
 	return errors
+}
+
+// validateTrustTunnelOutbound mirrors the fork's protocol/trusttunnel/outbound.go:
+// TLS and both credentials are mandatory (C.ErrTLSRequired / "require auth").
+func validateTrustTunnelOutbound(ob map[string]interface{}, prefix string) []string {
+	var errs []string
+	if s, ok := ob["server"].(string); !ok || s == "" {
+		errs = append(errs, prefix+": trusttunnel requires 'server'")
+	}
+	if p, ok := ob["server_port"].(float64); !ok || p < 1 || p > 65535 {
+		errs = append(errs, prefix+": trusttunnel requires 'server_port' (1-65535)")
+	}
+	for _, f := range []string{"username", "password"} {
+		if s, ok := ob[f].(string); !ok || s == "" {
+			errs = append(errs, fmt.Sprintf("%s: trusttunnel requires '%s'", prefix, f))
+		}
+	}
+	tls, _ := ob["tls"].(map[string]interface{})
+	if enabled, _ := tls["enabled"].(bool); !enabled {
+		errs = append(errs, prefix+": trusttunnel requires TLS (tls.enabled = true)")
+	}
+	return errs
 }
 
 var mieruRangeRe = regexp.MustCompile(`^\d+-\d+$`)

@@ -832,7 +832,11 @@ func BinarySupportsV2RayAPI(path string) bool {
 // merely contains the string (e.g. "with_v2ray_api_extra") does NOT
 // false-positive. PURE.
 func parseSupportsV2RayAPI(versionOutput string) bool {
-	const tag = "with_v2ray_api"
+	return parseHasBuildTag(versionOutput, "with_v2ray_api")
+}
+
+// parseHasBuildTag reports whether the Tags: line of `<binary> version` lists tag.
+func parseHasBuildTag(versionOutput, tag string) bool {
 	for _, line := range strings.Split(versionOutput, "\n") {
 		line = strings.TrimSpace(line)
 		rest, ok := strings.CutPrefix(line, "Tags:")
@@ -855,22 +859,28 @@ func parseSupportsV2RayAPI(versionOutput string) bool {
 // its Tags line. FAIL-CLOSED: any exec/lookup error returns false, so RouteBox
 // never writes a config block a binary cannot accept.
 func (m *Manager) SupportsV2RayAPI() bool {
+	return m.hasBuildTag("with_v2ray_api")
+}
+
+// SupportsTrustTunnel reports whether the binary was built with_trusttunnel
+// (the TrustTunnel client outbound). Same fail-closed contract as above.
+func (m *Manager) SupportsTrustTunnel() bool {
+	return m.hasBuildTag("with_trusttunnel")
+}
+
+func (m *Manager) hasBuildTag(tag string) bool {
 	if bp := m.getBinaryPath(); bp != "" {
 		if out, err := m.runVersionFull(bp); err == nil {
-			return parseSupportsV2RayAPI(out)
+			return parseHasBuildTag(out, tag)
 		}
 	}
 	// Fall back to PATH lookups, mirroring GetVersion's discovery order.
-	if path, err := exec.LookPath("amnezia-box"); err == nil {
-		if out, err := m.runVersionFull(path); err == nil {
-			m.setBinaryPath(path)
-			return parseSupportsV2RayAPI(out)
-		}
-	}
-	if path, err := exec.LookPath("sing-box"); err == nil {
-		if out, err := m.runVersionFull(path); err == nil {
-			m.setBinaryPath(path)
-			return parseSupportsV2RayAPI(out)
+	for _, name := range []string{"amnezia-box", "sing-box"} {
+		if path, err := exec.LookPath(name); err == nil {
+			if out, err := m.runVersionFull(path); err == nil {
+				m.setBinaryPath(path)
+				return parseHasBuildTag(out, tag)
+			}
 		}
 	}
 	return false
@@ -1528,6 +1538,7 @@ func (m *Manager) GetFeatureFlags() map[string]bool {
 		"domain_resolver":          VersionAtLeast(version, 1, 12), // for outbounds/endpoints
 		"bypass_action":            VersionAtLeast(version, 1, 13),
 		"icmp_network":             VersionAtLeast(version, 1, 13), // network field: 'icmp'
+		"trusttunnel":              m.SupportsTrustTunnel(),        // build tag, not version
 	}
 }
 

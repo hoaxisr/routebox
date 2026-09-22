@@ -772,6 +772,8 @@ func main() {
 				// through the outbound manager, which falls back to endpoints, and
 				// for AWG/WireGuard the endpoint IS the outbound.
 				r.Post("/{tag}/speedtest", apiHandler.SpeedTestOutbound)
+				// Share link → outbound(s); the UI uses it for TrustTunnel links.
+				r.Post("/parse-link", apiHandler.ParseOutboundLink)
 			})
 
 			// Outbounds CRUD
@@ -783,6 +785,8 @@ func main() {
 				r.Delete("/{tag}", apiHandler.DeleteOutbound)
 				// Measured through the binary's own networkquality tool (#13).
 				r.Post("/{tag}/speedtest", apiHandler.SpeedTestOutbound)
+				// Share link → outbound(s); the UI uses it for TrustTunnel links.
+				r.Post("/parse-link", apiHandler.ParseOutboundLink)
 			})
 
 			// Inbounds CRUD
