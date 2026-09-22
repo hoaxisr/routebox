@@ -30,7 +30,8 @@ func (h *Handler) SaveConfig(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// Validate
+	// Same migrations as Load, before validation would reject the old spellings.
+	config.MigrateSingbox115(newConfig)
 	errors := h.config.Validate(newConfig)
 	if len(errors) > 0 {
 		writeError(w, http.StatusBadRequest, fmt.Sprintf("Validation errors: %v", errors))

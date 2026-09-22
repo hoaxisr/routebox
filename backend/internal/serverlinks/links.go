@@ -196,15 +196,29 @@ func isEnabled(m map[string]interface{}) bool {
 	return b
 }
 
-// sniOf resolves the client SNI: explicit server_name, else ACME domain, else host.
+// sniOf resolves the client SNI: explicit server_name, else the ACME domain
+// (certificate_provider since sing-box 1.14; inline acme before), else host.
 func sniOf(tls map[string]interface{}, host string) string {
 	if tls != nil {
 		if sn, _ := tls["server_name"].(string); sn != "" {
 			return sn
 		}
-		if acme := mapOf(tls["acme"]); acme != nil {
-			if d, _ := acme["domain"].(string); d != "" {
-				return d
+		for _, key := range []string{"certificate_provider", "acme"} {
+			acme := mapOf(tls[key])
+			if acme == nil {
+				continue
+			}
+			switch d := acme["domain"].(type) {
+			case string:
+				if d != "" {
+					return d
+				}
+			case []interface{}:
+				if len(d) > 0 {
+					if s, _ := d[0].(string); s != "" {
+						return s
+					}
+				}
 			}
 		}
 	}

@@ -15,7 +15,7 @@
 	let cachePath = $state(settings.cache_file?.path ?? 'cache.db');
 	let cacheId = $state(settings.cache_file?.cache_id ?? '');
 	let storeFakeip = $state(settings.cache_file?.store_fakeip ?? false);
-	let storeRdrc = $state(settings.cache_file?.store_rdrc ?? false);
+	let storeDns = $state(settings.cache_file?.store_dns ?? false);
 
 	// Clash API state
 	let externalController = $state(settings.clash_api?.external_controller ?? '127.0.0.1:9090');
@@ -39,7 +39,7 @@
 				path: cachePath.trim() || undefined,
 				cache_id: cacheId.trim() || undefined,
 				store_fakeip: storeFakeip || undefined,
-				store_rdrc: storeRdrc || undefined
+				store_dns: storeDns || undefined
 			};
 		}
 
@@ -146,11 +146,11 @@
 					<label class="flex items-center gap-2 text-sm text-[var(--ctp-subtext1)]">
 						<input
 							type="checkbox"
-							bind:checked={storeRdrc}
+							bind:checked={storeDns}
 							onchange={handleChange}
 							class="w-4 h-4 rounded border-[var(--ctp-surface2)] text-[var(--ctp-primary)] focus:ring-[var(--ctp-primary)]"
 						/>
-						{$t('experimental.storeRdrc')}
+						{$t('experimental.storeDns')}
 					</label>
 				</div>
 			</div>

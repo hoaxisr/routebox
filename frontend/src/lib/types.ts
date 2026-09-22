@@ -175,7 +175,6 @@ export interface DnsServer {
 	detour?: string;
 	// Domain resolver - required when server is a domain name
 	domain_resolver?: string;
-	domain_strategy?: 'prefer_ipv4' | 'prefer_ipv6' | 'ipv4_only' | 'ipv6_only';
 	// FakeIP specific
 	inet4_range?: string;
 	inet6_range?: string;
@@ -345,6 +344,8 @@ export interface ServerRealityConfig {
 export interface ServerTlsConfig {
 	enabled?: boolean;
 	server_name?: string;
+	certificate_provider?: { type: 'acme'; domain: string[] | string; email?: string; [k: string]: unknown };
+	/** Legacy inline ACME (pre sing-box 1.14) — read for display only, never emitted. */
 	acme?: { domain: string; email: string };
 	reality?: ServerRealityConfig;
 	certificate_path?: string;
@@ -660,7 +661,8 @@ export interface AWGPeer {
 	address: string;
 	port: number;
 	public_key: string;
-	preshared_key?: string;
+	preshared_key?: string;      // awg peer spelling (fork)
+	pre_shared_key?: string;     // wireguard peer spelling
 	allowed_ips: string[];
 	// Seconds, or an AWG 3.0 "lo-hi" range the device redraws every time it arms
 	// the timer. Pre-3.0 configs carry a number; the fork reads both.
@@ -751,7 +753,6 @@ export interface RouteSettings {
 	default_interface?: string;
 	default_mark?: number;
 	default_domain_resolver?: string;
-	default_domain_strategy?: string;
 	default_network_strategy?: string;
 	default_network_type?: string[];
 	default_fallback_network_type?: string[];
@@ -765,7 +766,9 @@ export interface RuleSet {
 	url?: string;
 	path?: string;
 	// Remote-specific options
-	download_detour?: string;    // Outbound for downloading
+	// Download client (sing-box 1.14+): {detour} for a proxy, absent = direct via
+	// the shared http_clients entry the backend adds; a string is a tag reference.
+	http_client?: string | { detour?: string };
 	update_interval?: string;    // e.g., "24h"
 	// Inline-specific options (≥1.10)
 	rules?: HeadlessRule[];
@@ -919,7 +922,7 @@ export interface CacheFileSettings {
 	path?: string;
 	cache_id?: string;
 	store_fakeip?: boolean;
-	store_rdrc?: boolean;
+	store_dns?: boolean;
 }
 
 export interface ClashApiSettings {

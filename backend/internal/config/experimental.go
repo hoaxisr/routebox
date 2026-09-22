@@ -36,8 +36,8 @@ func (m *Manager) GetExperimental() map[string]interface{} {
 		if storeFakeip, ok := cacheFile["store_fakeip"].(bool); ok {
 			cf["store_fakeip"] = storeFakeip
 		}
-		if storeRdrc, ok := cacheFile["store_rdrc"].(bool); ok {
-			cf["store_rdrc"] = storeRdrc
+		if storeDns, ok := cacheFile["store_dns"].(bool); ok {
+			cf["store_dns"] = storeDns
 		}
 		result["cache_file"] = cf
 	}
@@ -108,8 +108,8 @@ func (m *Manager) UpdateExperimental(settings map[string]interface{}) error {
 		if storeFakeip, ok := cacheFileInput["store_fakeip"].(bool); ok {
 			cacheFile["store_fakeip"] = storeFakeip
 		}
-		if storeRdrc, ok := cacheFileInput["store_rdrc"].(bool); ok {
-			cacheFile["store_rdrc"] = storeRdrc
+		if storeDns, ok := cacheFileInput["store_dns"].(bool); ok {
+			cacheFile["store_dns"] = storeDns
 		}
 
 		if len(cacheFile) > 0 {

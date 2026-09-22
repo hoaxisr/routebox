@@ -275,7 +275,7 @@ func TestValidateTrojanInboundAcme(t *testing.T) {
 		"inbounds": []interface{}{
 			map[string]interface{}{
 				"type": "trojan", "tag": "tr", "listen_port": float64(443),
-				"tls":   map[string]interface{}{"enabled": true, "acme": map[string]interface{}{"domain": "ex.com"}},
+				"tls":   map[string]interface{}{"enabled": true, "certificate_provider": map[string]interface{}{"type": "acme", "domain": "ex.com"}},
 				"users": []interface{}{map[string]interface{}{"name": "p", "password": "pw"}},
 			},
 		},
@@ -346,7 +346,7 @@ func TestValidateInboundRejectsUtls(t *testing.T) {
 			map[string]interface{}{
 				"type": "trojan", "tag": "tr", "listen_port": float64(443),
 				"tls": map[string]interface{}{
-					"enabled": true, "acme": map[string]interface{}{"domain": "ex.com"},
+					"enabled": true, "certificate_provider": map[string]interface{}{"type": "acme", "domain": "ex.com"},
 					"utls": map[string]interface{}{"enabled": true, "fingerprint": "chrome"},
 				},
 				"users": []interface{}{map[string]interface{}{"name": "p", "password": "pw"}},
@@ -443,7 +443,7 @@ func TestValidateRejectsDuplicateListenPort(t *testing.T) {
 		"inbounds": []interface{}{
 			map[string]interface{}{"type": "naive", "tag": "naive-in", "listen_port": float64(443),
 				"users": []interface{}{map[string]interface{}{"username": "a", "password": "p"}},
-				"tls":   map[string]interface{}{"enabled": true, "acme": map[string]interface{}{"domain": "x.example.com", "email": "a@b.c"}}},
+				"tls":   map[string]interface{}{"enabled": true, "certificate_provider": map[string]interface{}{"type": "acme", "domain": "x.example.com", "email": "a@b.c"}}},
 			map[string]interface{}{"type": "vless", "tag": "vless-in", "listen_port": float64(443),
 				"users": []interface{}{map[string]interface{}{"name": "a", "uuid": "11111111-1111-1111-1111-111111111111"}},
 				"tls":   map[string]interface{}{"enabled": true, "reality": map[string]interface{}{"enabled": true, "handshake": map[string]interface{}{"server": "g.com", "server_port": float64(443)}, "private_key": "k", "short_id": []interface{}{"00"}}}},

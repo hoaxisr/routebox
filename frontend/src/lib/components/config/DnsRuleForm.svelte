@@ -108,7 +108,12 @@
 		if (domainSuffix.trim()) newRule.domain_suffix = parseLines(domainSuffix);
 		if (domainKeyword.trim()) newRule.domain_keyword = parseLines(domainKeyword);
 		if (domainRegex.trim()) newRule.domain_regex = parseLines(domainRegex);
-		if (ipCidr.trim()) newRule.ip_cidr = parseLines(ipCidr);
+		if (ipCidr.trim()) {
+			// Since sing-box 1.14 ip_cidr matches the RESPONSE and is only legal
+			// with match_response (an evaluate rule before it fetches the answer).
+			newRule.ip_cidr = parseLines(ipCidr);
+			newRule.match_response = true;
+		}
 		if (queryType.trim()) newRule.query_type = parseComma(queryType);
 		if (selectedRuleSets.length > 0) newRule.rule_set = selectedRuleSets;
 
@@ -126,8 +131,8 @@
 			newRule.rcode = rcode;
 		}
 
-		// Common options
-		if (disableCache) newRule.disable_cache = true;
+		// Common options (route action only: reject/predefined have no such field)
+		if (disableCache && action === 'route') newRule.disable_cache = true;
 
 		onSave(newRule);
 	}
@@ -360,6 +365,7 @@
 						placeholder="192.168.0.0/16&#10;10.0.0.0/8"
 						class="w-full px-3 py-2 bg-[var(--ctp-surface0)] border border-[var(--ctp-surface2)] rounded-lg text-[var(--ctp-text)] placeholder-[var(--ctp-overlay0)] focus:outline-none focus:ring-2 focus:ring-[var(--ctp-primary)] font-mono text-sm"
 					></textarea>
+					<p class="mt-1 text-xs text-[var(--ctp-overlay0)]">{$t('dns.ipCidrResponseHint')}</p>
 				</div>
 
 				<!-- Query Type -->

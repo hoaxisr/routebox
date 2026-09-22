@@ -68,7 +68,9 @@
 	let keepaliveTimeout = $state(endpoint?.keepalive_timeout ?? '');
 	let maxHandshakeAttempts = $state(endpoint?.max_handshake_attempts ?? '');
 
-	let peers = $state<AWGPeer[]>(endpoint?.peers ?? [
+	// The form edits the PSK under one name; a wireguard endpoint stores it as
+	// pre_shared_key, so fold that spelling in when loading.
+	let peers = $state<AWGPeer[]>(endpoint?.peers?.map((p) => ({ ...p, preshared_key: p.preshared_key || p.pre_shared_key || undefined })) ?? [
 		{ address: '', port: 51820, public_key: '', allowed_ips: ['0.0.0.0/0', '::/0'] }
 	]);
 
@@ -129,7 +131,8 @@
 				address: p.address ?? '',
 				port: p.port ?? 51820,
 				public_key: p.public_key ?? '',
-				preshared_key: p.preshared_key || undefined,
+				// Either spelling: awg says preshared_key, wireguard pre_shared_key.
+				preshared_key: p.preshared_key || p.pre_shared_key || undefined,
 				allowed_ips: p.allowed_ips ?? ['0.0.0.0/0', '::/0'],
 				// A config may carry either shape (number, or an AWG 3.0 "lo-hi" string).
 				persistent_keepalive_interval: parseKeepalive(String(p.persistent_keepalive_interval ?? ''))
@@ -297,7 +300,11 @@
 				address: p.address.trim(),
 				port: p.port,
 				public_key: p.public_key.trim(),
-				preshared_key: p.preshared_key?.trim() || undefined,
+				// The fork spells the PSK per type (option/awg.go vs option/wireguard.go);
+				// the other spelling is an unknown field that fails check.
+				...(type === 'wireguard'
+					? { pre_shared_key: p.preshared_key?.trim() || undefined }
+					: { preshared_key: p.preshared_key?.trim() || undefined }),
 				allowed_ips: p.allowed_ips,
 				// Back to a NUMBER when it is plain seconds: only a range needs a string,
 				// and a pre-AWG3 sing-box rejects a string here.
@@ -334,11 +341,13 @@
 		if (keepaliveTimeout.trim()) ep.keepalive_timeout = keepaliveTimeout.trim();
 		if (maxHandshakeAttempts.trim()) ep.max_handshake_attempts = maxHandshakeAttempts.trim();
 
-		// Advanced options
-		if (systemInterface) ep.system = true;
-		if (interfaceName.trim()) ep.name = interfaceName.trim();
-		if (udpTimeout.trim()) ep.udp_timeout = udpTimeout.trim();
-		if (workers > 0) ep.workers = workers;
+		// Advanced options: wireguard endpoint only — the awg endpoint has none of them.
+		if (type === 'wireguard') {
+			if (systemInterface) ep.system = true;
+			if (interfaceName.trim()) ep.name = interfaceName.trim();
+			if (udpTimeout.trim()) ep.udp_timeout = udpTimeout.trim();
+			if (workers > 0) ep.workers = workers;
+		}
 
 		// Domain resolver (sing-box 1.12+)
 		if (domainResolver.trim()) ep.domain_resolver = domainResolver.trim();
@@ -578,6 +587,7 @@
 			</p>
 
 			<div class="bg-[var(--ctp-surface0)] rounded-lg p-4 space-y-4">
+				{#if type === 'wireguard'}
 				<h3 class="text-sm font-medium text-[var(--ctp-subtext1)]">{$t('endpoints.interfaceOptions')}</h3>
 
 				<label class="flex items-center gap-3 p-3 bg-[var(--ctp-mantle)] rounded-lg cursor-pointer hover:bg-[var(--ctp-surface1)] transition-colors">
@@ -627,6 +637,7 @@
 					/>
 					<p class="mt-1 text-xs text-[var(--ctp-overlay0)]">{$t('endpoints.durationFormatHint')}</p>
 				</div>
+				{/if}
 
 				{#if showDomainResolver}
 					<div>

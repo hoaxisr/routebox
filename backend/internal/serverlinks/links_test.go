@@ -425,10 +425,22 @@ func TestTlsParams(t *testing.T) {
 			absent: []string{"pbk", "sid"},
 		},
 		{
-			name: "acme domain used as sni when no server_name",
+			name: "legacy inline acme domain used as sni when no server_name",
 			tls:  map[string]interface{}{"enabled": true, "acme": map[string]interface{}{"domain": "le.example.com"}},
 			host: "1.2.3.4",
 			want: map[string]string{"security": "tls", "sni": "le.example.com", "fp": "chrome"},
+		},
+		{
+			name: "certificate_provider domain (string) used as sni",
+			tls:  map[string]interface{}{"enabled": true, "certificate_provider": map[string]interface{}{"type": "acme", "domain": "cp.example.com"}},
+			host: "1.2.3.4",
+			want: map[string]string{"security": "tls", "sni": "cp.example.com", "fp": "chrome"},
+		},
+		{
+			name: "certificate_provider domain (list) uses the first entry",
+			tls:  map[string]interface{}{"enabled": true, "certificate_provider": map[string]interface{}{"type": "acme", "domain": []interface{}{"first.example.com", "second.example.com"}}},
+			host: "1.2.3.4",
+			want: map[string]string{"security": "tls", "sni": "first.example.com", "fp": "chrome"},
 		},
 		{
 			name:   "disabled tls => empty",

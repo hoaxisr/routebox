@@ -113,7 +113,9 @@ export function buildServerInbound(s: ServerFormState): Inbound {
 
 	const tls: ServerTlsConfig = { enabled: true };
 	if (s.tlsMode === 'acme') {
-		tls.acme = { domain: s.tls.acme.domain.trim(), email: s.tls.acme.email.trim() };
+		// Inline tls.acme is fatal on sing-box 1.15; the certificate provider is
+		// the same fields plus a type, with domain as a list.
+		tls.certificate_provider = { type: 'acme', domain: [s.tls.acme.domain.trim()], email: s.tls.acme.email.trim() };
 	} else if (s.tlsMode === 'reality') {
 		tls.server_name = s.tls.server_name.trim();
 		const hsServer = s.handshakeServer.trim() || s.tls.server_name.trim();
@@ -294,8 +296,13 @@ export function validateServerInbound(state: ServerFormState, t: Translator): Re
 // parseServerInbound is the inverse used to populate the form when editing.
 export function parseServerInbound(ib: Inbound): ServerFormState {
 	const tls = ib.tls ?? {};
+	// ACME: certificate_provider (1.14+), or the legacy inline block on a config
+	// the backend has not rewritten yet — read either, emit only the provider.
+	const cp = tls.certificate_provider?.type === 'acme' ? tls.certificate_provider : undefined;
+	const acmeDomain = cp ? (Array.isArray(cp.domain) ? cp.domain[0] ?? '' : cp.domain ?? '') : tls.acme?.domain ?? '';
+	const acmeEmail = cp ? cp.email ?? '' : tls.acme?.email ?? '';
 	let tlsMode: TlsMode = 'manual';
-	if (tls.acme) tlsMode = 'acme';
+	if (cp || tls.acme) tlsMode = 'acme';
 	else if (tls.reality) tlsMode = 'reality';
 	else if (tls.certificate_path === PANEL_CERT_PATH) tlsMode = 'panel';
 
@@ -330,7 +337,7 @@ export function parseServerInbound(ib: Inbound): ServerFormState {
 		tlsMode,
 		tls: {
 			server_name: tls.server_name ?? '',
-			acme: { domain: tls.acme?.domain ?? '', email: tls.acme?.email ?? '' },
+			acme: { domain: acmeDomain, email: acmeEmail },
 			reality: {
 				enabled: true,
 				private_key: tls.reality?.private_key ?? '',

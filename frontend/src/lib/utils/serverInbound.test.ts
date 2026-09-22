@@ -64,7 +64,9 @@ describe('buildServerInbound', () => {
 			users: [{ username: 'alice', password: 'pw' }]
 		});
 		expect(ib.type).toBe('naive');
-		expect(ib.tls?.acme).toEqual({ domain: 'vpn.example.com', email: 'a@b.c' });
+		// sing-box 1.15 refuses inline tls.acme: the provider block replaces it.
+		expect(ib.tls?.acme).toBeUndefined();
+		expect(ib.tls?.certificate_provider).toEqual({ type: 'acme', domain: ['vpn.example.com'], email: 'a@b.c' });
 		expect(ib.tls?.reality).toBeUndefined();
 		expect(ib.users?.[0]).toEqual({ username: 'alice', password: 'pw' });
 	});
@@ -597,5 +599,48 @@ describe('hy2CongestionSummary', () => {
 
 	it('refuses rate-less clients when the switch is on and Down is capped', () => {
 		expect(hy2CongestionSummary(true, 200)).toBe('ccBrutalOnly');
+	});
+});
+
+describe('ACME ↔ certificate_provider (sing-box 1.14+)', () => {
+	it('parses an inbound with an acme certificate_provider back into acme mode', () => {
+		const st = parseServerInbound({
+			type: 'trojan', tag: 't', listen: '::', listen_port: 443,
+			users: [{ name: 'a', password: 'p' }],
+			tls: { enabled: true, certificate_provider: { type: 'acme', domain: ['vpn.example.com'], email: 'a@b.c' } }
+		});
+		expect(st.tlsMode).toBe('acme');
+		expect(st.tls.acme).toEqual({ domain: 'vpn.example.com', email: 'a@b.c' });
+	});
+
+	it('still reads a legacy inline tls.acme block for display', () => {
+		const st = parseServerInbound({
+			type: 'trojan', tag: 't', listen: '::', listen_port: 443,
+			users: [{ name: 'a', password: 'p' }],
+			tls: { enabled: true, acme: { domain: 'old.example.com', email: 'o@b.c' } }
+		});
+		expect(st.tlsMode).toBe('acme');
+		expect(st.tls.acme.domain).toBe('old.example.com');
+		// and re-building emits the provider, never the legacy block
+		const ib = buildServerInbound(st);
+		expect(ib.tls?.acme).toBeUndefined();
+		expect(ib.tls?.certificate_provider?.domain).toEqual(['old.example.com']);
+	});
+});
+
+describe('certificate_provider edge shapes', () => {
+	const ib = (tls: Record<string, unknown>) => ({
+		type: 'trojan', tag: 't', listen: '::', listen_port: 443, users: [{ name: 'a', password: 'p' }], tls: { enabled: true, ...tls }
+	}) as Parameters<typeof parseServerInbound>[0];
+
+	it('domain given as a plain string still parses', () => {
+		const st = parseServerInbound(ib({ certificate_provider: { type: 'acme', domain: 'one.example.com', email: 'e' } }));
+		expect(st.tlsMode).toBe('acme');
+		expect(st.tls.acme.domain).toBe('one.example.com');
+	});
+
+	it('a non-acme provider is not acme mode', () => {
+		const st = parseServerInbound(ib({ certificate_path: '/c.pem', key_path: '/k.pem', certificate_provider: { type: 'cloudflare', domain: ['x'] } }));
+		expect(st.tlsMode).not.toBe('acme');
 	});
 });

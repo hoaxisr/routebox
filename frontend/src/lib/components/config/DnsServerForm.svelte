@@ -1,8 +1,7 @@
 <script lang="ts">
 	import type { DnsServer, Outbound } from '$lib/types';
-	import { notifications, configReadOnly, featureFlags } from '$lib/stores';
+	import { notifications, configReadOnly } from '$lib/stores';
 	import { t } from 'svelte-i18n';
-	import HelpTooltip from '$lib/components/shared/HelpTooltip.svelte';
 
 	interface Props {
 		server?: DnsServer;
@@ -31,7 +30,6 @@
 	let serverPort = $state(server?.server_port?.toString() ?? '');
 	let detour = $state(server?.detour ?? '');
 	let domainResolver = $state(server?.domain_resolver ?? '');
-	let domainStrategy = $state(server?.domain_strategy ?? '');
 
 	// FakeIP specific
 	let inet4Range = $state(server?.inet4_range ?? '198.18.0.0/15');
@@ -132,9 +130,6 @@
 
 			if (needsDomainResolver && domainResolver) {
 				newServer.domain_resolver = domainResolver;
-				if (domainStrategy && !$featureFlags['domain_resolver']) {
-					newServer.domain_strategy = domainStrategy as DnsServer['domain_strategy'];
-				}
 			}
 		}
 
@@ -154,13 +149,6 @@
 		{ value: 'fakeip', labelKey: 'dns.serverTypes.fakeip', descriptionKey: 'dns.serverTypes.fakeipDesc' }
 	];
 
-	const strategyOptions = [
-		{ value: '', labelKey: 'common.default' },
-		{ value: 'prefer_ipv4', labelKey: 'dns.strategies.preferIpv4' },
-		{ value: 'prefer_ipv6', labelKey: 'dns.strategies.preferIpv6' },
-		{ value: 'ipv4_only', labelKey: 'dns.strategies.ipv4Only' },
-		{ value: 'ipv6_only', labelKey: 'dns.strategies.ipv6Only' }
-	];
 </script>
 
 <form onsubmit={(e) => { e.preventDefault(); handleSubmit(); }} class="space-y-6">
@@ -283,25 +271,6 @@
 				{/if}
 			</div>
 
-			<!-- Domain Strategy (optional, deprecated in 1.12+ when domain_resolver is available) -->
-			{#if !$featureFlags['domain_resolver']}
-				<div>
-					<label for="domain_strategy" class="flex items-center gap-1 text-sm font-medium text-[var(--ctp-subtext1)] mb-1">
-						{$t('dns.domainStrategy')}
-						<HelpTooltip text={$t('help.strategy')} />
-						<span class="font-normal text-[var(--ctp-overlay0)]">({$t('common.optional')})</span>
-					</label>
-					<select
-						id="domain_strategy"
-						bind:value={domainStrategy}
-						class="w-full px-3 py-2 bg-[var(--ctp-surface0)] border border-[var(--ctp-surface2)] rounded-lg text-[var(--ctp-text)] focus:outline-none focus:ring-2 focus:ring-[var(--ctp-primary)]"
-					>
-						{#each strategyOptions as opt}
-							<option value={opt.value}>{$t(opt.labelKey)}</option>
-						{/each}
-					</select>
-				</div>
-			{/if}
 		{/if}
 
 		<!-- Port -->

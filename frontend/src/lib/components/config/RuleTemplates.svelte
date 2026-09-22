@@ -88,9 +88,11 @@
 			type: 'remote',
 			format: 'binary',
 			url: `${GEOSITE_BASE}/geosite-${template.geosite}.srs`,
-			download_detour: selectedOutbound,
 			update_interval: '24h'
 		};
+		// Direct downloads use the shared http client the backend adds; an
+		// explicit {detour: "direct"} is rejected by sing-box.
+		if (selectedOutbound && outbounds.find((o) => o.tag === selectedOutbound)?.type !== 'direct') ruleSet.http_client = { detour: selectedOutbound };
 
 		const rule: RouteRule = {
 			rule_set: [template.id]

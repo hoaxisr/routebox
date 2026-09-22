@@ -71,6 +71,9 @@ func (m *Manager) CreateRuleSet(rs map[string]interface{}) error {
 	if findByTag(arr, tag) >= 0 {
 		return fmt.Errorf("rule set with tag '%s' already exists", tag)
 	}
+	if err := ruleSetDetourError(m.getWorkingConfig(), rs); err != nil {
+		return err
+	}
 
 	// Ensure draft exists before modifying
 	if err := m.ensureDraftUnlocked(); err != nil {
@@ -81,6 +84,7 @@ func (m *Manager) CreateRuleSet(rs map[string]interface{}) error {
 	route := m.getDraftRoute()
 	draftArr := m.getDraftRouteArray("rule_set")
 	route["rule_set"] = append(draftArr, rs)
+	ensureRuleSetHTTPClient(m.draftConfig)
 
 	return m.saveDraftToDisk()
 }
@@ -164,6 +168,9 @@ func (m *Manager) UpdateRuleSet(tag string, rs map[string]interface{}) error {
 
 	// Modify draft — replace the rule set at the same index
 	route := m.getDraftRoute()
+	if err := ruleSetDetourError(m.getWorkingConfig(), rs); err != nil {
+		return err
+	}
 	draftArr := m.getDraftRouteArray("rule_set")
 	draftIdx := findByTag(draftArr, tag)
 	if draftIdx < 0 {
@@ -174,6 +181,7 @@ func (m *Manager) UpdateRuleSet(tag string, rs map[string]interface{}) error {
 	rs["tag"] = tag
 	draftArr[draftIdx] = rs
 	route["rule_set"] = draftArr
+	ensureRuleSetHTTPClient(m.draftConfig)
 
 	return m.saveDraftToDisk()
 }
@@ -382,8 +390,7 @@ func (m *Manager) ReorderRules(from, to int) error {
 var routeSettingsKeys = []string{
 	"final", "auto_detect_interface",
 	"default_interface", "default_mark",
-	"default_domain_resolver",
-	"default_domain_strategy",
+	"default_domain_resolver", "default_http_client",
 	"default_network_strategy", "default_network_type",
 	"default_fallback_network_type", "default_fallback_delay",
 }
@@ -430,14 +437,6 @@ func (m *Manager) UpdateRouteSettings(settings map[string]interface{}) error {
 		}
 		if !outboundTags[final] && !endpointTags[final] {
 			return fmt.Errorf("final outbound '%s' does not exist", final)
-		}
-	}
-
-	// Validate default_domain_strategy if provided
-	if strategy, ok := settings["default_domain_strategy"].(string); ok && strategy != "" {
-		valid := map[string]bool{"prefer_ipv4": true, "prefer_ipv6": true, "ipv4_only": true, "ipv6_only": true}
-		if !valid[strategy] {
-			return fmt.Errorf("invalid default_domain_strategy: %s", strategy)
 		}
 	}
 
@@ -574,4 +573,17 @@ func (m *Manager) GetRuleSetsUsage() map[string]map[string][]int {
 	}
 
 	return usage
+}
+
+// ruleSetDetourError rejects http_client.detour pointing at an empty direct
+// outbound: sing-box refuses it at start ("detour to an empty direct outbound
+// makes no sense"), and `check` does not catch it. Leave http_client out to
+// download directly.
+func ruleSetDetourError(config, rs map[string]interface{}) error {
+	hc, _ := rs["http_client"].(map[string]interface{})
+	detour, _ := hc["detour"].(string)
+	if detour != "" && isEmptyDirectOutbound(config, detour) {
+		return fmt.Errorf("rule set '%s': http_client.detour '%s' is an empty direct outbound, which sing-box rejects — leave http_client out to download directly", rs["tag"], detour)
+	}
+	return nil
 }

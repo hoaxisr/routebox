@@ -292,15 +292,25 @@ func (m *Manager) Load() error {
 		return fmt.Errorf("failed to parse config: %w", err)
 	}
 
-	// One-time migration, run before anything can start the process on this
+	// One-time migrations, run before anything can start the process on this
 	// file: a config still carrying tun "stack" either runs the old slow stack
-	// or (gvisor/mixed) does not start at all on a fork built without gVisor.
+	// or (gvisor/mixed) does not start at all on a fork built without gVisor,
+	// and the options in migrateSingbox115 kill sing-box 1.15 at start.
+	var notes []string
 	if stripTunStack(config) {
+		notes = append(notes, "tun stack removed (sing-box 1.15's own stack is faster and is what runs when the option is absent)")
+	}
+	if Singbox115Migration {
+		notes = append(notes, migrateSingbox115(config)...)
+	} else {
+		log.Printf("sing-box 1.15 migrations skipped for %s: the installed amnezia-box predates 1.14 and would not accept the migrated options", m.path)
+	}
+	if len(notes) > 0 {
 		if data, err := encodeConfig(config); err == nil {
 			if err := m.noteWrite(m.writeActiveLocked(data)); err != nil {
-				log.Printf("could not rewrite %s without the deprecated tun \"stack\" option: %v — RouteBox runs on the migrated config in memory", m.path, err)
+				log.Printf("could not rewrite %s with sing-box 1.15 migrations (%v): %v — RouteBox runs on the migrated config in memory", m.path, notes, err)
 			} else {
-				log.Printf("removed the deprecated tun \"stack\" option from %s — sing-box 1.15's own stack is faster and is what runs when the option is absent", m.path)
+				log.Printf("migrated %s for sing-box 1.15: %v", m.path, notes)
 			}
 		}
 	}

@@ -31,7 +31,10 @@
 	let format = $state<'binary' | 'source'>(ruleSet?.format || 'binary');
 	let url = $state(ruleSet?.url || '');
 	// Remote-specific options
-	let downloadDetour = $state(ruleSet?.download_detour || '');
+	// http_client {detour} = download through that outbound; absent = direct.
+	// A string http_client is a shared-client tag: kept as is, not editable here.
+	const httpClientRef = typeof ruleSet?.http_client === 'string' ? ruleSet.http_client : '';
+	let downloadDetour = $state(typeof ruleSet?.http_client === 'object' ? ruleSet.http_client.detour || '' : '');
 	let updateInterval = $state(ruleSet?.update_interval || '24h');
 	// Inline-specific options
 	let inlineRulesJson = $state(ruleSet?.rules ? JSON.stringify(ruleSet.rules, null, 2) : '[\n  {\n    "domain_suffix": [".example.com"]\n  }\n]');
@@ -89,7 +92,8 @@
 
 		if (type === 'remote') {
 			newRuleSet.url = url.trim();
-			if (downloadDetour) newRuleSet.download_detour = downloadDetour;
+			if (httpClientRef) newRuleSet.http_client = httpClientRef;
+			else if (downloadDetour && outbounds.find((o) => o.tag === downloadDetour)?.type !== 'direct') newRuleSet.http_client = { detour: downloadDetour };
 			if (updateInterval && updateInterval !== '24h') newRuleSet.update_interval = updateInterval;
 		} else if (type === 'inline') {
 			newRuleSet.rules = JSON.parse(inlineRulesJson);
@@ -206,10 +210,11 @@
 					<select
 						id="downloadDetour"
 						bind:value={downloadDetour}
-						class="w-full px-3 py-2 bg-[var(--ctp-surface0)] border border-[var(--ctp-surface2)] rounded-lg text-[var(--ctp-text)] focus:outline-none focus:ring-2 focus:ring-[var(--ctp-primary)]"
+						disabled={!!httpClientRef}
+						class="w-full px-3 py-2 bg-[var(--ctp-surface0)] border border-[var(--ctp-surface2)] rounded-lg text-[var(--ctp-text)] focus:outline-none focus:ring-2 focus:ring-[var(--ctp-primary)] disabled:opacity-50"
 					>
-						<option value="">{$t('dns.noneDirect')}</option>
-						{#each outbounds as ob}
+						<option value="">{httpClientRef || $t('dns.noneDirect')}</option>
+						{#each outbounds.filter((ob) => ob.type !== 'direct') as ob}
 							<option value={ob.tag}>{ob.tag}</option>
 						{/each}
 					</select>

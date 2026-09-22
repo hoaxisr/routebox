@@ -296,10 +296,10 @@
 						<p class="text-[var(--ctp-text)] font-mono text-sm">{viewingRuleSet.path}</p>
 					</div>
 				{/if}
-				{#if viewingRuleSet.download_detour}
+				{#if viewingRuleSet.http_client}
 					<div>
 						<span class="text-sm text-[var(--ctp-overlay1)]">{$t('routes.downloadDetour')}</span>
-						<p class="text-[var(--ctp-text)]">{viewingRuleSet.download_detour}</p>
+						<p class="text-[var(--ctp-text)]">{typeof viewingRuleSet.http_client === 'string' ? viewingRuleSet.http_client : viewingRuleSet.http_client.detour}</p>
 					</div>
 				{/if}
 				{#if viewingRuleSet.update_interval}

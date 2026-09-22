@@ -279,6 +279,24 @@ func validateEndpoint(ep map[string]interface{}, index int) []string {
 			if pk, ok := peerObj["public_key"].(string); !ok || pk == "" {
 				errors = append(errors, fmt.Sprintf("%s: missing 'public_key'", peerPrefix))
 			}
+			// The fork spells the peer PSK differently per type: awg
+			// "preshared_key", wireguard "pre_shared_key" (option/awg.go vs
+			// option/wireguard.go). The other spelling is an unknown field.
+			if epType == "wireguard" {
+				if _, has := peerObj["preshared_key"]; has {
+					errors = append(errors, fmt.Sprintf("%s: wireguard peers use 'pre_shared_key', not 'preshared_key'", peerPrefix))
+				}
+			} else if _, has := peerObj["pre_shared_key"]; has {
+				errors = append(errors, fmt.Sprintf("%s: awg peers use 'preshared_key', not 'pre_shared_key'", peerPrefix))
+			}
+		}
+		// wireguard-only options: unknown fields on the fork's awg endpoint.
+		if epType == "awg" {
+			for _, f := range []string{"system", "name", "udp_timeout", "workers"} {
+				if _, has := ep[f]; has {
+					errors = append(errors, fmt.Sprintf("%s: '%s' is a wireguard endpoint option; the awg endpoint does not accept it", prefix, f))
+				}
+			}
 		}
 	}
 
@@ -700,6 +718,13 @@ func isLoopbackListen(ib map[string]interface{}) bool {
 func validateInbound(ib map[string]interface{}, index int) []string {
 	var errors []string
 	prefix := fmt.Sprintf("inbounds[%d]", index)
+	// Inline tls.acme is fatal on sing-box 1.15 already at `check` (deprecated
+	// 1.14); the replacement is tls.certificate_provider {type: "acme"}.
+	if tls, _ := ib["tls"].(map[string]interface{}); tls != nil {
+		if _, has := tls["acme"]; has {
+			errors = append(errors, fmt.Sprintf("%s: inline 'tls.acme' is rejected by sing-box 1.15 — use 'tls.certificate_provider' with type 'acme'", prefix))
+		}
+	}
 
 	// Required: tag
 	tag, hasTag := ib["tag"].(string)
@@ -948,6 +973,12 @@ func validateRuleSet(rs map[string]interface{}, index int) []string {
 		if _, ok := rs["rules"].([]interface{}); !ok {
 			errors = append(errors, fmt.Sprintf("%s: inline type requires 'rules' array", prefix))
 		}
+	}
+
+	// Fatal at START on sing-box 1.15 (deprecated 1.14), and `check` never
+	// exercises rule-set downloads, so it would slip past preflight.
+	if _, has := rs["download_detour"]; has {
+		errors = append(errors, fmt.Sprintf("%s: 'download_detour' is rejected by sing-box 1.15 — use 'http_client' (e.g. {\"detour\": \"proxy\"}) or leave it out to download directly", prefix))
 	}
 
 	return errors
@@ -1314,6 +1345,11 @@ func validateDnsServer(server map[string]interface{}, index int) []string {
 		}
 	}
 
+	// Legacy dial-field strategy: fatal since sing-box 1.14.
+	if _, has := server["domain_strategy"]; has {
+		errors = append(errors, fmt.Sprintf("%s: 'domain_strategy' was removed from DNS servers in sing-box 1.14 — set 'domain_resolver' instead", prefix))
+	}
+
 	return errors
 }
 
@@ -1344,5 +1380,16 @@ func validateDnsRule(rule map[string]interface{}, index int, serverTags, ruleSet
 		}
 	}
 
+	// Since sing-box 1.14 IP fields in a DNS rule match the RESPONSE and need
+	// match_response; without it the legacy address filter is a check error.
+	_, hasCidr := rule["ip_cidr"]
+	isPrivate, _ := rule["ip_is_private"].(bool)
+	if matchResp, _ := rule["match_response"].(bool); (hasCidr || isPrivate) && !matchResp {
+		errors = append(errors, fmt.Sprintf("%s: 'ip_cidr'/'ip_is_private' match the DNS response and require 'match_response': true (with an 'evaluate' rule before it) since sing-box 1.14", prefix))
+	}
+	// reject/predefined actions have no disable_cache field (unknown field on check).
+	if _, has := rule["disable_cache"]; has && (action == "reject" || action == "predefined") {
+		errors = append(errors, fmt.Sprintf("%s: 'disable_cache' only applies to the route action, not '%s'", prefix, action))
+	}
 	return errors
 }

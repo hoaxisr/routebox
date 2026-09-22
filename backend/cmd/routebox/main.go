@@ -190,6 +190,13 @@ func main() {
 	}
 
 	// Initialize config manager
+	// The sing-box 1.15 migrations write 1.14+ options (http_clients,
+	// certificate_provider, store_dns); never rewrite the config into fields an
+	// older installed fork would reject. Unknown version (no binary yet) stays on.
+	if ver, err := procMgr.GetVersion(); err == nil && ver != "" && !process.VersionAtLeast(ver, 1, 14) {
+		config.Singbox115Migration = false
+		log.Printf("amnezia-box %s predates 1.14: sing-box 1.15 config migrations are disabled until it is updated", ver)
+	}
 	var cfgMgr *config.Manager
 
 	if _, statErr := os.Stat(resolvedConfigPath); statErr == nil {
