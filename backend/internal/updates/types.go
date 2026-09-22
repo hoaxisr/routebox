@@ -31,7 +31,7 @@ type Target struct {
 	SelfUpdate bool
 }
 
-// ReleaseInfo is the parsed result of GET /repos/<repo>/releases/latest.
+// ReleaseInfo is the parsed result of GET /repos/<repo>/releases (newest published).
 type ReleaseInfo struct {
 	Version     string    `json:"version"` // normalized: no "v" prefix, no "-awg2.0"
 	TagName     string    `json:"tag_name"`

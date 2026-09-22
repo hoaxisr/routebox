@@ -20,7 +20,7 @@ type CachedCheck struct {
 	Error       string       `json:"error,omitempty"`
 }
 
-// Checker queries GitHub releases/latest and caches the result per target.
+// Checker queries GitHub releases and caches the result per target.
 type Checker struct {
 	apiBase string
 	client  *http.Client
@@ -45,7 +45,7 @@ func NewChecker() *Checker {
 	}
 }
 
-// Check queries releases/latest for the target and updates the cache.
+// Check queries the newest published release for the target and updates the cache.
 func (c *Checker) Check(t Target) (ReleaseInfo, error) {
 	info, err := c.fetch(t)
 	entry := CachedCheck{LastChecked: time.Now()}
@@ -74,7 +74,10 @@ func (c *Checker) fetch(t Target) (ReleaseInfo, error) {
 		return ReleaseInfo{}, fmt.Errorf("%s: no release asset for arch %s", t.Name, c.arch)
 	}
 
-	url := fmt.Sprintf("%s/repos/%s/releases/latest", c.apiBase, t.Repo)
+	// /releases, not /releases/latest: "latest" skips prereleases, and since
+	// the 1.15 rebase every fork release is one (gh marks -alpha/-beta tags
+	// prerelease) — /releases/latest returns 404 for the whole repo.
+	url := fmt.Sprintf("%s/repos/%s/releases?per_page=10", c.apiBase, t.Repo)
 	req, _ := http.NewRequest("GET", url, nil)
 	req.Header.Set("Accept", "application/vnd.github+json")
 	req.Header.Set("User-Agent", "RouteBox-Updater")
@@ -94,17 +97,33 @@ func (c *Checker) fetch(t Target) (ReleaseInfo, error) {
 		return ReleaseInfo{}, fmt.Errorf("%s: GitHub API returned %d", t.Repo, resp.StatusCode)
 	}
 
-	var rel struct {
+	type release struct {
 		TagName     string    `json:"tag_name"`
 		Body        string    `json:"body"`
+		Draft       bool      `json:"draft"`
 		PublishedAt time.Time `json:"published_at"`
 		Assets      []struct {
 			Name               string `json:"name"`
 			BrowserDownloadURL string `json:"browser_download_url"`
 		} `json:"assets"`
 	}
-	if err := json.NewDecoder(resp.Body).Decode(&rel); err != nil {
+	var rels []release
+	if err := json.NewDecoder(resp.Body).Decode(&rels); err != nil {
 		return ReleaseInfo{}, fmt.Errorf("%s: parse release JSON: %w", t.Repo, err)
+	}
+	// Newest by published_at, not list order: GitHub sorts the list by the
+	// tagged commit's date, which is not the publish order.
+	var rel *release
+	for i := range rels {
+		if rels[i].Draft {
+			continue
+		}
+		if rel == nil || rels[i].PublishedAt.After(rel.PublishedAt) {
+			rel = &rels[i]
+		}
+	}
+	if rel == nil {
+		return ReleaseInfo{}, fmt.Errorf("%s: no releases found", t.Repo)
 	}
 
 	info := ReleaseInfo{

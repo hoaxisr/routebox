@@ -29,7 +29,7 @@ const githubFixture = `{
 func newUpdatesHandler(t *testing.T) *Handler {
 	t.Helper()
 	gh := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		w.Write([]byte(githubFixture))
+		w.Write([]byte("[" + githubFixture + "]"))
 	}))
 	t.Cleanup(gh.Close)
 	t.Setenv("UPDATES_API_BASE", gh.URL)
@@ -180,7 +180,7 @@ func TestApplySelfUpdateReExecsInstallPath(t *testing.T) {
 	  ]
 	}`, assets.URL+"/asset", assets.URL+"/checksums.txt")
 	gh := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		w.Write([]byte(ghJSON))
+		w.Write([]byte("[" + ghJSON + "]"))
 	}))
 	t.Cleanup(gh.Close)
 	t.Setenv("UPDATES_API_BASE", gh.URL)

@@ -32,10 +32,13 @@ const routeboxFixture = `{
 func fixtureServer(t *testing.T, status int, body string) *httptest.Server {
 	t.Helper()
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		if !strings.HasSuffix(r.URL.Path, "/releases/latest") {
+		if !strings.HasSuffix(r.URL.Path, "/releases") {
 			t.Errorf("unexpected path %s", r.URL.Path)
 		}
 		w.WriteHeader(status)
+		if status == http.StatusOK {
+			body = "[" + body + "]"
+		}
 		w.Write([]byte(body))
 	}))
 	t.Cleanup(srv.Close)
@@ -159,6 +162,49 @@ func TestCheck404NoReleases(t *testing.T) {
 	cached, _ := c.Cached("amnezia-box")
 	if cached.Error == "" {
 		t.Error("cache must record the error")
+	}
+}
+
+// Every fork release since the 1.15 rebase is a GitHub prerelease (gh marks
+// -alpha/-beta tags as such), and /releases/latest skips prereleases → 404.
+// The checker must pick the newest published non-draft release from the list,
+// prerelease or not, ignoring list order.
+func TestCheckPicksNewestPublishedIncludingPrerelease(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if !strings.HasSuffix(r.URL.Path, "/releases") {
+			t.Errorf("unexpected path %s", r.URL.Path)
+		}
+		w.Write([]byte(`[
+  {"tag_name": "1.15.0-alpha.6-awgm.24", "prerelease": true, "draft": false, "published_at": "2026-09-21T16:03:30Z",
+   "assets": [{"name": "singbox-1.15.0-alpha.6-awgm.24-linux-amd64", "browser_download_url": "https://dl/24"},
+              {"name": "singbox-1.15.0-alpha.6-awgm.24-linux-amd64.sha256", "browser_download_url": "https://dl/24.sha256"}]},
+  {"tag_name": "1.15.0-alpha.7-awgm.26", "prerelease": true, "draft": true, "published_at": "2026-09-23T06:07:15Z",
+   "assets": [{"name": "singbox-1.15.0-alpha.7-awgm.26-linux-amd64", "browser_download_url": "https://dl/26"}]},
+  {"tag_name": "1.15.0-alpha.6-awgm.25", "prerelease": true, "draft": false, "published_at": "2026-09-22T06:07:15Z",
+   "assets": [{"name": "singbox-1.15.0-alpha.6-awgm.25-linux-amd64", "browser_download_url": "https://dl/25"},
+              {"name": "singbox-1.15.0-alpha.6-awgm.25-linux-amd64.sha256", "browser_download_url": "https://dl/25.sha256"}]}
+]`))
+	}))
+	t.Cleanup(srv.Close)
+	c := newTestChecker(t, srv.URL, "amd64")
+	info, err := c.Check(amneziaTestTarget())
+	if err != nil {
+		t.Fatalf("Check: %v", err)
+	}
+	if info.TagName != "1.15.0-alpha.6-awgm.25" {
+		t.Errorf("TagName = %q, want newest published non-draft 1.15.0-alpha.6-awgm.25", info.TagName)
+	}
+	if info.Sha256URL != "https://dl/25.sha256" {
+		t.Errorf("Sha256URL = %q", info.Sha256URL)
+	}
+}
+
+func TestCheckEmptyListNoReleases(t *testing.T) {
+	srv := fixtureServer(t, http.StatusOK, "")
+	c := newTestChecker(t, srv.URL, "amd64")
+	_, err := c.Check(amneziaTestTarget())
+	if err == nil || !strings.Contains(err.Error(), "no releases") {
+		t.Fatalf("err = %v, want 'no releases'", err)
 	}
 }
 
