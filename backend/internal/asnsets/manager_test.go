@@ -18,6 +18,7 @@ import (
 type fakeSrc struct {
 	prefixes map[uint32][]string
 	err      map[uint32]error
+	holders  map[uint32]string // overrides the default (13335 → Cloudflare)
 	calls    int
 }
 
@@ -33,6 +34,9 @@ func (f *fakeSrc) Prefixes(_ context.Context, asn uint32) ([]netip.Prefix, error
 	return out, nil
 }
 func (f *fakeSrc) Holder(_ context.Context, asn uint32) (string, error) {
+	if h, ok := f.holders[asn]; ok {
+		return h, nil
+	}
 	if asn == 13335 {
 		return "Cloudflare", nil
 	}
@@ -374,5 +378,238 @@ func TestDeleteRemovesEntryAndFile(t *testing.T) {
 	}
 	if err := m.Delete("a"); err != nil {
 		t.Fatalf("second Delete must be a no-op, got %v", err)
+	}
+}
+
+// Minor 5: holder names are display text from a third party; they must not
+// carry control characters into the TOML/UI and must not be unbounded.
+func TestHoldersAreSanitized(t *testing.T) {
+	long := strings.Repeat("\u044f", 200) // 200 runes, 400 bytes: the cap is in runes
+	src := &fakeSrc{
+		prefixes: map[uint32][]string{1: {"1.0.0.0/24"}, 2: {"2.0.0.0/24"}, 3: {"3.0.0.0/24"}},
+		holders:  map[uint32]string{1: "  Ev\x00il\r\nCorp\t ", 2: long, 3: "Plain Name"},
+	}
+	m, _ := newTestManager(t, src)
+	e, err := m.Create(ctx, "x", []uint32{1, 2, 3}, 24)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got := e.Holders["1"]; got != "EvilCorp" {
+		t.Errorf("holder 1 = %q, want control characters stripped and trimmed", got)
+	}
+	if got := []rune(e.Holders["2"]); len(got) != 128 {
+		t.Errorf("holder 2 has %d runes, want 128", len(got))
+	}
+	if got := e.Holders["3"]; got != "Plain Name" {
+		t.Errorf("holder 3 = %q, want unchanged", got)
+	}
+}
+
+func TestSanitizeHolder(t *testing.T) {
+	cases := map[string]string{
+		"":                     "",
+		"  Cloudflare, Inc.  ": "Cloudflare, Inc.",
+		"a\x1fb\x7fc":          "abc",
+		"line\nbreak":          "linebreak",
+		"ok émoji 🙂":           "ok émoji 🙂",
+	}
+	for in, want := range cases {
+		if got := sanitizeHolder(in); got != want {
+			t.Errorf("sanitizeHolder(%q) = %q, want %q", in, got, want)
+		}
+	}
+	if got := sanitizeHolder(strings.Repeat("x", 129)); len(got) != 128 {
+		t.Errorf("cap: len = %d, want 128", len(got))
+	}
+}
+
+// Minor 6: a prefix file that is not a usable rule set (truncated by a crash,
+// hand-damaged) is as fatal for sing-box as a missing one: RestoreMissing
+// must treat it as missing.
+func TestRestoreMissingReplacesInvalidFile(t *testing.T) {
+	cases := map[string]string{
+		"truncated":  `{"version":2,"rules":[{"ip_cidr":["1.0.0.0/2`,
+		"no version": `{"rules":[]}`,
+		"empty":      ``,
+	}
+	for name, body := range cases {
+		t.Run(name, func(t *testing.T) {
+			src := &fakeSrc{prefixes: map[uint32][]string{1: {"1.0.0.0/24"}}}
+			m, _ := newTestManager(t, src)
+			e, _ := m.Create(ctx, "a", []uint32{1}, 24)
+			if err := os.WriteFile(e.Path, []byte(body), 0644); err != nil {
+				t.Fatal(err)
+			}
+			m.RestoreMissing(ctx)
+			raw, err := os.ReadFile(e.Path)
+			if err != nil || !strings.Contains(string(raw), "1.0.0.0/24") {
+				t.Fatalf("invalid file not refetched: %s %v", raw, err)
+			}
+		})
+	}
+}
+
+func TestRestoreMissingInvalidFileOfflineGetsPlaceholder(t *testing.T) {
+	src := &fakeSrc{prefixes: map[uint32][]string{1: {"1.0.0.0/24"}}}
+	m, _ := newTestManager(t, src)
+	e, _ := m.Create(ctx, "a", []uint32{1}, 24)
+	if err := os.WriteFile(e.Path, []byte(`{"version":2,"rules":[{"ip_cidr":["1.0`), 0644); err != nil {
+		t.Fatal(err)
+	}
+	src.err = map[uint32]error{1: errors.New("offline")}
+	m.RestoreMissing(ctx)
+	raw, _ := os.ReadFile(e.Path)
+	if strings.TrimSpace(string(raw)) != `{"rules":[],"version":2}` {
+		t.Fatalf("truncated file must be replaced by the placeholder, got %s", raw)
+	}
+	got, _ := m.Get("a")
+	if got.UpdatedAt != 0 || got.PrefixCount != 0 || got.LastError == "" {
+		t.Fatalf("placeholder entry = %+v, want UpdatedAt 0, PrefixCount 0, LastError set", got)
+	}
+}
+
+func TestRestoreMissingLeavesGoodFilesAlone(t *testing.T) {
+	src := &fakeSrc{prefixes: map[uint32][]string{1: {"1.0.0.0/24"}}}
+	m, _ := newTestManager(t, src)
+	_, _ = m.Create(ctx, "a", []uint32{1}, 24)
+	src.calls = 0
+	m.RestoreMissing(ctx)
+	if src.calls != 0 {
+		t.Fatalf("a valid file was refetched (%d calls)", src.calls)
+	}
+}
+
+// Minor 10: the placeholder is an empty list, and the entry must say so.
+func TestRestoreMissingPlaceholderZeroesPrefixCount(t *testing.T) {
+	src := &fakeSrc{prefixes: map[uint32][]string{1: {"1.0.0.0/24", "2.0.0.0/24"}}}
+	m, _ := newTestManager(t, src)
+	e, _ := m.Create(ctx, "a", []uint32{1}, 24)
+	_ = os.Remove(e.Path)
+	src.err = map[uint32]error{1: errors.New("offline")}
+	m.RestoreMissing(ctx)
+	got, _ := m.Get("a")
+	if got.PrefixCount != 0 {
+		t.Fatalf("PrefixCount = %d after an empty placeholder, want 0", got.PrefixCount)
+	}
+}
+
+// Minor 7: a crash between CreateTemp and Rename leaves .<tag>.json.*.tmp in
+// asn/; the next start sweeps them. Real files and unrelated names stay.
+func TestNewManagerSweepsTempFiles(t *testing.T) {
+	dir := filepath.Join(t.TempDir(), "asn")
+	if err := os.MkdirAll(dir, 0755); err != nil {
+		t.Fatal(err)
+	}
+	for _, name := range []string{".cf.json.123456.tmp", ".tg.json.7.tmp", "cf.json", "notes.tmp", ".keep"} {
+		if err := os.WriteFile(filepath.Join(dir, name), []byte("x"), 0644); err != nil {
+			t.Fatal(err)
+		}
+	}
+	NewManager(NewStore(""), dir, &fakeSrc{})
+	entries, _ := os.ReadDir(dir)
+	var left []string
+	for _, e := range entries {
+		left = append(left, e.Name())
+	}
+	want := []string{".keep", "cf.json", "notes.tmp"}
+	if strings.Join(left, ",") != strings.Join(want, ",") {
+		t.Fatalf("after sweep: %v, want %v", left, want)
+	}
+	// A dir that does not exist yet is fine (first start).
+	NewManager(NewStore(""), filepath.Join(t.TempDir(), "none"), &fakeSrc{})
+}
+
+// Minor 10: Prune says what it removed.
+func TestPruneLogsEachTag(t *testing.T) {
+	var buf bytes.Buffer
+	log.SetOutput(&buf)
+	t.Cleanup(func() { log.SetOutput(os.Stderr) })
+	src := &fakeSrc{prefixes: map[uint32][]string{1: {"1.0.0.0/24"}}}
+	m, _ := newTestManager(t, src)
+	_, _ = m.Create(ctx, "gone", []uint32{1}, 24)
+	_, _ = m.Create(ctx, "kept", []uint32{1}, 24)
+	m.now = func() int64 { return 1000 + pruneGrace }
+	m.Prune(func(tag string) bool { return tag == "kept" })
+	if !strings.Contains(buf.String(), "asnsets: gone: pruned (no config references it)") {
+		t.Fatalf("prune not logged: %q", buf.String())
+	}
+	if strings.Contains(buf.String(), "kept") {
+		t.Fatalf("kept set mentioned in the prune log: %q", buf.String())
+	}
+}
+
+// Minor 2: a placeholder (UpdatedAt == 0) must not wait for the first hourly
+// tick; RunLoop schedules one early retry.
+func TestHasPlaceholder(t *testing.T) {
+	src := &fakeSrc{prefixes: map[uint32][]string{1: {"1.0.0.0/24"}}}
+	m, _ := newTestManager(t, src)
+	if m.hasPlaceholder() {
+		t.Fatal("empty manager reports a placeholder")
+	}
+	e, _ := m.Create(ctx, "a", []uint32{1}, 24)
+	if m.hasPlaceholder() {
+		t.Fatal("a freshly created set is not a placeholder")
+	}
+	_ = os.Remove(e.Path)
+	src.err = map[uint32]error{1: errors.New("offline")}
+	m.RestoreMissing(ctx)
+	if !m.hasPlaceholder() {
+		t.Fatal("placeholder written but not reported")
+	}
+}
+
+func TestRunLoopRetriesPlaceholderEarly(t *testing.T) {
+	src := &fakeSrc{prefixes: map[uint32][]string{1: {"1.0.0.0/24"}}}
+	m, _ := newTestManager(t, src)
+	const boot = int64(1_700_000_000)
+	m.now = func() int64 { return boot }
+	e, _ := m.Create(ctx, "a", []uint32{1}, 168)
+	_ = os.Remove(e.Path)
+	src.err = map[uint32]error{1: errors.New("offline")}
+	m.RestoreMissing(ctx)
+	src.err = nil
+
+	old := earlyRetryDelay
+	earlyRetryDelay = 10 * time.Millisecond
+	t.Cleanup(func() { earlyRetryDelay = old })
+	stop := make(chan struct{})
+	done := make(chan struct{})
+	go func() { m.RunLoop(time.Hour, func(string) bool { return true }, stop); close(done) }()
+	deadline := time.Now().Add(5 * time.Second)
+	for {
+		if got, _ := m.Get("a"); got.UpdatedAt != 0 {
+			break
+		}
+		if time.Now().After(deadline) {
+			close(stop)
+			t.Fatal("placeholder not refreshed by the early tick; it would wait for the hourly ticker")
+		}
+		time.Sleep(5 * time.Millisecond)
+	}
+	close(stop)
+	<-done
+	raw, _ := os.ReadFile(e.Path)
+	if !strings.Contains(string(raw), "1.0.0.0/24") {
+		t.Fatalf("file after early tick: %s", raw)
+	}
+}
+
+func TestRunLoopNoEarlyTickWithoutPlaceholder(t *testing.T) {
+	src := &fakeSrc{prefixes: map[uint32][]string{1: {"1.0.0.0/24"}}}
+	m, _ := newTestManager(t, src)
+	_, _ = m.Create(ctx, "a", []uint32{1}, 6)
+	m.now = func() int64 { return 1000 + 7*3600 } // due, but only the ticker may pick it up
+	src.calls = 0
+	old := earlyRetryDelay
+	earlyRetryDelay = 10 * time.Millisecond
+	t.Cleanup(func() { earlyRetryDelay = old })
+	stop := make(chan struct{})
+	done := make(chan struct{})
+	go func() { m.RunLoop(time.Hour, func(string) bool { return true }, stop); close(done) }()
+	time.Sleep(100 * time.Millisecond)
+	close(stop)
+	<-done
+	if src.calls != 0 {
+		t.Fatalf("early tick fired without a placeholder (%d calls)", src.calls)
 	}
 }

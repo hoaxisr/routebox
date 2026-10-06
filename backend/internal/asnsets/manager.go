@@ -2,6 +2,7 @@ package asnsets
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"log"
@@ -10,8 +11,10 @@ import (
 	"path/filepath"
 	"slices"
 	"strconv"
+	"strings"
 	"sync"
 	"time"
+	"unicode"
 )
 
 // PrefixSource is what the manager needs from RIPEstat (Fetcher implements it).
@@ -39,7 +42,16 @@ const (
 	// tickTimeout bounds one loop tick: Manager.mu is held across RIPEstat
 	// calls, and with RIPEstat dead a tick must not block the API for long.
 	tickTimeout = 5 * time.Minute
+	// maxHolderRunes caps a holder name from RIPEstat: display text from a
+	// third party, stored in asn.toml and shown on a chip.
+	maxHolderRunes = 128
 )
+
+// earlyRetryDelay is how soon after start RunLoop retries a placeholder set
+// (UpdatedAt == 0: RestoreMissing could not fetch and wrote an empty file).
+// Without it such a set matches nothing until the first hourly tick. A var so
+// tests can shorten it.
+var earlyRetryDelay = 2 * time.Minute
 
 // FetchError names the AS whose prefixes could not be had.
 type FetchError struct {
@@ -64,13 +76,31 @@ type Manager struct {
 }
 
 // NewManager keeps prefix files for store's entries under dir (<dir>/<tag>.json).
+// Temp files a crash left in dir are removed here (see sweepTemp).
 func NewManager(store *Store, dir string, src PrefixSource) *Manager {
-	return &Manager{
+	m := &Manager{
 		store:      store,
 		dir:        dir,
 		src:        src,
 		now:        func() int64 { return time.Now().Unix() },
 		lastLogged: map[string]string{},
+	}
+	m.sweepTemp()
+	return m
+}
+
+// sweepTemp removes `.<name>.*.tmp` files under dir: writeAtomic's temp files,
+// left behind only by a crash between CreateTemp and Rename. Nothing reads
+// them, so a missing dir or a failed remove is not worth more than a log line.
+func (m *Manager) sweepTemp() {
+	matches, err := filepath.Glob(filepath.Join(m.dir, ".*.tmp"))
+	if err != nil {
+		return // only a malformed pattern, and ours is constant
+	}
+	for _, p := range matches {
+		if err := os.Remove(p); err != nil && !os.IsNotExist(err) {
+			log.Printf("asnsets: cannot remove stale temp file %s: %v", p, err)
+		}
 	}
 }
 
@@ -148,9 +178,26 @@ func (m *Manager) holders(ctx context.Context, asns []uint32) map[string]string 
 	h := make(map[string]string, len(asns))
 	for _, a := range asns {
 		name, _ := m.src.Holder(ctx, a)
-		h[strconv.FormatUint(uint64(a), 10)] = name
+		h[strconv.FormatUint(uint64(a), 10)] = sanitizeHolder(name)
 	}
 	return h
+}
+
+// sanitizeHolder makes a RIPEstat holder name safe to store and show: control
+// characters (newlines, NUL, escapes) dropped, surrounding space trimmed,
+// at most maxHolderRunes runes. PURE.
+func sanitizeHolder(s string) string {
+	s = strings.Map(func(r rune) rune {
+		if unicode.IsControl(r) {
+			return -1
+		}
+		return r
+	}, s)
+	s = strings.TrimSpace(s)
+	if rs := []rune(s); len(rs) > maxHolderRunes {
+		s = strings.TrimSpace(string(rs[:maxHolderRunes]))
+	}
+	return s
 }
 
 // Create fetches every AS, writes the prefix file and records the entry.
@@ -290,21 +337,39 @@ func (m *Manager) Prune(inConfig func(tag string) bool) {
 		}
 		if err := m.deleteLocked(e.Tag); err != nil {
 			log.Printf("asnsets: %s: prune: %v", e.Tag, err)
+			continue
 		}
+		log.Printf("asnsets: %s: pruned (no config references it)", e.Tag)
 	}
 }
 
-// RestoreMissing refetches every set whose prefix file is gone. If the fetch
-// fails it writes an EMPTY rule set instead: a missing `local` rule-set file is
-// FATAL at sing-box start, an empty one matches nothing until the next
-// successful refresh. Meant to run synchronously at boot, before amnezia-box
-// autostart, with a bounded context.
+// prefixFileUsable reports whether path holds something sing-box can load as a
+// source rule set: valid JSON with a "version". A file truncated by a crash or
+// damaged by hand is as FATAL at sing-box start as a missing one, so
+// RestoreMissing treats both the same.
+func prefixFileUsable(path string) bool {
+	raw, err := os.ReadFile(path)
+	if err != nil {
+		return false
+	}
+	var doc struct {
+		Version *int `json:"version"`
+	}
+	return json.Unmarshal(raw, &doc) == nil && doc.Version != nil
+}
+
+// RestoreMissing refetches every set whose prefix file is gone or unusable
+// (not JSON / no "version"). If the fetch fails it writes an EMPTY rule set
+// instead: a missing or broken `local` rule-set file is FATAL at sing-box
+// start, an empty one matches nothing until the next successful refresh.
+// Meant to run synchronously at boot, before amnezia-box autostart, with a
+// bounded context.
 func (m *Manager) RestoreMissing(ctx context.Context) {
 	m.mu.Lock()
 	defer m.mu.Unlock()
 	for _, e := range m.store.List() {
 		path := m.PathFor(e.Tag)
-		if _, err := os.Stat(path); !os.IsNotExist(err) {
+		if prefixFileUsable(path) {
 			continue
 		}
 		_, err := m.refreshLocked(ctx, e.Tag)
@@ -313,7 +378,7 @@ func (m *Manager) RestoreMissing(ctx context.Context) {
 		}
 		// refreshLocked may have written the file and only failed on store.Put;
 		// never clobber good prefixes with a placeholder.
-		if _, serr := os.Stat(path); serr == nil {
+		if prefixFileUsable(path) {
 			log.Printf("asnsets: %s: prefix file restored but entry could not be saved: %v", e.Tag, err)
 			continue
 		}
@@ -321,14 +386,26 @@ func (m *Manager) RestoreMissing(ctx context.Context) {
 			log.Printf("asnsets: %s: prefix file missing, refetch failed (%v) and placeholder could not be written: %v", e.Tag, err, werr)
 			continue
 		}
-		// UpdatedAt = 0 makes the set due on the very next tick instead of
-		// after a full interval of matching nothing.
+		// UpdatedAt = 0 makes the set due on the very next tick (and on the
+		// early retry, see RunLoop) instead of after a full interval of
+		// matching nothing; PrefixCount says what the file now holds.
 		if cur, ok := m.store.Get(e.Tag); ok {
-			cur.UpdatedAt = 0
+			cur.UpdatedAt, cur.PrefixCount = 0, 0
 			_ = m.store.Put(cur) // best effort, like LastError above
 		}
-		log.Printf("asnsets: %s: prefix file missing and refetch failed; empty placeholder written, retry on next tick: %v", e.Tag, err)
+		log.Printf("asnsets: %s: prefix file missing and refetch failed; empty placeholder written, retry in %s: %v", e.Tag, earlyRetryDelay, err)
 	}
+}
+
+// hasPlaceholder reports whether any set is a placeholder (UpdatedAt == 0:
+// never successfully fetched, its file matches nothing).
+func (m *Manager) hasPlaceholder() bool {
+	for _, e := range m.store.List() {
+		if e.UpdatedAt == 0 {
+			return true
+		}
+	}
+	return false
 }
 
 // RefreshDue refreshes every set older than its interval. Failures are logged
@@ -362,13 +439,25 @@ func (m *Manager) RefreshDue(ctx context.Context) {
 // RunLoop prunes and refreshes every interval until stop is closed. Each
 // tick's refresh is bounded by tickTimeout so a dead RIPEstat cannot hold
 // Manager.mu, and with it the API, indefinitely.
+//
+// If a placeholder exists at start (RestoreMissing ran offline), one extra
+// refresh runs after earlyRetryDelay so the set does not match nothing for a
+// whole interval; a nil channel never fires, so without one the loop is just
+// the ticker.
 func (m *Manager) RunLoop(interval time.Duration, inConfig func(string) bool, stop <-chan struct{}) {
 	t := time.NewTicker(interval)
 	defer t.Stop()
+	var early <-chan time.Time
+	if m.hasPlaceholder() {
+		early = time.After(earlyRetryDelay)
+	}
 	for {
 		select {
 		case <-stop:
 			return
+		case <-early:
+			early = nil
+			m.tick()
 		case <-t.C:
 			m.Prune(inConfig)
 			m.tick()
