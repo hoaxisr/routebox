@@ -30,6 +30,7 @@ import (
 	"routebox/backend/internal/awg"
 	"routebox/backend/internal/clients"
 	"routebox/backend/internal/config"
+	"routebox/backend/internal/consumers"
 	"routebox/backend/internal/embedded"
 	"routebox/backend/internal/geoip"
 	"routebox/backend/internal/mtproto"
@@ -431,9 +432,11 @@ func main() {
 	// panel-user quota counters (stored beside the users) are the other, and the
 	// quota must keep counting on an install with no history store.
 	stopUserSampler := make(chan struct{})
+	var v2client *v2stats.Client // nil when the dial failed; the consumers wiring below checks
 	if client, err := v2stats.Dial(v2rayAPIAddr); err != nil {
 		log.Printf("Warning: v2ray_api dial %s failed: %v", v2rayAPIAddr, err)
 	} else {
+		v2client = client
 		userSampler := traffic.NewUserSampler(trafficStore)
 		// Feed the same deltas into the panel users' cumulative quota counters.
 		// The 30s expiry ticker below recomputes the reject set from the current
@@ -622,6 +625,27 @@ func main() {
 	}
 	mtprotoMgr := mtproto.NewManager(mtprotoStore)
 	apiHandler.SetMtproto(mtprotoMgr)
+
+	// One row shape for every consumer of traffic (#109). The live sampler
+	// behind /api/consumers/live only runs while the monitor page polls it.
+	userSrc := &consumers.UserSource{Users: usersMgr, Store: trafficStore}
+	if v2client != nil {
+		userSrc.Stats = v2client // never assign a nil *Client to the interface
+	}
+	apiHandler.SetConsumers([]consumers.Source{
+		userSrc,
+		&consumers.AwgSource{Peers: awgMgr.ListPeers, Live: awgMgr.LiveCounters, Store: trafficStore},
+		&consumers.MtprotoSource{Clients: mtprotoStore.List, Events: mtprotoMgr.Events, Store: trafficStore},
+		&consumers.LanSource{
+			Enabled:   func() bool { return liveMode() != "vps" },
+			Clients:   clientsMgr.List,
+			AwgSubnet: func() string { return settingsMgr.Get().Awg.Subnet },
+			Fetch: func() ([]traffic.ConnectionSample, error) {
+				return traffic.FetchConnections(resolvedClashAddr, resolvedClashSecret)
+			},
+			Store: trafficStore,
+		},
+	})
 
 	mtprotoConfig := func() mtproto.Config {
 		s := settingsMgr.Get().Mtproto
@@ -867,7 +891,6 @@ func main() {
 				r.Delete("/{id}", apiHandler.DeleteUser)
 				r.Post("/{id}/bindings", apiHandler.AddBinding)
 				r.Get("/{id}/link", apiHandler.GetUserLinkByID)
-				r.Get("/{id}/traffic", apiHandler.GetUserTraffic)
 				r.Post("/{id}/traffic/reset", apiHandler.ResetUserTraffic)
 				r.Post("/{id}/token/rotate", apiHandler.RotateUserToken)
 				r.Delete("/{id}/token", apiHandler.RevokeUserToken)
@@ -882,8 +905,6 @@ func main() {
 				r.Post("/disable", apiHandler.DisableAWG)
 				r.Get("/peers", apiHandler.ListAWGPeers)
 				r.Post("/peers", apiHandler.CreateAWGPeer)
-				// Static segment, so chi matches it before /peers/{publicKey}/...
-				r.Get("/peers/traffic", apiHandler.GetAWGPeersTraffic)
 				r.Delete("/peers/{publicKey}", apiHandler.DeleteAWGPeer)
 				r.Get("/peers/{publicKey}/config", apiHandler.GetAWGPeerConfig)
 				r.Get("/peers/{publicKey}/vpn-link", apiHandler.GetAWGPeerVPNLink)
@@ -909,9 +930,6 @@ func main() {
 				r.Get("/logs", apiHandler.StreamMtprotoLogs)
 				r.Get("/clients", apiHandler.ListMtprotoClients)
 				r.Post("/clients", apiHandler.CreateMtprotoClient)
-				// Static segment, so chi matches it before /clients/{name} —
-				// "traffic" is a legal client name.
-				r.Get("/clients/traffic", apiHandler.GetMtprotoClientsTraffic)
 				r.Delete("/clients/{name}", apiHandler.DeleteMtprotoClient)
 				r.Patch("/clients/{name}", apiHandler.UpdateMtprotoClient)
 				r.Get("/clients/{name}/link", apiHandler.GetMtprotoClientLink)
@@ -940,6 +958,11 @@ func main() {
 			// Traffic history (SQLite-backed)
 			r.Get("/traffic/history", apiHandler.GetTrafficHistory)
 			r.Post("/traffic/reset", apiHandler.ResetTrafficHistory)
+
+			// Unified consumers monitor: one row shape for panel users, AWG
+			// peers, Telegram clients and LAN devices (#109).
+			r.Get("/consumers", apiHandler.ListConsumers)
+			r.Get("/consumers/live", apiHandler.LiveConsumers)
 
 			// DNS Servers CRUD
 			r.Route("/dns/servers", func(r chi.Router) {

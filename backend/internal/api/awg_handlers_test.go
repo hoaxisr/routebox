@@ -156,8 +156,6 @@ func newAWGTestHandlerRec(t *testing.T) (*Handler, http.Handler, *awgRecRunner) 
 		r.Post("/disable", h.DisableAWG)
 		r.Get("/peers", h.ListAWGPeers)
 		r.Post("/peers", h.CreateAWGPeer)
-		// Mirrors main.go: the static segment must win over {publicKey}.
-		r.Get("/peers/traffic", h.GetAWGPeersTraffic)
 		r.Delete("/peers/{publicKey}", h.DeleteAWGPeer)
 		r.Get("/peers/{publicKey}/config", h.GetAWGPeerConfig)
 		r.Get("/peers/{publicKey}/vpn-link", h.GetAWGPeerVPNLink)
@@ -414,7 +412,6 @@ func TestAWGRoutesRequireAuth(t *testing.T) {
 				r.Post("/disable", h.DisableAWG)
 				r.Get("/peers", h.ListAWGPeers)
 				r.Post("/peers", h.CreateAWGPeer)
-				r.Get("/peers/traffic", h.GetAWGPeersTraffic)
 				r.Delete("/peers/{publicKey}", h.DeleteAWGPeer)
 				r.Get("/backup", h.GetAWGBackup)
 				r.Post("/restore", h.RestoreAWGBackup)
@@ -429,7 +426,6 @@ func TestAWGRoutesRequireAuth(t *testing.T) {
 		{http.MethodPost, "/api/awg/disable"},
 		{http.MethodGet, "/api/awg/peers"},
 		{http.MethodPost, "/api/awg/peers"},
-		{http.MethodGet, "/api/awg/peers/traffic"},
 		{http.MethodDelete, "/api/awg/peers/" + knownPub},
 	} {
 		rec := httptest.NewRecorder()

@@ -6,6 +6,7 @@ import (
 	"routebox/backend/internal/awg"
 	"routebox/backend/internal/clients"
 	"routebox/backend/internal/config"
+	"routebox/backend/internal/consumers"
 	"routebox/backend/internal/geoip"
 	"routebox/backend/internal/mtproto"
 	"routebox/backend/internal/process"
@@ -39,6 +40,8 @@ type Handler struct {
 	awg             *awg.Manager
 	mtproto         *mtproto.Manager
 	sys             sysinfo.Sampler // host metrics for the dashboard; zero value reads /proc
+	consumers       []consumers.Source
+	live            *consumers.Live
 
 	// panelMode is a boot-time snapshot: a mode changed in the panel reaches the
 	// traffic sampler on its next tick but not the read filter in

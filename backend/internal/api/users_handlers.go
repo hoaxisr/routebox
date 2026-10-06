@@ -241,7 +241,7 @@ func (h *Handler) DeleteUser(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 	// #19: drop the deleted client's per-user Breakdown history, keyed by the same
-	// names GetUserTraffic sums over (Name + binding names). Best-effort — an orphaned
+	// names /api/consumers sums over (Name + binding names). Best-effort — an orphaned
 	// series must not fail the delete. ponytail: purged on delete-intent, not on Apply;
 	// a delete-then-discard loses the stats too, which is acceptable for a deleted client.
 	if h.traffic != nil {
