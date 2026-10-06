@@ -536,14 +536,26 @@ func main() {
 	}
 	// AWG peer history (#109): the sweep's deltas land in user_traffic under
 	// awg:<pubkey>, the same table and minute buckets as panel users.
+	//
+	// The observer runs while the sweep holds addMu, and every SQLite write can
+	// now wait up to busy_timeout (5 s) behind a reader. That wait must not be
+	// paid by whoever is queued on addMu (a peer add from the panel), so the
+	// upserts go to a goroutine with their own copy of the map. UpsertUser is
+	// additive and the bucket is fixed here, so order between ticks is moot.
 	if trafficStore != nil {
 		awgMgr.SetUsageObserver(func(d map[string]awg.PeerUsage) {
 			bucket := time.Now().Unix() / 60 * 60
+			moved := make(map[string]awg.PeerUsage, len(d))
 			for pk, u := range d {
-				if err := trafficStore.UpsertUser(bucket, awg.TrafficKey(pk), u.Up, u.Down); err != nil {
-					log.Printf("awg: peer history upsert: %v", err)
-				}
+				moved[pk] = u
 			}
+			go func() {
+				for pk, u := range moved {
+					if err := trafficStore.UpsertUser(bucket, awg.TrafficKey(pk), u.Up, u.Down); err != nil {
+						log.Printf("awg: peer history upsert: %v", err)
+					}
+				}
+			}()
 		})
 	}
 	// Resolve the AWG backend: explicit setting wins; otherwise default to singbox

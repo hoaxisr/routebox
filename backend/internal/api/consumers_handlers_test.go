@@ -68,3 +68,28 @@ func TestLiveConsumersShape(t *testing.T) {
 		t.Fatalf("status %d body %s", rec.Code, rec.Body)
 	}
 }
+
+// A handler whose sources were never wired answers with the empty shape and
+// stays unwired: a request goroutine must not initialise handler state.
+func TestLiveConsumersUnwiredIsEmptyAndDoesNotInit(t *testing.T) {
+	h := &Handler{}
+	rec := httptest.NewRecorder()
+	h.LiveConsumers(rec, httptest.NewRequest("GET", "/api/consumers/live", nil))
+	var body struct {
+		Data struct {
+			Ts          int64             `json:"ts"`
+			Rows        []json.RawMessage `json:"rows"`
+			Unavailable map[string]string `json:"unavailable"`
+		} `json:"data"`
+	}
+	if err := json.Unmarshal(rec.Body.Bytes(), &body); err != nil {
+		t.Fatal(err)
+	}
+	d := body.Data
+	if rec.Code != http.StatusOK || d.Ts != 0 || d.Rows == nil || len(d.Rows) != 0 || d.Unavailable == nil || len(d.Unavailable) != 0 {
+		t.Fatalf("status %d body %s", rec.Code, rec.Body)
+	}
+	if h.live != nil {
+		t.Fatal("LiveConsumers must not lazily initialise h.live")
+	}
+}

@@ -44,10 +44,13 @@ func (h *Handler) ListConsumers(w http.ResponseWriter, r *http.Request) {
 
 // LiveConsumers returns the current per-consumer rates and the last minute of
 // them. Each call keeps the sampler awake; it sleeps 15 s after the last one.
+// A handler with no sources wired answers the empty shape and stays as it is:
+// request goroutines read handler state, they do not initialise it.
 // PROTECTED.
 func (h *Handler) LiveConsumers(w http.ResponseWriter, r *http.Request) {
 	if h.live == nil {
-		h.SetConsumers(nil)
+		writeSuccess(w, consumers.LiveSnapshot{Rows: []consumers.LiveRow{}, Unavailable: map[string]string{}})
+		return
 	}
 	writeSuccess(w, h.live.Snapshot())
 }
