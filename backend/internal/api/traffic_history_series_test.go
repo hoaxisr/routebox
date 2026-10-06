@@ -61,6 +61,14 @@ func TestGetTrafficHistory_Series(t *testing.T) {
 	if string(data["step"]) != "60" {
 		t.Fatalf("step = %s, want 60", data["step"])
 	}
+	// The route graph's split rides along: download per final outbound (#110).
+	var leaves []traffic.LeafHistoryRow
+	if err := json.Unmarshal(data["leaves"], &leaves); err != nil {
+		t.Fatal(err)
+	}
+	if len(leaves) != 1 || leaves[0] != (traffic.LeafHistoryRow{BucketTs: bucket, Leaf: "direct", Download: 22}) {
+		t.Fatalf("leaves = %+v", leaves)
+	}
 	// The source filter narrows the series like it narrows the buckets.
 	if err := json.Unmarshal(get("?range=1h&series=1&source=10.0.0.2")["series"], &series); err != nil {
 		t.Fatal(err)

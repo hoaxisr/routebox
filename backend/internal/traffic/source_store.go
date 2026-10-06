@@ -97,3 +97,38 @@ func (s *Store) QuerySourceHistory(startTs, endTs int64, source string) ([]UserH
 	}
 	return out, rows.Err()
 }
+
+// LeafHistoryRow is the download of one final outbound in one series bucket.
+type LeafHistoryRow struct {
+	BucketTs int64  `json:"ts"`
+	Leaf     string `json:"leaf"`
+	Download int64  `json:"download"`
+}
+
+// QueryLeafHistory is QuerySourceHistory's whole-network series split by the
+// connection's final outbound — the first hop of the stored chain, since
+// sing-box lists it leaf first. The dashboard sorts leaves into direct and
+// proxied (#110); which tags are direct is config, not history, so it stays
+// out of here. Rows are ascending by bucket, then by leaf.
+func (s *Store) QueryLeafHistory(startTs, endTs int64) ([]LeafHistoryRow, error) {
+	step := HistoryStep(endTs - startTs)
+	rows, err := s.db.Query(`
+		SELECT MIN(bucket_ts), leaf, SUM(download) FROM (
+			SELECT bucket_ts, download, CASE WHEN instr(chain, ' → ') > 0
+				THEN substr(chain, 1, instr(chain, ' → ') - 1) ELSE chain END AS leaf
+			FROM traffic_minute WHERE bucket_ts >= ? AND bucket_ts <= ?
+		) GROUP BY bucket_ts / ?, leaf ORDER BY 1 ASC, 2 ASC`, startTs, endTs, step)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var out []LeafHistoryRow
+	for rows.Next() {
+		var r LeafHistoryRow
+		if err := rows.Scan(&r.BucketTs, &r.Leaf, &r.Download); err != nil {
+			return nil, err
+		}
+		out = append(out, r)
+	}
+	return out, rows.Err()
+}

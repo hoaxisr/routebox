@@ -212,3 +212,41 @@ func TestQuerySourceHistoryCoarsensLongRanges(t *testing.T) {
 		}
 	}
 }
+
+// The dashboard's route graph (#110) needs download per final outbound: the
+// first hop of the stored chain, which sing-box lists leaf first.
+func TestQueryLeafHistory(t *testing.T) {
+	s := openTestStore(t)
+	for _, r := range []struct {
+		ts    int64
+		src   string
+		chain string
+		down  int64
+	}{
+		{60, "10.0.0.2", "direct", 5},
+		{60, "10.0.0.3", "vless-nl → proxy", 7},
+		{60, "10.0.0.4", "vless-nl", 1},
+		{120, "10.0.0.2", "-", 3},
+	} {
+		if err := s.Upsert(r.ts, r.src, "a.example", r.chain, 0, r.down); err != nil {
+			t.Fatal(err)
+		}
+	}
+	got, err := s.QueryLeafHistory(60, 120)
+	if err != nil {
+		t.Fatalf("QueryLeafHistory: %v", err)
+	}
+	want := []LeafHistoryRow{
+		{BucketTs: 60, Leaf: "direct", Download: 5},
+		{BucketTs: 60, Leaf: "vless-nl", Download: 8},
+		{BucketTs: 120, Leaf: "-", Download: 3},
+	}
+	if len(got) != len(want) {
+		t.Fatalf("rows = %+v, want %+v", got, want)
+	}
+	for i := range want {
+		if got[i] != want[i] {
+			t.Fatalf("row %d = %+v, want %+v", i, got[i], want[i])
+		}
+	}
+}

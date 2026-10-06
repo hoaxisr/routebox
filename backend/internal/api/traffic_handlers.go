@@ -19,6 +19,9 @@ type trafficResponse struct {
 	// filters above — the dashboard graph for 1h/24h (#99).
 	Series []traffic.UserHistoryRow `json:"series,omitempty"`
 	Step   int64                    `json:"step,omitempty"`
+	// With ?series=1 and no source filter: the same series' download split by
+	// final outbound, for the dashboard's direct-vs-proxied graph (#110).
+	Leaves []traffic.LeafHistoryRow `json:"leaves,omitempty"`
 }
 
 type trafficBucket struct {
@@ -108,6 +111,12 @@ func (h *Handler) GetTrafficHistory(w http.ResponseWriter, r *http.Request) {
 		}
 		out.Series = series
 		out.Step = traffic.HistoryStep(dur)
+		if q.Get("source") == "" {
+			if out.Leaves, err = h.traffic.QueryLeafHistory(start, now); err != nil {
+				writeError(w, http.StatusInternalServerError, err.Error())
+				return
+			}
+		}
 	}
 	writeSuccess(w, out)
 }
