@@ -188,7 +188,10 @@
 				{@const a = amount(r)}
 				{@const why = live?.unavailable?.[r.kind]}
 				<div class="row" class:open={open[key]} id="c-{key}">
-					<button type="button" class="grid-row" aria-expanded={!!open[key]} onclick={() => (open[key] = !open[key])}>
+					<!-- mousedown preventDefault: a pointer click toggles the row without taking focus,
+					     so no focus ring stays behind whatever the browser's :focus-visible heuristic does;
+					     Tab still focuses it and Enter/Space still activate it. -->
+					<button type="button" class="grid-row" aria-expanded={!!open[key]} onmousedown={(e) => e.preventDefault()} onclick={() => (open[key] = !open[key])}>
 						<span class="name">
 							<span class="dot" class:idle={!isActive(r, l)} class:off={r.state !== 'active'}></span>
 							{r.name}
@@ -251,6 +254,8 @@
 	.wrap { max-width: 64rem; display: flex; flex-direction: column; gap: 0.75rem; }
 	.head { display: flex; align-items: center; gap: 0.75rem; flex-wrap: wrap; }
 	.head h1 { font-size: 1.5rem; font-weight: 700; margin: 0 auto 0 0; color: var(--ctp-text); }
+	/* Global .toggle-btn has flex: 1 (stretches in form rows); here every pill is content-sized, one line. */
+	.head .toggle-btn { flex: 0 0 auto; white-space: nowrap; }
 	.tabnum { font-variant-numeric: tabular-nums; }
 	.muted { color: var(--ctp-overlay1); }
 	.empty { background: var(--ctp-surface0); border-radius: 0.75rem; padding: 2rem; text-align: center; color: var(--ctp-overlay1); }
@@ -270,6 +275,9 @@
 	.row:last-child { border-bottom: 0; }
 	.row > .grid-row { cursor: pointer; font-size: 0.85rem; }
 	.row > .grid-row:hover { background: var(--ctp-surface0); }
+	/* Keyboard focus ring drawn inside the row: the card clips overflow, so the global
+	   outline-offset: 2px showed only as two lines above and below the row. */
+	.row > .grid-row:focus-visible { outline-offset: -2px; }
 	.name { display: flex; align-items: center; gap: 0.5rem; min-width: 0; color: var(--ctp-text); font-weight: 500; }
 	.dot { width: 7px; height: 7px; border-radius: 50%; background: var(--ctp-green); flex-shrink: 0; }
 	.dot.idle { background: var(--ctp-overlay0); }
