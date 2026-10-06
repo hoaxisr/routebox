@@ -20,6 +20,10 @@ import (
 // ordinary DELETE /rule-sets/{tag}; the entry and file are reaped by Prune
 // once no config mentions the tag any more.
 
+// asnMaxBody caps a create/update body: a tag and a handful of AS numbers
+// never need more; a larger one is refused (400) rather than read.
+const asnMaxBody = 64 << 10
+
 type asnSetRequest struct {
 	Tag         string   `json:"tag"`
 	ASNs        []string `json:"asns"`
@@ -77,7 +81,7 @@ func (h *Handler) CreateAsnSet(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	var req asnSetRequest
-	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+	if err := json.NewDecoder(http.MaxBytesReader(w, r.Body, asnMaxBody)).Decode(&req); err != nil {
 		writeError(w, http.StatusBadRequest, fmt.Sprintf("Invalid JSON: %v", err))
 		return
 	}
@@ -139,7 +143,7 @@ func (h *Handler) UpdateAsnSet(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	var req asnSetRequest
-	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+	if err := json.NewDecoder(http.MaxBytesReader(w, r.Body, asnMaxBody)).Decode(&req); err != nil {
 		writeError(w, http.StatusBadRequest, fmt.Sprintf("Invalid JSON: %v", err))
 		return
 	}

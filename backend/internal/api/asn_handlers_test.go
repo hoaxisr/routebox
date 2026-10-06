@@ -378,3 +378,23 @@ func TestRefreshAsnSetEmptyUnionIs502(t *testing.T) {
 		t.Fatalf("old prefixes must stay in service: %v %s", err, data)
 	}
 }
+
+// Minor 4: ASN request bodies are tiny (a tag and a few AS numbers); anything
+// past 64 KiB is refused with 400 instead of being read into memory.
+func TestAsnSetBodyTooLarge(t *testing.T) {
+	h, r, _ := newASNHandler(t)
+	big, _ := json.Marshal(map[string]any{"tag": "cf", "asns": []string{"13335"}, "pad": bytes.Repeat([]byte("x"), 70<<10)})
+	for _, c := range []struct{ method, path string }{
+		{"POST", "/api/route/rule-sets/asn"},
+		{"PUT", "/api/route/rule-sets/asn/cf"},
+	} {
+		rec := httptest.NewRecorder()
+		r.ServeHTTP(rec, httptest.NewRequest(c.method, c.path, bytes.NewReader(big)))
+		if rec.Code != http.StatusBadRequest {
+			t.Errorf("%s %s with a %d-byte body: status %d, want 400", c.method, c.path, len(big), rec.Code)
+		}
+	}
+	if n := len(h.asn.List()); n != 0 {
+		t.Fatalf("oversized create left %d sets", n)
+	}
+}
