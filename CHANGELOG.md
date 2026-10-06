@@ -9,8 +9,10 @@ All notable changes to RouteBox are documented here.
 - AWG peers now have traffic history, written from the same 30 s accounting as quotas. Verified live on the singbox backend only; the kernel backend uses the same code path but is not live-verified in this release (no kernel module on the test machine).
 - `traffic.db` is now opened in SQLite WAL mode: a hand copy must include `traffic.db-wal` and `traffic.db-shm` too (or stop RouteBox first), otherwise the last minutes of history are missing from the copy.
 - **Breaking:** removed `GET /api/users/{id}/traffic`, `GET /api/awg/peers/traffic`, `GET /api/mtproto/clients/traffic` (replaced by `/api/consumers`).
+- ASN rule sets (#103): `GET/POST /api/route/rule-sets/asn`, `PUT /api/route/rule-sets/asn/{tag}`, `POST /api/route/rule-sets/asn/{tag}/refresh`. Prefixes announced by the given AS numbers are fetched from RIPEstat into a local rule-set file (`<settings dir>/asn/<tag>.json`) that sing-box reloads on change; refreshed on a 6 h–7 d schedule without Apply. Metadata in `asn.toml`.
 
 ### Frontend
+- Rule Sets: new "ASN" type — enter AS numbers, see holder names, prefix count, last update and refresh errors; can also be created from a route rule's Advanced tab. ASN sets are not offered for DNS rules.
 - New Monitor → Consumers page in both modes: filter by kind, Live/1h/24h/7d/30d, current ↓/↑ per consumer, summary graph, row details with a link to settings.
 - Monitor → Traffic and Monitor → Per-User Traffic removed (old links redirect to Consumers).
 - AWG server page: current rate in the status card and per peer; Users and Clients pages link to Consumers instead of drawing their own charts.
