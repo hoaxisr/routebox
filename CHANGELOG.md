@@ -17,7 +17,7 @@ All notable changes to RouteBox are documented here.
 - New Monitor → Consumers page in both modes: filter by kind, Live/1h/24h/7d/30d, current ↓/↑ per consumer, summary graph, row details with a link to settings.
 - Monitor → Traffic and Monitor → Per-User Traffic removed (old links redirect to Consumers).
 - AWG server page: current rate in the status card and per peer; Users and Clients pages link to Consumers instead of drawing their own charts.
-- Dashboard (#110): a second graph beside the speed graph shows how download splits between direct outbounds and proxies/endpoints — the share at each moment, with a bar for the whole period above it; same 60 s / 1 h / 24 h switch and cursor. The clients/chains ring moved next to Top Connections.
+- Dashboard (#110): a second graph beside the speed graph shows how download splits between direct outbounds and proxies/endpoints — volume of each over the period, the share at each moment, and a bar with the period's share; same 60 s / 1 h / 24 h switch and cursor. The clients/chains ring moved next to Top Connections; both columns line up row by row.
 - Dashboard on a phone: download and upload sit in two fixed columns and the graph legends are shorter, so a longer number no longer re-wraps the card. Sizes and speeds switch to the next unit from 1000 (`0.98 MB/s`, not `1003.2 KB/s`) everywhere.
 - Fix: the SPA no longer hangs on the loading spinner after a hard reload while unapplied config changes exist (the unsaved-changes bar was rendered before translations had loaded).
 
