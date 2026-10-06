@@ -3,7 +3,7 @@
 	import { t } from 'svelte-i18n';
 	import { api } from '$lib/api/client';
 	import { notifications, unsavedChanges, configReadOnly } from '$lib/stores';
-	import type { DnsServer, DnsRule, DnsSettings, RuleSet, Outbound, Endpoint } from '$lib/types';
+	import type { DnsServer, DnsRule, DnsSettings, RuleSet, Outbound, Endpoint, AsnSet } from '$lib/types';
 	import DnsServerForm from '$lib/components/config/DnsServerForm.svelte';
 	import DnsRuleForm from '$lib/components/config/DnsRuleForm.svelte';
 	import HelpTooltip from '$lib/components/shared/HelpTooltip.svelte';
@@ -51,14 +51,16 @@
 
 	async function fetchData() {
 		try {
-			const [serversData, rulesData, settingsData, ruleSetsData, outboundsData, endpointsData] =
+			const [serversData, rulesData, settingsData, ruleSetsData, outboundsData, endpointsData, asnSetsData] =
 				await Promise.all([
 					api.listDnsServers(),
 					api.listDnsRules(),
 					api.getDnsSettings(),
 					api.listRuleSets(),
 					api.listOutbounds(),
-					api.listEndpoints()
+					api.listEndpoints(),
+					// Older backend without the ASN endpoint: nothing to hide.
+					api.listAsnSets().catch(() => [] as AsnSet[])
 				]);
 			dnsServers = serversData;
 			dnsRules = rulesData;
@@ -66,11 +68,7 @@
 			ruleSets = ruleSetsData;
 			outbounds = outboundsData;
 			endpoints = endpointsData;
-			try {
-				asnTags = new Set((await api.listAsnSets()).map((s) => s.tag));
-			} catch {
-				asnTags = new Set();
-			}
+			asnTags = new Set(asnSetsData.map((s) => s.tag));
 		} catch (e) {
 			notifications.error($t('errors.loadFailed'));
 		} finally {
