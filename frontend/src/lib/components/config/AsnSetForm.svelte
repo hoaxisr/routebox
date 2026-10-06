@@ -102,7 +102,7 @@
 					<span class="status-badge info inline-flex items-center gap-1 max-w-full">
 						<span class="whitespace-nowrap">{formatAsn(n)}</span>
 						{#if holders[String(n)]}<span class="text-[var(--ctp-overlay1)] truncate min-w-0">— {holders[String(n)]}</span>{/if}
-						<button type="button" class="ml-0.5 px-0.5 leading-none hover:text-[var(--ctp-red)]" aria-label="remove" onclick={() => remove(n)}>×</button>
+						<button type="button" class="ml-0.5 px-0.5 leading-none hover:text-[var(--ctp-red)]" aria-label={$t('asnSets.removeAsn')} onclick={() => remove(n)}>×</button>
 					</span>
 				{/each}
 			</div>

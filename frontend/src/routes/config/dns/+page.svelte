@@ -839,6 +839,7 @@
 					rule={editingRuleIndex !== null ? dnsRules[editingRuleIndex] : undefined}
 					{dnsServers}
 					ruleSets={dnsRuleSets}
+					allRuleSetTags={ruleSets.map(rs => rs.tag)}
 					outbounds={allOutbounds}
 					onSave={editingRuleIndex !== null ? handleUpdateRule : handleCreateRule}
 					onCancel={() => { showRuleForm = false; editingRuleIndex = null; }}

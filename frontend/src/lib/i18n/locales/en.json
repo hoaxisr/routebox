@@ -2169,7 +2169,7 @@
     "intervalD": "{n} d",
     "create": "Create",
     "save": "Save",
-    "prefixes": "{count} prefixes",
+    "prefixes": "{count, plural, one {# prefix} other {# prefixes}}",
     "updatedAgoM": "updated {n} min ago",
     "updatedAgoH": "updated {n} h ago",
     "updatedAgoD": "updated {n} d ago",
@@ -2178,6 +2178,7 @@
     "refreshed": "Prefixes refreshed",
     "refreshFailed": "Refresh failed",
     "lastErrorHint": "Last refresh failed — the previous list is still in use",
-    "created": "ASN set created — apply the config to start using it"
+    "created": "ASN set created — apply the config to start using it",
+    "removeAsn": "Remove AS number"
   }
 }

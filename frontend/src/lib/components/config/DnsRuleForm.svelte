@@ -9,13 +9,17 @@
 		rule?: DnsRule;
 		dnsServers: DnsServer[];
 		ruleSets: RuleSet[];
+		// Tags of EVERY rule set in the config, including those hidden from the
+		// picker (ASN sets, #103): a new tag must be unique across all of them,
+		// and the form should refuse a clash before the server does.
+		allRuleSetTags?: string[];
 		outbounds?: Outbound[];
 		onSave: (rule: DnsRule) => void;
 		onCancel: () => void;
 		onRuleSetCreated?: (ruleSet: RuleSet) => void;
 	}
 
-	let { rule, dnsServers, ruleSets, outbounds = [], onSave, onCancel, onRuleSetCreated }: Props = $props();
+	let { rule, dnsServers, ruleSets, allRuleSetTags, outbounds = [], onSave, onCancel, onRuleSetCreated }: Props = $props();
 
 	let showInlineRuleSetForm = $state(false);
 
@@ -494,7 +498,7 @@
 			</div>
 			<div class="p-4">
 				<RuleSetForm
-					existingTags={ruleSets.map(rs => rs.tag)}
+					existingTags={allRuleSetTags ?? ruleSets.map(rs => rs.tag)}
 					{outbounds}
 					onSave={async (newRuleSet) => {
 						try {
