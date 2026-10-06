@@ -1,4 +1,5 @@
 <script lang="ts">
+	import { splitPortRanges, invalidPortRanges } from '$lib/utils/portInputs';
 	import { t } from 'svelte-i18n';
 	import type { Inbound } from '$lib/types';
 
@@ -105,6 +106,9 @@
 			<textarea id="source-port-range" bind:value={sourcePortRange} rows={2} placeholder="50000:50099&#10;19200:19400"
 				class="w-full px-3 py-2 bg-[var(--ctp-surface0)] border border-[var(--ctp-surface2)] rounded-lg text-[var(--ctp-text)] placeholder-[var(--ctp-overlay0)] focus:outline-none focus:ring-2 focus:ring-[var(--ctp-primary)] font-mono text-sm"
 			></textarea>
+				{#if invalidPortRanges(splitPortRanges(sourcePortRange)).length}
+					<p class="mt-1 text-xs text-[var(--ctp-red)]">{$t('routes.badPortRange', { values: { list: invalidPortRanges(splitPortRanges(sourcePortRange)).join(', ') } })}</p>
+				{/if}
 		</div>
 	</div>
 

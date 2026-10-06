@@ -650,6 +650,7 @@
     "network": "Network",
     "port": "Port",
     "portRange": "Port Ranges",
+    "badPortRange": "Not a port range: {list}. Use start:end (or :end, start:), separated by lines or spaces.",
     "sourcePort": "Source Port",
     "sourcePortRange": "Source Port Ranges",
     "user": "User",

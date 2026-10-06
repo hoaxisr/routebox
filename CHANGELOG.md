@@ -19,6 +19,7 @@ All notable changes to RouteBox are documented here.
 - AWG server page: current rate in the status card and per peer; Users and Clients pages link to Consumers instead of drawing their own charts.
 - Dashboard (#110): a second graph beside the speed graph shows how download splits between direct outbounds and proxies/endpoints — volume of each over the period, the share at each moment, and a bar with the period's share; same 60 s / 1 h / 24 h switch and cursor. The clients/chains ring moved next to Top Connections; both columns line up row by row.
 - Dashboard on a phone: download and upload sit in two fixed columns and the graph legends are shorter, so a longer number no longer re-wraps the card. Sizes and speeds switch to the next unit from 1000 (`0.98 MB/s`, not `1003.2 KB/s`) everywhere.
+- Fix: port and port-range fields of a route rule accept entries separated by spaces too — `50000:50099 19200:19400` on one line used to reach sing-box as one bad range and fail Apply (#111). A malformed range is now flagged under the field. Open and save an affected rule once to repair it.
 - Fix: the SPA no longer hangs on the loading spinner after a hard reload while unapplied config changes exist (the unsaved-changes bar was rendered before translations had loaded).
 
 ## [0.37.1]
