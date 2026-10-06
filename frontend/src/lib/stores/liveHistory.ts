@@ -12,6 +12,9 @@ export const liveHistory = {
 	down: [] as number[],
 	up: [] as number[],
 	cpu: [] as number[],
+	// The route graph's live minute: download through direct vs a proxy (#110).
+	direct: [] as number[],
+	proxy: [] as number[],
 	// The graph's chosen period survives navigation like the samples do, and so
 	// does the breakdown shown beside it (#101).
 	period: '60s' as DashboardPeriod,

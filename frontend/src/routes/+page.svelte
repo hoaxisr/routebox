@@ -8,6 +8,7 @@
 	import PieChart from '$lib/components/monitor/PieChart.svelte';
 	import { splitUnit, areaPaths } from '$lib/utils/sparkline';
 	import { seriesRates } from '$lib/utils/trafficSeries';
+	import { directTags, leafRates, liveSplit } from '$lib/utils/routeSplit';
 	import { liveHistory, type DashboardPeriod, type DashboardDim } from '$lib/stores/liveHistory';
 	import { localSourceConnections } from '$lib/utils/clientIp';
 	import type { ProcessStatus, ClashConnection, SystemInfo, TrafficBucket } from '$lib/types';
@@ -36,6 +37,16 @@
 	let downHist = $state<number[]>(liveHistory.down);
 	let upHist = $state<number[]>(liveHistory.up);
 	let cpuHist = $state<number[]>(liveHistory.cpu);
+	// Route graph (#110): download through a direct outbound vs through a proxy
+	// or endpoint. Which tags are direct comes from the config, once per visit.
+	let directSet = $state(directTags(undefined));
+	let directHist = $state<number[]>(liveHistory.direct);
+	let proxyHist = $state<number[]>(liveHistory.proxy);
+	// Each connection's download counter at the previous tick. The first tick
+	// after opening only fills it: every open connection would otherwise count
+	// its whole lifetime as one second.
+	const splitSeen = new Map<string, number>();
+	let splitPrimed = false;
 	let system = $state<SystemInfo | null>(null);
 
 	// The traffic graph shows either the live minute above or, for 1h/24h, the
@@ -49,10 +60,13 @@
 	// The same response already carries the per (source, domain, chain) buckets
 	// the breakdown beside the graph needs, so 1h/24h costs no extra request.
 	let histBuckets = $state<TrafficBucket[]>([]);
+	let histDirect = $state<number[]>([]);
+	let histProxy = $state<number[]>([]);
 	async function loadHistory(p: '1h' | '24h') {
 		try {
 			const r = await api.getTrafficHistory(p, { series: true });
 			({ down: histDown, up: histUp } = seriesRates(r.series, r.start_ts, r.end_ts, r.step ?? 60, 240));
+			({ direct: histDirect, proxy: histProxy } = leafRates(r.leaves, directSet, r.start_ts, r.end_ts, r.step ?? 60, 240));
 			histBuckets = r.buckets ?? [];
 			histError = '';
 		} catch (e) {
@@ -62,6 +76,8 @@
 			histDown = [];
 			histUp = [];
 			histBuckets = [];
+			histDirect = [];
+			histProxy = [];
 		}
 	}
 	$effect(() => {
@@ -75,11 +91,30 @@
 	});
 	let graphDown = $derived(period === '60s' ? downHist : histDown);
 	let graphUp = $derived(period === '60s' ? upHist : histUp);
+	const GW = 600;
+	const GH = 88;
+	let splitDirect = $derived(period === '60s' ? directHist : histDirect);
+	let splitProxy = $derived(period === '60s' ? proxyHist : histProxy);
+	let splitMax = $derived(Math.max(1024, ...splitDirect, ...splitProxy) * 1.15);
+	const SW = 300;
+	let directPaths = $derived(areaPaths(splitDirect, splitMax, SW, GH));
+	let proxyPaths = $derived(areaPaths(splitProxy, splitMax, SW, GH));
+	let shareNote = $derived.by(() => {
+		const d = splitDirect.reduce((a, b) => a + b, 0);
+		const total = d + splitProxy.reduce((a, b) => a + b, 0);
+		if (!total) return '';
+		const pct = Math.round((d / total) * 100);
+		return `${$t('dashboard.routeDirect')} ${pct} % · ${$t('dashboard.routeProxy')} ${100 - pct} %`;
+	});
+	// Live like the speed above the left graph, whatever the period: the last
+	// history bucket is a minute still being filled.
+	let splitNow = $derived({
+		direct: splitUnit(formatSpeed(directHist.at(-1) ?? 0)),
+		proxy: splitUnit(formatSpeed(proxyHist.at(-1) ?? 0))
+	});
 	// One scale for both series, so a 6 KB/s upload does not look as tall as a
 	// 60 KB/s download drawn over it.
 	let graphMax = $derived(Math.max(1024, ...graphDown, ...graphUp) * 1.15);
-	const GW = 600;
-	const GH = 88;
 	let downPaths = $derived(areaPaths(graphDown, graphMax, GW, GH));
 	let upPaths = $derived(areaPaths(graphUp, graphMax, GW, GH));
 	let periodLabel = $derived(
@@ -123,7 +158,17 @@
 	// Hovering the graph reads out the moment under the cursor. The readout sits
 	// in the fixed slot at the end of the legend row, where the period label
 	// otherwise is: numbers that chase the cursor cover the very line being read.
-	let hoverIdx = $state<number | null>(null);
+	// Both graphs read the same moment: the cursor is kept as a fraction of the
+	// width, and each graph turns it into its own point.
+	let hoverRatio = $state<number | null>(null);
+	const idxAt = (n: number) => (hoverRatio == null || n < 2 ? null : Math.round(hoverRatio * (n - 1)));
+	let hoverIdx = $derived(idxAt(graphDown.length));
+	let splitHoverIdx = $derived(idxAt(splitDirect.length));
+	let splitHover = $derived(
+		splitHoverIdx == null
+			? null
+			: { direct: formatSpeed(splitDirect[splitHoverIdx] ?? 0), proxy: formatSpeed(splitProxy[splitHoverIdx] ?? 0) }
+	);
 	let hoverPoint = $derived.by(() => {
 		const i = hoverIdx;
 		if (i == null || i >= graphDown.length) return null;
@@ -145,9 +190,8 @@
 	});
 	function trackHover(ev: PointerEvent) {
 		const box = (ev.currentTarget as HTMLElement).getBoundingClientRect();
-		if (!box.width || graphDown.length < 2) return;
-		const ratio = Math.min(Math.max((ev.clientX - box.left) / box.width, 0), 1);
-		hoverIdx = Math.round(ratio * (graphDown.length - 1));
+		if (!box.width) return;
+		hoverRatio = Math.min(Math.max((ev.clientX - box.left) / box.width, 0), 1);
 	}
 
 	const avg = (xs: number[]) => (xs.length ? xs.reduce((a, b) => a + b, 0) / xs.length : 0);
@@ -300,6 +344,14 @@
 		if (connectionsStream) return;
 		connectionsStream = createConnectionsStream((data) => {
 			uploadTotal = data.uploadTotal ?? 0;
+			// Every connection, unfiltered: the route graph splits the same total
+			// the speed graph beside it draws.
+			const split = liveSplit(data.connections ?? [], directSet, splitSeen);
+			if (splitPrimed) {
+				directHist = liveHistory.direct = [...directHist.slice(-(TRAFFIC_POINTS - 1)), split.direct];
+				proxyHist = liveHistory.proxy = [...proxyHist.slice(-(TRAFFIC_POINTS - 1)), split.proxy];
+			}
+			splitPrimed = true;
 			downloadTotal = data.downloadTotal ?? 0;
 			// Get top 5 by download
 			// Router mode only: on a panel every client's source IS a public
@@ -317,14 +369,28 @@
 		if (connectionsStream) {
 			connectionsStream.close();
 			connectionsStream = null;
+			splitSeen.clear();
+			splitPrimed = false;
 			connectionCount = 0;
 			topConnections = [];
 			liveConns = [];
 		}
 	}
 
+	async function loadDirectTags() {
+		try {
+			const cfg = await api.getConfig();
+			directSet = directTags(cfg.outbounds);
+			// History fetched before the config arrived was split with the default.
+			if (period !== '60s') loadHistory(period);
+		} catch {
+			// Without the config only sing-box's implicit "direct" counts as direct.
+		}
+	}
+
 	onMount(() => {
 		fetchStatus();
+		loadDirectTags();
 		// Poll status every 5 seconds
 		const interval = setInterval(fetchStatus, 5000);
 		// Host metrics every 2 s while the page is open — CPU is a delta
@@ -363,8 +429,9 @@
 <!-- Desktop: the page is exactly the viewport minus the header and the main
      padding, and only the Top Connections list gives way (scrolls inside).
      Everything else keeps its height; the card cannot go below its fixed
-     content plus two connection rows (min-h), so on a too-short screen the
-     page scrolls instead of the graph overlapping the links below. -->
+     content plus the bottom row, which never shrinks under the ring card
+     beside the list (#110), so on a too-short screen the page scrolls instead
+     of the graph overlapping the links below. -->
 <div class="space-y-4 lg:h-[calc(100dvh-6.5rem)] lg:flex lg:flex-col">
 	<!-- System Requirements Warning -->
 	{#if status.system_checks && !status.system_checks.all_checks_passed}
@@ -461,7 +528,7 @@
 	<PendingChanges />
 
 	<!-- Status Card -->
-	<div class="bg-[var(--ctp-surface0)] rounded-xl p-6 lg:flex lg:flex-col {topConnections.length > 0 ? 'lg:min-h-[39.5rem]' : ''}">
+	<div class="bg-[var(--ctp-surface0)] rounded-xl p-6 lg:flex lg:flex-col">
 		<div class="flex items-center justify-between mb-4">
 			<h2 class="text-lg font-semibold text-[var(--ctp-subtext1)]">amnezia-box</h2>
 			{#if loading}
@@ -558,17 +625,19 @@
 			     number; totals and disk in the footer. -->
 			<div class="bg-[var(--ctp-surface1)] rounded-lg mb-4">
 				<div class="flex flex-col sm:flex-row">
-					<div class="flex-1 min-w-0 px-4 sm:px-5 pt-4 sm:pt-5">
+					<div class="sm:flex-[2] min-w-0 px-4 sm:px-5 pt-4 sm:pt-5">
 						<div class="flex flex-wrap items-start justify-between gap-x-4 gap-y-2">
-							<div class="flex flex-wrap items-baseline gap-x-5 gap-y-1 min-w-0">
-								<div class="flex items-baseline gap-x-1.5 min-w-0">
-									<span class="text-xs uppercase tracking-wide text-[var(--ctp-overlay1)]">↓ {$t('dashboard.download')}</span>
-									<span class="text-[28px] leading-none font-semibold tabular-nums text-[var(--ctp-text)]">{rate.down.value}</span>
+							<!-- Two fixed columns on a phone: with a free-flowing row a longer
+							     number pushed Upload onto its own line and the graph jumped (#110). -->
+							<div class="grid grid-cols-2 w-full sm:w-auto sm:flex sm:items-baseline gap-x-5 gap-y-1 min-w-0">
+								<div class="min-w-0 whitespace-nowrap sm:flex sm:items-baseline sm:gap-x-1.5">
+									<span class="block mb-1 sm:mb-0 text-xs uppercase tracking-wide text-[var(--ctp-overlay1)]">↓ {$t('dashboard.download')}</span>
+									<span class="text-[22px] sm:text-[28px] leading-none font-semibold tabular-nums text-[var(--ctp-text)]">{rate.down.value}</span>
 									<span class="text-xs text-[var(--ctp-overlay1)]">{rate.down.unit}</span>
 								</div>
-								<div class="flex items-baseline gap-x-1.5 min-w-0">
-									<span class="text-xs uppercase tracking-wide text-[var(--ctp-overlay1)]">↑ {$t('dashboard.upload')}</span>
-									<span class="text-[28px] leading-none font-semibold tabular-nums text-[var(--ctp-text)]">{rate.up.value}</span>
+								<div class="min-w-0 whitespace-nowrap sm:flex sm:items-baseline sm:gap-x-1.5">
+									<span class="block mb-1 sm:mb-0 text-xs uppercase tracking-wide text-[var(--ctp-overlay1)]">↑ {$t('dashboard.upload')}</span>
+									<span class="text-[22px] sm:text-[28px] leading-none font-semibold tabular-nums text-[var(--ctp-text)]">{rate.up.value}</span>
 									<span class="text-xs text-[var(--ctp-overlay1)]">{rate.up.unit}</span>
 								</div>
 							</div>
@@ -579,7 +648,7 @@
 							</div>
 						</div>
 					<!-- svelte-ignore a11y_no_static_element_interactions -->
-					<div class="mt-3" onpointerdown={trackHover} onpointermove={trackHover} onpointerleave={() => (hoverIdx = null)}>
+					<div class="mt-3" onpointerdown={trackHover} onpointermove={trackHover} onpointerleave={() => (hoverRatio = null)}>
 						<svg viewBox="0 0 {GW} {GH}" preserveAspectRatio="none" class="block w-full h-24 sm:h-28" aria-hidden="true">
 							{#if downPaths.line || upPaths.line}
 								<path d={downPaths.area} fill="var(--ctp-primary)" opacity="0.14" />
@@ -599,8 +668,8 @@
 						</svg>
 					</div>
 						<div class="flex flex-wrap gap-x-5 gap-y-1 mt-2 pb-4 sm:pb-5 text-xs text-[var(--ctp-overlay1)]">
-							<span class="flex items-center gap-1.5"><span class="w-2 h-2 rounded-full inline-block" style="background: var(--ctp-primary)"></span>{$t('dashboard.download')} · {trafficNote(graphDown)}</span>
-							<span class="flex items-center gap-1.5"><span class="w-2 h-2 rounded-full inline-block" style="background: var(--ctp-upload)"></span>{$t('dashboard.upload')} · {trafficNote(graphUp)}</span>
+							<span class="flex items-center gap-1.5"><span class="w-2 h-2 rounded-full inline-block" style="background: var(--ctp-primary)"></span><span class="hidden sm:inline">{$t('dashboard.download')} · </span>{trafficNote(graphDown)}</span>
+							<span class="flex items-center gap-1.5"><span class="w-2 h-2 rounded-full inline-block" style="background: var(--ctp-upload)"></span><span class="hidden sm:inline">{$t('dashboard.upload')} · </span>{trafficNote(graphUp)}</span>
 							<!-- One slot, always the same width: a pill that appears on hover
 							     would otherwise re-wrap this row and push the card down under
 							     the very cursor reading it. -->
@@ -617,26 +686,46 @@
 							</span>
 						</div>
 					</div>
-					<!-- Wide enough for a chain name next to the ring; the ring itself is
-					     centred in what is left under the switch (#108). -->
-					<div class="sm:w-80 shrink-0 border-t sm:border-t-0 sm:border-l border-[var(--ctp-surface2)] px-4 sm:px-5 py-4 sm:py-5 flex flex-col gap-3">
-						<div class="flex flex-wrap items-baseline gap-x-2 gap-y-1">
-							<div class="flex gap-1" role="group" aria-label={$t('dashboard.breakdown')}>
-								<button type="button" class="toggle-btn !py-1 !px-2.5 text-xs {sideDim === 'source' ? 'selected' : ''}" onclick={() => (sideDim = 'source')}>{$t('dashboard.byClients')}</button>
-								<button type="button" class="toggle-btn !py-1 !px-2.5 text-xs {sideDim === 'chain' ? 'selected' : ''}" onclick={() => (sideDim = 'chain')}>{$t('dashboard.byChains')}</button>
+					<!-- Route graph (#110): the download above, split into what left
+					     through a direct outbound and what went through a proxy or an
+					     endpoint. Same period and same cursor as the speed graph. -->
+					<div class="sm:flex-1 min-w-0 border-t sm:border-t-0 sm:border-l border-[var(--ctp-surface2)] px-4 sm:px-5 pt-4 sm:pt-5">
+						<div class="text-xs uppercase tracking-wide text-[var(--ctp-overlay1)]">↓ {$t('dashboard.byRoute')}</div>
+						<div class="grid grid-cols-2 gap-x-4 mt-1.5">
+							<div class="min-w-0 whitespace-nowrap">
+								<span class="text-lg leading-none font-semibold tabular-nums text-[var(--ctp-text)]">{splitNow.direct.value}</span>
+								<span class="text-xs text-[var(--ctp-overlay1)]">{splitNow.direct.unit}</span>
+								<div class="flex items-center gap-1.5 text-xs text-[var(--ctp-overlay1)]"><span class="w-2 h-2 rounded-full inline-block" style="background: var(--ctp-upload)"></span>{$t('dashboard.routeDirect')}</div>
 							</div>
-							<!-- The minute view sums the counters of connections that are open
-							     NOW, each since it opened — the Breakdown page calls that Live.
-							     Only 1h/24h are the graph's own window. -->
-							<span class="text-[10px] uppercase tracking-wide text-[var(--ctp-overlay0)]">{period === '60s' ? $t('dashboard.ringLive') : periodLabel}</span>
+							<div class="min-w-0 whitespace-nowrap">
+								<span class="text-lg leading-none font-semibold tabular-nums text-[var(--ctp-text)]">{splitNow.proxy.value}</span>
+								<span class="text-xs text-[var(--ctp-overlay1)]">{splitNow.proxy.unit}</span>
+								<div class="flex items-center gap-1.5 text-xs text-[var(--ctp-overlay1)]"><span class="w-2 h-2 rounded-full inline-block" style="background: var(--ctp-primary)"></span>{$t('dashboard.routeProxy')}</div>
+							</div>
 						</div>
-						<!-- Fixed box: clients and chains rarely have the same number of rows,
-						     and without it switching moved everything below (#101). -->
-						<div class="min-h-[196px] sm:min-h-[112px] flex-1 flex items-center">
-							{#if sideItems.length > 0}
-								<PieChart items={sideItems} centerNumber={sideItems.length} topN={4} size={112} />
+						<!-- svelte-ignore a11y_no_static_element_interactions -->
+						<div class="mt-3" onpointerdown={trackHover} onpointermove={trackHover} onpointerleave={() => (hoverRatio = null)}>
+							<svg viewBox="0 0 {SW} {GH}" preserveAspectRatio="none" class="block w-full h-24 sm:h-28" aria-hidden="true">
+								{#if directPaths.line || proxyPaths.line}
+									<path d={proxyPaths.area} fill="var(--ctp-primary)" opacity="0.14" />
+									<path d={directPaths.area} fill="var(--ctp-upload)" opacity="0.14" />
+									<path d={proxyPaths.line} fill="none" stroke="var(--ctp-primary)" stroke-width="1.5" stroke-linejoin="round" vector-effect="non-scaling-stroke" />
+									<path d={directPaths.line} fill="none" stroke="var(--ctp-upload)" stroke-width="1.5" stroke-linejoin="round" vector-effect="non-scaling-stroke" />
+								{:else}
+									<line x1="0" y1={GH - 0.5} x2={SW} y2={GH - 0.5} stroke="var(--ctp-surface2)" stroke-width="1" vector-effect="non-scaling-stroke" />
+								{/if}
+								{#if splitHoverIdx != null}
+									{@const x = (splitHoverIdx / (splitDirect.length - 1)) * SW}
+									<line x1={x} y1="0" x2={x} y2={GH} stroke="var(--ctp-overlay0)" stroke-opacity="0.45" stroke-width="1" stroke-dasharray="3 3" vector-effect="non-scaling-stroke" />
+								{/if}
+							</svg>
+						</div>
+						<div class="flex min-h-[22px] items-center gap-x-4 mt-2 pb-4 sm:pb-5 text-xs text-[var(--ctp-overlay1)] tabular-nums whitespace-nowrap overflow-hidden">
+							{#if splitHover}
+								<span class="text-[var(--ctp-upload)]">↓ {splitHover.direct}</span>
+								<span class="text-[var(--ctp-primary)]">↓ {splitHover.proxy}</span>
 							{:else}
-								<div class="text-xs text-[var(--ctp-overlay0)]">{$t('dashboard.noTrafficYet')}</div>
+								<span class="truncate">{shareNote}</span>
 							{/if}
 						</div>
 					</div>
@@ -667,9 +756,14 @@
 				</div>
 			</div>
 
-			<!-- Top Connections Preview -->
+			<!-- Top Connections with the breakdown ring beside it: the ring gave
+			     its place next to the speed graph to the route graph (#110) and
+			     keeps the third column here. -->
+			<!-- Desktop: the row takes what the card has left and the list scrolls
+			     in it, but never shrinks under the ring card (9.75rem). -->
+			<div class="grid grid-cols-1 sm:grid-cols-3 gap-4 lg:flex-1 lg:min-h-[9.75rem] lg:grid-rows-[minmax(0,1fr)]">
 			{#if topConnections.length > 0}
-				<div class="lg:min-h-0 lg:flex lg:flex-col">
+				<div class="sm:col-span-2 min-w-0 lg:min-h-0 lg:flex lg:flex-col">
 					<div class="flex items-center justify-between mb-2 shrink-0">
 						<h3 class="text-sm font-medium text-[var(--ctp-subtext1)]">Top Connections</h3>
 						<a href="/monitor/connections" class="text-sm text-[var(--ctp-primary)] hover:underline">View all</a>
@@ -703,6 +797,28 @@
 					</div>
 				</div>
 			{/if}
+			<div class="{topConnections.length > 0 ? '' : 'sm:col-span-3'} bg-[var(--ctp-surface1)] rounded-lg px-4 sm:px-5 py-3 flex flex-col gap-2 self-start">
+				<div class="flex flex-wrap items-baseline gap-x-2 gap-y-1">
+					<div class="flex gap-1" role="group" aria-label={$t('dashboard.breakdown')}>
+						<button type="button" class="toggle-btn !py-1 !px-2.5 text-xs whitespace-nowrap {sideDim === 'source' ? 'selected' : ''}" onclick={() => (sideDim = 'source')}>{$t('dashboard.byClients')}</button>
+						<button type="button" class="toggle-btn !py-1 !px-2.5 text-xs whitespace-nowrap {sideDim === 'chain' ? 'selected' : ''}" onclick={() => (sideDim = 'chain')}>{$t('dashboard.byChains')}</button>
+					</div>
+					<!-- The minute view sums the counters of connections that are open
+					     NOW, each since it opened — the Breakdown page calls that Live.
+					     Only 1h/24h are the graph's own window. -->
+					<span class="text-[10px] uppercase tracking-wide text-[var(--ctp-overlay0)]">{period === '60s' ? $t('dashboard.ringLive') : periodLabel}</span>
+				</div>
+				<!-- Fixed box: clients and chains rarely have the same number of rows,
+				     and without it switching moved everything below (#101). -->
+				<div class="min-h-[180px] sm:min-h-[96px] flex items-center">
+					{#if sideItems.length > 0}
+						<PieChart items={sideItems} centerNumber={sideItems.length} topN={4} size={96} />
+					{:else}
+						<div class="text-xs text-[var(--ctp-overlay0)]">{$t('dashboard.noTrafficYet')}</div>
+					{/if}
+				</div>
+			</div>
+			</div>
 		{:else}
 			<div class="flex gap-3 flex-wrap">
 				<button

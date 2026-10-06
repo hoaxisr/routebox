@@ -235,7 +235,10 @@
     "byChains": "Цепочки",
     "breakdown": "Разбивка",
     "noTrafficYet": "Пока нет трафика",
-    "noHistory": "истории нет: адрес Clash API не задан"
+    "noHistory": "истории нет: адрес Clash API не задан",
+    "byRoute": "Download по маршруту",
+    "routeDirect": "direct",
+    "routeProxy": "через прокси"
   },
   "configMismatch": {
     "title": "Пути конфига разошлись",

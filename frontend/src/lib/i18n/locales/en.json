@@ -235,7 +235,10 @@
     "byChains": "Chains",
     "breakdown": "Breakdown",
     "noTrafficYet": "No traffic yet",
-    "noHistory": "no history: Clash API address is not set"
+    "noHistory": "no history: Clash API address is not set",
+    "byRoute": "Download by route",
+    "routeDirect": "direct",
+    "routeProxy": "via proxy"
   },
   "configMismatch": {
     "title": "Config path mismatch",

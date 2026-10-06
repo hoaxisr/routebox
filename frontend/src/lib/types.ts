@@ -911,6 +911,14 @@ export interface TrafficHistoryResponse {
 	// bucket width in seconds. Absent entirely when the window has no traffic.
 	series?: TrafficSeriesPoint[];
 	step?: number;
+	// With series=1: the series' download per final outbound (#110).
+	leaves?: LeafHistoryPoint[];
+}
+
+export interface LeafHistoryPoint {
+	ts: number;
+	leaf: string; // final outbound tag, "-" for a connection without a chain
+	download: number;
 }
 
 export type TrafficRange = '1h' | '3h' | '24h' | 'week' | 'month';

@@ -10,12 +10,15 @@ All notable changes to RouteBox are documented here.
 - `traffic.db` is now opened in SQLite WAL mode: a hand copy must include `traffic.db-wal` and `traffic.db-shm` too (or stop RouteBox first), otherwise the last minutes of history are missing from the copy.
 - **Breaking:** removed `GET /api/users/{id}/traffic`, `GET /api/awg/peers/traffic`, `GET /api/mtproto/clients/traffic` (replaced by `/api/consumers`).
 - ASN rule sets (#103): `GET/POST /api/route/rule-sets/asn`, `PUT /api/route/rule-sets/asn/{tag}`, `POST /api/route/rule-sets/asn/{tag}/refresh`. Prefixes announced by the given AS numbers are fetched from RIPEstat into a local rule-set file (`<settings dir>/asn/<tag>.json`) that sing-box reloads on change; refreshed on a 6 h–7 d schedule without Apply. Metadata in `asn.toml`.
+- `GET /api/traffic/history?series=1` also returns `leaves`: the series' download per final outbound, for the dashboard's route graph (#110).
 
 ### Frontend
 - Rule Sets: new "ASN" type — enter AS numbers, see holder names, prefix count, last update and refresh errors; can also be created from a route rule's Advanced tab. ASN sets are not offered for DNS rules.
 - New Monitor → Consumers page in both modes: filter by kind, Live/1h/24h/7d/30d, current ↓/↑ per consumer, summary graph, row details with a link to settings.
 - Monitor → Traffic and Monitor → Per-User Traffic removed (old links redirect to Consumers).
 - AWG server page: current rate in the status card and per peer; Users and Clients pages link to Consumers instead of drawing their own charts.
+- Dashboard (#110): a second graph beside the speed graph — download through a direct outbound vs through a proxy or endpoint, same 60 s / 1 h / 24 h switch and cursor. The clients/chains ring moved next to Top Connections.
+- Dashboard on a phone: download and upload sit in two fixed columns and the graph legends are shorter, so a longer number no longer re-wraps the card. Sizes and speeds switch to the next unit from 1000 (`0.98 MB/s`, not `1003.2 KB/s`) everywhere.
 - Fix: the SPA no longer hangs on the loading spinner after a hard reload while unapplied config changes exist (the unsaved-changes bar was rendered before translations had loaded).
 
 ## [0.37.1]
