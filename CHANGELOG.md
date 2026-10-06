@@ -2,25 +2,65 @@
 
 All notable changes to RouteBox are documented here.
 
-## Unreleased
+## [0.38.0]
 
-### Backend
-- New `GET /api/consumers?range=` and `GET /api/consumers/live`: every traffic consumer (panel users, AWG peers, Telegram clients, LAN devices) in one shape, with period totals, history and live rates (#109).
-- AWG peers now have traffic history, written from the same 30 s accounting as quotas. Verified live on the singbox backend only; the kernel backend uses the same code path but is not live-verified in this release (no kernel module on the test machine).
-- `traffic.db` is now opened in SQLite WAL mode: a hand copy must include `traffic.db-wal` and `traffic.db-shm` too (or stop RouteBox first), otherwise the last minutes of history are missing from the copy.
-- **Breaking:** removed `GET /api/users/{id}/traffic`, `GET /api/awg/peers/traffic`, `GET /api/mtproto/clients/traffic` (replaced by `/api/consumers`).
-- ASN rule sets (#103): `GET/POST /api/route/rule-sets/asn`, `PUT /api/route/rule-sets/asn/{tag}`, `POST /api/route/rule-sets/asn/{tag}/refresh`. Prefixes announced by the given AS numbers are fetched from RIPEstat into a local rule-set file (`<settings dir>/asn/<tag>.json`) that sing-box reloads on change; refreshed on a 6 h–7 d schedule without Apply. Metadata in `asn.toml`.
-- `GET /api/traffic/history?series=1` also returns `leaves`: the series' download per final outbound, for the dashboard's route graph (#110).
+### Features
 
-### Frontend
-- Rule Sets: new "ASN" type — enter AS numbers, see holder names, prefix count, last update and refresh errors; can also be created from a route rule's Advanced tab. ASN sets are not offered for DNS rules.
-- New Monitor → Consumers page in both modes: filter by kind, Live/1h/24h/7d/30d, current ↓/↑ per consumer, summary graph, row details with a link to settings.
-- Monitor → Traffic and Monitor → Per-User Traffic removed (old links redirect to Consumers).
-- AWG server page: current rate in the status card and per peer; Users and Clients pages link to Consumers instead of drawing their own charts.
-- Dashboard (#110): a second graph beside the speed graph shows how download splits between direct outbounds and proxies/endpoints — volume of each over the period, the share at each moment, and a bar with the period's share; same 60 s / 1 h / 24 h switch and cursor. The clients/chains ring moved next to Top Connections; both columns line up row by row.
-- Dashboard on a phone: download and upload sit in two fixed columns and the graph legends are shorter, so a longer number no longer re-wraps the card. Sizes and speeds switch to the next unit from 1000 (`0.98 MB/s`, not `1003.2 KB/s`) everywhere.
-- Fix: port and port-range fields of a route rule accept entries separated by spaces too — `50000:50099 19200:19400` on one line used to reach sing-box as one bad range and fail Apply (#111). A malformed range is now flagged under the field. Open and save an affected rule once to repair it.
-- Fix: the SPA no longer hangs on the loading spinner after a hard reload while unapplied config changes exist (the unsaved-changes bar was rendered before translations had loaded).
+- **Мониторинг → Потребители (#109).** Одна страница вместо «Трафика» и
+  «Трафика по пользователям»: пользователи панели, AWG-пиры, клиенты
+  Telegram (MTProto) и устройства LAN в одном списке. Фильтр по виду,
+  периоды Live / 1 ч / 24 ч / 7 д / 30 д, текущие ↓/↑ у каждой строки,
+  общий график и раскрытие строки со ссылкой на настройки. Работает в обоих
+  режимах. Старые адреса перенаправляют сюда. У AWG-пиров появилась история
+  трафика (из того же 30-секундного учёта, что и квоты), на странице
+  AWG-сервера — текущая скорость сервера и каждого пира. Kernel-бэкенд AWG
+  в этом релизе живьём не проверен: путь кода общий с sing-box-бэкендом,
+  проверенным на стенде.
+
+- **Наборы правил по ASN (#103).** В Rule Sets новый тип «ASN»: вводите
+  номера автономных систем (`13335` или `AS13335`), RouteBox забирает
+  анонсируемые ими префиксы из RIPEstat и кладёт в локальный rule set, на
+  который можно направить outbound как на любой другой набор. Видны
+  владельцы AS, число префиксов, время обновления и ошибка последнего
+  обновления. Набор обновляется сам раз в 6 ч / 12 ч / 24 ч / 7 д, и
+  sing-box подхватывает новый список без Apply и без перезапуска. Создать
+  набор можно и из вкладки Advanced правила. Для DNS-правил ASN-наборы не
+  предлагаются.
+
+- **Главная: куда уходит трафик (#110).** Справа от графика скорости —
+  график распределения download между direct и прокси/endpoint-ами: объём
+  каждой стороны за период, доля в каждый момент и полоса с долей за весь
+  период. Переключатель 60 с / 1 ч / 24 ч и курсор общие с графиком
+  скорости. Кольцо «клиенты / цепочки» переехало к Top Connections.
+
+### Changes
+
+- **Главная на телефоне не прыгает (#110).** Download и Upload стоят в двух
+  колонках фиксированной ширины, подписи над числами, легенды короче —
+  длинное значение больше не переносит строку. Колонки на десктопе
+  выровнены по строкам.
+- **Размеры и скорости переходят на следующую единицу с 1000:** `1.0 MB/s`
+  вместо `1003.2 KB/s` — во всём интерфейсе.
+- **`traffic.db` в режиме WAL.** Параллельные записи истории больше не
+  теряются. Если копируете базу руками, берите вместе с ней
+  `traffic.db-wal` и `traffic.db-shm` (или остановите RouteBox).
+- **API, несовместимо:** удалены `GET /api/users/{id}/traffic`,
+  `GET /api/awg/peers/traffic`, `GET /api/mtproto/clients/traffic` — их
+  заменяют `GET /api/consumers` и `GET /api/consumers/live`. Новые
+  эндпоинты ASN: `GET/POST /api/route/rule-sets/asn`,
+  `PUT /api/route/rule-sets/asn/{tag}`,
+  `POST /api/route/rule-sets/asn/{tag}/refresh`.
+  `GET /api/traffic/history?series=1` дополнительно отдаёт `leaves`.
+
+### Fixes
+
+- **Несколько диапазонов портов в правиле (#111).** `50000:50099
+  19200:19400` в одной строке уходило в sing-box одним «диапазоном», и Apply
+  падал с `bad port range`. Поля портов и диапазонов теперь делят ввод и по
+  пробелам, а неверный диапазон подсвечивается под полем. Уже сохранённое
+  такое правило достаточно открыть и сохранить.
+- **Панель больше не зависает на спиннере** после перезагрузки страницы,
+  когда есть неприменённые изменения конфига.
 
 ## [0.37.1]
 
