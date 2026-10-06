@@ -16,6 +16,7 @@ All notable changes to RouteBox are documented here.
 - New Monitor → Consumers page in both modes: filter by kind, Live/1h/24h/7d/30d, current ↓/↑ per consumer, summary graph, row details with a link to settings.
 - Monitor → Traffic and Monitor → Per-User Traffic removed (old links redirect to Consumers).
 - AWG server page: current rate in the status card and per peer; Users and Clients pages link to Consumers instead of drawing their own charts.
+- Fix: the SPA no longer hangs on the loading spinner after a hard reload while unapplied config changes exist (the unsaved-changes bar was rendered before translations had loaded).
 
 ## [0.37.1]
 
