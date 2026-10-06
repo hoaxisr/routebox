@@ -478,7 +478,7 @@
 {/if}
 
 <!-- Unsaved changes bar -->
-<UnsavedChangesBar />
+{#if !$i18nLoading}<UnsavedChangesBar />{/if}
 
 <!-- Toast notifications (always visible, positioned above unsaved bar) -->
 {#if $notifications.length > 0}
