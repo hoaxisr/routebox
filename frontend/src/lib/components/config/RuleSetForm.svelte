@@ -113,8 +113,10 @@
 	<AsnSetForm {existingTags} {asnSet} onSaved={(s) => onSaveAsn?.(s)} {onCancel} />
 {:else}
 <div class="space-y-6">
-	<!-- Three-way type row, above everything: ASN replaces the whole classic form (#103) -->
-	{#if onSaveAsn}
+	<!-- Three-way type row, above everything: ASN replaces the whole classic form (#103).
+	     Only when creating: an existing remote/inline set cannot turn into an ASN set
+	     (AsnSetForm would create a second set under a tag the host treats as an edit). -->
+	{#if onSaveAsn && !isEditing}
 		<div>
 			<label class="block text-sm font-medium text-[var(--ctp-subtext1)] mb-2">{$t('common.type')}</label>
 			<div class="flex gap-2">
@@ -174,8 +176,8 @@
 			{/if}
 		</div>
 
-		<!-- Type (two-way, when the host cannot take ASN sets) -->
-		{#if !onSaveAsn}
+		<!-- Type (two-way: host cannot take ASN sets, or an existing remote/inline set is being edited) -->
+		{#if !onSaveAsn || isEditing}
 		<div class="mb-4">
 			<label class="block text-sm font-medium text-[var(--ctp-subtext1)] mb-2">{$t('common.type')}</label>
 			<div class="flex gap-2">

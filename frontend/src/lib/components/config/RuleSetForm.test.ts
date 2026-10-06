@@ -48,3 +48,29 @@ describe('RuleSetForm: http_client', () => {
 		expect((container.querySelector('#downloadDetour') as HTMLSelectElement).disabled).toBe(true);
 	});
 });
+
+// ASN sets (#103): the third type is offered only while creating. Editing a
+// remote/inline set must not show it — AsnSetForm would create a second set
+// under a tag the page then treats as an edit.
+describe('RuleSetForm: ASN type', () => {
+	const typeButtons = (container: HTMLElement) =>
+		[...container.querySelectorAll('button.toggle-btn')].map((b) => b.textContent?.trim());
+
+	it('creating with onSaveAsn offers Remote / Inline / ASN', () => {
+		const { container } = render(RuleSetForm, { props: { existingTags: [], outbounds, onSave: () => {}, onSaveAsn: () => {}, onCancel: () => {} } });
+		expect(typeButtons(container)).toEqual(expect.arrayContaining(['Remote', 'Inline', 'ASN']));
+	});
+
+	it('editing a remote set with onSaveAsn does not show the ASN type', () => {
+		const { container } = render(RuleSetForm, { props: { existingTags: [], outbounds, ruleSet: remote({}), onSave: () => {}, onSaveAsn: () => {}, onCancel: () => {} } });
+		const buttons = typeButtons(container);
+		expect(buttons).not.toContain('ASN');
+		expect(buttons).toEqual(expect.arrayContaining(['Remote', 'Inline']));
+		expect(container.querySelector('#url')).not.toBeNull();
+	});
+
+	it('without onSaveAsn the ASN type is never offered', () => {
+		const { container } = render(RuleSetForm, { props: { existingTags: [], outbounds, onSave: () => {}, onCancel: () => {} } });
+		expect(typeButtons(container)).not.toContain('ASN');
+	});
+});

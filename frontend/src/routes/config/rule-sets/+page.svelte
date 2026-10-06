@@ -90,8 +90,13 @@
 
 	// AsnSetForm has already talked to the backend; only the draft list and
 	// toasts are ours. Create adds a config entry (Apply needed), edit does not.
+	// Create-vs-edit is decided by what the page already shows for that tag,
+	// not by which modal was open: only a tag that is an ASN set AND a row in
+	// the config list was edited. A set the backend knows but the config lost
+	// (draft discarded by a restart) comes back through POST and is a create here.
 	async function handleSaveAsn(s: AsnSet) {
-		if (editingRuleSet) {
+		const wasAsnRow = asnByTag.has(s.tag) && ruleSets.some((rs) => rs.tag === s.tag);
+		if (wasAsnRow) {
 			notifications.success($t('common.saved'));
 		} else {
 			ruleSets = [...ruleSets, { tag: s.tag, type: 'local', format: 'source', path: s.path }];
@@ -290,7 +295,7 @@
 							<span aria-hidden="true">·</span>
 							<span>{asnAge(asn)}</span>
 							{#if asn.last_error}
-								<span class="status-badge error max-w-full truncate" title={`${$t('asnSets.lastErrorHint')}: ${asn.last_error}`}>{asn.last_error}</span>
+								<span class="status-badge error inline-block max-w-full break-words" title={`${$t('asnSets.lastErrorHint')}: ${asn.last_error}`}>{asn.last_error}</span>
 							{/if}
 						</div>
 					{:else if ruleSet.url}
