@@ -163,3 +163,20 @@ func TestUserSourceCountersMissingNamesCountAsZero(t *testing.T) {
 		t.Fatalf("counters = %v err=%v", c, err)
 	}
 }
+
+// Panel users only exist in vps mode: a disabled source has no rows and
+// nothing to count, and it never touches the stats client.
+func TestUserSourceDisabledHasNothing(t *testing.T) {
+	mgr := users.NewManager("")
+	_ = mgr.Put(&users.PanelUser{ID: "u1", Name: "ivan", Enabled: true, Bindings: []users.Binding{{Name: "ivan", Protocol: "vless"}}})
+	src := &UserSource{Users: mgr, Enabled: func() bool { return false },
+		Stats: failingStats{err: errors.New("must not be called")}}
+	rows, err := src.List(0, 120)
+	if rows != nil || err != nil {
+		t.Fatalf("rows=%v err=%v", rows, err)
+	}
+	c, err := src.Counters(context.Background())
+	if c != nil || err != nil {
+		t.Fatalf("counters=%v err=%v", c, err)
+	}
+}

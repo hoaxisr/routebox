@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"net/netip"
 	"os"
 	"path/filepath"
 	"strings"
@@ -622,4 +623,32 @@ func TestListPeersKernel_FailedShowIsNotZero(t *testing.T) {
 			t.Errorf("StatsReason = %q, want %q", p.StatsReason, PeerStatsReasonUnreachable)
 		}
 	})
+}
+
+// PeerPrefixes is what the LAN consumer source excludes: every prefix a peer
+// address can come from. Without the broker that is the v4 subnet alone.
+func TestPeerPrefixesV4Only(t *testing.T) {
+	m := newTestManager(t, newFakeRunner())
+	got := m.PeerPrefixes()
+	if len(got) != 1 || got[0].String() != "10.10.0.0/24" {
+		t.Fatalf("prefixes = %v, want [10.10.0.0/24]", got)
+	}
+}
+
+// With a ULA prefix assigned, peers also get a v6 address derived from it, so
+// it is part of the answer — whether or not v6 is active right now: the sweep
+// flips v6Active on every probe, and a peer's v6 traffic from an earlier
+// minute is still a peer's, not a LAN device's.
+func TestPeerPrefixesIncludesULA(t *testing.T) {
+	m := newTestManager(t, newFakeRunner())
+	m.mu.Lock()
+	m.ulaPrefix = netip.MustParsePrefix("fd12:3456:789a::/64")
+	m.mu.Unlock()
+	got := m.PeerPrefixes()
+	if len(got) != 2 || got[0].String() != "10.10.0.0/24" || got[1].String() != "fd12:3456:789a::/64" {
+		t.Fatalf("prefixes = %v, want [10.10.0.0/24 fd12:3456:789a::/64]", got)
+	}
+	if !got[1].Contains(netip.MustParseAddr("fd12:3456:789a::a0a:2")) {
+		t.Fatalf("ULA prefix must contain the mapped peer address")
+	}
 }

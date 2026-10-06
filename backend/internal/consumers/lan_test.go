@@ -2,6 +2,7 @@ package consumers
 
 import (
 	"context"
+	"net/netip"
 	"testing"
 
 	"routebox/backend/internal/clients"
@@ -14,8 +15,10 @@ func lanSource(conns *[]traffic.ConnectionSample) *LanSource {
 		Clients: func() []clients.Entry {
 			return []clients.Entry{{IP: "192.168.1.5", Name: "TV"}, {IP: "10.10.0.2"}, {IP: "8.8.8.8"}}
 		},
-		AwgSubnet: func() string { return "10.10.0.0/24" },
-		Fetch:     func() ([]traffic.ConnectionSample, error) { return *conns, nil },
+		AwgPrefixes: func() []netip.Prefix {
+			return []netip.Prefix{netip.MustParsePrefix("10.10.0.0/24"), netip.MustParsePrefix("fd12:3456:789a::/64")}
+		},
+		Fetch: func() ([]traffic.ConnectionSample, error) { return *conns, nil },
 	}
 }
 
@@ -79,6 +82,34 @@ func TestLanSourceExcludesMappedAwgAddress(t *testing.T) {
 	c, _ := src.Counters(context.Background())
 	if len(c) != 0 {
 		t.Fatalf("counters = %v, want none", c)
+	}
+}
+
+// With the IPv6 broker on, a peer also carries an address from the server's
+// ULA /64. IsLocalClientIP accepts any unicast v6, so without the prefix the
+// peer's v6 traffic would show twice: in its awg row and as a lan:<fd..> row.
+func TestLanSourceExcludesUlaPeerAddress(t *testing.T) {
+	store := openStore(t)
+	_ = store.Upsert(60, "fd12:3456:789a::a0a:2", "example.com", "direct", 7, 70)
+	conns := []traffic.ConnectionSample{
+		{ID: "1", Source: "fd12:3456:789a::a0a:2", Upload: 5, Download: 6},
+		{ID: "2", Source: "fd00:dead:beef::5", Upload: 1, Download: 2}, // some other ULA: a LAN device
+	}
+	src := lanSource(&conns)
+	src.Store = store
+	src.Clients = func() []clients.Entry {
+		return []clients.Entry{{IP: "fd12:3456:789a::a0a:2", Name: "peer-v6"}, {IP: "fd00:dead:beef::5", Name: "nas"}}
+	}
+	rows, err := src.List(0, 120)
+	if err != nil || len(rows) != 1 || rows[0].ID != "fd00:dead:beef::5" {
+		t.Fatalf("rows=%+v err=%v", rows, err)
+	}
+	c, err := src.Counters(context.Background())
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, ok := c["fd12:3456:789a::a0a:2"]; ok || c["fd00:dead:beef::5"] != (Counter{Up: 1, Down: 2}) {
+		t.Fatalf("counters = %v", c)
 	}
 }
 

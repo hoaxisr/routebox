@@ -26,11 +26,18 @@ var errNoUserStats = errors.New("v2ray_api is not connected")
 // UserSource is the panel users: one row per registry user, its traffic summed
 // over every name it is accounted under (PanelUser.TrafficNames).
 type UserSource struct {
-	Users *users.Manager
-	Store *traffic.Store
-	Stats UserStats // nil when v2ray_api could not be dialled
-	Now   func() int64
+	// Enabled is false outside vps mode: panel users (and their Manage link)
+	// only exist there. nil means enabled — unlike LanSource, whose nil is
+	// off, this source was wired before the gate existed and its callers
+	// (tests included) read "no gate" as "always on".
+	Enabled func() bool
+	Users   *users.Manager
+	Store   *traffic.Store
+	Stats   UserStats // nil when v2ray_api could not be dialled
+	Now     func() int64
 }
+
+func (s *UserSource) enabled() bool { return s.Enabled == nil || s.Enabled() }
 
 func (s *UserSource) Kind() string { return "user" }
 
@@ -44,7 +51,7 @@ func (s *UserSource) now() int64 {
 // List returns one row per panel user. Manager.List is already sorted by name
 // then ID, so the page order is stable without sorting here.
 func (s *UserSource) List(start, end int64) ([]Row, error) {
-	if s.Users == nil {
+	if !s.enabled() || s.Users == nil {
 		return nil, nil
 	}
 	now := s.now()
@@ -64,11 +71,11 @@ func (s *UserSource) List(start, end int64) ([]Row, error) {
 	return out, nil
 }
 
-// Counters reads the cumulative v2ray_api stats and folds them per user. No
-// users means nothing to count (nil, nil); users without a reachable
-// v2ray_api is an unavailable source, which is an error.
+// Counters reads the cumulative v2ray_api stats and folds them per user. A
+// disabled source or no users means nothing to count (nil, nil); users
+// without a reachable v2ray_api is an unavailable source, which is an error.
 func (s *UserSource) Counters(ctx context.Context) (map[string]Counter, error) {
-	if s.Users == nil {
+	if !s.enabled() || s.Users == nil {
 		return nil, nil
 	}
 	list := s.Users.List()

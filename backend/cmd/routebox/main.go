@@ -628,18 +628,23 @@ func main() {
 
 	// One row shape for every consumer of traffic (#109). The live sampler
 	// behind /api/consumers/live only runs while the monitor page polls it.
-	userSrc := &consumers.UserSource{Users: usersMgr, Store: trafficStore}
+	// Panel users and the Telegram proxy are vps-mode features (their Manage
+	// links lead to panel-only pages); LAN devices are the router's. Mode is
+	// read per call, like everywhere else, so a switch in the panel takes
+	// effect without a restart.
+	isVps := func() bool { return liveMode() == "vps" }
+	userSrc := &consumers.UserSource{Enabled: isVps, Users: usersMgr, Store: trafficStore}
 	if v2client != nil {
 		userSrc.Stats = v2client // never assign a nil *Client to the interface
 	}
 	apiHandler.SetConsumers([]consumers.Source{
 		userSrc,
 		&consumers.AwgSource{Peers: awgMgr.ListPeers, Live: awgMgr.LiveCounters, Store: trafficStore},
-		&consumers.MtprotoSource{Clients: mtprotoStore.List, Events: mtprotoMgr.Events, Store: trafficStore},
+		&consumers.MtprotoSource{Enabled: isVps, Clients: mtprotoStore.List, Events: mtprotoMgr.Events, Store: trafficStore},
 		&consumers.LanSource{
-			Enabled:   func() bool { return liveMode() != "vps" },
-			Clients:   clientsMgr.List,
-			AwgSubnet: func() string { return settingsMgr.Get().Awg.Subnet },
+			Enabled:     func() bool { return !isVps() },
+			Clients:     clientsMgr.List,
+			AwgPrefixes: awgMgr.PeerPrefixes,
 			Fetch: func() ([]traffic.ConnectionSample, error) {
 				return traffic.FetchConnections(resolvedClashAddr, resolvedClashSecret)
 			},

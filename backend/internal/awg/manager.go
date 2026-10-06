@@ -1260,6 +1260,28 @@ func (m *Manager) SetUsageObserver(fn func(map[string]PeerUsage)) {
 	m.mu.Unlock()
 }
 
+// PeerPrefixes returns every prefix a peer address can come from: the v4
+// subnet peers are allocated in, plus the IPv6-broker ULA /64 once one has
+// been assigned. The consumers' LAN source excludes these so a peer's tunnel
+// traffic is counted once, as the peer.
+//
+// The ULA is included whenever it is valid, not only while v6Active is true:
+// v6Active follows the egress probe and the 30 s sweep flips it, but the
+// addresses derived from the prefix only ever belong to peers (it is a random
+// /64 this server generated), and a peer's v6 minute recorded while v6 was up
+// stays a peer's after it goes down. A stale exclusion costs nothing; a
+// flapping one would make the same bytes appear and vanish as a LAN device.
+func (m *Manager) PeerPrefixes() []netip.Prefix {
+	m.mu.Lock()
+	subnet, ula := m.subnet, m.ulaPrefix
+	m.mu.Unlock()
+	out := util.ParsePrefixes(subnet)
+	if ula.IsValid() {
+		out = append(out, ula.Masked())
+	}
+	return out
+}
+
 // LiveCounters returns each peer's cumulative bytes since the interface (kernel)
 // or endpoint (singbox) came up, client view. A server that is not enabled has
 // nothing to count: (nil, nil). Unlike the sweep it does not log — its caller

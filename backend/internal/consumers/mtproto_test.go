@@ -95,3 +95,22 @@ func TestMtprotoSourceListDoesNotMutateCallerSlice(t *testing.T) {
 		t.Fatalf("caller's slice was reordered: %+v", orig)
 	}
 }
+
+// The Telegram proxy is a panel-only feature: a disabled source has no rows
+// and nothing to count.
+func TestMtprotoSourceDisabledHasNothing(t *testing.T) {
+	es := mtproto.NewEventStream([]string{"mama"})
+	src := &MtprotoSource{
+		Enabled: func() bool { return false },
+		Clients: func() []mtproto.Client { return []mtproto.Client{{Name: "mama", Enabled: true}} },
+		Events:  func() *mtproto.EventStream { return es },
+	}
+	rows, err := src.List(0, 120)
+	if rows != nil || err != nil {
+		t.Fatalf("rows=%v err=%v", rows, err)
+	}
+	c, err := src.Counters(context.Background())
+	if c != nil || err != nil {
+		t.Fatalf("counters=%v err=%v", c, err)
+	}
+}

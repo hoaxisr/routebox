@@ -13,6 +13,9 @@ import (
 // MtprotoSource is the Telegram proxy's clients. History is the flusher's
 // mtproto:<name> rows; live counters are the relay's own (Cumulative).
 type MtprotoSource struct {
+	// Enabled is false outside vps mode, where the Telegram proxy and its
+	// settings page do not exist. nil means enabled (see UserSource.Enabled).
+	Enabled func() bool
 	Clients func() []mtproto.Client
 	Events  func() *mtproto.EventStream // nil until the proxy first starts
 	Store   *traffic.Store
@@ -20,6 +23,8 @@ type MtprotoSource struct {
 }
 
 func (s *MtprotoSource) Kind() string { return "mtproto" }
+
+func (s *MtprotoSource) enabled() bool { return s.Enabled == nil || s.Enabled() }
 
 func (s *MtprotoSource) now() int64 {
 	if s.Now != nil {
@@ -31,7 +36,7 @@ func (s *MtprotoSource) now() int64 {
 // List returns one row per client, sorted by name. The roster is copied
 // before sorting so the caller's slice is left as it was.
 func (s *MtprotoSource) List(start, end int64) ([]Row, error) {
-	if s.Clients == nil {
+	if !s.enabled() || s.Clients == nil {
 		return nil, nil
 	}
 	now := s.now()
@@ -50,10 +55,10 @@ func (s *MtprotoSource) List(start, end int64) ([]Row, error) {
 	return out, nil
 }
 
-// Counters is the relay's cumulative per-client bytes. A proxy that never
-// started has nothing to count: nil, nil rather than an error.
+// Counters is the relay's cumulative per-client bytes. A disabled source or a
+// proxy that never started has nothing to count: nil, nil rather than an error.
 func (s *MtprotoSource) Counters(ctx context.Context) (map[string]Counter, error) {
-	if s.Events == nil {
+	if !s.enabled() || s.Events == nil {
 		return nil, nil
 	}
 	es := s.Events()

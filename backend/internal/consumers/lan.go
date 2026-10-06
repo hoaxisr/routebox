@@ -15,11 +15,11 @@ import (
 // that never goes down when a connection closes. Router mode only — in VPS mode
 // a connection's source is a remote user, already counted as a panel user.
 type LanSource struct {
-	Enabled   func() bool            // false in vps mode
-	Clients   func() []clients.Entry // the named/seen device list
-	AwgSubnet func() string          // settings Awg.Subnet; its addresses are peers, not LAN devices
-	Fetch     func() ([]traffic.ConnectionSample, error)
-	Store     *traffic.Store
+	Enabled     func() bool            // false in vps mode
+	Clients     func() []clients.Entry // the named/seen device list
+	AwgPrefixes func() []netip.Prefix  // awg.Manager.PeerPrefixes: addresses there are peers, not LAN devices
+	Fetch       func() ([]traffic.ConnectionSample, error)
+	Store       *traffic.Store
 
 	mu    sync.Mutex
 	last  map[string]traffic.ConnectionSample // conn id → sample at the previous read
@@ -28,11 +28,11 @@ type LanSource struct {
 
 func (s *LanSource) Kind() string { return "lan" }
 
-// isLan: a local client address outside the AWG subnet. On the singbox AWG
-// backend a peer's tunnel IP shows up in traffic_minute too; it is counted as
-// the peer, not a second time here. The address is canonicalised before the
-// subnet test because Prefix.Contains refuses a 4-in-6 form that
-// IsLocalClientIP accepts.
+// isLan: a local client address outside every AWG peer prefix (the v4 subnet
+// and, with the IPv6 broker, the ULA /64). On the singbox AWG backend a peer's
+// tunnel IP shows up in traffic_minute too; it is counted as the peer, not a
+// second time here. The address is canonicalised before the prefix test
+// because Prefix.Contains refuses a 4-in-6 form that IsLocalClientIP accepts.
 func (s *LanSource) isLan(ip string) bool {
 	if !util.IsLocalClientIP(ip) {
 		return false
@@ -41,8 +41,8 @@ func (s *LanSource) isLan(ip string) bool {
 	if err != nil {
 		return false
 	}
-	if s.AwgSubnet != nil {
-		for _, p := range util.ParsePrefixes(s.AwgSubnet()) {
+	if s.AwgPrefixes != nil {
+		for _, p := range s.AwgPrefixes() {
 			if p.Contains(a) {
 				return false
 			}
