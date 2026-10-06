@@ -914,6 +914,55 @@ export interface TrafficHistoryResponse {
 
 export type TrafficRange = '1h' | '3h' | '24h' | 'week' | 'month';
 
+// Unified consumers monitor (/api/consumers, /api/consumers/live).
+export type ConsumerKind = 'user' | 'awg' | 'mtproto' | 'lan';
+
+export interface Consumer {
+	kind: ConsumerKind;
+	id: string;
+	name: string;
+	tags?: string[];
+	state: 'active' | 'suspended' | 'disabled';
+	state_reason?: string;
+	online?: boolean;
+	upload: number;
+	download: number;
+	history: TrafficSeriesPoint[];
+	address?: string;
+	last_handshake?: number;
+	quota_bytes?: number;
+	used?: number;
+	expires_at?: number;
+}
+
+export interface ConsumersResponse {
+	range: string;
+	start_ts: number;
+	end_ts: number;
+	step: number;
+	rows: Consumer[];
+}
+
+export interface ConsumerTrendPoint {
+	ts: number;
+	down_bps: number;
+	up_bps: number;
+}
+
+export interface ConsumerLiveRow {
+	kind: ConsumerKind;
+	id: string;
+	down_bps: number;
+	up_bps: number;
+	trend: ConsumerTrendPoint[];
+}
+
+export interface ConsumersLive {
+	ts: number;
+	rows: ConsumerLiveRow[];
+	unavailable: Partial<Record<ConsumerKind, string>>;
+}
+
 // Rule set source file (JSON format for sing-box compilation)
 export interface RuleSetSource {
 	version: number;

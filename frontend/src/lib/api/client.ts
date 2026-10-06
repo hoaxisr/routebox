@@ -1,5 +1,5 @@
 import type {
-	SystemInfo, ApiResponse, ProcessStatus, SingboxConfig, Endpoint, Outbound, Inbound, RuleSet, RuleSetUsage, RouteRule, RouteSettings, DnsServer, DnsRule, DnsSettings, LogSettings, ExperimentalSettings, ConnectionsResponse, ProxiesResponse, ClashProxy, TestRouteResponse, ConnectTestResponse, SettingsResponse, RouteBoxSettings, SingBoxVersion, DomainSetInfo, RuleSetSource, ClientEntry, TrafficHistoryResponse, TrafficRange, UpdatesStatus, UpdateProgress, UpdateTargetName, Subscription, SubscriptionInput, PanelUser, UserTrafficResponse, AwgStatus, AwgPeer, AwgPeerTraffic, MtprotoState, MtprotoStatus, MtprotoSettings, MtprotoClient, MtprotoConnection, MtprotoLink, MtprotoClientTraffic, DestNaive, SpeedTestResult } from '$lib/types';
+	SystemInfo, ApiResponse, ProcessStatus, SingboxConfig, Endpoint, Outbound, Inbound, RuleSet, RuleSetUsage, RouteRule, RouteSettings, DnsServer, DnsRule, DnsSettings, LogSettings, ExperimentalSettings, ConnectionsResponse, ProxiesResponse, ClashProxy, TestRouteResponse, ConnectTestResponse, SettingsResponse, RouteBoxSettings, SingBoxVersion, DomainSetInfo, RuleSetSource, ClientEntry, TrafficHistoryResponse, TrafficRange, UpdatesStatus, UpdateProgress, UpdateTargetName, Subscription, SubscriptionInput, PanelUser, UserTrafficResponse, AwgStatus, AwgPeer, AwgPeerTraffic, MtprotoState, MtprotoStatus, MtprotoSettings, MtprotoClient, MtprotoConnection, MtprotoLink, MtprotoClientTraffic, DestNaive, SpeedTestResult, ConsumersResponse, ConsumersLive } from '$lib/types';
 import { canonicalizeConnections } from '$lib/utils/clientIp';
 
 const API_BASE = '/api';
@@ -267,6 +267,11 @@ export const api = {
 		request<{ uuid: string }>('/generate/uuid', { method: 'POST' }),
 	generatePassword: () =>
 		request<{ password: string }>('/generate/password', { method: 'POST' }),
+
+	// Consumers monitor
+	getConsumers: (range: TrafficRange = '24h') =>
+		request<ConsumersResponse>(`/consumers?range=${encodeURIComponent(range)}`),
+	getConsumersLive: () => request<ConsumersLive>('/consumers/live'),
 
 	// Panel users
 	getUsers: () => request<PanelUser[]>('/users'),
