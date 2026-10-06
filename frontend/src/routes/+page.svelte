@@ -8,7 +8,7 @@
 	import PieChart from '$lib/components/monitor/PieChart.svelte';
 	import { splitUnit, areaPaths } from '$lib/utils/sparkline';
 	import { seriesRates } from '$lib/utils/trafficSeries';
-	import { directTags, leafRates, liveSplit } from '$lib/utils/routeSplit';
+	import { directTags, leafRates, liveSplit, sharePaths } from '$lib/utils/routeSplit';
 	import { liveHistory, type DashboardPeriod, type DashboardDim } from '$lib/stores/liveHistory';
 	import { localSourceConnections } from '$lib/utils/clientIp';
 	import type { ProcessStatus, ClashConnection, SystemInfo, TrafficBucket } from '$lib/types';
@@ -95,17 +95,17 @@
 	const GH = 88;
 	let splitDirect = $derived(period === '60s' ? directHist : histDirect);
 	let splitProxy = $derived(period === '60s' ? proxyHist : histProxy);
-	let splitMax = $derived(Math.max(1024, ...splitDirect, ...splitProxy) * 1.15);
+	// Drawn as a share of the whole: the speed is the left graph's job, this
+	// one shows the distribution. The bar above it is the share over the period.
 	const SW = 300;
-	let directPaths = $derived(areaPaths(splitDirect, splitMax, SW, GH));
-	let proxyPaths = $derived(areaPaths(splitProxy, splitMax, SW, GH));
-	let shareNote = $derived.by(() => {
-		const d = splitDirect.reduce((a, b) => a + b, 0);
-		const total = d + splitProxy.reduce((a, b) => a + b, 0);
-		if (!total) return '';
-		const pct = Math.round((d / total) * 100);
-		return `${$t('dashboard.routeDirect')} ${pct} % · ${$t('dashboard.routeProxy')} ${100 - pct} %`;
-	});
+	let shares = $derived(sharePaths(splitDirect, splitProxy, SW, GH));
+	const pctOf = (d: number, p: number) => (d + p > 0 ? Math.round((d / (d + p)) * 100) : null);
+	let periodPct = $derived(
+		pctOf(
+			splitDirect.reduce((a, b) => a + b, 0),
+			splitProxy.reduce((a, b) => a + b, 0)
+		)
+	);
 	// Live like the speed above the left graph, whatever the period: the last
 	// history bucket is a minute still being filled.
 	let splitNow = $derived({
@@ -164,11 +164,14 @@
 	const idxAt = (n: number) => (hoverRatio == null || n < 2 ? null : Math.round(hoverRatio * (n - 1)));
 	let hoverIdx = $derived(idxAt(graphDown.length));
 	let splitHoverIdx = $derived(idxAt(splitDirect.length));
-	let splitHover = $derived(
-		splitHoverIdx == null
-			? null
-			: { direct: formatSpeed(splitDirect[splitHoverIdx] ?? 0), proxy: formatSpeed(splitProxy[splitHoverIdx] ?? 0) }
-	);
+	let splitHover = $derived.by(() => {
+		const i = splitHoverIdx;
+		if (i == null) return null;
+		const d = splitDirect[i] ?? 0;
+		const p = splitProxy[i] ?? 0;
+		const pct = pctOf(d, p);
+		return { direct: formatSpeed(d), proxy: formatSpeed(p), pct: pct == null ? '—' : `${pct} %`, proxyPct: pct == null ? '—' : `${100 - pct} %` };
+	});
 	let hoverPoint = $derived.by(() => {
 		const i = hoverIdx;
 		if (i == null || i >= graphDown.length) return null;
@@ -695,22 +698,28 @@
 							<div class="min-w-0 whitespace-nowrap">
 								<span class="text-lg leading-none font-semibold tabular-nums text-[var(--ctp-text)]">{splitNow.direct.value}</span>
 								<span class="text-xs text-[var(--ctp-overlay1)]">{splitNow.direct.unit}</span>
-								<div class="flex items-center gap-1.5 text-xs text-[var(--ctp-overlay1)]"><span class="w-2 h-2 rounded-full inline-block" style="background: var(--ctp-upload)"></span>{$t('dashboard.routeDirect')}</div>
+								<div class="flex items-center gap-1.5 text-xs text-[var(--ctp-overlay1)]"><span class="w-2 h-2 rounded-full inline-block" style="background: var(--ctp-upload)"></span>{$t('dashboard.routeDirect')}{#if periodPct != null}<span class="tabular-nums">· {periodPct} %</span>{/if}</div>
 							</div>
 							<div class="min-w-0 whitespace-nowrap">
 								<span class="text-lg leading-none font-semibold tabular-nums text-[var(--ctp-text)]">{splitNow.proxy.value}</span>
 								<span class="text-xs text-[var(--ctp-overlay1)]">{splitNow.proxy.unit}</span>
-								<div class="flex items-center gap-1.5 text-xs text-[var(--ctp-overlay1)]"><span class="w-2 h-2 rounded-full inline-block" style="background: var(--ctp-primary)"></span>{$t('dashboard.routeProxy')}</div>
+								<div class="flex items-center gap-1.5 text-xs text-[var(--ctp-overlay1)]"><span class="w-2 h-2 rounded-full inline-block" style="background: var(--ctp-primary)"></span>{$t('dashboard.routeProxy')}{#if periodPct != null}<span class="tabular-nums">· {100 - periodPct} %</span>{/if}</div>
 							</div>
 						</div>
+						<!-- The period at a glance; the graph below says when. -->
+						<div class="flex h-2 mt-3 rounded-full overflow-hidden bg-[var(--ctp-surface2)]" title={periodLabel}>
+							{#if periodPct != null}
+								<div style="width: {periodPct}%; background: var(--ctp-upload)"></div>
+								<div style="width: {100 - periodPct}%; background: var(--ctp-primary)"></div>
+							{/if}
+						</div>
 						<!-- svelte-ignore a11y_no_static_element_interactions -->
-						<div class="mt-3" onpointerdown={trackHover} onpointermove={trackHover} onpointerleave={() => (hoverRatio = null)}>
-							<svg viewBox="0 0 {SW} {GH}" preserveAspectRatio="none" class="block w-full h-24 sm:h-28" aria-hidden="true">
-								{#if directPaths.line || proxyPaths.line}
-									<path d={proxyPaths.area} fill="var(--ctp-primary)" opacity="0.14" />
-									<path d={directPaths.area} fill="var(--ctp-upload)" opacity="0.14" />
-									<path d={proxyPaths.line} fill="none" stroke="var(--ctp-primary)" stroke-width="1.5" stroke-linejoin="round" vector-effect="non-scaling-stroke" />
-									<path d={directPaths.line} fill="none" stroke="var(--ctp-upload)" stroke-width="1.5" stroke-linejoin="round" vector-effect="non-scaling-stroke" />
+						<div class="mt-2" onpointerdown={trackHover} onpointermove={trackHover} onpointerleave={() => (hoverRatio = null)}>
+							<svg viewBox="0 0 {SW} {GH}" preserveAspectRatio="none" class="block w-full h-[5.25rem] sm:h-24" aria-hidden="true">
+								{#if shares.line}
+									<path d={shares.proxy} fill="var(--ctp-primary)" opacity="0.45" />
+									<path d={shares.direct} fill="var(--ctp-upload)" opacity="0.6" />
+									<path d={shares.line} fill="none" stroke="var(--ctp-text)" stroke-opacity="0.5" stroke-width="1" stroke-linejoin="round" vector-effect="non-scaling-stroke" />
 								{:else}
 									<line x1="0" y1={GH - 0.5} x2={SW} y2={GH - 0.5} stroke="var(--ctp-surface2)" stroke-width="1" vector-effect="non-scaling-stroke" />
 								{/if}
@@ -722,10 +731,10 @@
 						</div>
 						<div class="flex min-h-[22px] items-center gap-x-4 mt-2 pb-4 sm:pb-5 text-xs text-[var(--ctp-overlay1)] tabular-nums whitespace-nowrap overflow-hidden">
 							{#if splitHover}
-								<span class="text-[var(--ctp-upload)]">↓ {splitHover.direct}</span>
-								<span class="text-[var(--ctp-primary)]">↓ {splitHover.proxy}</span>
+								<span class="text-[var(--ctp-upload)]">{splitHover.pct} · {splitHover.direct}</span>
+								<span class="text-[var(--ctp-primary)]">{splitHover.proxyPct} · {splitHover.proxy}</span>
 							{:else}
-								<span class="truncate">{shareNote}</span>
+								<span class="truncate text-[var(--ctp-overlay0)]">{periodLabel}</span>
 							{/if}
 						</div>
 					</div>
