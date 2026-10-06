@@ -49,7 +49,20 @@ func OpenStore(path string) (*Store, error) {
 	if err := os.MkdirAll(filepath.Dir(path), 0755); err != nil {
 		return nil, err
 	}
-	db, err := sql.Open("sqlite", path)
+	// Several samplers write this file from their own goroutines (Clash, v2ray
+	// users, mtproto, AWG sweep) and database/sql gives each its own SQLite
+	// connection. modernc.org/sqlite sets no busy timeout, so two writes landing
+	// together made the loser fail at once with SQLITE_BUSY and the delta was
+	// logged and lost. The DSN query applies to every pooled connection:
+	//   busy_timeout — a colliding writer waits (up to 5 s) instead of failing;
+	//   journal_mode(WAL) — readers (the /consumers month queries) and the
+	//     samplers no longer block each other. Safe here: one process, local
+	//     file, nothing copies traffic.db as a file (the -wal sidecar would be
+	//     missed); on a filesystem without shared-memory support SQLite keeps
+	//     the rollback journal and nothing breaks.
+	// No "file:" prefix on purpose: the driver then strips the query and passes
+	// the path verbatim, instead of URI-parsing it (%, #, spaces in the path).
+	db, err := sql.Open("sqlite", path+"?_pragma=busy_timeout(5000)&_pragma=journal_mode(WAL)")
 	if err != nil {
 		return nil, err
 	}
