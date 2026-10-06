@@ -221,3 +221,23 @@ func TestFrontedInboundTags(t *testing.T) {
 		})
 	}
 }
+
+func TestRuleSetTagIn(t *testing.T) {
+	cfg := map[string]interface{}{
+		"route": map[string]interface{}{
+			"rule_set": []interface{}{
+				map[string]interface{}{"type": "local", "tag": "cf"},
+				"garbage",
+			},
+		},
+	}
+	if !ruleSetTagIn(cfg, "cf") {
+		t.Fatal("cf is in the config")
+	}
+	if ruleSetTagIn(cfg, "nope") {
+		t.Fatal("nope is not in the config")
+	}
+	if ruleSetTagIn(nil, "cf") || ruleSetTagIn(map[string]interface{}{}, "cf") {
+		t.Fatal("empty configs reference nothing")
+	}
+}

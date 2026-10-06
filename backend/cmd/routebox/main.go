@@ -26,6 +26,7 @@ import (
 	"golang.org/x/crypto/acme/autocert"
 
 	"routebox/backend/internal/api"
+	"routebox/backend/internal/asnsets"
 	"routebox/backend/internal/auth"
 	"routebox/backend/internal/awg"
 	"routebox/backend/internal/clients"
@@ -199,6 +200,11 @@ func main() {
 		log.Printf("amnezia-box %s predates 1.14: sing-box 1.15 config migrations are disabled until it is updated", ver)
 	}
 	var cfgMgr *config.Manager
+	// cfgLoadFailed: a config exists on disk but could not be loaded, so the
+	// manager holds an empty one and nothing may treat "not in the config" as
+	// "unused" (the ASN prune below would otherwise delete the files that
+	// config still points at).
+	cfgLoadFailed := false
 
 	if _, statErr := os.Stat(resolvedConfigPath); statErr == nil {
 		// Config exists - load it
@@ -207,6 +213,7 @@ func main() {
 		if err != nil {
 			log.Printf("Warning: Could not load config from %s: %v", resolvedConfigPath, err)
 			cfgMgr = config.NewEmptyManager(resolvedConfigPath)
+			cfgLoadFailed = true
 		}
 	} else if effectiveMode == "vps" && os.Getenv(allInOneEnv) != "" {
 		// Out-of-the-box install: the same moment the minimal config below is
@@ -702,6 +709,39 @@ func main() {
 	}()
 	go mtproto.RunExpiryLoop(mtprotoStore, mtprotoMgr.Rebuild, 30*time.Second, stopMtproto)
 
+	// ASN rule sets (#103): local rule-set files under <settings dir>/asn that
+	// sing-box reloads on change. Missing files are restored BEFORE amnezia-box
+	// may start — a missing local rule set is FATAL at start. The restore is
+	// bounded so a dead RIPEstat delays boot by a minute at most (the manager
+	// writes an empty placeholder in that case and retries on its loop).
+	stopASN := make(chan struct{})
+	if sp := settingsMgr.GetPath(); sp != "" {
+		base := filepath.Dir(sp)
+		asnStore := asnsets.NewStore(filepath.Join(base, "asn.toml"))
+		if err := asnStore.Load(); err != nil {
+			log.Printf("Warning: failed to load asn.toml: %v", err)
+		}
+		asnMgr := asnsets.NewManager(asnStore, filepath.Join(base, "asn"), asnsets.NewFetcher())
+		// Runs under the ASN manager's lock: it only reads the config manager,
+		// which never calls back into asnsets. Both configs count — a set
+		// removed from the draft is in service until Apply. A config that did
+		// not load answers "referenced" for everything: the empty manager
+		// would otherwise make every set look orphaned and the prune would
+		// remove files the real config still points at.
+		inConfig := func(tag string) bool {
+			return cfgLoadFailed || ruleSetTagIn(cfgMgr.GetActive(), tag) || ruleSetTagIn(cfgMgr.Get(), tag)
+		}
+		if cfgLoadFailed {
+			log.Printf("asnsets: config did not load; ASN sets are not pruned until RouteBox restarts with a loadable config")
+		}
+		asnMgr.Prune(inConfig)
+		restoreCtx, cancelRestore := context.WithTimeout(context.Background(), 60*time.Second)
+		asnMgr.RestoreMissing(restoreCtx)
+		cancelRestore()
+		go asnMgr.RunLoop(time.Hour, inConfig, stopASN)
+		apiHandler.SetASN(asnMgr)
+	}
+
 	// Bring amnezia-box up when nothing else will. Done here rather than before
 	// the AWG wiring above so the process starts on the config those steps may
 	// have just synced, and before SyncRejectRuleAndReload so user lifecycle
@@ -861,6 +901,11 @@ func main() {
 				r.Get("/", apiHandler.ListRuleSets)
 				r.Post("/", apiHandler.CreateRuleSet)
 				r.Get("/usage", apiHandler.GetRuleSetsUsage)
+				// ASN sets (#103): static segment, so it wins over /{tag}.
+				r.Get("/asn", apiHandler.ListAsnSets)
+				r.Post("/asn", apiHandler.CreateAsnSet)
+				r.Put("/asn/{tag}", apiHandler.UpdateAsnSet)
+				r.Post("/asn/{tag}/refresh", apiHandler.RefreshAsnSet)
 				r.Put("/{tag}", apiHandler.UpdateRuleSet)
 				r.Delete("/{tag}", apiHandler.DeleteRuleSet)
 			})
@@ -1225,6 +1270,7 @@ func main() {
 	close(stopSubs)
 	close(stopExpiry)
 	close(stopAwgSweep)
+	close(stopASN)
 	// The proxy stops first so no further traffic events arrive, then the loop
 	// is told to make its final flush, and only once that has returned is the
 	// store it writes to safe to close.
@@ -1640,4 +1686,16 @@ func frontedInboundTags(cfg map[string]interface{}) []string {
 		}
 	}
 	return tags
+}
+
+// ruleSetTagIn reports whether cfg's route.rule_set has an entry with tag.
+func ruleSetTagIn(cfg map[string]interface{}, tag string) bool {
+	route, _ := cfg["route"].(map[string]interface{})
+	arr, _ := route["rule_set"].([]interface{})
+	for _, v := range arr {
+		if rs, _ := v.(map[string]interface{}); rs != nil && rs["tag"] == tag {
+			return true
+		}
+	}
+	return false
 }

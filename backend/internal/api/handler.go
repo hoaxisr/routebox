@@ -2,6 +2,7 @@ package api
 
 import (
 	"net/netip"
+	"routebox/backend/internal/asnsets"
 	"routebox/backend/internal/auth"
 	"routebox/backend/internal/awg"
 	"routebox/backend/internal/clients"
@@ -39,7 +40,8 @@ type Handler struct {
 	subLimiter      *auth.Limiter
 	awg             *awg.Manager
 	mtproto         *mtproto.Manager
-	sys             sysinfo.Sampler // host metrics for the dashboard; zero value reads /proc
+	asn             *asnsets.Manager // nil when the settings dir is unknown: list answers [], writes 503
+	sys             sysinfo.Sampler  // host metrics for the dashboard; zero value reads /proc
 	consumers       []consumers.Source
 	live            *consumers.Live
 
@@ -128,6 +130,12 @@ func (h *Handler) SetUsers(mgr *users.Manager) {
 // SetAWG wires the AmneziaWG server-interface manager into the API.
 func (h *Handler) SetAWG(m *awg.Manager) {
 	h.awg = m
+}
+
+// SetASN wires the ASN rule-set manager (#103). Left nil, the list endpoint
+// answers [] and the writing ones 503.
+func (h *Handler) SetASN(m *asnsets.Manager) {
+	h.asn = m
 }
 
 // SetMtproto wires the Telegram MTProto proxy manager into the API. Leaving it
