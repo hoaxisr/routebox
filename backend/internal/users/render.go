@@ -25,7 +25,7 @@ func IsEffectivelyActive(u PanelUser, now int64) bool {
 // userNames returns the deduped, non-blank inbound-user names a single panel
 // user is matchable under: its own Name plus each binding's cached Name. These
 // ARE the metadata.User identities sing-box's auth_user rule matches on (twin of
-// api.userTrafficNames). Own-name first, then binding order. PURE.
+// PanelUser.TrafficNames). Own-name first, then binding order. PURE.
 func userNames(u PanelUser) []string {
 	seen := map[string]bool{}
 	var out []string

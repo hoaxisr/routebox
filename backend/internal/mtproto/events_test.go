@@ -206,3 +206,18 @@ func TestUnknownEventsAreIgnored(t *testing.T) {
 		t.Errorf("got %+v, want nothing", got)
 	}
 }
+
+func TestCumulativeSurvivesDrain(t *testing.T) {
+	es := testStream()
+	start(es, "s1")
+	match(es, "s1", 0)
+	traffic(es, "s1", 100, true)
+	traffic(es, "s1", 40, false)
+	es.DrainTotals()
+	traffic(es, "s1", 5, true)
+
+	got := es.Cumulative()
+	if got["alice"].Download != 105 || got["alice"].Upload != 40 {
+		t.Fatalf("alice = %+v, want 105 down / 40 up", got["alice"])
+	}
+}

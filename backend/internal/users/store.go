@@ -54,6 +54,26 @@ type Binding struct {
 	Flow       string `toml:"flow" json:"flow"`
 }
 
+// TrafficNames returns the deduped, non-blank names this user's traffic is
+// accounted under: its own Name plus each binding's cached Name. Traffic is
+// summed across them — one logical user, several credentials. PURE.
+func (u PanelUser) TrafficNames() []string {
+	seen := map[string]bool{}
+	var out []string
+	add := func(n string) {
+		if n == "" || seen[n] {
+			return
+		}
+		seen[n] = true
+		out = append(out, n)
+	}
+	add(u.Name)
+	for _, b := range u.Bindings {
+		add(b.Name)
+	}
+	return out
+}
+
 // Manager owns the panel-user registry and its TOML persistence.
 type Manager struct {
 	path  string

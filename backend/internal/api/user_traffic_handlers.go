@@ -28,27 +28,6 @@ func panelUserNames(mgr *users.Manager) []string {
 	return out
 }
 
-// userTrafficNames returns the deduped, non-blank display names a single panel
-// user is accounted under: its own Name plus each binding's cached Name. Traffic
-// is SUMMED across these (a user with multiple bindings under different names is
-// one logical user). PURE.
-func userTrafficNames(u users.PanelUser) []string {
-	seen := map[string]bool{}
-	var out []string
-	add := func(n string) {
-		if n == "" || seen[n] {
-			return
-		}
-		seen[n] = true
-		out = append(out, n)
-	}
-	add(u.Name)
-	for _, b := range u.Bindings {
-		add(b.Name)
-	}
-	return out
-}
-
 // userTrafficResponse is the GET /api/users/{id}/traffic wire shape.
 type userTrafficResponse struct {
 	Upload   int64                    `json:"upload"`
@@ -58,7 +37,7 @@ type userTrafficResponse struct {
 
 // GetUserTraffic returns one panel user's total + per-bucket traffic over a
 // range (?range=1h|3h|24h|week|month; default 24h). Traffic is summed across the
-// user's binding display-names (userTrafficNames). Collision note: if two panel
+// user's binding display-names (PanelUser.TrafficNames). Collision note: if two panel
 // users share a display-name their counters merge under that name and both report
 // the combined total — attribution is by name, not panel id (uniqueness
 // validator is a documented follow-up, out of scope). PROTECTED.
@@ -88,7 +67,7 @@ func (h *Handler) GetUserTraffic(w http.ResponseWriter, r *http.Request) {
 
 	var totUp, totDown int64
 	bucketSum := map[int64]traffic.UserHistoryRow{}
-	for _, name := range userTrafficNames(u) {
+	for _, name := range u.TrafficNames() {
 		up, down, err := h.traffic.QueryUserTotals(start, now, name)
 		if err != nil {
 			writeError(w, http.StatusInternalServerError, err.Error())

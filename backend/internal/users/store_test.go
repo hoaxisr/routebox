@@ -177,3 +177,11 @@ func TestStoreGetCopyIsolation(t *testing.T) {
 		t.Fatalf("List must return deep copies; store was mutated: %#v", after)
 	}
 }
+
+func TestTrafficNamesDedupesAndSkipsBlank(t *testing.T) {
+	u := PanelUser{Name: "ivan", Bindings: []Binding{{Name: "ivan"}, {Name: "ivan-hy2"}, {Name: ""}}}
+	got := u.TrafficNames()
+	if len(got) != 2 || got[0] != "ivan" || got[1] != "ivan-hy2" {
+		t.Fatalf("got %v", got)
+	}
+}

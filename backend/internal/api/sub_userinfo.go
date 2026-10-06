@@ -42,7 +42,7 @@ func (h *Handler) userAllTimeTraffic(u users.PanelUser) (int64, int64) {
 		return 0, 0
 	}
 	var up, down int64
-	for _, name := range userTrafficNames(u) {
+	for _, name := range u.TrafficNames() {
 		nu, nd, err := h.traffic.QueryUserTotals(0, 1<<62, name)
 		if err == nil {
 			up += nu

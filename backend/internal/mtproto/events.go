@@ -39,6 +39,9 @@ type EventStream struct {
 
 	streams map[string]*Connection
 	totals  map[string]*Totals
+
+	// cumul is never drained — the live view diffs it.
+	cumul map[string]Totals
 }
 
 // NewEventStream constructs a stream over a secret list, in mtglib order.
@@ -47,6 +50,7 @@ func NewEventStream(names []string) *EventStream {
 		names:   names,
 		streams: map[string]*Connection{},
 		totals:  map[string]*Totals{},
+		cumul:   map[string]Totals{},
 	}
 }
 
@@ -106,6 +110,14 @@ func (e *EventStream) Send(_ context.Context, evt mtglib.Event) {
 			total.Upload += int64(ev.Traffic)
 		}
 
+		c := e.cumul[conn.Client]
+		if ev.IsRead {
+			c.Download += int64(ev.Traffic)
+		} else {
+			c.Upload += int64(ev.Traffic)
+		}
+		e.cumul[conn.Client] = c
+
 	case mtglib.EventFinish:
 		// Only the mapping goes; totals already accumulated are kept until the
 		// next drain writes them out.
@@ -136,6 +148,22 @@ func (e *EventStream) DrainTotals() map[string]Totals {
 	}
 
 	e.totals = map[string]*Totals{}
+
+	return out
+}
+
+// Cumulative returns each client's bytes since this stream was created. Unlike
+// DrainTotals it never resets: the consumers live view reads it as a counter
+// and diffs it. A proxy restart creates a new stream, which the live view sees
+// as a counter reset.
+func (e *EventStream) Cumulative() map[string]Totals {
+	e.mu.Lock()
+	defer e.mu.Unlock()
+
+	out := make(map[string]Totals, len(e.cumul))
+	for name, c := range e.cumul {
+		out[name] = c
+	}
 
 	return out
 }

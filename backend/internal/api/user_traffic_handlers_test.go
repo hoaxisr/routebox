@@ -167,25 +167,3 @@ func TestPanelUserNames_NilManagerEmpty(t *testing.T) {
 		t.Errorf("nil mgr → %v, want empty", got)
 	}
 }
-
-func TestUserTrafficNames_NameUnionBindings(t *testing.T) {
-	u := users.PanelUser{
-		Name: "alice",
-		Bindings: []users.Binding{
-			{Name: "alice"},       // dup of Name
-			{Name: "alice-phone"}, // extra
-			{Name: ""},            // skipped
-		},
-	}
-	got := userTrafficNames(u)
-	if len(got) != 2 {
-		t.Fatalf("names = %v, want [alice alice-phone]", got)
-	}
-	seen := map[string]bool{}
-	for _, n := range got {
-		seen[n] = true
-	}
-	if !seen["alice"] || !seen["alice-phone"] {
-		t.Errorf("got %v, want alice + alice-phone", got)
-	}
-}

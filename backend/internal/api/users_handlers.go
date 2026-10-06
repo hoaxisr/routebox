@@ -82,7 +82,7 @@ func (h *Handler) ListUsers(w http.ResponseWriter, r *http.Request) {
 		}
 		var up, down int64
 		if h.traffic != nil {
-			for _, name := range userTrafficNames(u) {
+			for _, name := range u.TrafficNames() {
 				nu, nd, err := h.traffic.QueryUserTotals(0, 1<<62, name)
 				if err == nil {
 					up += nu
@@ -245,7 +245,7 @@ func (h *Handler) DeleteUser(w http.ResponseWriter, r *http.Request) {
 	// series must not fail the delete. ponytail: purged on delete-intent, not on Apply;
 	// a delete-then-discard loses the stats too, which is acceptable for a deleted client.
 	if h.traffic != nil {
-		if err := h.traffic.DeleteUsers(userTrafficNames(u)); err != nil {
+		if err := h.traffic.DeleteUsers(u.TrafficNames()); err != nil {
 			log.Printf("api: purge user traffic for %q: %v", u.Name, err)
 		}
 	}
