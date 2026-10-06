@@ -116,3 +116,50 @@ func TestUserStore_PruneAndReset(t *testing.T) {
 		t.Errorf("after reset upload = %d, want 0", up)
 	}
 }
+
+func TestQueryKeysTotalsSumsAcrossKeys(t *testing.T) {
+	s := openTestStore(t)
+	_ = s.UpsertUser(60, "a", 10, 100)
+	_ = s.UpsertUser(120, "b", 5, 50)
+	_ = s.UpsertUser(120, "c", 1000, 1000) // not asked for
+	up, down, err := s.QueryKeysTotals(0, 200, []string{"a", "b"})
+	if err != nil || up != 15 || down != 150 {
+		t.Fatalf("got %d/%d err=%v, want 15/150", up, down, err)
+	}
+	up, down, err = s.QueryKeysTotals(0, 200, nil)
+	if err != nil || up != 0 || down != 0 {
+		t.Fatalf("no keys: got %d/%d err=%v, want 0/0", up, down, err)
+	}
+}
+
+func TestQueryKeysHistoryIsSteppedAndMerged(t *testing.T) {
+	s := openTestStore(t)
+	// Two keys in the same minute merge into one point.
+	_ = s.UpsertUser(600, "a", 1, 10)
+	_ = s.UpsertUser(600, "b", 2, 20)
+	_ = s.UpsertUser(660, "a", 4, 40)
+	h, err := s.QueryKeysHistory(0, 3600, []string{"a", "b"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(h) != 2 || h[0].BucketTs != 600 || h[0].Upload != 3 || h[0].Download != 30 || h[1].Upload != 4 {
+		t.Fatalf("got %+v", h)
+	}
+}
+
+// A month of minute buckets for one key must come back bounded, or the
+// consumers endpoint ships ~43k points per row.
+func TestQueryKeysHistoryMonthIsBounded(t *testing.T) {
+	s := openTestStore(t)
+	const month = 30 * 86400
+	for ts := int64(0); ts < month; ts += 60 {
+		_ = s.UpsertUser(ts, "a", 1, 1)
+	}
+	h, err := s.QueryKeysHistory(0, month, []string{"a"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(h) > 1441 {
+		t.Fatalf("month history has %d points, want <= 1441", len(h))
+	}
+}

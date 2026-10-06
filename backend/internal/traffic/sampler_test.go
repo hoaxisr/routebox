@@ -275,3 +275,26 @@ func TestFetchSnapshot_KeepSourceDropsRejectedSources(t *testing.T) {
 		t.Fatalf("with KeepSource = %v, want [lan peer own]", got)
 	}
 }
+
+func TestFetchConnectionsReturnsEverySourceCanonical(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.Header.Get("Authorization") != "Bearer s3" {
+			w.WriteHeader(http.StatusUnauthorized)
+			return
+		}
+		_, _ = w.Write([]byte(`{"connections":[
+			{"id":"1","upload":5,"download":7,"chains":["out","sel"],"metadata":{"sourceIP":"::ffff:192.168.1.5","host":"a.com"}},
+			{"id":"2","upload":1,"download":2,"chains":[],"metadata":{"sourceIP":"8.8.8.8","destinationIP":"1.1.1.1"}}]}`))
+	}))
+	defer srv.Close()
+	got, err := FetchConnections(strings.TrimPrefix(srv.URL, "http://"), "s3")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(got) != 2 || got[0].Source != "192.168.1.5" || got[0].Chain != "out → sel" || got[1].Source != "8.8.8.8" || got[1].Domain != "1.1.1.1" {
+		t.Fatalf("got %+v", got)
+	}
+	if _, err := FetchConnections(strings.TrimPrefix(srv.URL, "http://"), "wrong"); err == nil {
+		t.Fatal("401 must be an error, not an empty snapshot")
+	}
+}

@@ -119,11 +119,13 @@ func (s *Sampler) computeDeltas(snapshot []ConnectionSample) []Delta {
 	return out
 }
 
-// fetchSnapshot pulls /connections from Clash and converts to our shape.
+// FetchConnections pulls /connections from Clash and converts every connection
+// to our shape (canonical source, joined chain). No locality filter — the
+// sampler applies its own (KeepSource); the consumers live view applies another.
 // A non-empty secret is sent as a Bearer token (Clash API auth); a non-200
 // response is a hard error — a 401 body must never decode into an empty
 // snapshot that silently records zero traffic forever.
-func (s *Sampler) fetchSnapshot(clashAddr, secret string) ([]ConnectionSample, error) {
+func FetchConnections(clashAddr, secret string) ([]ConnectionSample, error) {
 	req, err := http.NewRequest("GET", "http://"+clashAddr+"/connections", nil)
 	if err != nil {
 		return nil, err
@@ -158,13 +160,6 @@ func (s *Sampler) fetchSnapshot(clashAddr, secret string) ([]ConnectionSample, e
 	out := make([]ConnectionSample, 0, len(data.Connections))
 	for _, c := range data.Connections {
 		source := util.CanonicalClientIP(c.Metadata.SourceIP)
-		// A connection with no source is one of sing-box's own dials (a DNS
-		// query through an outbound, a urltest probe, a subscription fetch). It
-		// has been in the history as "unknown" all along and is not what #102 is
-		// about, so the filter never sees it.
-		if source != "" && s.KeepSource != nil && !s.KeepSource(source) {
-			continue
-		}
 		domain := c.Metadata.Host
 		if domain == "" {
 			domain = c.Metadata.DestinationIP
@@ -192,6 +187,24 @@ func (s *Sampler) fetchSnapshot(clashAddr, secret string) ([]ConnectionSample, e
 			Upload:   c.Upload,
 			Download: c.Download,
 		})
+	}
+	return out, nil
+}
+
+// fetchSnapshot is FetchConnections narrowed by KeepSource. An empty source is
+// one of sing-box's own dials (a DNS query through an outbound, a urltest
+// probe, a subscription fetch). It has been in the history as "unknown" all
+// along and is not what #102 is about, so the filter never sees it.
+func (s *Sampler) fetchSnapshot(clashAddr, secret string) ([]ConnectionSample, error) {
+	all, err := FetchConnections(clashAddr, secret)
+	if err != nil || s.KeepSource == nil {
+		return all, err
+	}
+	out := all[:0]
+	for _, c := range all {
+		if c.Source == "" || s.KeepSource(c.Source) {
+			out = append(out, c)
+		}
 	}
 	return out, nil
 }
