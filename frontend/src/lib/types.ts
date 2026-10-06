@@ -765,6 +765,19 @@ export interface RuleSet {
 	rules?: HeadlessRule[];
 }
 
+// ASN rule set (#103): a `local` rule set whose prefix file RouteBox
+// refreshes from RIPEstat. Mirrors GET /api/route/rule-sets/asn entries.
+export interface AsnSet {
+	tag: string;
+	asns: number[];
+	holders: Record<string, string>; // "13335" → "CLOUDFLARENET - Cloudflare, Inc."
+	interval_hrs: number;
+	updated_at: number; // unix seconds, 0 = never
+	prefix_count: number;
+	last_error: string;
+	path: string;
+}
+
 // Headless rule: matching conditions only (no action/outbound)
 // Used for inline rule-sets compilation - limited set of fields
 export interface HeadlessRule {

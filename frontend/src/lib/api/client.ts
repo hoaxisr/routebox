@@ -1,5 +1,5 @@
 import type {
-	SystemInfo, ApiResponse, ProcessStatus, SingboxConfig, Endpoint, Outbound, Inbound, RuleSet, RuleSetUsage, RouteRule, RouteSettings, DnsServer, DnsRule, DnsSettings, LogSettings, ExperimentalSettings, ConnectionsResponse, ProxiesResponse, ClashProxy, TestRouteResponse, ConnectTestResponse, SettingsResponse, RouteBoxSettings, SingBoxVersion, DomainSetInfo, RuleSetSource, ClientEntry, TrafficHistoryResponse, TrafficRange, UpdatesStatus, UpdateProgress, UpdateTargetName, Subscription, SubscriptionInput, PanelUser, AwgStatus, AwgPeer, MtprotoState, MtprotoStatus, MtprotoSettings, MtprotoClient, MtprotoConnection, MtprotoLink, DestNaive, SpeedTestResult, ConsumersResponse, ConsumersLive } from '$lib/types';
+	SystemInfo, ApiResponse, ProcessStatus, SingboxConfig, Endpoint, Outbound, Inbound, RuleSet, RuleSetUsage, AsnSet, RouteRule, RouteSettings, DnsServer, DnsRule, DnsSettings, LogSettings, ExperimentalSettings, ConnectionsResponse, ProxiesResponse, ClashProxy, TestRouteResponse, ConnectTestResponse, SettingsResponse, RouteBoxSettings, SingBoxVersion, DomainSetInfo, RuleSetSource, ClientEntry, TrafficHistoryResponse, TrafficRange, UpdatesStatus, UpdateProgress, UpdateTargetName, Subscription, SubscriptionInput, PanelUser, AwgStatus, AwgPeer, MtprotoState, MtprotoStatus, MtprotoSettings, MtprotoClient, MtprotoConnection, MtprotoLink, DestNaive, SpeedTestResult, ConsumersResponse, ConsumersLive } from '$lib/types';
 import { canonicalizeConnections } from '$lib/utils/clientIp';
 
 const API_BASE = '/api';
@@ -387,6 +387,16 @@ export const api = {
 		request<{ message: string }>(`/route/rule-sets/${encodeURIComponent(tag)}`, {
 			method: 'DELETE'
 		}),
+
+	// ASN rule sets (#103): create adds a `local` entry to the config draft;
+	// update/refresh only rewrite the prefix file.
+	listAsnSets: () => request<AsnSet[]>('/route/rule-sets/asn'),
+	createAsnSet: (body: { tag: string; asns: string[]; interval_hrs: number }) =>
+		request<AsnSet>('/route/rule-sets/asn', { method: 'POST', body: JSON.stringify(body) }),
+	updateAsnSet: (tag: string, body: { asns: string[]; interval_hrs: number }) =>
+		request<AsnSet>(`/route/rule-sets/asn/${encodeURIComponent(tag)}`, { method: 'PUT', body: JSON.stringify(body) }),
+	refreshAsnSet: (tag: string) =>
+		request<AsnSet>(`/route/rule-sets/asn/${encodeURIComponent(tag)}/refresh`, { method: 'POST' }),
 
 	// Route Rules CRUD
 	listRules: () => request<RouteRule[]>('/route/rules'),
