@@ -3,10 +3,16 @@
 	import { t } from 'svelte-i18n';
 	import { api } from '$lib/api/client';
 	import { notifications, unsavedChanges } from '$lib/stores';
-	import type { RuleSet, RuleSetUsage, Outbound, Endpoint } from '$lib/types';
+	import type { RuleSet, RuleSetUsage, Outbound, Endpoint, AsnSet } from '$lib/types';
 	import RuleSetForm from '$lib/components/config/RuleSetForm.svelte';
+	import { formatAsn, agoParts } from '$lib/utils/asn';
 
 	let ruleSets = $state<RuleSet[]>([]);
+	// ASN sets (#103) are `local` rule sets RouteBox refreshes itself; keyed by tag
+	// so a row can tell an ASN set from a hand-written legacy local one.
+	let asnSets = $state<AsnSet[]>([]);
+	let asnByTag = $derived(new Map(asnSets.map((s) => [s.tag, s])));
+	let refreshing = $state<Set<string>>(new Set());
 	let usage = $state<Record<string, RuleSetUsage>>({});
 	let outbounds = $state<Outbound[]>([]);
 	let endpoints = $state<Endpoint[]>([]);
@@ -25,16 +31,18 @@
 
 	async function fetchData() {
 		try {
-			const [rs, us, ob, ep] = await Promise.all([
+			const [rs, us, ob, ep, as] = await Promise.all([
 				api.listRuleSets(),
 				api.getRuleSetsUsage(),
 				api.listOutbounds(),
-				api.listEndpoints()
+				api.listEndpoints(),
+				api.listAsnSets()
 			]);
 			ruleSets = rs;
 			usage = us;
 			outbounds = ob;
 			endpoints = ep;
+			asnSets = as;
 		} catch (e) {
 			notifications.error($t('errors.loadFailed') + `: ${e}`);
 		} finally {
@@ -80,6 +88,46 @@
 		}
 	}
 
+	// AsnSetForm has already talked to the backend; only the draft list and
+	// toasts are ours. Create adds a config entry (Apply needed), edit does not.
+	async function handleSaveAsn(s: AsnSet) {
+		if (editingRuleSet) {
+			notifications.success($t('common.saved'));
+		} else {
+			ruleSets = [...ruleSets, { tag: s.tag, type: 'local', format: 'source', path: s.path }];
+			unsavedChanges.markChanged($t('ruleSets.title'), `${$t('common.create')} "${s.tag}"`);
+			notifications.success($t('asnSets.created'));
+		}
+		try {
+			asnSets = await api.listAsnSets();
+			usage = await api.getRuleSetsUsage();
+		} catch (e) {
+			notifications.error(`${e}`);
+		}
+		closeForm();
+	}
+
+	async function handleRefreshAsn(tag: string) {
+		refreshing = new Set([...refreshing, tag]);
+		try {
+			const s = await api.refreshAsnSet(tag);
+			asnSets = asnSets.map((x) => (x.tag === tag ? s : x));
+			notifications.success($t('asnSets.refreshed'));
+		} catch (e) {
+			notifications.error(`${$t('asnSets.refreshFailed')}: ${e}`);
+			// The entry now carries last_error; show it.
+			try { asnSets = await api.listAsnSets(); } catch { /* keep what we have */ }
+		} finally {
+			refreshing = new Set([...refreshing].filter((x) => x !== tag));
+		}
+	}
+
+	function asnAge(s: AsnSet): string {
+		const p = agoParts(s.updated_at, Date.now() / 1000);
+		if (!p) return $t('asnSets.never');
+		return $t(p.unit === 'm' ? 'asnSets.updatedAgoM' : p.unit === 'h' ? 'asnSets.updatedAgoH' : 'asnSets.updatedAgoD', { values: { n: p.n } });
+	}
+
 	async function handleDelete(tag: string) {
 		if (!confirm($t('ruleSets.deleteConfirm', { values: { tag } }))) return;
 		try {
@@ -117,7 +165,7 @@
 		</div>
 		<button
 			onclick={openCreate}
-			class="px-4 py-2 bg-[var(--ctp-primary)] text-white rounded-lg hover:opacity-90 transition-opacity flex items-center gap-2"
+			class="px-4 py-2 bg-[var(--ctp-primary)] text-white rounded-lg hover:opacity-90 transition-opacity flex items-center gap-2 whitespace-nowrap flex-shrink-0 ml-3"
 		>
 			<svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
 				<path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 4v16m8-8H4" />
@@ -141,17 +189,24 @@
 			{#each ruleSets as ruleSet}
 				{@const counts = getUsageCount(ruleSet.tag)}
 				{@const unused = isUnused(ruleSet.tag)}
+				{@const asn = asnByTag.get(ruleSet.tag)}
 				<div class="bg-[var(--ctp-surface0)] rounded-xl p-4 group {unused ? 'opacity-70' : ''}">
-					<div class="flex items-center justify-between">
-						<div class="flex items-center gap-3 min-w-0 flex-1">
+					<!-- Below sm the header wraps: badge+tag on the first line, usage and actions on the second,
+					     so a long holder list or the usage text no longer squeezes the tag to "cl…". -->
+					<div class="flex flex-wrap items-center gap-x-3 gap-y-2">
+						<div class="flex items-center gap-3 min-w-0 flex-1 basis-full sm:basis-0">
 							<!-- Type badge -->
-							<span class="px-2 py-0.5 text-xs rounded {ruleSet.type === 'local' ? 'bg-[var(--ctp-overlay0)] text-[var(--ctp-base)]' : 'bg-[var(--ctp-surface2)] text-[var(--ctp-overlay1)]'} flex-shrink-0" title={ruleSet.type === 'local' ? $t('ruleSets.legacyTooltip') : undefined}>
-								{ruleSet.type}{ruleSet.type === 'local' ? $t('ruleSets.legacySuffix') : ''}
-							</span>
+							{#if asn}
+								<span class="status-badge flex-shrink-0">{$t('asnSets.badge')}</span>
+							{:else}
+								<span class="px-2 py-0.5 text-xs rounded {ruleSet.type === 'local' ? 'bg-[var(--ctp-overlay0)] text-[var(--ctp-base)]' : 'bg-[var(--ctp-surface2)] text-[var(--ctp-overlay1)]'} flex-shrink-0" title={ruleSet.type === 'local' ? $t('ruleSets.legacyTooltip') : undefined}>
+									{ruleSet.type}{ruleSet.type === 'local' ? $t('ruleSets.legacySuffix') : ''}
+								</span>
+							{/if}
 							<!-- Tag -->
 							<span class="font-medium text-[var(--ctp-text)] truncate">{ruleSet.tag}</span>
 							<!-- Format badge -->
-							{#if ruleSet.format}
+							{#if ruleSet.format && !asn}
 								<span class="px-2 py-0.5 text-xs rounded bg-[var(--ctp-surface1)] text-[var(--ctp-overlay0)] flex-shrink-0">
 									{ruleSet.format}
 								</span>
@@ -159,7 +214,7 @@
 						</div>
 
 						<!-- Usage badges -->
-						<div class="flex items-center gap-2 mr-3">
+						<div class="flex flex-wrap items-center gap-2">
 							{#if counts.route > 0}
 								<span class="status-badge" title="{$t('ruleSets.routeRules')}">
 									{$t('ruleSets.routeRules')}: {counts.route}
@@ -178,7 +233,20 @@
 						</div>
 
 						<!-- Actions -->
-						<div class="flex items-center gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
+						<!-- Hover-only on pointer screens; always visible below sm, where there is no hover. -->
+						<div class="flex items-center gap-1 ml-auto sm:ml-0 sm:opacity-0 sm:group-hover:opacity-100 transition-opacity">
+							{#if asn}
+								<button
+									onclick={() => handleRefreshAsn(ruleSet.tag)}
+									disabled={refreshing.has(ruleSet.tag)}
+									class="p-1.5 rounded hover:bg-[var(--ctp-surface2)] text-[var(--ctp-overlay1)] disabled:opacity-50"
+									title={$t('asnSets.refreshNow')}
+								>
+									<svg class="w-4 h-4 {refreshing.has(ruleSet.tag) ? 'animate-spin' : ''}" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+										<path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" />
+									</svg>
+								</button>
+							{/if}
 							<button
 								onclick={() => viewingRuleSet = ruleSet}
 								class="p-1.5 rounded hover:bg-[var(--ctp-surface2)] text-[var(--ctp-overlay1)]"
@@ -189,7 +257,7 @@
 									<path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M2.458 12C3.732 7.943 7.523 5 12 5c4.478 0 8.268 2.943 9.542 7-1.274 4.057-5.064 7-9.542 7-4.477 0-8.268-2.943-9.542-7z" />
 								</svg>
 							</button>
-							{#if ruleSet.type !== 'local'}
+							{#if ruleSet.type !== 'local' || asn}
 								<button
 									onclick={() => openEdit(ruleSet)}
 									class="p-1.5 rounded hover:bg-[var(--ctp-surface2)] text-[var(--ctp-overlay1)]"
@@ -212,8 +280,20 @@
 						</div>
 					</div>
 
-					<!-- URL/Path info -->
-					{#if ruleSet.url}
+					<!-- ASN set details: numbers with holders, prefix count, age, last error -->
+					{#if asn}
+						<p class="mt-2 text-xs text-[var(--ctp-overlay1)] break-words">
+							{#each asn.asns as n, i (n)}{#if i > 0}{', '}{/if}<span class="whitespace-nowrap">{formatAsn(n)}</span>{#if asn.holders[String(n)]}<span class="text-[var(--ctp-overlay0)]">{' — '}{asn.holders[String(n)]}</span>{/if}{/each}
+						</p>
+						<div class="mt-1.5 flex flex-wrap items-center gap-x-2 gap-y-1 text-xs text-[var(--ctp-overlay0)]">
+							<span>{$t('asnSets.prefixes', { values: { count: asn.prefix_count } })}</span>
+							<span aria-hidden="true">·</span>
+							<span>{asnAge(asn)}</span>
+							{#if asn.last_error}
+								<span class="status-badge error max-w-full truncate" title={`${$t('asnSets.lastErrorHint')}: ${asn.last_error}`}>{asn.last_error}</span>
+							{/if}
+						</div>
+					{:else if ruleSet.url}
 						<p class="mt-2 text-xs text-[var(--ctp-overlay0)] truncate" title={ruleSet.url}>{ruleSet.url}</p>
 					{:else if ruleSet.path}
 						<p class="mt-2 text-xs text-[var(--ctp-overlay0)] font-mono truncate" title={ruleSet.path}>{ruleSet.path}</p>
@@ -248,6 +328,8 @@
 					outbounds={allOutbounds}
 					ruleSet={editingRuleSet}
 					onSave={handleSave}
+					onSaveAsn={handleSaveAsn}
+					asnSet={editingRuleSet ? asnByTag.get(editingRuleSet.tag) ?? null : null}
 					onCancel={closeForm}
 				/>
 			</div>
@@ -318,7 +400,7 @@
 				</div>
 			</div>
 			<div class="px-4 py-3 border-t border-[var(--ctp-surface2)] flex justify-end gap-2">
-				{#if viewingRuleSet.type !== 'local'}
+				{#if viewingRuleSet.type !== 'local' || asnByTag.has(viewingRuleSet.tag)}
 					<button
 						onclick={() => { openEdit(viewingRuleSet!); viewingRuleSet = null; }}
 						class="px-4 py-2 bg-[var(--ctp-primary)] text-white rounded-lg hover:opacity-90"

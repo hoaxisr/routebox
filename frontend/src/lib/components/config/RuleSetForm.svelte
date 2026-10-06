@@ -1,7 +1,8 @@
 <script lang="ts">
 	import { t } from 'svelte-i18n';
-	import type { RuleSet, Outbound } from '$lib/types';
+	import type { RuleSet, Outbound, AsnSet } from '$lib/types';
 	import { notifications, configReadOnly } from '$lib/stores';
+	import AsnSetForm from './AsnSetForm.svelte';
 
 	interface Props {
 		existingTags: string[];
@@ -9,9 +10,13 @@
 		ruleSet?: RuleSet | null;
 		onSave: (ruleSet: RuleSet) => void;
 		onCancel: () => void;
+		// ASN sets (#103): the "ASN" type is offered only when the host can
+		// take the created set; `asnSet` opens the form in ASN edit mode.
+		onSaveAsn?: (s: AsnSet) => void;
+		asnSet?: AsnSet | null;
 	}
 
-	let { existingTags, outbounds = [], ruleSet = null, onSave, onCancel }: Props = $props();
+	let { existingTags, outbounds = [], ruleSet = null, onSave, onCancel, onSaveAsn, asnSet = null }: Props = $props();
 
 	const isEditing = !!ruleSet;
 
@@ -25,8 +30,8 @@
 
 	// Form state - initialize from ruleSet if editing
 	let tag = $state(ruleSet?.tag || '');
-	let type = $state<'remote' | 'inline'>(
-		ruleSet?.type === 'inline' ? 'inline' : 'remote'
+	let type = $state<'remote' | 'inline' | 'asn'>(
+		asnSet ? 'asn' : ruleSet?.type === 'inline' ? 'inline' : 'remote'
 	);
 	let format = $state<'binary' | 'source'>(ruleSet?.format || 'binary');
 	let url = $state(ruleSet?.url || '');
@@ -82,7 +87,7 @@
 	}
 
 	function handleSubmit() {
-		if (!validate()) return;
+		if (type === 'asn' || !validate()) return;
 
 		const newRuleSet: RuleSet = {
 			tag: tag.trim(),
@@ -103,6 +108,32 @@
 	}
 </script>
 
+{#if asnSet}
+	<!-- Editing an ASN set: the type is fixed, only the ASN form is shown. -->
+	<AsnSetForm {existingTags} {asnSet} onSaved={(s) => onSaveAsn?.(s)} {onCancel} />
+{:else}
+<div class="space-y-6">
+	<!-- Three-way type row, above everything: ASN replaces the whole classic form (#103) -->
+	{#if onSaveAsn}
+		<div>
+			<label class="block text-sm font-medium text-[var(--ctp-subtext1)] mb-2">{$t('common.type')}</label>
+			<div class="flex gap-2">
+				<button type="button" onclick={() => type = 'remote'} class="toggle-btn flex-1 whitespace-nowrap {type === 'remote' ? 'selected' : ''}">
+					{$t('routes.ruleSetTypes.remote')}
+				</button>
+				<button type="button" onclick={() => type = 'inline'} class="toggle-btn flex-1 whitespace-nowrap {type === 'inline' ? 'selected' : ''}">
+					{$t('routes.ruleSetTypes.inline')}
+				</button>
+				<button type="button" onclick={() => type = 'asn'} class="toggle-btn flex-1 whitespace-nowrap {type === 'asn' ? 'selected' : ''}">
+					{$t('asnSets.type')}
+				</button>
+			</div>
+		</div>
+	{/if}
+
+{#if type === 'asn'}
+	<AsnSetForm {existingTags} onSaved={(s) => onSaveAsn?.(s)} {onCancel} />
+{:else}
 <form onsubmit={(e) => { e.preventDefault(); handleSubmit(); }} class="space-y-6">
 	<!-- Presets (only when creating) -->
 	{#if !isEditing}
@@ -128,7 +159,6 @@
 	{/if}
 
 	<div>
-
 		<!-- Tag -->
 		<div class="mb-4">
 			<label for="tag" class="block text-sm font-medium text-[var(--ctp-subtext1)] mb-1">{$t('common.tag')} *</label>
@@ -144,7 +174,8 @@
 			{/if}
 		</div>
 
-		<!-- Type -->
+		<!-- Type (two-way, when the host cannot take ASN sets) -->
+		{#if !onSaveAsn}
 		<div class="mb-4">
 			<label class="block text-sm font-medium text-[var(--ctp-subtext1)] mb-2">{$t('common.type')}</label>
 			<div class="flex gap-2">
@@ -164,6 +195,7 @@
 				</button>
 			</div>
 		</div>
+		{/if}
 
 		<!-- Format (not for inline) -->
 		{#if type !== 'inline'}
@@ -271,3 +303,6 @@
 		</button>
 	</div>
 </form>
+{/if}
+</div>
+{/if}

@@ -2171,5 +2171,27 @@
       "left": "Влево"
     },
     "rotationSteps": "бит (1-15)"
+  },
+  "asnSets": {
+    "type": "ASN",
+    "badge": "ASN",
+    "numbers": "Номера AS",
+    "numbersHint": "13335 или AS13335 — Enter или запятая добавляет; префиксы берутся из RIPEstat",
+    "invalid": "Не номер AS: {value}",
+    "interval": "Обновлять каждые",
+    "intervalH": "{n} ч",
+    "intervalD": "{n} дн",
+    "create": "Создать",
+    "save": "Сохранить",
+    "prefixes": "{count} префиксов",
+    "updatedAgoM": "обновлено {n} мин назад",
+    "updatedAgoH": "обновлено {n} ч назад",
+    "updatedAgoD": "обновлено {n} дн назад",
+    "never": "ещё не обновлялось",
+    "refreshNow": "Обновить сейчас",
+    "refreshed": "Префиксы обновлены",
+    "refreshFailed": "Не удалось обновить",
+    "lastErrorHint": "Последнее обновление не удалось — работает предыдущий список",
+    "created": "ASN-набор создан — примените конфиг, чтобы он заработал"
   }
 }

@@ -2157,5 +2157,27 @@
       "left": "Left"
     },
     "rotationSteps": "bits (1-15)"
+  },
+  "asnSets": {
+    "type": "ASN",
+    "badge": "ASN",
+    "numbers": "AS numbers",
+    "numbersHint": "13335 or AS13335 — Enter or comma to add; prefixes come from RIPEstat",
+    "invalid": "Not an AS number: {value}",
+    "interval": "Refresh every",
+    "intervalH": "{n} h",
+    "intervalD": "{n} d",
+    "create": "Create",
+    "save": "Save",
+    "prefixes": "{count} prefixes",
+    "updatedAgoM": "updated {n} min ago",
+    "updatedAgoH": "updated {n} h ago",
+    "updatedAgoD": "updated {n} d ago",
+    "never": "not updated yet",
+    "refreshNow": "Refresh now",
+    "refreshed": "Prefixes refreshed",
+    "refreshFailed": "Refresh failed",
+    "lastErrorHint": "Last refresh failed — the previous list is still in use",
+    "created": "ASN set created — apply the config to start using it"
   }
 }
