@@ -41,6 +41,13 @@ func NewStore(path string) *Store {
 }
 
 // Load reads the file; a missing one is an empty store, not an error.
+//
+// A file that does not parse, or carries an unsafe or duplicate tag (hand
+// edits), is refused as a whole and the in-memory entries are left as they
+// were: the caller must then keep the manager out of service, because the
+// first Put would rewrite asn.toml from whatever is in memory and every other
+// set's metadata would be gone. Tags become file names (PathFor), so an
+// invalid one must never get in through the file.
 func (s *Store) Load() error {
 	s.mu.Lock()
 	defer s.mu.Unlock()
@@ -57,10 +64,17 @@ func (s *Store) Load() error {
 	if err := toml.Unmarshal(data, &doc); err != nil {
 		return fmt.Errorf("parse %s: %w", s.path, err)
 	}
-	s.byTag = make(map[string]Entry, len(doc.Sets))
+	byTag := make(map[string]Entry, len(doc.Sets))
 	for _, e := range doc.Sets {
-		s.byTag[e.Tag] = e
+		if !ValidTag(e.Tag) {
+			return fmt.Errorf("parse %s: invalid tag %q", s.path, e.Tag)
+		}
+		if _, dup := byTag[e.Tag]; dup {
+			return fmt.Errorf("parse %s: duplicate tag %q", s.path, e.Tag)
+		}
+		byTag[e.Tag] = e
 	}
+	s.byTag = byTag
 	return nil
 }
 

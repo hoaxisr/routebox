@@ -138,3 +138,35 @@ func TestWritePrefixFileReadOnlyDir(t *testing.T) {
 		t.Fatalf("leftovers in read-only dir: %v", entries)
 	}
 }
+
+// A hand-edited or corrupt asn.toml must be refused as a whole: a partial or
+// unsafe set of entries would be rewritten over the file on the first Put
+// (metadata of every other set gone) or let PathFor escape asn/.
+func TestStoreLoadRejectsBadFiles(t *testing.T) {
+	cases := map[string]string{
+		"invalid TOML":  "[[sets]\ntag = \"cf\"\n",
+		"unsafe tag":    "[[sets]]\ntag = \"../x\"\nasns = [1]\n",
+		"empty tag":     "[[sets]]\ntag = \"\"\nasns = [1]\n",
+		"duplicate tag": "[[sets]]\ntag = \"cf\"\nasns = [1]\n\n[[sets]]\ntag = \"cf\"\nasns = [2]\n",
+	}
+	for name, body := range cases {
+		t.Run(name, func(t *testing.T) {
+			p := filepath.Join(t.TempDir(), "asn.toml")
+			if err := os.WriteFile(p, []byte(body), 0644); err != nil {
+				t.Fatal(err)
+			}
+			s := NewStore(p)
+			s.byTag["keep"] = Entry{Tag: "keep"} // whatever was there before Load
+			err := s.Load()
+			if err == nil {
+				t.Fatalf("Load accepted %s: %v", name, s.List())
+			}
+			if !strings.Contains(err.Error(), p) {
+				t.Errorf("error does not name the file: %v", err)
+			}
+			if _, ok := s.Get("keep"); !ok {
+				t.Error("a failed Load replaced the in-memory entries")
+			}
+		})
+	}
+}

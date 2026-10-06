@@ -714,32 +714,39 @@ func main() {
 	// may start — a missing local rule set is FATAL at start. The restore is
 	// bounded so a dead RIPEstat delays boot by a minute at most (the manager
 	// writes an empty placeholder in that case and retries on its loop).
+	//
+	// A corrupt asn.toml keeps the whole feature out of service: wiring an
+	// EMPTY store would make the first Put (create, refresh, placeholder tick)
+	// rewrite the file from the empty map and drop every other set's metadata.
+	// With no manager the API answers [] / 503 and nothing on disk is touched.
 	stopASN := make(chan struct{})
 	if sp := settingsMgr.GetPath(); sp != "" {
 		base := asnBaseDir(sp)
-		asnStore := asnsets.NewStore(filepath.Join(base, "asn.toml"))
+		asnStorePath := filepath.Join(base, "asn.toml")
+		asnStore := asnsets.NewStore(asnStorePath)
 		if err := asnStore.Load(); err != nil {
-			log.Printf("Warning: failed to load asn.toml: %v", err)
+			log.Printf("asnsets: cannot load %s: %v — ASN sets are DISABLED until the file is fixed or removed (API answers 503; no set is pruned, restored or refreshed)", asnStorePath, err)
+		} else {
+			asnMgr := asnsets.NewManager(asnStore, filepath.Join(base, "asn"), asnsets.NewFetcher())
+			// Runs under the ASN manager's lock: it only reads the config manager,
+			// which never calls back into asnsets. Both configs count — a set
+			// removed from the draft is in service until Apply. A config that did
+			// not load answers "referenced" for everything: the empty manager
+			// would otherwise make every set look orphaned and the prune would
+			// remove files the real config still points at.
+			inConfig := func(tag string) bool {
+				return cfgLoadFailed || ruleSetTagIn(cfgMgr.GetActive(), tag) || ruleSetTagIn(cfgMgr.Get(), tag)
+			}
+			if cfgLoadFailed {
+				log.Printf("asnsets: config did not load; ASN sets are not pruned until RouteBox restarts with a loadable config")
+			}
+			asnMgr.Prune(inConfig)
+			restoreCtx, cancelRestore := context.WithTimeout(context.Background(), 60*time.Second)
+			asnMgr.RestoreMissing(restoreCtx)
+			cancelRestore()
+			go asnMgr.RunLoop(time.Hour, inConfig, stopASN)
+			apiHandler.SetASN(asnMgr)
 		}
-		asnMgr := asnsets.NewManager(asnStore, filepath.Join(base, "asn"), asnsets.NewFetcher())
-		// Runs under the ASN manager's lock: it only reads the config manager,
-		// which never calls back into asnsets. Both configs count — a set
-		// removed from the draft is in service until Apply. A config that did
-		// not load answers "referenced" for everything: the empty manager
-		// would otherwise make every set look orphaned and the prune would
-		// remove files the real config still points at.
-		inConfig := func(tag string) bool {
-			return cfgLoadFailed || ruleSetTagIn(cfgMgr.GetActive(), tag) || ruleSetTagIn(cfgMgr.Get(), tag)
-		}
-		if cfgLoadFailed {
-			log.Printf("asnsets: config did not load; ASN sets are not pruned until RouteBox restarts with a loadable config")
-		}
-		asnMgr.Prune(inConfig)
-		restoreCtx, cancelRestore := context.WithTimeout(context.Background(), 60*time.Second)
-		asnMgr.RestoreMissing(restoreCtx)
-		cancelRestore()
-		go asnMgr.RunLoop(time.Hour, inConfig, stopASN)
-		apiHandler.SetASN(asnMgr)
 	}
 
 	// Bring amnezia-box up when nothing else will. Done here rather than before
