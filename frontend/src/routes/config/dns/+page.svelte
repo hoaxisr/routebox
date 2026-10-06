@@ -24,6 +24,10 @@
 	let tailStart = $derived(fallbackStart(dnsRules));
 	let visibleRules = $derived(dnsRules.slice(0, tailStart));
 	let ruleSets = $state<RuleSet[]>([]);
+	// ASN sets (#103) hold IP prefixes only, so they are useless in DNS rules:
+	// hide them from the picker. An older backend has no endpoint — hide nothing.
+	let asnTags = $state<Set<string>>(new Set());
+	let dnsRuleSets = $derived(ruleSets.filter((rs) => !asnTags.has(rs.tag)));
 	let outbounds = $state<Outbound[]>([]);
 	let endpoints = $state<Endpoint[]>([]);
 	// Combined list: outbounds + endpoints (endpoints can be used as detour targets)
@@ -62,6 +66,11 @@
 			ruleSets = ruleSetsData;
 			outbounds = outboundsData;
 			endpoints = endpointsData;
+			try {
+				asnTags = new Set((await api.listAsnSets()).map((s) => s.tag));
+			} catch {
+				asnTags = new Set();
+			}
 		} catch (e) {
 			notifications.error($t('errors.loadFailed'));
 		} finally {
@@ -831,7 +840,7 @@
 				<DnsRuleForm
 					rule={editingRuleIndex !== null ? dnsRules[editingRuleIndex] : undefined}
 					{dnsServers}
-					{ruleSets}
+					ruleSets={dnsRuleSets}
 					outbounds={allOutbounds}
 					onSave={editingRuleIndex !== null ? handleUpdateRule : handleCreateRule}
 					onCancel={() => { showRuleForm = false; editingRuleIndex = null; }}

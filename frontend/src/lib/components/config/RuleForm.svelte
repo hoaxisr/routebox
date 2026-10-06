@@ -390,6 +390,14 @@
 							notifications.error(`${e}`);
 						}
 					}}
+					onSaveAsn={(s) => {
+						// AsnSetForm already created the set and added it to the draft (#103).
+						const rs = { tag: s.tag, type: 'local' as const, format: 'source' as const, path: s.path };
+						conditions = { ...conditions, rule_set: [...(conditions.rule_set ?? []), s.tag] };
+						showInlineRuleSetForm = false;
+						onRuleSetCreated?.(rs);
+						notifications.success($t('asnSets.created'));
+					}}
 					onCancel={() => showInlineRuleSetForm = false}
 				/>
 			</div>
