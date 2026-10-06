@@ -211,9 +211,11 @@
 						<span class="period">
 							{#if period === 'live'}
 								<TrafficChart down={rowSeries(r).down} up={rowSeries(r).up} class="h-5" />
-							{:else}
+							{:else if a.down + a.up > 0}
+								<!-- No bar at all for a zero row: .bar keeps min-width 2px so a tiny share stays visible,
+								     which would otherwise leave a sliver on rows that moved nothing. -->
 								<span class="bar" style="width:{((a.down + a.up) / maxAmount) * 100}%">
-									<b style="width:{a.down + a.up > 0 ? (a.down / (a.down + a.up)) * 100 : 0}%"></b>
+									<b style="width:{(a.down / (a.down + a.up)) * 100}%"></b>
 								</span>
 							{/if}
 						</span>
@@ -224,7 +226,9 @@
 						{@const peak = period === 'live' ? null : peakOf(r.history)}
 						<div class="detail">
 							<div>
-								{#if s.down.length > 1}
+								<!-- `a` is the row's bytes in the shown window (period totals, or the live ring);
+								     a zero row gets the no-data text instead of an empty flat chart. -->
+								{#if s.down.length > 1 && a.down + a.up > 0}
 									<TrafficChart down={s.down} up={s.up} class="h-20" />
 									<div class="legend">
 										<span><i class="sw dl-bg"></i>{$t('consumers.download')}</span>
@@ -292,7 +296,9 @@
 	.sw { display: inline-block; width: 8px; height: 8px; border-radius: 50%; margin-right: 0.3rem; }
 	.dl-bg { background: var(--ctp-primary); }
 	.ul-bg { background: var(--ctp-upload); }
-	.kv { display: grid; grid-template-columns: auto 1fr; gap: 0.2rem 0.75rem; font-size: 0.8rem; margin: 0; }
+	/* align-content: start — the list is a grid item stretched to the chart's height; without it
+	   the rows spread over that height and "Manage" drifts far below "Expires". */
+	.kv { display: grid; grid-template-columns: auto 1fr; align-content: start; gap: 0.2rem 0.75rem; font-size: 0.8rem; margin: 0; }
 	.kv dt { color: var(--ctp-overlay1); }
 	.kv dd { margin: 0; }
 	.link { color: var(--ctp-primary); }
