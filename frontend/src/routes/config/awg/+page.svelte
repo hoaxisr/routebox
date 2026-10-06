@@ -349,7 +349,7 @@
 				<!-- The link sits inside the value: .strip-metric stacks its children. -->
 				<span class="m-val mono">↓ {formatSpeed(awgNowDown)} &nbsp;↑ {formatSpeed(awgNowUp)}
 					<a class="text-xs text-[var(--ctp-primary)]" href="/monitor/consumers?kind=awg">→</a></span>
-				<span class="m-key">{$t('awg.traffic')}</span>
+				<span class="m-key">{$t('consumers.nowAll')}</span>
 			</div>
 
 				{#if status.public_host}

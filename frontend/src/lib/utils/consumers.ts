@@ -78,13 +78,19 @@ export function sumTrend(rows: ConsumerLiveRow[]): { down: number[]; up: number[
 	return { down: pts.map((p) => p.d), up: pts.map((p) => p.u) };
 }
 
-// Bytes moved over the live window: each point is a rate held for one interval.
+// Bytes moved over the live window: each point is a rate held since the
+// previous point. The first one has no predecessor and counts for one sampler
+// interval; a gap wider than that (missed tick, sampler woke up) is weighed as
+// what it is instead of being squeezed into a nominal 2 s.
 export function trendBytes(l?: ConsumerLiveRow): { down: number; up: number } {
 	let down = 0,
-		up = 0;
+		up = 0,
+		prev: number | null = null;
 	for (const p of l?.trend ?? []) {
-		down += p.down_bps * LIVE_INTERVAL_S;
-		up += p.up_bps * LIVE_INTERVAL_S;
+		const dt = prev === null ? LIVE_INTERVAL_S : Math.max(0, p.ts - prev);
+		down += p.down_bps * dt;
+		up += p.up_bps * dt;
+		prev = p.ts;
 	}
 	return { down, up };
 }

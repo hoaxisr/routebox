@@ -57,6 +57,13 @@ describe('consumers helpers', () => {
 		expect(trendBytes(undefined)).toEqual({ down: 0, up: 0 });
 	});
 
+	it('weighs each live point by the gap since the previous one', () => {
+		// First point: no predecessor, so one sampler interval (2 s). Then 2 s, then 6 s
+		// (a tick the page missed or the sampler slept through).
+		const r = l({ trend: [{ ts: 10, down_bps: 10, up_bps: 1 }, { ts: 12, down_bps: 20, up_bps: 2 }, { ts: 18, down_bps: 30, up_bps: 3 }] });
+		expect(trendBytes(r)).toEqual({ down: 10 * 2 + 20 * 2 + 30 * 6, up: 1 * 2 + 2 * 2 + 3 * 6 });
+	});
+
 	it('finds the peak bucket', () => {
 		expect(peakOf([{ ts: 1, upload: 1, download: 1 }, { ts: 2, upload: 0, download: 9 }])?.ts).toBe(2);
 		expect(peakOf([])).toBeNull();

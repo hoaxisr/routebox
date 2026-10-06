@@ -15,7 +15,6 @@
 @source "routes/monitor/breakdown/*.svelte";
 @source "routes/monitor/logs/*.svelte";
 @source "routes/monitor/proxies/*.svelte";
-@source "routes/monitor/traffic/*.svelte";
 @source "routes/setup/*.svelte";
 
 /* Anthropic-inspired Dark Theme */

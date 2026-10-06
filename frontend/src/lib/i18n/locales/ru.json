@@ -1890,7 +1890,6 @@
     "trafficReset": "Счётчик сброшен",
     "trafficResetFailed": "Не удалось сбросить счётчик",
     "transferCumulative": "Принято / отдано с последнего сброса счётчика",
-    "traffic": "Трафик",
     "secondsAgo": "{n} с назад",
     "minutesAgo": "{n} мин назад",
     "hoursAgo": "{n} ч назад",

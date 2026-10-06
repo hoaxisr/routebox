@@ -1881,7 +1881,6 @@
     "trafficReset": "Counter reset",
     "trafficResetFailed": "Failed to reset the counter",
     "transferCumulative": "Received / sent since the counter was last reset",
-    "traffic": "Traffic",
     "secondsAgo": "{n}s ago",
     "minutesAgo": "{n}m ago",
     "hoursAgo": "{n}h ago",
