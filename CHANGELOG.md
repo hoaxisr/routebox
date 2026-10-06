@@ -6,7 +6,8 @@ All notable changes to RouteBox are documented here.
 
 ### Backend
 - New `GET /api/consumers?range=` and `GET /api/consumers/live`: every traffic consumer (panel users, AWG peers, Telegram clients, LAN devices) in one shape, with period totals, history and live rates (#109).
-- AWG peers now have accurate traffic history on both backends (kernel included), written from the same 30 s accounting as quotas.
+- AWG peers now have traffic history, written from the same 30 s accounting as quotas. Verified live on the singbox backend only; the kernel backend uses the same code path but is not live-verified in this release (no kernel module on the test machine).
+- `traffic.db` is now opened in SQLite WAL mode: a hand copy must include `traffic.db-wal` and `traffic.db-shm` too (or stop RouteBox first), otherwise the last minutes of history are missing from the copy.
 - **Breaking:** removed `GET /api/users/{id}/traffic`, `GET /api/awg/peers/traffic`, `GET /api/mtproto/clients/traffic` (replaced by `/api/consumers`).
 
 ### Frontend
