@@ -5,15 +5,15 @@
 	import { notifications, unsavedChanges, formatBytes } from '$lib/stores';
 	import Modal from '$lib/components/shared/Modal.svelte';
 	import ShareModal from '$lib/components/config/users/ShareModal.svelte';
-	import Sparkline from '$lib/components/shared/Sparkline.svelte';
 	import { gbFieldValue, quotaInputProblem, quotaSavePlan } from '$lib/components/awg/peerQuota';
+	import { monitorHref } from '$lib/utils/consumers';
 	import {
 		userQuotaUsage,
 		userSuspendLabelKey,
 		mergeQuotaFields,
 		quotaDraftValue
 	} from '$lib/components/config/users/userQuota';
-	import type { PanelUser, Inbound, UserTrafficResponse } from '$lib/types';
+	import type { PanelUser, Inbound } from '$lib/types';
 
 	let users = $state<PanelUser[]>([]);
 	let serverInbounds = $state<{ tag: string; type: string }[]>([]);
@@ -55,26 +55,6 @@
 	// time, so arming another row disarms this one.
 	let resetArmed = $state<string | null>(null);
 	let resetting = $state(false);
-
-	// Per-user traffic history, lazily fetched on expand. Keyed by user id.
-	// 'loading' marks an in-flight fetch so the row can show a placeholder.
-	let expanded = $state<Record<string, UserTrafficResponse | 'loading'>>({});
-
-	async function toggleTraffic(id: string) {
-		if (expanded[id]) {
-			delete expanded[id];
-			expanded = { ...expanded };
-			return;
-		}
-		expanded = { ...expanded, [id]: 'loading' };
-		try {
-			expanded = { ...expanded, [id]: await api.getUserTraffic(id, '24h') };
-		} catch (e) {
-			delete expanded[id];
-			expanded = { ...expanded };
-			notifications.error(`${$t('users.trafficLoadFailed')}: ${e}`);
-		}
-	}
 
 	async function load() {
 		loading = true;
@@ -369,19 +349,16 @@
 								{/each}
 							</div>
 							{#if !u.pending && u.id}
+								<!-- Totals only; the per-user chart lives on the Consumers page. -->
 								<div class="mt-3 flex items-center gap-3 flex-wrap">
-									<button class="traffic-cell" onclick={() => u.id && toggleTraffic(u.id)} title={$t('users.usage')}>
+									<span class="traffic-cell">
 										<span class="up">↑ {formatBytes(u.upload ?? 0)}</span>
 										<span class="down">↓ {formatBytes(u.download ?? 0)}</span>
-									</button>
-									{#if expanded[u.id] === 'loading'}
-										<span class="text-xs text-[var(--ctp-overlay0)]">{$t('common.loading')}</span>
-									{:else if expanded[u.id]}
-										<Sparkline values={(expanded[u.id] as UserTrafficResponse).history.map((p) => p.upload + p.download)} />
-									{/if}
+									</span>
+									<a class="text-xs text-[var(--ctp-primary)]" href={monitorHref({ kind: 'user', id: u.id })}>→</a>
 								</div>
 								<!-- The quota's own counters (rx + tx since the last reset), a
-								     different number from the traffic history above it. -->
+								     different number from the traffic totals above it. -->
 								{#if usage.quota > 0}
 									<div class="quota-line" title={$t('awg.transferCumulative')}>
 										<div class="quota-track">
@@ -538,10 +515,6 @@
 		font-size: 0.8125rem;
 		font-variant-numeric: tabular-nums;
 		background: var(--ctp-surface0);
-		transition: background-color 0.15s;
-	}
-	.traffic-cell:hover {
-		background: var(--ctp-surface1);
 	}
 	.traffic-cell .up {
 		color: var(--ctp-primary);

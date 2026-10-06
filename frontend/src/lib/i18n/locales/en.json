@@ -1731,11 +1731,7 @@
     "openSettings": "Open Settings",
     "noToken": "No token yet — available after Apply.",
     "rotateFailed": "Failed to rotate token",
-    "revokeFailed": "Failed to revoke token",
-    "upload": "Upload",
-    "download": "Download",
-    "usage": "Usage",
-    "trafficLoadFailed": "Failed to load traffic"
+    "revokeFailed": "Failed to revoke token"
   },
   "awg": {
     "statsNoteUnsupported": "This amnezia-box build cannot report per-peer handshake state. Connection state is inferred from recorded traffic where possible and shown as “—” where it cannot be; the traffic counters keep the totals accumulated up to the last successful reading. Updating amnezia-box on the Updates page restores the live figures.",

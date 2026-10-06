@@ -3,7 +3,7 @@
 	import { t } from 'svelte-i18n';
 	import { api } from '$lib/api/client';
 	import { notifications } from '$lib/stores';
-	import { formatBytes } from '$lib/stores/settings';
+	import { formatSpeed } from '$lib/stores/settings';
 	import type { AwgStatus, AwgPeer, AwgServerSettings } from '$lib/types';
 	import ServerSettingsForm from '$lib/components/awg/ServerSettingsForm.svelte';
 	import PeerRoster from '$lib/components/awg/PeerRoster.svelte';
@@ -83,6 +83,7 @@
 		} finally {
 			loading = false;
 		}
+		await loadLive();
 	}
 
 	// True when the last background refresh could not reach the panel, so the
@@ -117,9 +118,24 @@
 		}
 	}
 
+	// Current per-peer rates from the consumers sampler, keyed by public key. The
+	// page works without them: a failed fetch empties the map and nothing else.
+	let awgLive = $state(new Map<string, { down_bps: number; up_bps: number }>());
+	async function loadLive() {
+		try {
+			const l = await api.getConsumersLive();
+			awgLive = new Map(l.rows.filter((r) => r.kind === 'awg').map((r) => [r.id, r]));
+		} catch {
+			awgLive = new Map();
+		}
+	}
+	let awgNowDown = $derived([...awgLive.values()].reduce((s, r) => s + r.down_bps, 0));
+	let awgNowUp = $derived([...awgLive.values()].reduce((s, r) => s + r.up_bps, 0));
+
 	async function refreshLive(quiet = false) {
 		await refreshStatus(quiet);
 		await refreshPeers(quiet);
+		await loadLive();
 	}
 
 	let poll: ReturnType<typeof setInterval> | null = null;
@@ -330,7 +346,9 @@
 			</div>
 
 			<div class="strip-metric">
-				<span class="m-val mono">↓ {formatBytes(status.rx)} &nbsp;↑ {formatBytes(status.tx)}</span>
+				<!-- The link sits inside the value: .strip-metric stacks its children. -->
+				<span class="m-val mono">↓ {formatSpeed(awgNowDown)} &nbsp;↑ {formatSpeed(awgNowUp)}
+					<a class="text-xs text-[var(--ctp-primary)]" href="/monitor/consumers?kind=awg">→</a></span>
 				<span class="m-key">{$t('awg.traffic')}</span>
 			</div>
 
@@ -389,7 +407,7 @@
 			</div>
 			<div class="clients-body">
 				{#if status.enabled}
-					<PeerRoster {peers} subnet={form.subnet} singbox={isSingbox} onChange={async () => { await refreshStatus(); await refreshPeers().catch((e) => notifications.error(`${$t('awg.loadFailed')}: ${e}`)); }} />
+					<PeerRoster {peers} live={awgLive} subnet={form.subnet} singbox={isSingbox} onChange={async () => { await refreshStatus(); await refreshPeers().catch((e) => notifications.error(`${$t('awg.loadFailed')}: ${e}`)); }} />
 				{:else}
 					<div class="locked-note">{$t('awg.shareLocked')}</div>
 				{/if}
@@ -592,7 +610,7 @@
 					<p class="step-desc">{$t('awg.stepShareDesc')}</p>
 
 					{#if status.enabled}
-						<PeerRoster {peers} subnet={form.subnet} singbox={isSingbox} onChange={async () => { await refreshStatus(); await refreshPeers().catch((e) => notifications.error(`${$t('awg.loadFailed')}: ${e}`)); }} />
+						<PeerRoster {peers} live={awgLive} subnet={form.subnet} singbox={isSingbox} onChange={async () => { await refreshStatus(); await refreshPeers().catch((e) => notifications.error(`${$t('awg.loadFailed')}: ${e}`)); }} />
 					{:else}
 						<div class="locked-note">{$t('awg.shareLocked')}</div>
 					{/if}

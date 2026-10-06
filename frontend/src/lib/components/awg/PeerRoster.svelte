@@ -5,7 +5,8 @@
 	import { notifications } from '$lib/stores';
 	import Modal from '$lib/components/shared/Modal.svelte';
 	import type { AwgPeer } from '$lib/types';
-	import { formatBytes } from '$lib/stores/settings';
+	import { formatBytes, formatSpeed } from '$lib/stores/settings';
+	import { monitorHref } from '$lib/utils/consumers';
 	import { expiryStatus, unixToDateInput, dateInputToUnix, presetExpiry } from './peerExpiry';
 	import {
 		gbFieldValue,
@@ -20,10 +21,13 @@
 		peers: AwgPeer[];
 		subnet?: string;
 		singbox?: boolean;
+		// Current rates per peer, keyed by public key (from the consumers sampler).
+		// Absent = no live reading; the row then shows its stored total only.
+		live?: Map<string, { down_bps: number; up_bps: number }>;
 		onChange: () => void | Promise<void>;
 	}
 
-	let { peers, subnet = '', singbox = false, onChange }: Props = $props();
+	let { peers, subnet = '', singbox = false, live = new Map(), onChange }: Props = $props();
 
 	// A peer is "live" when the server says so — a real handshake either way,
 	// off the kernel interface on that backend and off sing-box's WireGuard
@@ -386,12 +390,16 @@
 							{#if p.stats === 'unavailable'}—{:else}{isLive(p) ? $t('awg.online') : lastSeen(p.last_handshake)}{/if}
 						</span>
 						<span class="dot-sep">·</span>
-						<!-- The peer's own stored counters since the last reset (#95), not
-						     a live reading: they are shown whatever `stats` says, because a
-						     tick that could not read the interface leaves what was already
-						     accounted for intact. Only the dot and "last seen" above still
-						     depend on that snapshot (#75). -->
-						<span class="xfer" title={$t('awg.transferCumulative')}>↓ {formatBytes(p.rx)} &nbsp;↑ {formatBytes(p.tx)}</span>
+						<!-- Current download rate when the sampler has one (client view,
+						     like the Consumers page), then the peer's own stored counters
+						     since the last reset (#95) as one total: they are shown whatever
+						     `stats` says, because a tick that could not read the interface
+						     leaves what was already accounted for intact. Only the dot and
+						     "last seen" above still depend on that snapshot (#75). -->
+						<span class="xfer" title={$t('awg.transferCumulative')}>
+							{#if live.get(p.public_key)}↓ {formatSpeed(live.get(p.public_key)!.down_bps)} · {/if}{formatBytes(p.rx + p.tx)}
+							<a href={monitorHref({ kind: 'awg', id: p.public_key })}>→</a>
+						</span>
 						{#if singbox}
 							<span class="dot-sep">·</span>
 							{#if !p.expires_at}
@@ -654,6 +662,9 @@
 		font-family: inherit;
 		color: var(--ctp-overlay1);
 		font-size: 0.78rem;
+	}
+	.peer-meta .xfer a {
+		color: var(--ctp-primary);
 	}
 	.peer-meta {
 		display: flex;

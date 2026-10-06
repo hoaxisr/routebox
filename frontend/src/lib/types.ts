@@ -322,18 +322,6 @@ export interface PanelUser {
 /** Why a panel user is out of service; '' = in service. */
 export type SuspendReason = '' | 'manual' | 'quota' | 'expired';
 
-export interface UserTrafficPoint {
-	ts: number;
-	upload: number;
-	download: number;
-}
-
-export interface UserTrafficResponse {
-	upload: number;
-	download: number;
-	history: UserTrafficPoint[];
-}
-
 export interface ServerRealityConfig {
 	enabled: boolean;
 	private_key?: string;
@@ -1301,21 +1289,6 @@ export interface AwgPeer {
 	suspend_reason: '' | 'quota' | 'expired';
 }
 
-// One AWG peer's traffic over a range, in the same shape /monitor/users renders
-// for panel users. The bytes come from the per-source history (the peer's tunnel
-// IP), not from sing-box user stats — see GetAWGPeersTraffic.
-export interface AwgPeerTraffic {
-	public_key: string;
-	name: string;
-	address: string; // "<ip>/32" as stored
-	source: string;  // the tunnel IP the bytes are keyed by
-	last_handshake: number;
-	online: boolean;
-	upload: number;
-	download: number;
-	history: UserTrafficPoint[];
-}
-
 // AmneziaWG obfuscation parameters (junk packets, init-packet sizes, magic headers)
 export interface AwgObf {
 	jc: number;
@@ -1442,11 +1415,3 @@ export interface MtprotoLink {
 	web: string;
 }
 
-/** One Telegram proxy client's traffic over a range, in the same shape
- *  /monitor/users renders for panel users and AWG peers. */
-export interface MtprotoClientTraffic {
-	name: string;
-	upload: number;
-	download: number;
-	history: UserTrafficPoint[];
-}

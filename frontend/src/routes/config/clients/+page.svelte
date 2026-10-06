@@ -4,6 +4,7 @@
     import { api, createConnectionsStream } from '$lib/api/client';
     import { notifications, applyClients, formatBytes } from '$lib/stores';
     import type { ClientEntry, ClashConnection } from '$lib/types';
+    import { monitorHref } from '$lib/utils/consumers';
 
     let entries = $state<ClientEntry[]>([]);
     let loading = $state(true);
@@ -180,7 +181,10 @@
                                 />
                             </td>
                             <td class="px-4 py-2 text-right font-mono text-sm text-[var(--ctp-subtext1)]">{connCount(e.ip)}</td>
-                            <td class="px-4 py-2 text-right font-mono text-sm text-[var(--ctp-subtext1)]">{traffic !== undefined ? formatBytes(traffic) : '—'}</td>
+                            <td class="px-4 py-2 text-right font-mono text-sm text-[var(--ctp-subtext1)]">
+                                {traffic !== undefined ? formatBytes(traffic) : '—'}
+                                <a class="ml-1 text-[var(--ctp-primary)]" href={monitorHref({ kind: 'lan', id: e.ip })}>→</a>
+                            </td>
                             <td class="px-4 py-2 text-center text-xs text-[var(--ctp-overlay1)]">{formatLastSeen(e)}</td>
                             <td class="px-4 py-2 text-center">
                                 <button

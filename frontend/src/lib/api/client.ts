@@ -1,5 +1,5 @@
 import type {
-	SystemInfo, ApiResponse, ProcessStatus, SingboxConfig, Endpoint, Outbound, Inbound, RuleSet, RuleSetUsage, RouteRule, RouteSettings, DnsServer, DnsRule, DnsSettings, LogSettings, ExperimentalSettings, ConnectionsResponse, ProxiesResponse, ClashProxy, TestRouteResponse, ConnectTestResponse, SettingsResponse, RouteBoxSettings, SingBoxVersion, DomainSetInfo, RuleSetSource, ClientEntry, TrafficHistoryResponse, TrafficRange, UpdatesStatus, UpdateProgress, UpdateTargetName, Subscription, SubscriptionInput, PanelUser, UserTrafficResponse, AwgStatus, AwgPeer, AwgPeerTraffic, MtprotoState, MtprotoStatus, MtprotoSettings, MtprotoClient, MtprotoConnection, MtprotoLink, MtprotoClientTraffic, DestNaive, SpeedTestResult, ConsumersResponse, ConsumersLive } from '$lib/types';
+	SystemInfo, ApiResponse, ProcessStatus, SingboxConfig, Endpoint, Outbound, Inbound, RuleSet, RuleSetUsage, RouteRule, RouteSettings, DnsServer, DnsRule, DnsSettings, LogSettings, ExperimentalSettings, ConnectionsResponse, ProxiesResponse, ClashProxy, TestRouteResponse, ConnectTestResponse, SettingsResponse, RouteBoxSettings, SingBoxVersion, DomainSetInfo, RuleSetSource, ClientEntry, TrafficHistoryResponse, TrafficRange, UpdatesStatus, UpdateProgress, UpdateTargetName, Subscription, SubscriptionInput, PanelUser, AwgStatus, AwgPeer, MtprotoState, MtprotoStatus, MtprotoSettings, MtprotoClient, MtprotoConnection, MtprotoLink, DestNaive, SpeedTestResult, ConsumersResponse, ConsumersLive } from '$lib/types';
 import { canonicalizeConnections } from '$lib/utils/clientIp';
 
 const API_BASE = '/api';
@@ -275,10 +275,6 @@ export const api = {
 
 	// Panel users
 	getUsers: () => request<PanelUser[]>('/users'),
-	getUserTraffic: (id: string, range: TrafficRange = '24h') =>
-		request<UserTrafficResponse>(
-			`/users/${encodeURIComponent(id)}/traffic?range=${encodeURIComponent(range)}`
-		),
 	createUser: (body: { name: string; protocol: string; inbound_tag: string }) =>
 		request<PanelUser>('/users', { method: 'POST', body: JSON.stringify(body) }),
 	addUserBinding: (id: string, body: { protocol: string; inbound_tag: string }) =>
@@ -322,8 +318,6 @@ export const api = {
 	awgEnable: () => request<AwgStatus>('/awg/enable', { method: 'POST' }),
 	awgDisable: () => request<AwgStatus>('/awg/disable', { method: 'POST' }),
 	getAwgPeers: () => request<AwgPeer[]>('/awg/peers'),
-	getAwgPeersTraffic: (range: TrafficRange = '24h') =>
-		request<AwgPeerTraffic[]>(`/awg/peers/traffic?range=${encodeURIComponent(range)}`),
 	createAwgPeer: (name: string) =>
 		request<AwgPeer>('/awg/peers', { method: 'POST', body: JSON.stringify({ name }) }),
 	deleteAwgPeer: (pk: string) =>
@@ -360,8 +354,6 @@ export const api = {
 		request<MtprotoSettings>('/mtproto', { method: 'PUT', body: JSON.stringify(patch) }),
 	getMtprotoClients: () => request<MtprotoClient[]>('/mtproto/clients'),
 	getMtprotoConnections: () => request<MtprotoConnection[]>('/mtproto/connections'),
-	getMtprotoClientsTraffic: (range: TrafficRange = '24h') =>
-		request<MtprotoClientTraffic[]>(`/mtproto/clients/traffic?range=${encodeURIComponent(range)}`),
 	createMtprotoClient: (name: string) =>
 		request<{ name: string }>('/mtproto/clients', { method: 'POST', body: JSON.stringify({ name }) }),
 	deleteMtprotoClient: (name: string) =>
