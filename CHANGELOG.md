@@ -2,6 +2,18 @@
 
 All notable changes to RouteBox are documented here.
 
+## Unreleased
+
+### Backend
+- New `GET /api/consumers?range=` and `GET /api/consumers/live`: every traffic consumer (panel users, AWG peers, Telegram clients, LAN devices) in one shape, with period totals, history and live rates (#109).
+- AWG peers now have accurate traffic history on both backends (kernel included), written from the same 30 s accounting as quotas.
+- **Breaking:** removed `GET /api/users/{id}/traffic`, `GET /api/awg/peers/traffic`, `GET /api/mtproto/clients/traffic` (replaced by `/api/consumers`).
+
+### Frontend
+- New Monitor → Consumers page in both modes: filter by kind, Live/1h/24h/7d/30d, current ↓/↑ per consumer, summary graph, row details with a link to settings.
+- Monitor → Traffic and Monitor → Per-User Traffic removed (old links redirect to Consumers).
+- AWG server page: current rate in the status card and per peer; Users and Clients pages link to Consumers instead of drawing their own charts.
+
 ## [0.37.1]
 
 ### Fixes
