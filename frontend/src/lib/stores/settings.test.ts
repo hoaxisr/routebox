@@ -15,4 +15,10 @@ describe('formatBytes / formatSpeed', () => {
 		expect(formatBytes(1536)).toBe('1.5 KB');
 		expect(formatSpeed(2 * 1024 * 1024)).toBe('2.0 MB/s');
 	});
+
+	it('steps up a unit at 1000, so a number is never four digits wide (#110)', () => {
+		expect(formatBytes(999 * 1024)).toBe('999.0 KB');
+		expect(formatSpeed(1023.4 * 1024)).toBe('1.0 MB/s');
+		expect(formatBytes(1000)).toBe('1.0 KB');
+	});
 });

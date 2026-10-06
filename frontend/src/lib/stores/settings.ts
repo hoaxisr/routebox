@@ -10,7 +10,10 @@ export function formatBytes(bytes: number): string {
 	const sizes = ['B', 'KB', 'MB', 'GB', 'TB'];
 	// Fractions of a byte (an hour's average of one short burst) have a
 	// negative log — clamp, or the unit reads "undefined" (#99).
-	const i = Math.max(0, Math.min(sizes.length - 1, Math.floor(Math.log(bytes) / Math.log(k))));
+	let i = Math.max(0, Math.min(sizes.length - 1, Math.floor(Math.log(bytes) / Math.log(k))));
+	// 1000..1023 of a unit reads as the next one: a four-digit number widened
+	// the dashboard's speed and re-wrapped its row on a phone (#110).
+	if (bytes / Math.pow(k, i) >= 999.95 && i < sizes.length - 1) i++;
 	return `${(bytes / Math.pow(k, i)).toFixed(1)} ${sizes[i]}`;
 }
 
@@ -21,7 +24,8 @@ export function formatSpeed(bytesPerSec: number): string {
 		if (bits === 0) return '0 bps';
 		const k = 1000;
 		const sizes = ['bps', 'Kbps', 'Mbps', 'Gbps', 'Tbps'];
-		const i = Math.max(0, Math.min(sizes.length - 1, Math.floor(Math.log(bits) / Math.log(k))));
+		let i = Math.max(0, Math.min(sizes.length - 1, Math.floor(Math.log(bits) / Math.log(k))));
+		if (bits / Math.pow(k, i) >= 999.95 && i < sizes.length - 1) i++;
 		return `${(bits / Math.pow(k, i)).toFixed(1)} ${sizes[i]}`;
 	}
 	return `${formatBytes(bytesPerSec)}/s`;
