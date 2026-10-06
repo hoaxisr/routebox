@@ -24,7 +24,6 @@
     "clients": "Клиенты",
     "appSettings": "Настройки",
     "monitor": "Мониторинг",
-    "traffic": "Трафик",
     "logs": "Логи",
     "connections": "Соединения",
     "breakdown": "Разбивка",
@@ -36,7 +35,7 @@
     "subscriptions": "Подписки",
     "users": "Пользователи",
     "awg": "AmneziaWG",
-    "perUserTraffic": "Трафик клиентов",
+    "consumers": "Потребители",
     "telegram": "Telegram"
   },
   "common": {
@@ -1264,26 +1263,6 @@
     "savedToDraft": "Конфигурация сохранена в черновик",
     "validationErrors": "Ошибки проверки"
   },
-  "traffic": {
-    "title": "Монитор трафика",
-    "description": "Мониторинг трафика в реальном времени",
-    "upload": "Отправлено",
-    "download": "Получено",
-    "total": "Всего",
-    "speed": "Скорость",
-    "current": "Текущая",
-    "peak": "Пик",
-    "average": "Средняя",
-    "history": "История трафика",
-    "noData": "Нет данных о трафике",
-    "connecting": "Подключение к потоку трафика...",
-    "byOutbound": "Трафик по исходящим",
-    "noActiveConnections": "Нет активных соединений",
-    "waitingForData": "Ожидание данных...",
-    "secondsAgo": "{count} секунд назад",
-    "now": "Сейчас",
-    "clashApiUnavailable": "Clash API недоступен"
-  },
   "logs": {
     "sourceSingbox": "amnezia-box",
     "sourceMtproto": "Telegram",
@@ -1992,16 +1971,24 @@
     "backupRestored": "Восстановлено клиентов: {count}. Нажмите «Включить», чтобы поднять сервер.",
     "backupRestoreFailed": "Не удалось восстановить копию"
   },
-  "monitor": {
-    "perUserTitle": "Трафик по пользователям",
-    "usersEmpty": "Пока нет пользователей панели.",
-    "usersLoadFailed": "Не удалось загрузить трафик пользователей",
-    "usageSummary": "{count} клиентов · {total} передано · сортировка по объёму",
-    "usageActive": "активен сейчас",
-    "usagePeak": "Пик около {time}",
-    "usageNoData": "Нет трафика в этом диапазоне",
-    "usageAwgPeer": "AWG-пир",
-    "usageMtprotoClient": "Telegram"
+  "consumers": {
+    "title": "Потребители",
+    "filterAll": "Все",
+    "kind": { "user": "Пользователи", "awg": "AWG", "mtproto": "Telegram", "lan": "LAN" },
+    "period": { "live": "Live", "1h": "1ч", "24h": "24ч", "7d": "7д", "30d": "30д" },
+    "nowAll": "Сейчас",
+    "activeOf": "активны {active} из {total}",
+    "periodTotal": "за период ↓ {down} ↑ {up}",
+    "colWho": "Кто", "colType": "Тип", "colNow": "Сейчас", "colPeriod": "За период", "colLive": "Последние 60 с",
+    "download": "Загрузка", "upload": "Отдача",
+    "peak": "пик {time}",
+    "manage": "Управление →",
+    "address": "Адрес", "handshake": "Handshake", "quota": "Квота", "expires": "Срок", "never": "бессрочно",
+    "state": { "disabled": "отключён", "quota": "квота исчерпана", "expired": "срок истёк" },
+    "unavailable": "Нет живых данных: {reason}",
+    "noData": "Нет трафика за период",
+    "empty": "Трафика пока не было",
+    "loadFailed": "Не удалось загрузить потребителей"
   },
   "subscriptions": {
     "title": "Подписки",

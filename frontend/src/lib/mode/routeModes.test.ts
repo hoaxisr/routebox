@@ -26,7 +26,7 @@ describe('SECTIONS table (DRY single source)', () => {
 describe('isPathAllowed — additivity / router = full UI', () => {
 	it('router mode allows EVERY router-governed section (gating only subtracts in vps)', () => {
 		// Additivity: every section whose modes include 'router' must be reachable
-		// in router mode. (The panel-only sections — /config/users, /monitor/users —
+		// in router mode. (The panel-only sections — /config/users, /config/telegram —
 		// are asserted separately below; they are deliberately NOT router-reachable.)
 		for (const s of SECTIONS) {
 			if (s.modes.includes('router')) {
@@ -44,14 +44,17 @@ describe('isPathAllowed — vps subtracts router-only', () => {
 	it('router-only paths are blocked in vps', () => {
 		expect(isPathAllowed('/config/clients', 'vps')).toBe(false);
 		expect(isPathAllowed('/config/subscriptions', 'vps')).toBe(false);
-		expect(isPathAllowed('/monitor/traffic', 'vps')).toBe(false);
 		expect(isPathAllowed('/monitor/breakdown', 'vps')).toBe(false);
 		expect(isPathAllowed('/monitor/proxies', 'vps')).toBe(false);
 		expect(isPathAllowed('/monitor/route-inspector', 'vps')).toBe(false);
 	});
 	it('router-only paths are allowed in router', () => {
 		expect(isPathAllowed('/config/clients', 'router')).toBe(true);
-		expect(isPathAllowed('/monitor/traffic', 'router')).toBe(true);
+		expect(isPathAllowed('/monitor/breakdown', 'router')).toBe(true);
+	});
+	it('consumers monitor is in both modes', () => {
+		expect(isPathAllowed('/monitor/consumers', 'router')).toBe(true);
+		expect(isPathAllowed('/monitor/consumers', 'vps')).toBe(true);
 	});
 	it('panel-only Users is blocked in router, allowed in vps', () => {
 		expect(isPathAllowed('/config/users', 'router')).toBe(false);
@@ -62,7 +65,7 @@ describe('isPathAllowed — vps subtracts router-only', () => {
 		expect(isPathAllowed('/config/awg', 'router')).toBe(true);
 	});
 	it('shared paths are allowed in both modes', () => {
-		for (const p of ['/config/endpoints', '/config/outbounds', '/config/inbounds', '/config/dns', '/config/routes', '/config/rule-sets', '/config/domains', '/config/app', '/config/settings', '/config/updates', '/monitor/logs', '/monitor/connections']) {
+		for (const p of ['/config/endpoints', '/config/outbounds', '/config/inbounds', '/config/dns', '/config/routes', '/config/rule-sets', '/config/domains', '/config/app', '/config/settings', '/config/updates', '/monitor/logs', '/monitor/connections', '/monitor/consumers']) {
 			expect(isPathAllowed(p, 'router')).toBe(true);
 			expect(isPathAllowed(p, 'vps')).toBe(true);
 		}
@@ -148,13 +151,12 @@ describe('single-mode classification (sidebar drift guard)', () => {
 			'/config/subscriptions',
 			'/monitor/breakdown',
 			'/monitor/proxies',
-			'/monitor/route-inspector',
-			'/monitor/traffic'
+			'/monitor/route-inspector'
 		]);
 	});
 
 	it('panel-only sections are exactly these (update +layout.svelte {#if $panelMode} if this changes)', () => {
-		expect(singleMode('vps')).toEqual(['/config/telegram', '/config/users', '/monitor/users']);
+		expect(singleMode('vps')).toEqual(['/config/telegram', '/config/users']);
 	});
 });
 

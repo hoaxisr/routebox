@@ -12,7 +12,6 @@ const REQUIRED_KEYS = [
 	// the wrong block once already, which is what this list is for.
 	'logs.sourceSingbox',
 	'logs.sourceMtproto',
-	'monitor.usageMtprotoClient',
 	'telegram.title',
 	'telegram.description',
 	'telegram.loadFailed',

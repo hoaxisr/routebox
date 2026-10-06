@@ -24,7 +24,6 @@
     "clients": "Clients",
     "appSettings": "App Settings",
     "monitor": "Monitor",
-    "traffic": "Traffic",
     "logs": "Logs",
     "connections": "Connections",
     "breakdown": "Breakdown",
@@ -36,7 +35,7 @@
     "subscriptions": "Subscriptions",
     "users": "Users",
     "awg": "AmneziaWG",
-    "perUserTraffic": "Per-User Traffic",
+    "consumers": "Consumers",
     "telegram": "Telegram"
   },
   "common": {
@@ -1255,26 +1254,6 @@
     "savedToDraft": "Config saved to draft",
     "validationErrors": "Validation errors"
   },
-  "traffic": {
-    "title": "Traffic Monitor",
-    "description": "Real-time traffic monitoring",
-    "upload": "Upload",
-    "download": "Download",
-    "total": "Total",
-    "speed": "Speed",
-    "current": "Current",
-    "peak": "Peak",
-    "average": "Average",
-    "history": "Traffic History",
-    "noData": "No traffic data",
-    "connecting": "Connecting to traffic stream...",
-    "byOutbound": "Traffic by Outbound",
-    "noActiveConnections": "No active connections",
-    "waitingForData": "Waiting for data...",
-    "secondsAgo": "{count} seconds ago",
-    "now": "Now",
-    "clashApiUnavailable": "Clash API unavailable"
-  },
   "logs": {
     "sourceSingbox": "amnezia-box",
     "sourceMtproto": "Telegram",
@@ -1983,16 +1962,24 @@
     "backupRestored": "Restored {count} clients. Press Enable to bring the server up.",
     "backupRestoreFailed": "Failed to restore backup"
   },
-  "monitor": {
-    "perUserTitle": "Per-User Traffic",
-    "usersEmpty": "No panel users yet.",
-    "usersLoadFailed": "Failed to load user traffic",
-    "usageSummary": "{count} clients · {total} transferred · sorted by usage",
-    "usageActive": "active now",
-    "usagePeak": "Peak around {time}",
-    "usageNoData": "No traffic in this range",
-    "usageAwgPeer": "AWG peer",
-    "usageMtprotoClient": "Telegram"
+  "consumers": {
+    "title": "Consumers",
+    "filterAll": "All",
+    "kind": { "user": "Users", "awg": "AWG", "mtproto": "Telegram", "lan": "LAN" },
+    "period": { "live": "Live", "1h": "1h", "24h": "24h", "7d": "7d", "30d": "30d" },
+    "nowAll": "Now",
+    "activeOf": "active {active} of {total}",
+    "periodTotal": "over the period ↓ {down} ↑ {up}",
+    "colWho": "Who", "colType": "Type", "colNow": "Now", "colPeriod": "Period", "colLive": "Last 60 s",
+    "download": "Download", "upload": "Upload",
+    "peak": "peak {time}",
+    "manage": "Manage →",
+    "address": "Address", "handshake": "Handshake", "quota": "Quota", "expires": "Expires", "never": "never",
+    "state": { "disabled": "disabled", "quota": "quota used up", "expired": "expired" },
+    "unavailable": "No live data: {reason}",
+    "noData": "No traffic in this period",
+    "empty": "Nobody has used traffic yet",
+    "loadFailed": "Failed to load consumers"
   },
   "subscriptions": {
     "title": "Subscriptions",
