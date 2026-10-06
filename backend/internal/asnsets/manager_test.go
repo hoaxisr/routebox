@@ -10,6 +10,7 @@ import (
 	"path/filepath"
 	"strings"
 	"testing"
+	"time"
 
 	"routebox/backend/internal/util"
 )
@@ -142,6 +143,7 @@ func TestPruneKeepsTagsInEitherConfig(t *testing.T) {
 	m, _ := newTestManager(t, src)
 	a, _ := m.Create(ctx, "a", []uint32{1}, 24)
 	b, _ := m.Create(ctx, "b", []uint32{1}, 24)
+	m.now = func() int64 { return 1000 + pruneGrace } // both past the grace period
 	// "a" was deleted from the draft but the active config still has it.
 	m.Prune(func(tag string) bool { return tag == "a" })
 	if _, err := os.Stat(a.Path); err != nil {
@@ -178,8 +180,97 @@ func TestRestoreMissingWritesPlaceholderWhenOffline(t *testing.T) {
 	if err != nil || strings.TrimSpace(string(raw)) != `{"rules":[],"version":2}` {
 		t.Fatalf("placeholder missing: %s %v", raw, err)
 	}
-	if got, _ := m.Get("a"); got.LastError == "" {
+	got, _ := m.Get("a")
+	if got.LastError == "" {
 		t.Fatal("LastError not set")
+	}
+	if got.UpdatedAt != 0 {
+		t.Fatalf("UpdatedAt = %d, want 0 so the next tick retries instead of waiting a full interval", got.UpdatedAt)
+	}
+}
+
+func TestRestoreMissingPlaceholderIsDueOnNextTick(t *testing.T) {
+	src := &fakeSrc{prefixes: map[uint32][]string{1: {"1.0.0.0/24"}}}
+	m, _ := newTestManager(t, src)
+	const boot = int64(1_700_000_000) // a real epoch: UpdatedAt=0 is "ages ago"
+	m.now = func() int64 { return boot }
+	e, _ := m.Create(ctx, "a", []uint32{1}, 168) // a week: far from due
+	_ = os.Remove(e.Path)
+	src.err = map[uint32]error{1: errors.New("offline")}
+	m.RestoreMissing(ctx)
+
+	src.err = nil
+	m.now = func() int64 { return boot + 3600 } // one tick later
+	m.RefreshDue(ctx)
+	raw, _ := os.ReadFile(e.Path)
+	got, _ := m.Get("a")
+	if !strings.Contains(string(raw), "1.0.0.0/24") || got.LastError != "" || got.UpdatedAt != boot+3600 {
+		t.Fatalf("placeholder not replaced on the next tick: %s %+v", raw, got)
+	}
+}
+
+func TestPruneSparesFreshSets(t *testing.T) {
+	src := &fakeSrc{prefixes: map[uint32][]string{1: {"1.0.0.0/24"}}}
+	m, _ := newTestManager(t, src)
+	m.now = func() int64 { return 1000 }
+	old, _ := m.Create(ctx, "old", []uint32{1}, 24) // UpdatedAt 1000
+	m.now = func() int64 { return 1600 }
+	fresh, _ := m.Create(ctx, "fresh", []uint32{1}, 24) // UpdatedAt 1600
+	// now = 1700: "fresh" is 100 s old (the handler may still be adding it to
+	// the draft), "old" is 700 s old. Neither is in any config.
+	m.now = func() int64 { return 1700 }
+	m.Prune(func(string) bool { return false })
+	if _, ok := m.Get("fresh"); !ok {
+		t.Fatal("fresh set pruned inside the grace period")
+	}
+	if _, err := os.Stat(fresh.Path); err != nil {
+		t.Fatal("fresh set's file removed inside the grace period")
+	}
+	if _, ok := m.Get("old"); ok {
+		t.Fatal("old orphan not pruned")
+	}
+	if _, err := os.Stat(old.Path); !os.IsNotExist(err) {
+		t.Fatal("old orphan's file not removed")
+	}
+}
+
+// blockingSrc hangs until ctx is done, like RIPEstat with a black-holed route.
+type blockingSrc struct{}
+
+func (blockingSrc) Prefixes(ctx context.Context, _ uint32) ([]netip.Prefix, error) {
+	<-ctx.Done()
+	return nil, ctx.Err()
+}
+func (blockingSrc) Holder(ctx context.Context, _ uint32) (string, error) {
+	<-ctx.Done()
+	return "", ctx.Err()
+}
+
+func TestRefreshDueReturnsWhenCtxExpires(t *testing.T) {
+	// Seed a due entry through a working source, then swap in one that hangs.
+	live := &fakeSrc{prefixes: map[uint32][]string{1: {"1.0.0.0/24"}}}
+	m, _ := newTestManager(t, live)
+	e, _ := m.Create(ctx, "a", []uint32{1}, 6)
+	m.src = blockingSrc{}
+	m.now = func() int64 { return 1000 + 7*3600 }
+
+	short, cancel := context.WithTimeout(context.Background(), 50*time.Millisecond)
+	defer cancel()
+	done := make(chan struct{})
+	go func() { m.RefreshDue(short); close(done) }()
+	select {
+	case <-done:
+	case <-time.After(5 * time.Second):
+		t.Fatal("RefreshDue did not return after its ctx expired; the lock would be held for as long as the source hangs")
+	}
+	raw, _ := os.ReadFile(e.Path)
+	got, _ := m.Get("a")
+	if !strings.Contains(string(raw), "1.0.0.0/24") || got.LastError == "" || got.UpdatedAt != 1000 {
+		t.Fatalf("timed-out refresh must keep the file and record the error: %s %+v", raw, got)
+	}
+	// The lock is free again: a plain call must not block either.
+	if _, err := m.Refresh(short, "a"); err == nil {
+		t.Fatal("Refresh with an expired ctx must fail, not hang or succeed")
 	}
 }
 

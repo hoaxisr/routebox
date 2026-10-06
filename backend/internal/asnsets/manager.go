@@ -27,6 +27,16 @@ var (
 	ErrNotFound = errors.New("not found")
 )
 
+const (
+	// pruneGrace (seconds) keeps a freshly written set out of Prune's reach:
+	// the API creates the set, releases the lock and only then adds it to the
+	// config draft, so for a moment it is in no config at all.
+	pruneGrace = 600
+	// tickTimeout bounds one loop tick: Manager.mu is held across RIPEstat
+	// calls, and with RIPEstat dead a tick must not block the API for long.
+	tickTimeout = 5 * time.Minute
+)
+
 // FetchError names the AS whose prefixes could not be had.
 type FetchError struct {
 	ASN uint32
@@ -155,6 +165,7 @@ func (m *Manager) Create(ctx context.Context, tag string, asns []uint32, interva
 	if err != nil {
 		return Entry{}, err
 	}
+	holders := m.holders(ctx, asns) // before the write: nothing slow between file and entry
 	path := m.PathFor(tag)
 	if err := WritePrefixFile(path, prefixes); err != nil {
 		return Entry{}, err
@@ -162,7 +173,7 @@ func (m *Manager) Create(ctx context.Context, tag string, asns []uint32, interva
 	e := Entry{
 		Tag:         tag,
 		ASNs:        asns,
-		Holders:     m.holders(ctx, asns),
+		Holders:     holders,
 		IntervalHrs: intervalHrs,
 		UpdatedAt:   m.now(),
 		PrefixCount: len(prefixes),
@@ -175,7 +186,11 @@ func (m *Manager) Create(ctx context.Context, tag string, asns []uint32, interva
 }
 
 // Update replaces the AS list and interval of an existing set, refetching
-// everything; the tag and path stay. Nothing is written on any error.
+// everything; the tag and path stay. A fetch or file-write error leaves both
+// file and entry as they were. Holders are looked up before the file is
+// written so that nothing slow sits between the write and store.Put; should
+// Put still fail, the file already holds the new prefixes beside the old entry
+// until the next successful Refresh of that entry rewrites it.
 func (m *Manager) Update(ctx context.Context, tag string, asns []uint32, intervalHrs int) (Entry, error) {
 	asns, intervalHrs, err := normalize(tag, asns, intervalHrs)
 	if err != nil {
@@ -191,10 +206,11 @@ func (m *Manager) Update(ctx context.Context, tag string, asns []uint32, interva
 	if err != nil {
 		return Entry{}, err
 	}
+	holders := m.holders(ctx, asns)
 	if err := WritePrefixFile(m.PathFor(tag), prefixes); err != nil {
 		return Entry{}, err
 	}
-	e.ASNs, e.Holders, e.IntervalHrs = asns, m.holders(ctx, asns), intervalHrs
+	e.ASNs, e.Holders, e.IntervalHrs = asns, holders, intervalHrs
 	e.UpdatedAt, e.PrefixCount, e.LastError = m.now(), len(prefixes), ""
 	if err := m.store.Put(e); err != nil {
 		return Entry{}, err
@@ -253,12 +269,19 @@ func (m *Manager) deleteLocked(tag string) error {
 
 // Prune removes sets no config references any more. inConfig must answer for
 // the active AND the working config: a set deleted in the draft is still in
-// service until Apply, and its file must outlive that.
+// service until Apply, and its file must outlive that. Sets written less than
+// pruneGrace ago are left alone: the API adds a new set to the draft only
+// after Create has returned, and that gap must not look like an orphan.
+//
+// inConfig runs under Manager.mu: it must not call back into Manager, and
+// must not take a lock whose holder ever does (the boot wiring only reads
+// config.Manager, which never calls asnsets).
 func (m *Manager) Prune(inConfig func(tag string) bool) {
 	m.mu.Lock()
 	defer m.mu.Unlock()
+	now := m.now()
 	for _, e := range m.store.List() {
-		if inConfig(e.Tag) {
+		if now-e.UpdatedAt < pruneGrace || inConfig(e.Tag) {
 			continue
 		}
 		if err := m.deleteLocked(e.Tag); err != nil {
@@ -286,12 +309,21 @@ func (m *Manager) RestoreMissing(ctx context.Context) {
 		}
 		// refreshLocked may have written the file and only failed on store.Put;
 		// never clobber good prefixes with a placeholder.
-		if _, serr := os.Stat(path); os.IsNotExist(serr) {
-			if werr := WritePrefixFile(path, nil); werr != nil {
-				log.Printf("asnsets: %s: cannot write placeholder: %v", e.Tag, werr)
-			}
+		if _, serr := os.Stat(path); serr == nil {
+			log.Printf("asnsets: %s: prefix file restored but entry could not be saved: %v", e.Tag, err)
+			continue
 		}
-		log.Printf("asnsets: %s: prefix file missing and refetch failed (empty placeholder written): %v", e.Tag, err)
+		if werr := WritePrefixFile(path, nil); werr != nil {
+			log.Printf("asnsets: %s: prefix file missing, refetch failed (%v) and placeholder could not be written: %v", e.Tag, err, werr)
+			continue
+		}
+		// UpdatedAt = 0 makes the set due on the very next tick instead of
+		// after a full interval of matching nothing.
+		if cur, ok := m.store.Get(e.Tag); ok {
+			cur.UpdatedAt = 0
+			_ = m.store.Put(cur) // best effort, like LastError above
+		}
+		log.Printf("asnsets: %s: prefix file missing and refetch failed; empty placeholder written, retry on next tick: %v", e.Tag, err)
 	}
 }
 
@@ -323,7 +355,9 @@ func (m *Manager) RefreshDue(ctx context.Context) {
 	}
 }
 
-// RunLoop prunes and refreshes every interval until stop is closed.
+// RunLoop prunes and refreshes every interval until stop is closed. Each
+// tick's refresh is bounded by tickTimeout so a dead RIPEstat cannot hold
+// Manager.mu, and with it the API, indefinitely.
 func (m *Manager) RunLoop(interval time.Duration, inConfig func(string) bool, stop <-chan struct{}) {
 	t := time.NewTicker(interval)
 	defer t.Stop()
@@ -333,7 +367,13 @@ func (m *Manager) RunLoop(interval time.Duration, inConfig func(string) bool, st
 			return
 		case <-t.C:
 			m.Prune(inConfig)
-			m.RefreshDue(context.Background())
+			m.tick()
 		}
 	}
+}
+
+func (m *Manager) tick() {
+	ctx, cancel := context.WithTimeout(context.Background(), tickTimeout)
+	defer cancel()
+	m.RefreshDue(ctx)
 }
