@@ -2,11 +2,14 @@ package asnsets
 
 import (
 	"encoding/json"
+	"errors"
 	"net/netip"
 	"os"
 	"path/filepath"
 	"strings"
 	"testing"
+
+	"routebox/backend/internal/util"
 )
 
 func TestStoreRoundTrip(t *testing.T) {
@@ -16,7 +19,9 @@ func TestStoreRoundTrip(t *testing.T) {
 	if err := s.Put(e); err != nil {
 		t.Fatal(err)
 	}
-	_ = s.Put(Entry{Tag: "a", ASNs: []uint32{1}, IntervalHrs: 6})
+	if err := s.Put(Entry{Tag: "a", ASNs: []uint32{1}, IntervalHrs: 6}); err != nil {
+		t.Fatal(err)
+	}
 	s2 := NewStore(p)
 	if err := s2.Load(); err != nil {
 		t.Fatal(err)
@@ -72,5 +77,64 @@ func TestWritePrefixFileEmptyMatchesNothing(t *testing.T) {
 	raw, _ := os.ReadFile(p)
 	if strings.TrimSpace(string(raw)) != `{"rules":[],"version":2}` {
 		t.Fatalf("got %s", raw)
+	}
+}
+
+// readOnlyDir returns a directory RouteBox cannot write into. Mode bits mean
+// nothing to root, so the test is skipped there rather than made to pass.
+func readOnlyDir(t *testing.T) string {
+	t.Helper()
+	if os.Getuid() == 0 {
+		t.Skip("root ignores mode bits")
+	}
+	dir := filepath.Join(t.TempDir(), "ro")
+	if err := os.Mkdir(dir, 0555); err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = os.Chmod(dir, 0755) })
+	return dir
+}
+
+func TestStorePutReadOnlyDirRollsBack(t *testing.T) {
+	dir := readOnlyDir(t)
+	s := NewStore(filepath.Join(dir, "asn.toml"))
+	err := s.Put(Entry{Tag: "x", ASNs: []uint32{1}, IntervalHrs: 24})
+	if !errors.Is(err, util.ErrReadOnly) {
+		t.Fatalf("Put err = %v, want ErrReadOnly", err)
+	}
+	if list := s.List(); len(list) != 0 {
+		t.Fatalf("entry survived a failed write: %+v", list)
+	}
+	if _, ok := s.Get("x"); ok {
+		t.Fatal("Get found the rolled-back entry")
+	}
+	if _, err := os.Stat(filepath.Join(dir, "asn.toml")); !os.IsNotExist(err) {
+		t.Fatalf("file state: %v", err)
+	}
+}
+
+func TestStoreDeleteReadOnlyDirRollsBack(t *testing.T) {
+	dir := readOnlyDir(t)
+	s := NewStore(filepath.Join(dir, "asn.toml"))
+	// Seed memory without touching disk, the way a successful earlier Put
+	// followed by a remount read-only would leave it.
+	s.byTag["x"] = Entry{Tag: "x", ASNs: []uint32{1}}
+	err := s.Delete("x")
+	if !errors.Is(err, util.ErrReadOnly) {
+		t.Fatalf("Delete err = %v, want ErrReadOnly", err)
+	}
+	if _, ok := s.Get("x"); !ok {
+		t.Fatal("entry vanished from memory although the write failed")
+	}
+}
+
+func TestWritePrefixFileReadOnlyDir(t *testing.T) {
+	dir := readOnlyDir(t)
+	err := WritePrefixFile(filepath.Join(dir, "x.json"), []netip.Prefix{netip.MustParsePrefix("1.1.1.0/24")})
+	if !errors.Is(err, util.ErrReadOnly) {
+		t.Fatalf("err = %v, want ErrReadOnly", err)
+	}
+	if entries, _ := os.ReadDir(dir); len(entries) != 0 {
+		t.Fatalf("leftovers in read-only dir: %v", entries)
 	}
 }

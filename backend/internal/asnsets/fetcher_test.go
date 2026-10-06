@@ -5,6 +5,7 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"strings"
+	"sync/atomic"
 	"testing"
 )
 
@@ -45,13 +46,23 @@ func TestPrefixesEmptyIsNotAnError(t *testing.T) {
 
 func TestFetchErrors(t *testing.T) {
 	for name, h := range map[string]http.HandlerFunc{
-		"non-200":      func(w http.ResponseWriter, r *http.Request) { w.WriteHeader(http.StatusServiceUnavailable) },
-		"status error": func(w http.ResponseWriter, r *http.Request) { _, _ = w.Write([]byte(`{"status":"error","messages":[["error","bad"]]}`)) },
-		"bad json":     func(w http.ResponseWriter, r *http.Request) { _, _ = w.Write([]byte(`<html>`)) },
+		"non-200": func(w http.ResponseWriter, r *http.Request) { w.WriteHeader(http.StatusServiceUnavailable) },
+		"status error": func(w http.ResponseWriter, r *http.Request) {
+			_, _ = w.Write([]byte(`{"status":"error","messages":[["error","bad"]]}`))
+		},
+		"bad json": func(w http.ResponseWriter, r *http.Request) { _, _ = w.Write([]byte(`<html>`)) },
 	} {
-		f := ripe(t, h)
+		var calls atomic.Int32
+		f := ripe(t, func(w http.ResponseWriter, r *http.Request) {
+			calls.Add(1)
+			h(w, r)
+		})
 		if _, err := f.Prefixes(context.Background(), 1); err == nil {
 			t.Errorf("%s: want error", name)
+		}
+		// None of these is a transport error, so none earns a retry.
+		if n := calls.Load(); n != 1 {
+			t.Errorf("%s: %d requests, want exactly 1 (no retry)", name, n)
 		}
 	}
 }
