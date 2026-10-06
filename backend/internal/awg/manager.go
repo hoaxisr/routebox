@@ -191,6 +191,11 @@ type Manager struct {
 	// livenessFn in that case, and to "everyone offline" if neither is wired.
 	peerStatsFn func() (map[string]PeerStat, error)
 
+	// usageObserver receives the sweep's per-peer deltas (non-zero only, client
+	// view) — the same bytes the quota counters get. main wires it to the
+	// user_traffic history under TrafficKey (#109). nil = no history.
+	usageObserver func(map[string]PeerUsage)
+
 	// lastPeerStatsErr dedupes fetch-error logging for peerStatsFn the same
 	// way traffic.Sampler dedupes its own: ListPeers can be polled every few
 	// seconds, and a persistent failure (secret rotated, amnezia-box down)
@@ -1190,6 +1195,24 @@ func (m *Manager) accountUsageLocked(cur map[string]peerXfer) {
 			delete(m.lastXfer, pk)
 		}
 	}
+	// The history gets the same deltas the counters do, before the store write:
+	// a peers.toml that cannot be written is no reason to lose the minute's
+	// bytes from the chart too. Nothing on the priming tick (all deltas zero)
+	// and nothing when nothing moved — the observer is for movement only.
+	m.mu.Lock()
+	obs := m.usageObserver
+	m.mu.Unlock()
+	if obs != nil {
+		moved := map[string]PeerUsage{}
+		for pk, d := range deltas {
+			if d.rx != 0 || d.tx != 0 {
+				moved[pk] = PeerUsage{Up: d.rx, Down: d.tx}
+			}
+		}
+		if len(moved) > 0 {
+			obs(moved)
+		}
+	}
 	// The reference above is advanced whether or not the write below lands, which
 	// is why AddUsage keeps the counters in memory on failure: these bytes get no
 	// second snapshot to be counted from.
@@ -1217,6 +1240,60 @@ func (m *Manager) accountUsageLocked(cur map[string]peerXfer) {
 		return
 	}
 	log.Printf("awg: peers.toml is writable again, peer usage counters persisted")
+}
+
+// TrafficKeyPrefix namespaces AWG peers inside the shared user_traffic table,
+// like mtproto.TrafficKeyPrefix does for Telegram clients.
+const TrafficKeyPrefix = "awg:"
+
+// TrafficKey is the user_traffic key one peer's history is stored under.
+func TrafficKey(pub string) string { return TrafficKeyPrefix + pub }
+
+// PeerUsage is a byte count in the CLIENT's direction: Up is what the peer
+// sent (the server's rx), Down what it received (the server's tx).
+type PeerUsage struct{ Up, Down int64 }
+
+// SetUsageObserver wires the receiver of the sweep's per-peer deltas.
+func (m *Manager) SetUsageObserver(fn func(map[string]PeerUsage)) {
+	m.mu.Lock()
+	m.usageObserver = fn
+	m.mu.Unlock()
+}
+
+// LiveCounters returns each peer's cumulative bytes since the interface (kernel)
+// or endpoint (singbox) came up, client view. A server that is not enabled has
+// nothing to count: (nil, nil). Unlike the sweep it does not log — its caller
+// (the consumers live view) reports failures itself.
+func (m *Manager) LiveCounters(ctx context.Context) (map[string]PeerUsage, error) {
+	m.mu.Lock()
+	enabled, statsFn := m.enabled, m.peerStatsFn
+	m.mu.Unlock()
+	if !enabled {
+		return nil, nil
+	}
+	if m.backendIs("singbox") {
+		if statsFn == nil {
+			return nil, errors.New("per-peer stats source not wired")
+		}
+		stats, err := statsFn()
+		if err != nil {
+			return nil, err
+		}
+		out := make(map[string]PeerUsage, len(stats))
+		for pk, s := range stats {
+			out[pk] = PeerUsage{Up: s.RxBytes, Down: s.TxBytes}
+		}
+		return out, nil
+	}
+	cur, ok := m.iface_Transfer(ctx)
+	if !ok {
+		return nil, errors.New("awg show transfer failed")
+	}
+	out := make(map[string]PeerUsage, len(cur))
+	for pk, x := range cur {
+		out[pk] = PeerUsage{Up: x.rx, Down: x.tx}
+	}
+	return out, nil
 }
 
 // usageSnapshotSingbox reads the fork's per-peer stats route — the same call

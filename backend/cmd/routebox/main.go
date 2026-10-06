@@ -531,6 +531,18 @@ func main() {
 			return awg.FetchAwgPeerStats(resolvedClashAddr, resolvedClashSecret, config.ManagedAwgServerTag)
 		})
 	}
+	// AWG peer history (#109): the sweep's deltas land in user_traffic under
+	// awg:<pubkey>, the same table and minute buckets as panel users.
+	if trafficStore != nil {
+		awgMgr.SetUsageObserver(func(d map[string]awg.PeerUsage) {
+			bucket := time.Now().Unix() / 60 * 60
+			for pk, u := range d {
+				if err := trafficStore.UpsertUser(bucket, awg.TrafficKey(pk), u.Up, u.Down); err != nil {
+					log.Printf("awg: peer history upsert: %v", err)
+				}
+			}
+		})
+	}
 	// Resolve the AWG backend: explicit setting wins; otherwise default to singbox
 	// (no kernel module required). Kernel is opt-in only — a router/VPS never runs
 	// the kernel-module install path unless the operator explicitly selects it.

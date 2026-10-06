@@ -592,3 +592,68 @@ func TestSingboxSweepWithoutStatsSourceLogsOnce(t *testing.T) {
 		t.Fatalf("the gate must not repeat it every tick, got %d:\n%s", n, buf.String())
 	}
 }
+
+// The sweep's deltas are also the peer's history (#109): the observer gets
+// exactly what the quota counters get, in the client's direction, and nothing
+// on the priming tick.
+func TestSweepReportsUsageDeltasToObserver(t *testing.T) {
+	ctx := context.Background()
+	f := newFakeRunner()
+	m := newTestManager(t, f)
+	seedConf(t, m)
+	seedUsagePeer(t, m, Peer{PublicKey: "P", PresharedKey: "p", Address: "10.10.0.2/32"})
+	var got []map[string]PeerUsage
+	m.SetUsageObserver(func(d map[string]PeerUsage) { got = append(got, d) })
+
+	f.outputs["awg show awg-rb0 transfer"] = "P\t100\t50\n"
+	m.SweepExpired(ctx) // primes: nothing reported
+	f.outputs["awg show awg-rb0 transfer"] = "P\t250\t80\n"
+	m.SweepExpired(ctx)
+	f.outputs["awg show awg-rb0 transfer"] = "P\t250\t80\n"
+	m.SweepExpired(ctx) // no movement: nothing reported
+
+	if len(got) != 1 {
+		t.Fatalf("observer calls = %d, want 1 (%v)", len(got), got)
+	}
+	// rx 150 = what the peer SENT (upload); tx 30 = what it received.
+	if u := got[0]["P"]; u.Up != 150 || u.Down != 30 {
+		t.Fatalf("delta = %+v, want Up 150 Down 30", u)
+	}
+}
+
+func TestLiveCountersKernelIsClientView(t *testing.T) {
+	f := newFakeRunner()
+	m := newTestManager(t, f)
+	m.enabled = true
+	f.outputs["awg show awg-rb0 transfer"] = "P\t700\t9000\n"
+	got, err := m.LiveCounters(context.Background())
+	if err != nil || got["P"] != (PeerUsage{Up: 700, Down: 9000}) {
+		t.Fatalf("got %v err=%v", got, err)
+	}
+}
+
+func TestLiveCountersDisabledServerIsNotAnError(t *testing.T) {
+	m := newTestManager(t, newFakeRunner())
+	m.enabled = false
+	got, err := m.LiveCounters(context.Background())
+	if err != nil || got != nil {
+		t.Fatalf("got %v err=%v, want nil,nil", got, err)
+	}
+}
+
+func TestLiveCountersSingboxReadsPeerStats(t *testing.T) {
+	m := newTestManager(t, newFakeRunner())
+	m.SetBackend("singbox")
+	m.enabled = true
+	m.SetPeerStats(func() (map[string]PeerStat, error) {
+		return map[string]PeerStat{"P": {RxBytes: 3, TxBytes: 4}}, nil
+	})
+	got, err := m.LiveCounters(context.Background())
+	if err != nil || got["P"] != (PeerUsage{Up: 3, Down: 4}) {
+		t.Fatalf("got %v err=%v", got, err)
+	}
+	m.SetPeerStats(func() (map[string]PeerStat, error) { return nil, errors.New("down") })
+	if _, err := m.LiveCounters(context.Background()); err == nil {
+		t.Fatal("a failing stats route must surface as an error")
+	}
+}

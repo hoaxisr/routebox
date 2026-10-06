@@ -14,6 +14,7 @@ import (
 
 	"routebox/backend/internal/awg"
 	"routebox/backend/internal/settings"
+	"routebox/backend/internal/traffic"
 )
 
 // awgPubKeyParam reads the {publicKey} path param, URL-decodes it (the panel sends
@@ -201,19 +202,30 @@ func (h *Handler) DeleteAWGPeer(w http.ResponseWriter, r *http.Request) {
 		writeOpError(w, http.StatusInternalServerError, "failed to remove peer", err)
 		return
 	}
-	// Purge the removed peer's per-source Breakdown history (#19). The peer's tunnel
-	// IP (e.g. 10.10.64.2) is the `source` key in traffic_minute; strip the /32 mask.
-	// Best-effort: a purge failure must not fail the delete.
-	if h.traffic != nil && addr != "" {
-		src := addr
-		if pfx, perr := netip.ParsePrefix(addr); perr == nil {
-			src = pfx.Addr().String()
-		}
-		if derr := h.traffic.DeleteSource(src); derr != nil {
-			log.Printf("api: purge traffic for removed peer source %q: %v", src, derr)
-		}
+	if h.traffic != nil {
+		purgePeerTraffic(h.traffic, pub, addr)
 	}
 	w.WriteHeader(http.StatusNoContent)
+}
+
+// purgePeerTraffic drops a removed peer's history: its user_traffic series
+// (TrafficKey, #109) and the per-source Breakdown rows under its tunnel IP
+// (#19; the IP, e.g. 10.10.64.2, is the `source` key in traffic_minute, so the
+// /32 mask is stripped). Best-effort — a purge failure must not fail the delete.
+func purgePeerTraffic(store *traffic.Store, pub, addr string) {
+	if err := store.DeleteUsers([]string{awg.TrafficKey(pub)}); err != nil {
+		log.Printf("api: purge history for removed peer %s: %v", pub, err)
+	}
+	if addr == "" {
+		return
+	}
+	src := addr
+	if pfx, err := netip.ParsePrefix(addr); err == nil {
+		src = pfx.Addr().String()
+	}
+	if err := store.DeleteSource(src); err != nil {
+		log.Printf("api: purge traffic for removed peer source %q: %v", src, err)
+	}
 }
 
 // GetAWGPeerConfig serves the client .conf (text/plain). The {publicKey} path
