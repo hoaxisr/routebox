@@ -3,6 +3,8 @@ package api
 import (
 	"bytes"
 	"encoding/json"
+	"errors"
+	"fmt"
 	"net/http"
 	"net/http/httptest"
 	"os"
@@ -13,6 +15,7 @@ import (
 
 	"routebox/backend/internal/asnsets"
 	"routebox/backend/internal/config"
+	"routebox/backend/internal/util"
 )
 
 // newASNHandler wires a real config manager and an asnsets manager whose
@@ -258,5 +261,70 @@ func TestAsnSetsUnwired(t *testing.T) {
 	}
 	if rec := doJSON(t, r, "POST", "/api/route/rule-sets/asn", map[string]any{"tag": "cf", "asns": []string{"13335"}}); rec.Code != http.StatusServiceUnavailable {
 		t.Fatalf("unwired create: %d", rec.Code)
+	}
+}
+
+// TestWriteASNErrorMapping pins the status table: only fetch-side errors are
+// 502; a store/file write failure is the caller's fallback (500), read-only 409.
+func TestWriteASNErrorMapping(t *testing.T) {
+	cases := []struct {
+		err  error
+		code int
+	}{
+		{fmt.Errorf("%w: bad", asnsets.ErrInvalid), http.StatusBadRequest},
+		{fmt.Errorf("x: %w", asnsets.ErrNotFound), http.StatusNotFound},
+		{&asnsets.FetchError{ASN: 1, Err: errors.New("down")}, http.StatusBadGateway},
+		{asnsets.ErrNoPrefixes, http.StatusBadGateway},
+		{util.ReadOnlyError("/x/asn.toml"), http.StatusConflict},
+		{errors.New("disk on fire"), http.StatusInternalServerError},
+	}
+	for _, c := range cases {
+		rec := httptest.NewRecorder()
+		writeASNError(rec, http.StatusInternalServerError, c.err)
+		if rec.Code != c.code {
+			t.Errorf("%v: status %d, want %d", c.err, rec.Code, c.code)
+		}
+	}
+}
+
+// TestRefreshAsnSetEmptyUnionIs502: RIPEstat answering ok with zero prefixes
+// for every AS is a fetch-side failure (502), and the old file stays.
+func TestRefreshAsnSetEmptyUnionIs502(t *testing.T) {
+	dir := t.TempDir()
+	cfgPath := filepath.Join(dir, "config.json")
+	if err := os.WriteFile(cfgPath, []byte(`{"outbounds":[{"type":"direct","tag":"direct"}]}`), 0644); err != nil {
+		t.Fatal(err)
+	}
+	cm, err := config.NewManager(cfgPath)
+	if err != nil {
+		t.Fatal(err)
+	}
+	empty := false
+	ripe := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if empty {
+			_, _ = w.Write([]byte(`{"status":"ok","data":{"holder":"","prefixes":[]}}`))
+			return
+		}
+		_, _ = w.Write([]byte(`{"status":"ok","data":{"holder":"Cloudflare","prefixes":[{"prefix":"1.1.1.0/24"}]}}`))
+	}))
+	t.Cleanup(ripe.Close)
+	f := asnsets.NewFetcher()
+	f.BaseURL, f.RetryDelay = ripe.URL, 0
+	h := &Handler{config: cm}
+	h.SetASN(asnsets.NewManager(asnsets.NewStore(filepath.Join(dir, "asn.toml")), filepath.Join(dir, "asn"), f))
+	r := chi.NewRouter()
+	r.Post("/api/route/rule-sets/asn", h.CreateAsnSet)
+	r.Post("/api/route/rule-sets/asn/{tag}/refresh", h.RefreshAsnSet)
+	if rec := doJSON(t, r, "POST", "/api/route/rule-sets/asn", map[string]any{"tag": "cf", "asns": []string{"13335"}}); rec.Code != http.StatusOK {
+		t.Fatalf("create %d: %s", rec.Code, rec.Body)
+	}
+	empty = true
+	rec := doJSON(t, r, "POST", "/api/route/rule-sets/asn/cf/refresh", nil)
+	if rec.Code != http.StatusBadGateway {
+		t.Fatalf("refresh with empty union: %d, want 502 (%s)", rec.Code, rec.Body)
+	}
+	data, err := os.ReadFile(filepath.Join(dir, "asn", "cf.json"))
+	if err != nil || !bytes.Contains(data, []byte("1.1.1.0/24")) {
+		t.Fatalf("old prefixes must stay in service: %v %s", err, data)
 	}
 }

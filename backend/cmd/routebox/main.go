@@ -716,7 +716,7 @@ func main() {
 	// writes an empty placeholder in that case and retries on its loop).
 	stopASN := make(chan struct{})
 	if sp := settingsMgr.GetPath(); sp != "" {
-		base := filepath.Dir(sp)
+		base := asnBaseDir(sp)
 		asnStore := asnsets.NewStore(filepath.Join(base, "asn.toml"))
 		if err := asnStore.Load(); err != nil {
 			log.Printf("Warning: failed to load asn.toml: %v", err)
@@ -1686,6 +1686,22 @@ func frontedInboundTags(cfg map[string]interface{}) []string {
 		}
 	}
 	return tags
+}
+
+// asnBaseDir is the directory ASN sets live in: the settings directory, made
+// absolute. The prefix-file path goes into the sing-box config verbatim and
+// sing-box resolves a relative one against ITS working directory, where a
+// missing local rule set is fatal at start — so a relative --settings must not
+// leak through (same reason planAllInOne does it for Caddy). If Abs fails the
+// original is kept and the failure logged.
+func asnBaseDir(settingsPath string) string {
+	dir := filepath.Dir(settingsPath)
+	abs, err := filepath.Abs(dir)
+	if err != nil {
+		log.Printf("asnsets: cannot make %s absolute: %v", dir, err)
+		return dir
+	}
+	return abs
 }
 
 // ruleSetTagIn reports whether cfg's route.rule_set has an entry with tag.

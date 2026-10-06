@@ -25,6 +25,10 @@ var (
 	AllowedIntervals = []int{6, 12, 24, 168}
 	// ErrNotFound marks an unknown tag (API answers 404).
 	ErrNotFound = errors.New("not found")
+	// ErrNoPrefixes: RIPEstat answered, but no AS of the set announces
+	// anything. Fetch-side like FetchError (API answers 502), unlike a failed
+	// file or store write.
+	ErrNoPrefixes = errors.New("no prefixes announced by any of the AS numbers")
 )
 
 const (
@@ -134,7 +138,7 @@ func (m *Manager) fetchAll(ctx context.Context, asns []uint32, strict bool) ([]n
 	}
 	out := Aggregate(all)
 	if len(out) == 0 {
-		return nil, errors.New("no prefixes announced by any of the AS numbers")
+		return nil, ErrNoPrefixes
 	}
 	return out, nil
 }

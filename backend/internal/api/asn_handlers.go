@@ -38,8 +38,10 @@ func parseASNList(in []string) ([]uint32, error) {
 	return out, nil
 }
 
-// writeASNError maps manager errors: bad input 400, unknown set 404, RIPEstat
-// 502, read-only 409 (writeConfigError), anything else the fallback.
+// writeASNError maps manager errors: bad input 400, unknown set 404, anything
+// RIPEstat-side (a FetchError or an empty union) 502, read-only 409
+// (writeConfigError), anything else — a file or store write that failed for
+// another reason — the fallback.
 func writeASNError(w http.ResponseWriter, fallback int, err error) {
 	var fe *asnsets.FetchError
 	switch {
@@ -47,7 +49,7 @@ func writeASNError(w http.ResponseWriter, fallback int, err error) {
 		writeError(w, http.StatusBadRequest, err.Error())
 	case errors.Is(err, asnsets.ErrNotFound):
 		writeError(w, http.StatusNotFound, err.Error())
-	case errors.As(err, &fe):
+	case errors.As(err, &fe), errors.Is(err, asnsets.ErrNoPrefixes):
 		writeError(w, http.StatusBadGateway, err.Error())
 	default:
 		writeConfigError(w, fallback, err)
@@ -133,8 +135,9 @@ func (h *Handler) UpdateAsnSet(w http.ResponseWriter, r *http.Request) {
 }
 
 // RefreshAsnSet refetches now. On failure the old file stays in service and
-// the error is reported (502) with the entry's last_error set; an empty union
-// is a 502 too, since it is RIPEstat that answered nothing. PROTECTED.
+// the error is reported with the entry's last_error set: 502 when RIPEstat is
+// to blame (fetch error or empty union), 409 when the store is read-only, 500
+// for any other write failure. PROTECTED.
 func (h *Handler) RefreshAsnSet(w http.ResponseWriter, r *http.Request) {
 	if h.asn == nil {
 		writeError(w, http.StatusServiceUnavailable, "ASN sets not available")
@@ -142,7 +145,7 @@ func (h *Handler) RefreshAsnSet(w http.ResponseWriter, r *http.Request) {
 	}
 	e, err := h.asn.Refresh(r.Context(), chi.URLParam(r, "tag"))
 	if err != nil {
-		writeASNError(w, http.StatusBadGateway, err)
+		writeASNError(w, http.StatusInternalServerError, err)
 		return
 	}
 	writeSuccess(w, e)

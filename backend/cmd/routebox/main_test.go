@@ -241,3 +241,17 @@ func TestRuleSetTagIn(t *testing.T) {
 		t.Fatal("empty configs reference nothing")
 	}
 }
+
+func TestAsnBaseDir(t *testing.T) {
+	got := asnBaseDir("routebox.toml") // relative --settings
+	if !filepath.IsAbs(got) {
+		t.Fatalf("relative settings path gave relative base %q", got)
+	}
+	wd, _ := os.Getwd()
+	if got != wd {
+		t.Fatalf("base = %q, want cwd %q", got, wd)
+	}
+	if got := asnBaseDir("/etc/routebox/routebox.toml"); got != "/etc/routebox" {
+		t.Fatalf("absolute settings path: base = %q", got)
+	}
+}
