@@ -145,6 +145,56 @@ func TestCreateAsnSetErrors(t *testing.T) {
 	}
 }
 
+// TestCreateAsnSetReadoptsOrphan: a RouteBox restart discards the unapplied
+// draft, so a set created but never applied is in the store with no config
+// entry. POSTing the tag again must re-adopt it (200, draft entry back, ASNs
+// updated) instead of answering "already exists" until Prune reaps it.
+func TestCreateAsnSetReadoptsOrphan(t *testing.T) {
+	h, r, dir := newASNHandler(t)
+	if rec := doJSON(t, r, "POST", "/api/route/rule-sets/asn", map[string]any{"tag": "cf", "asns": []string{"13335"}, "interval_hrs": 24}); rec.Code != http.StatusOK {
+		t.Fatalf("create %d: %s", rec.Code, rec.Body)
+	}
+	// Simulate the restart: a fresh config manager on the same file drops the draft.
+	cm, err := config.NewManager(filepath.Join(dir, "cfg", "config.json"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	h.config = cm
+	if n := len(h.config.ListRuleSets()); n != 1 {
+		t.Fatalf("precondition: draft should be gone, got %d rule sets", n)
+	}
+	if _, ok := h.asn.Get("cf"); !ok {
+		t.Fatal("precondition: ASN set should survive the restart")
+	}
+
+	rec := doJSON(t, r, "POST", "/api/route/rule-sets/asn", map[string]any{"tag": "cf", "asns": []string{"13335", "AS13335"}, "interval_hrs": 6})
+	if rec.Code != http.StatusOK {
+		t.Fatalf("re-adopt: status %d, want 200 (%s)", rec.Code, rec.Body)
+	}
+	var found map[string]interface{}
+	for _, rs := range h.config.ListRuleSets() {
+		if rs["tag"] == "cf" {
+			found = rs
+		}
+	}
+	want := filepath.Join(dir, "asn", "cf.json")
+	if found == nil || found["type"] != "local" || found["format"] != "source" || found["path"] != want {
+		t.Fatalf("draft rule set after re-adopt = %v", found)
+	}
+	e, _ := h.asn.Get("cf")
+	if e.IntervalHrs != 6 || len(e.ASNs) != 1 || e.ASNs[0] != 13335 {
+		t.Fatalf("entry not updated: %+v", e)
+	}
+	if n := len(h.asn.List()); n != 1 {
+		t.Fatalf("re-adopt created a second entry: %d", n)
+	}
+
+	// Now the tag IS in the config: a third POST is a plain conflict.
+	if rec := doJSON(t, r, "POST", "/api/route/rule-sets/asn", map[string]any{"tag": "cf", "asns": []string{"13335"}}); rec.Code != http.StatusBadRequest {
+		t.Fatalf("existing set in config: status %d, want 400 (%s)", rec.Code, rec.Body)
+	}
+}
+
 func TestCreateAsnSetRollsBackOnDraftFailure(t *testing.T) {
 	if os.Geteuid() == 0 {
 		t.Skip("root ignores directory permissions")

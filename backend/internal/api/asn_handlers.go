@@ -67,7 +67,10 @@ func (h *Handler) ListAsnSets(w http.ResponseWriter, r *http.Request) {
 
 // CreateAsnSet fetches the prefixes, writes the file, then adds a `local` rule
 // set pointing at it to the config draft. If the draft write fails, the set is
-// rolled back so no orphan entry or file is left. PROTECTED.
+// rolled back so no orphan entry or file is left. A set the manager already
+// has but no config mentions (its draft was discarded by a restart) is
+// re-adopted instead of refused: updated in place and re-added to the draft.
+// PROTECTED.
 func (h *Handler) CreateAsnSet(w http.ResponseWriter, r *http.Request) {
 	if h.asn == nil {
 		writeError(w, http.StatusServiceUnavailable, "ASN sets not available")
@@ -90,7 +93,26 @@ func (h *Handler) CreateAsnSet(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 	}
-	e, err := h.asn.Create(r.Context(), req.Tag, asns, req.IntervalHrs)
+	var e asnsets.Entry
+	if _, orphan := h.asn.Get(req.Tag); orphan {
+		// The set survived but its config entry did not (a restart discards an
+		// unapplied draft). Re-adopt it: rewrite the file in place and put the
+		// entry back into the draft. Nothing to roll back if the draft write
+		// fails — the set was already there.
+		e, err = h.asn.Update(r.Context(), req.Tag, asns, req.IntervalHrs)
+		if err != nil {
+			writeASNError(w, http.StatusInternalServerError, err)
+			return
+		}
+		rs := map[string]interface{}{"type": "local", "format": "source", "tag": e.Tag, "path": e.Path}
+		if err := h.config.CreateRuleSet(rs); err != nil {
+			writeConfigError(w, http.StatusBadRequest, err)
+			return
+		}
+		writeSuccess(w, e)
+		return
+	}
+	e, err = h.asn.Create(r.Context(), req.Tag, asns, req.IntervalHrs)
 	if err != nil {
 		writeASNError(w, http.StatusInternalServerError, err)
 		return
