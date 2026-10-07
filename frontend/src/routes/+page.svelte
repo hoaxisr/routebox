@@ -41,7 +41,9 @@
 	let directSet = $state(directTags(undefined));
 	let directHist = $state<number[]>(liveHistory.direct);
 	let proxyHist = $state<number[]>(liveHistory.proxy);
-	let flowHist = $state<RouteFlow[][]>(liveHistory.flows);
+	// Replaced wholesale on every tick, never mutated in place: raw saves
+	// proxying every flow of every second.
+	let flowHist = $state.raw<RouteFlow[][]>(liveHistory.flows);
 	// Each connection's download counter at the previous tick. The first tick
 	// after opening only fills it: every open connection would otherwise count
 	// its whole lifetime as one second.
@@ -395,7 +397,8 @@
 <!-- No page heading: the process card is the headline, and on a 1080p screen
      the heading was what pushed the top connections under the fold (#108). -->
 <!-- Desktop: the page is exactly the viewport minus the header and the main
-     padding, and only the Top Connections list gives way (scrolls inside).
+     padding, and only the bottom card gives way: the Top Connections list and
+     the clients column each scroll inside it.
      Everything else keeps its height; the card cannot go below its fixed
      content plus the bottom card, which never shrinks under its own minimum
      (#110), so on a too-short screen the page scrolls instead of the graph
@@ -586,7 +589,9 @@
 						     span the full width like the svgs, so the hover ratio is unchanged. -->
 						<!-- svelte-ignore a11y_no_static_element_interactions -->
 						<div class="mt-3" onpointerdown={trackHover} onpointermove={trackHover} onpointerleave={() => (hoverRatio = null)}>
-							<div class="h-4 flex justify-end text-[10px] tabular-nums text-[var(--ctp-overlay1)]">↓ {formatSpeed(downMax)}</div>
+							<!-- At zero traffic the scale is the 1024 floor, which would read as
+							     a measurement; the rows stay so the plot does not jump. -->
+							<div class="h-4 flex justify-end text-[10px] tabular-nums text-[var(--ctp-overlay1)]">{#if peak(graphDown) > 0}↓ {formatSpeed(downMax)}{/if}</div>
 							<svg viewBox="0 0 {GW} {DH}" preserveAspectRatio="none" class="block w-full h-[4.5rem] sm:h-20" aria-hidden="true">
 								<line x1="0" y1={DH / 2} x2={GW} y2={DH / 2} stroke="var(--ctp-surface2)" stroke-dasharray="3 4" vector-effect="non-scaling-stroke" />
 								{#if downPaths.line}
@@ -616,7 +621,7 @@
 							     than the one beside it. -->
 							<div class="mt-1 h-5 flex items-center justify-between gap-3 whitespace-nowrap text-xs text-[var(--ctp-overlay1)]">
 								<span class="truncate">↓ {trafficNote(graphDown)}</span>
-								<span class="shrink-0 text-[10px] tabular-nums">↑ {formatSpeed(upMax)}</span>
+								<span class="shrink-0 text-[10px] tabular-nums">{#if peak(graphUp) > 0}↑ {formatSpeed(upMax)}{/if}</span>
 							</div>
 						</div>
 						<!-- One slot of fixed height: the hover pill replaces the period label
@@ -642,9 +647,12 @@
 							<span class="shrink-0">{periodLabel}</span>
 						</div>
 						{#if periodPct != null}
-							<div class="mt-2.5 flex items-baseline gap-5 whitespace-nowrap">
-								<span><span class="text-[22px] xl:text-[28px] leading-none font-semibold tabular-nums text-[var(--ctp-upload)]">{periodPct}</span> <span class="text-xs text-[var(--ctp-overlay1)]">{$t('dashboard.pctDirect')}</span></span>
-								<span><span class="text-[22px] xl:text-[28px] leading-none font-semibold tabular-nums text-[var(--ctp-primary)]">{100 - periodPct}</span> <span class="text-xs text-[var(--ctp-overlay1)]">{$t('dashboard.pctProxy')}</span></span>
+							<!-- The two numbers may stack: in Russian at 1024 px the pair is wider
+							     than the column, and a no-wrap row ran into the graph beside it.
+							     Each number keeps its unit. -->
+							<div class="mt-2.5 flex flex-wrap items-baseline gap-x-5 gap-y-1">
+								<span class="whitespace-nowrap"><span class="text-[22px] xl:text-[28px] leading-none font-semibold tabular-nums text-[var(--ctp-upload)]">{periodPct}</span> <span class="text-xs text-[var(--ctp-overlay1)]">{$t('dashboard.pctDirect')}</span></span>
+								<span class="whitespace-nowrap"><span class="text-[22px] xl:text-[28px] leading-none font-semibold tabular-nums text-[var(--ctp-primary)]">{100 - periodPct}</span> <span class="text-xs text-[var(--ctp-overlay1)]">{$t('dashboard.pctProxy')}</span></span>
 							</div>
 							<div class="mt-3 flex h-2 w-full rounded-full overflow-hidden bg-[var(--ctp-surface2)]">
 								<div style="width: {periodPct}%; background: var(--ctp-upload)"></div>
@@ -718,8 +726,23 @@
 							     connections monitor), so the column is dropped rather
 							     than filled with 127.0.0.1 for every row. -->
 							<div class="px-4 sm:px-5 py-2 flex items-center gap-2 sm:gap-4">
-								<div class="min-w-[6rem] flex-1 truncate text-sm text-[var(--ctp-text)]">
-									{conn.metadata.host || conn.metadata.destinationIP}
+								<div class="min-w-[6rem] flex-1">
+									<div class="truncate text-sm text-[var(--ctp-text)]">
+										{conn.metadata.host || conn.metadata.destinationIP}
+									</div>
+									<!-- Phone (spec #8): the chain chips and the client go under the
+									     host, where the columns below have no room of their own. -->
+									<div class="md:hidden mt-0.5 flex flex-wrap items-center gap-x-1.5 gap-y-1 text-[11px] text-[var(--ctp-overlay1)]">
+										{#each conn.chains as chain}
+											<span class="selection-chip">{chain}</span>
+										{/each}
+										{#if !$behindFront}
+											<span class="min-w-0 truncate tabular-nums" title={conn.metadata.sourceIP}>
+												{#if sourceName}{sourceName}
+												{:else}<span class="font-mono">{conn.metadata.sourceIP}</span>{/if}
+											</span>
+										{/if}
+									</div>
 								</div>
 								{#if !$behindFront}
 									<div class="hidden xl:block w-[8rem] text-right text-xs tabular-nums text-[var(--ctp-overlay1)] flex-shrink-0 truncate" title={conn.metadata.sourceIP}>
@@ -751,7 +774,8 @@
 					{#if $behindFront}
 						<div class="mt-2 text-xs text-[var(--ctp-overlay1)]">{$t('dashboard.clientsBehindFront')}</div>
 					{:else if clientRank.items.length === 0}
-						<div class="mt-2 text-xs text-[var(--ctp-overlay0)]">{$t('dashboard.noTrafficYet')}</div>
+						<!-- Same two reasons as the exits column: no history store, or none yet. -->
+						<div class="mt-2 text-xs text-[var(--ctp-overlay0)]" title={histError}>{period !== '60s' && histError ? $t('dashboard.noHistory') : $t('dashboard.noTrafficYet')}</div>
 					{:else}
 						<div class="mt-1 mb-3 flex gap-3.5 text-[11px] text-[var(--ctp-overlay1)]">
 							<span class="flex items-center gap-1.5"><span class="w-2 h-2 rounded-full" style="background: var(--ctp-upload)"></span>{$t('dashboard.legendDirect')}</span>

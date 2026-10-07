@@ -86,13 +86,14 @@ describe('leafOf / bucketFlows', () => {
 });
 
 describe('localFlows', () => {
-	it('keeps LAN, tunnel and sourceless flows, drops public sources', () => {
+	it('keeps LAN (plain and IPv4-mapped) and sourceless flows, drops public sources', () => {
 		const flows = [
 			{ source: '192.168.1.5', leaf: 'nl', download: 1 },
 			{ source: '', leaf: 'nl', download: 2 },
-			{ source: '203.0.113.7', leaf: 'nl', download: 3 }
+			{ source: '203.0.113.7', leaf: 'nl', download: 3 },
+			{ source: '::ffff:192.168.1.7', leaf: 'nl', download: 4 }
 		];
-		expect(localFlows(flows).map((f) => f.download)).toEqual([1, 2]);
+		expect(localFlows(flows).map((f) => f.download)).toEqual([1, 2, 4]);
 	});
 });
 
