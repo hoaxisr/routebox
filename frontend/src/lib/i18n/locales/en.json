@@ -233,8 +233,6 @@
     "byClients": "Clients",
     "noTrafficYet": "No traffic yet",
     "noHistory": "no history: Clash API address is not set",
-    "routeDirect": "direct",
-    "routeProxy": "via proxy",
     "whereDownload": "↓ Where the download goes",
     "byExit": "By exit",
     "pctDirect": "% direct",

@@ -233,8 +233,6 @@
     "byClients": "Клиенты",
     "noTrafficYet": "Пока нет трафика",
     "noHistory": "истории нет: адрес Clash API не задан",
-    "routeDirect": "direct",
-    "routeProxy": "через прокси",
     "whereDownload": "↓ Куда идёт загрузка",
     "byExit": "По выходам",
     "pctDirect": "% напрямую",

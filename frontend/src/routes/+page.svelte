@@ -495,8 +495,11 @@
 	<!-- Pending Changes (draft config) -->
 	<PendingChanges />
 
-	<!-- Status Card -->
-	<div class="bg-[var(--ctp-surface0)] rounded-xl p-6 lg:flex lg:flex-col">
+	<!-- Status Card. Running, it takes what the page has left; its minimum is
+	     its content with the bottom card at ITS minimum (see contain-size
+	     there), so on a screen with room the lists scroll inside and on a
+	     too-short one the page scrolls. Stopped, it is just the Start button. -->
+	<div class="bg-[var(--ctp-surface0)] rounded-xl p-6 lg:flex lg:flex-col {status.running ? 'lg:flex-1' : ''}">
 		<!-- One header row (#B): name and state, what is running and how, the
 		     controls. The version, config and metrics bars it replaces were three
 		     grey strips saying one thing. -->
@@ -524,10 +527,13 @@
 					{:else}
 						<span class="text-[var(--ctp-text)]">standalone</span>
 					{/if}
+					<!-- The PID is the least-read item and the one that pushed the row
+					     onto a second line on a laptop: spelled out only on wide screens,
+					     otherwise a tooltip on Uptime. -->
+					<span class="hidden 2xl:block w-px h-3.5 bg-[var(--ctp-surface2)]"></span>
+					<span class="hidden 2xl:inline">PID <span class="tabular-nums text-[var(--ctp-text)]">{status.pid || '-'}</span></span>
 					<span class="w-px h-3.5 bg-[var(--ctp-surface2)]"></span>
-					<span>PID <span class="tabular-nums text-[var(--ctp-text)]">{status.pid || '-'}</span></span>
-					<span class="w-px h-3.5 bg-[var(--ctp-surface2)]"></span>
-					<span>Uptime <span class="tabular-nums text-[var(--ctp-text)]">{status.uptime || '-'}</span></span>
+					<span title="PID {status.pid || '-'}">Uptime <span class="tabular-nums text-[var(--ctp-text)]">{status.uptime || '-'}</span></span>
 					<span class="w-px h-3.5 bg-[var(--ctp-surface2)]"></span>
 					<span>Connections <span class="tabular-nums text-[var(--ctp-text)]">{connectionCount}</span></span>
 				</div>
@@ -549,10 +555,8 @@
 			<!-- Traffic graph with the host beside it (#99): one graph for both
 			     directions with a period switch; CPU keeps a mini graph, memory is a
 			     number; totals and disk in the footer. -->
-			<!-- Both columns share one vertical rhythm — a 52px header (label over
-			     number), the graph at the same height, then two fixed rows — so
-			     their headers, graphs and captions line up (#110). -->
-			<!-- The same 2fr/1fr grid as the bottom card, so the two dividers are
+			<!-- The speed graph on the left, where the download went on the right,
+			     in the same 2fr/1fr grid as the bottom card, so the two dividers are
 			     one vertical line by construction, not by flex coincidence. -->
 			<div class="bg-[var(--ctp-surface1)] rounded-lg mb-4">
 				<div class="flex flex-col sm:grid sm:grid-cols-[minmax(0,2fr)_minmax(0,1fr)]">
@@ -651,7 +655,7 @@
 								{#each exitRank.items as e (e.leaf)}
 									<div>
 										<div class="flex items-center justify-between gap-2 text-[13px]">
-											<span class="selection-chip truncate" class:route-direct={e.direct}>{e.leaf}</span>
+											<span class="selection-chip min-w-0 max-w-full" class:route-direct={e.direct}><span class="truncate">{e.leaf}</span></span>
 											<span class="shrink-0 tabular-nums text-[var(--ctp-subtext1)]">{formatBytes(e.bytes)} · {pctOfTotal(e.bytes, exitTotal)} %</span>
 										</div>
 										<div class="mt-1 h-1.5 rounded-full bg-[var(--ctp-surface2)] overflow-hidden">
@@ -696,9 +700,12 @@
 
 			<!-- Same columns as the traffic card above (#B): one card, one divider,
 			     so the left and right edges line up instead of two cards and a gap.
-			     Desktop: the card takes what the page has left and the list scrolls
-			     (the single row is minmax(0,1fr), so it may shrink below content). -->
-			<div class="bg-[var(--ctp-surface1)] rounded-lg flex flex-col sm:grid sm:grid-cols-[minmax(0,2fr)_minmax(0,1fr)] lg:grid-rows-[minmax(0,1fr)] lg:flex-1 lg:min-h-[9.75rem]">
+			     Desktop: the card takes what the page has left and the lists scroll.
+			     contain-size makes the card measure as empty, so its minimum is the
+			     min-h, not its lists (a flex item's intrinsic contribution is its
+			     content whatever its flex-basis), and the single row is
+			     minmax(0,1fr), so it may shrink below content. -->
+			<div class="bg-[var(--ctp-surface1)] rounded-lg flex flex-col sm:grid sm:grid-cols-[minmax(0,2fr)_minmax(0,1fr)] lg:grid-rows-[minmax(0,1fr)] lg:contain-size lg:flex-1 lg:min-h-[9.75rem]">
 				<div class="min-w-0 flex flex-col lg:min-h-0 pt-3 sm:pt-4 pb-1">
 					<div class="h-7 mb-1 px-4 sm:px-5 flex items-center justify-between shrink-0">
 						<h3 class="text-sm font-medium text-[var(--ctp-subtext1)]">Top Connections</h3>
@@ -710,7 +717,7 @@
 							<!-- Behind the front every source is the loopback (see the
 							     connections monitor), so the column is dropped rather
 							     than filled with 127.0.0.1 for every row. -->
-							<div class="px-3 sm:px-4 py-2 flex items-center gap-2 sm:gap-4">
+							<div class="px-4 sm:px-5 py-2 flex items-center gap-2 sm:gap-4">
 								<div class="min-w-[6rem] flex-1 truncate text-sm text-[var(--ctp-text)]">
 									{conn.metadata.host || conn.metadata.destinationIP}
 								</div>
