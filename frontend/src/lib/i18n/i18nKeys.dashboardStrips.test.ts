@@ -25,10 +25,19 @@ const REQUIRED_KEYS = [
 	'dashboard.memory',
 	// The breakdown beside the graph and the hover readout (#101).
 	'dashboard.byClients',
-	'dashboard.byChains',
-	'dashboard.breakdown',
-	'dashboard.ringLive',
-	'dashboard.noTrafficYet'
+	'dashboard.noTrafficYet',
+	// Layout B: where the download goes, by exit and by client.
+	'dashboard.whereDownload',
+	'dashboard.byExit',
+	'dashboard.pctDirect',
+	'dashboard.pctProxy',
+	'dashboard.proxyShare',
+	'dashboard.allDirect',
+	'dashboard.allProxy',
+	'dashboard.moreItems',
+	'dashboard.clientsBehindFront',
+	'dashboard.legendDirect',
+	'dashboard.legendProxy'
 ];
 
 function lookup(obj: unknown, path: string): unknown {

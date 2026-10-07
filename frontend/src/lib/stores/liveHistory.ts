@@ -3,10 +3,9 @@
 // ponytail: plain memory, filled only while the dashboard is open — a route
 // change leaves a gap that is not drawn. A server-side time series (needed for
 // the 24 h view anyway) replaces this.
-export type DashboardPeriod = '60s' | '1h' | '24h';
+import type { RouteFlow } from '$lib/utils/routeSplit';
 
-// The breakdown beside the graph: whose traffic, or through what.
-export type DashboardDim = 'source' | 'chain';
+export type DashboardPeriod = '60s' | '1h' | '24h';
 
 export const liveHistory = {
 	down: [] as number[],
@@ -15,8 +14,10 @@ export const liveHistory = {
 	// The route graph's live minute: download through direct vs a proxy (#110).
 	direct: [] as number[],
 	proxy: [] as number[],
-	// The graph's chosen period survives navigation like the samples do, and so
-	// does the breakdown shown beside it (#101).
-	period: '60s' as DashboardPeriod,
-	dim: 'source' as DashboardDim
+	// The same live minute per (client, final outbound), one array per tick:
+	// the rankings beside the graph sum these, so they count exactly the bytes
+	// of the share above them.
+	flows: [] as RouteFlow[][],
+	// The graph's chosen period survives navigation like the samples do (#101).
+	period: '60s' as DashboardPeriod
 };

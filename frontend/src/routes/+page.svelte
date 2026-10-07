@@ -5,11 +5,10 @@
 	import { notifications, formatBytes, formatSpeed, clientNames, panelMode, routerMode, behindFront, refreshStatus } from '$lib/stores';
 	import { singboxVersion, loadVersion } from '$lib/stores/version';
 	import PendingChanges from '$lib/components/shared/PendingChanges.svelte';
-	import PieChart from '$lib/components/monitor/PieChart.svelte';
 	import { splitUnit, areaPaths } from '$lib/utils/sparkline';
 	import { seriesRates } from '$lib/utils/trafficSeries';
-	import { directTags, leafRates, liveSplit, sharePaths } from '$lib/utils/routeSplit';
-	import { liveHistory, type DashboardPeriod, type DashboardDim } from '$lib/stores/liveHistory';
+	import { directTags, leafRates, liveSplit, bucketFlows, localFlows, rankLeaves, rankClients, type RouteFlow } from '$lib/utils/routeSplit';
+	import { liveHistory, type DashboardPeriod } from '$lib/stores/liveHistory';
 	import { localSourceConnections } from '$lib/utils/clientIp';
 	import type { ProcessStatus, ClashConnection, SystemInfo, TrafficBucket } from '$lib/types';
 
@@ -23,9 +22,9 @@
 	let downloadTotal = $state(0);
 	let connectionCount = $state(0);
 	let topConnections = $state<ClashConnection[]>([]);
-	// Every live connection, for the breakdown beside the graph (#101). Filtered
-	// the same way the Breakdown page filters its live view: a remote source is
-	// not a device of this box (#102).
+	// Every live connection the list below picks its top from. Filtered the same
+	// way the Breakdown page filters its live view: a remote source is not a
+	// device of this box (#102).
 	let liveConns = $state<ClashConnection[]>([]);
 	let trafficStream: { close: () => void } | null = null;
 	let connectionsStream: { close: () => void } | null = null;
@@ -42,6 +41,7 @@
 	let directSet = $state(directTags(undefined));
 	let directHist = $state<number[]>(liveHistory.direct);
 	let proxyHist = $state<number[]>(liveHistory.proxy);
+	let flowHist = $state<RouteFlow[][]>(liveHistory.flows);
 	// Each connection's download counter at the previous tick. The first tick
 	// after opening only fills it: every open connection would otherwise count
 	// its whole lifetime as one second.
@@ -58,7 +58,7 @@
 	let histUp = $state<number[]>([]);
 	let histError = $state('');
 	// The same response already carries the per (source, domain, chain) buckets
-	// the breakdown beside the graph needs, so 1h/24h costs no extra request.
+	// the rankings beside the graph need, so 1h/24h costs no extra request.
 	let histBuckets = $state<TrafficBucket[]>([]);
 	let histDirect = $state<number[]>([]);
 	let histProxy = $state<number[]>([]);
@@ -92,27 +92,28 @@
 	let graphDown = $derived(period === '60s' ? downHist : histDown);
 	let graphUp = $derived(period === '60s' ? upHist : histUp);
 	const GW = 600;
-	const GH = 88;
 	let splitDirect = $derived(period === '60s' ? directHist : histDirect);
 	let splitProxy = $derived(period === '60s' ? proxyHist : histProxy);
-	// Drawn as a share of the whole: the speed is the left graph's job, this
-	// one shows the distribution. The bar above it is the share over the period.
-	const SW = 300;
-	let shares = $derived(sharePaths(splitDirect, splitProxy, SW, GH));
 	const pctOf = (d: number, p: number) => (d + p > 0 ? Math.round((d / (d + p)) * 100) : null);
 	// Volume over the shown period, not a speed: "how much went where" is what
-	// this graph is read for. A point is one second live and an even slice of
+	// the share is read for. A point is one second live and an even slice of
 	// the window for 1h/24h (leafRates resamples to at most 240 points).
 	let secsPerPoint = $derived(period === '60s' ? 1 : (period === '1h' ? 3600 : 86400) / Math.max(1, splitDirect.length));
 	let splitBytes = $derived({
 		direct: splitDirect.reduce((a, b) => a + b, 0) * secsPerPoint,
 		proxy: splitProxy.reduce((a, b) => a + b, 0) * secsPerPoint
 	});
-	let splitVolume = $derived({
-		direct: splitUnit(formatBytes(splitBytes.direct)),
-		proxy: splitUnit(formatBytes(splitBytes.proxy))
-	});
 	let periodPct = $derived(pctOf(splitBytes.direct, splitBytes.proxy));
+	// Where the download went, over the period the graph shows: the live
+	// minute's ticks, or the history buckets for 1h/24h. Remote sources stay in
+	// the share and the exits but are not devices of this box, so they are not
+	// listed as clients (#102).
+	let flows = $derived(period === '60s' ? flowHist.flat() : bucketFlows(histBuckets));
+	let exitRank = $derived(rankLeaves(flows, directSet, 5));
+	let exitTotal = $derived(exitRank.items.reduce((s, x) => s + x.bytes, 0) + exitRank.rest.bytes);
+	let clientRank = $derived(rankClients($routerMode ? localFlows(flows) : flows, directSet, 5));
+	let clientMax = $derived(clientRank.items.length ? clientRank.items[0].direct + clientRank.items[0].proxy : 0);
+	const pctOfTotal = (x: number, total: number) => (total > 0 ? Math.round((x / total) * 100) : 0);
 	// Mirror graph: download above the axis, upload below it on its own scale —
 	// upload is a fraction of download and on one scale it lies flat on the
 	// axis. The scale labels at the right edge say the two halves differ.
@@ -125,58 +126,15 @@
 	let periodLabel = $derived(
 		period === '60s' ? $t('dashboard.lastMinute') : period === '1h' ? $t('dashboard.lastHour') : $t('dashboard.lastDay')
 	);
-	// Breakdown beside the graph (#101): one ring, switched between clients and
-	// chains, counted over the SAME period the graph shows — live connections for
-	// the minute, history buckets for 1h/24h.
-	let sideDim = $state<DashboardDim>(liveHistory.dim);
-	$effect(() => {
-		liveHistory.dim = sideDim;
-	});
-	let sideItems = $derived.by(() => {
-		const totals = new Map<string, number>();
-		const add = (key: string, bytes: number) => totals.set(key, (totals.get(key) ?? 0) + bytes);
-		if (period === '60s') {
-			for (const c of liveConns) {
-				add(
-					sideDim === 'source'
-						? c.metadata.sourceIP || 'unknown'
-						: c.chains?.length
-							? c.chains.join(' → ')
-							: '-',
-					c.upload + c.download
-				);
-			}
-		} else {
-			for (const b of histBuckets) {
-				add(sideDim === 'source' ? b.source || 'unknown' : b.chain || '-', b.upload + b.download);
-			}
-		}
-		return [...totals]
-			.filter(([, value]) => value > 0)
-			.map(([key, value]) => ({
-				key,
-				label: sideDim === 'source' ? ($clientNames.get(key) ?? key) : key,
-				value
-			}));
-	});
 
 	// Hovering the graph reads out the moment under the cursor. The readout sits
 	// in the fixed slot at the end of the legend row, where the period label
 	// otherwise is: numbers that chase the cursor cover the very line being read.
-	// Both graphs read the same moment: the cursor is kept as a fraction of the
-	// width, and each graph turns it into its own point.
+	// The cursor is kept as a fraction of the width and turned into a point of
+	// whatever series is shown, so both halves of the mirror read one moment.
 	let hoverRatio = $state<number | null>(null);
 	const idxAt = (n: number) => (hoverRatio == null || n < 2 ? null : Math.round(hoverRatio * (n - 1)));
 	let hoverIdx = $derived(idxAt(graphDown.length));
-	let splitHoverIdx = $derived(idxAt(splitDirect.length));
-	let splitHover = $derived.by(() => {
-		const i = splitHoverIdx;
-		if (i == null) return null;
-		const d = splitDirect[i] ?? 0;
-		const p = splitProxy[i] ?? 0;
-		const pct = pctOf(d, p);
-		return { direct: formatSpeed(d), proxy: formatSpeed(p), pct: pct == null ? '—' : `${pct} %`, proxyPct: pct == null ? '—' : `${100 - pct} %` };
-	});
 	let hoverPoint = $derived.by(() => {
 		const i = hoverIdx;
 		if (i == null || i >= graphDown.length) return null;
@@ -358,16 +316,18 @@
 			if (splitPrimed) {
 				directHist = liveHistory.direct = [...directHist.slice(-(TRAFFIC_POINTS - 1)), split.direct];
 				proxyHist = liveHistory.proxy = [...proxyHist.slice(-(TRAFFIC_POINTS - 1)), split.proxy];
+				flowHist = liveHistory.flows = [...flowHist.slice(-(TRAFFIC_POINTS - 1)), split.flows];
 			}
 			splitPrimed = true;
 			downloadTotal = data.downloadTotal ?? 0;
 			// Get top 5 by download
 			// Router mode only: on a panel every client's source IS a public
-			// address, and filtering here would leave the ring empty beside a busy
+			// address, and filtering here would leave the list empty beside a busy
 			// graph — the same disagreement #102 removed, mirror-imaged.
 			liveConns = $routerMode ? localSourceConnections(data.connections ?? []) : (data.connections ?? []);
-			// Same roster as the ring, so the card does not name a source the ring
-			// above it just excluded. Copy before sorting: sort mutates.
+			// Same roster as the client ranking beside it, so the list does not
+			// name a source the ranking just excluded. Copy before sorting: sort
+			// mutates.
 			topConnections = [...liveConns].sort((a, b) => b.download - a.download).slice(0, 5);
 			connectionCount = liveConns.length;
 		});
@@ -437,9 +397,9 @@
 <!-- Desktop: the page is exactly the viewport minus the header and the main
      padding, and only the Top Connections list gives way (scrolls inside).
      Everything else keeps its height; the card cannot go below its fixed
-     content plus the bottom row, which never shrinks under the ring card
-     beside the list (#110), so on a too-short screen the page scrolls instead
-     of the graph overlapping the links below. -->
+     content plus the bottom card, which never shrinks under its own minimum
+     (#110), so on a too-short screen the page scrolls instead of the graph
+     overlapping the links below. -->
 <div class="space-y-4 lg:h-[calc(100dvh-6.5rem)] lg:flex lg:flex-col">
 	<!-- System Requirements Warning -->
 	{#if status.system_checks && !status.system_checks.all_checks_passed}
@@ -554,7 +514,9 @@
 			{#if status.running}
 				<div class="flex flex-1 basis-[26rem] min-w-0 flex-wrap items-center gap-x-3.5 gap-y-1.5 text-[13px] text-[var(--ctp-overlay1)]">
 					{#if $singboxVersion}
-						<span>sing-box <span class="text-[var(--ctp-text)]">{$singboxVersion.version}</span></span>
+						<!-- The config path rides on the version as a tooltip: spelled out
+						     it was what broke the header onto a second row at 1366 px. -->
+						<span title={processConfigPath || undefined}>sing-box <span class="text-[var(--ctp-text)]">{$singboxVersion.version}</span></span>
 						<span class="w-px h-3.5 bg-[var(--ctp-surface2)]"></span>
 					{/if}
 					{#if status.managed_by === 'systemd'}
@@ -568,10 +530,6 @@
 					<span>Uptime <span class="tabular-nums text-[var(--ctp-text)]">{status.uptime || '-'}</span></span>
 					<span class="w-px h-3.5 bg-[var(--ctp-surface2)]"></span>
 					<span>Connections <span class="tabular-nums text-[var(--ctp-text)]">{connectionCount}</span></span>
-					{#if processConfigPath}
-						<span class="w-px h-3.5 bg-[var(--ctp-surface2)]"></span>
-						<span class="min-w-0 truncate font-mono text-xs" title={processConfigPath}>{processConfigPath}</span>
-					{/if}
 				</div>
 				<div class="flex gap-2 w-full sm:w-auto">
 					<button onclick={handleReload} disabled={actionLoading !== ''} title="Hot reload configuration (SIGHUP)" class="flex-1 sm:flex-none min-h-11 sm:min-h-0 px-3.5 py-2 bg-[var(--ctp-primary)] text-white rounded-lg text-sm font-medium hover:opacity-90 disabled:opacity-50 transition-opacity">
@@ -594,9 +552,11 @@
 			<!-- Both columns share one vertical rhythm — a 52px header (label over
 			     number), the graph at the same height, then two fixed rows — so
 			     their headers, graphs and captions line up (#110). -->
+			<!-- The same 2fr/1fr grid as the bottom card, so the two dividers are
+			     one vertical line by construction, not by flex coincidence. -->
 			<div class="bg-[var(--ctp-surface1)] rounded-lg mb-4">
-				<div class="flex flex-col sm:flex-row">
-					<div class="sm:flex-[2] min-w-0 px-4 sm:px-5 pt-4 sm:pt-5 pb-3">
+				<div class="flex flex-col sm:grid sm:grid-cols-[minmax(0,2fr)_minmax(0,1fr)]">
+					<div class="min-w-0 px-4 sm:px-5 pt-4 sm:pt-5 pb-3">
 						<div class="flex flex-wrap items-start justify-between gap-x-4 gap-y-2">
 							<!-- Label over number in fixed boxes: in a free-flowing row a longer
 							     number pushed Upload onto its own line and the graph jumped (#110). -->
@@ -616,8 +576,13 @@
 								{/each}
 							</div>
 						</div>
+						<!-- The scale labels sit in their own rows above and below the plot,
+						     right-aligned, so no curve ever runs into them: the download scale
+						     alone on top, the upload scale sharing the legend row. The rows
+						     span the full width like the svgs, so the hover ratio is unchanged. -->
 						<!-- svelte-ignore a11y_no_static_element_interactions -->
-						<div class="mt-3 relative" onpointerdown={trackHover} onpointermove={trackHover} onpointerleave={() => (hoverRatio = null)}>
+						<div class="mt-3" onpointerdown={trackHover} onpointermove={trackHover} onpointerleave={() => (hoverRatio = null)}>
+							<div class="h-4 flex justify-end text-[10px] tabular-nums text-[var(--ctp-overlay1)]">↓ {formatSpeed(downMax)}</div>
 							<svg viewBox="0 0 {GW} {DH}" preserveAspectRatio="none" class="block w-full h-[4.5rem] sm:h-20" aria-hidden="true">
 								<line x1="0" y1={DH / 2} x2={GW} y2={DH / 2} stroke="var(--ctp-surface2)" stroke-dasharray="3 4" vector-effect="non-scaling-stroke" />
 								{#if downPaths.line}
@@ -637,18 +602,18 @@
 									<path d={upPaths.area} fill="var(--ctp-overlay0)" fill-opacity="0.75" />
 									<path d={upPaths.line} fill="none" stroke="var(--ctp-overlay1)" stroke-width="1.5" stroke-linejoin="round" vector-effect="non-scaling-stroke" />
 								{/if}
-								{#if hoverIdx != null && graphUp.length > 1}
-									{@const x = (hoverIdx / (graphUp.length - 1)) * GW}
+								{#if hoverIdx != null && graphDown.length > 1}
+									{@const x = (hoverIdx / (graphDown.length - 1)) * GW}
 									<line x1={x} y1="0" x2={x} y2={UH} stroke="var(--ctp-overlay0)" stroke-opacity="0.45" stroke-width="1" stroke-dasharray="3 3" vector-effect="non-scaling-stroke" />
 								{/if}
 							</svg>
-							<span class="pointer-events-none absolute right-0 top-0 text-[10px] tabular-nums text-[var(--ctp-overlay1)]">↓ {formatSpeed(downMax)}</span>
-							<span class="pointer-events-none absolute right-0 bottom-0 text-[10px] tabular-nums text-[var(--ctp-overlay1)]">↑ {formatSpeed(upMax)}</span>
-						</div>
-						<!-- One line, never wrapping: a wrapped legend made this column taller
-						     than the one beside it. Series names only where there is room. -->
-						<div class="mt-2 h-5 flex items-center overflow-hidden whitespace-nowrap text-xs text-[var(--ctp-overlay1)]">
-							<span class="truncate">↓ {trafficNote(graphDown)}</span>
+							<!-- One line, never wrapping: the legend on the left, the upload
+							     scale on the right. A wrapped legend made this column taller
+							     than the one beside it. -->
+							<div class="mt-1 h-5 flex items-center justify-between gap-3 whitespace-nowrap text-xs text-[var(--ctp-overlay1)]">
+								<span class="truncate">↓ {trafficNote(graphDown)}</span>
+								<span class="shrink-0 text-[10px] tabular-nums">↑ {formatSpeed(upMax)}</span>
+							</div>
 						</div>
 						<!-- One slot of fixed height: the hover pill replaces the period label
 						     instead of re-wrapping anything under the cursor reading it. -->
@@ -664,57 +629,43 @@
 							{/if}
 						</div>
 					</div>
-					<!-- Route graph (#110): how the download splits between direct
-					     outbounds and proxies/endpoints — volume over the period on top,
-					     the share at each moment below. Same period and cursor as the
-					     speed graph. -->
-					<div class="sm:flex-1 min-w-0 border-t sm:border-t-0 sm:border-l border-[var(--ctp-surface2)] px-4 sm:px-5 pt-4 sm:pt-5 pb-3">
-						<div class="grid grid-cols-2 gap-x-4">
-							<div class="min-w-0 whitespace-nowrap">
-								<div class="h-4 flex items-center gap-1.5 text-xs uppercase tracking-wide text-[var(--ctp-overlay1)]"><span class="w-2 h-2 rounded-full shrink-0" style="background: var(--ctp-upload)"></span><span class="truncate">↓ {$t('dashboard.routeDirect')}</span></div>
-								<div class="mt-1 h-8 flex items-end"><span><span class="text-[22px] xl:text-[28px] leading-none font-semibold tabular-nums text-[var(--ctp-text)]">{splitVolume.direct.value}</span> <span class="text-xs text-[var(--ctp-overlay1)]">{splitVolume.direct.unit}</span></span></div>
-							</div>
-							<div class="min-w-0 whitespace-nowrap">
-								<div class="h-4 flex items-center gap-1.5 text-xs uppercase tracking-wide text-[var(--ctp-overlay1)]"><span class="w-2 h-2 rounded-full shrink-0" style="background: var(--ctp-primary)"></span><span class="truncate">↓ {$t('dashboard.routeProxy')}</span></div>
-								<div class="mt-1 h-8 flex items-end"><span><span class="text-[22px] xl:text-[28px] leading-none font-semibold tabular-nums text-[var(--ctp-text)]">{splitVolume.proxy.value}</span> <span class="text-xs text-[var(--ctp-overlay1)]">{splitVolume.proxy.unit}</span></span></div>
-							</div>
+					<!-- Where the download goes (#B): the period's direct/proxy share as two
+					     numbers and a bar, then the exits ranked by bytes. Same period as the
+					     speed graph; download only. -->
+					<div class="min-w-0 border-t sm:border-t-0 sm:border-l border-[var(--ctp-surface2)] px-4 sm:px-5 pt-4 sm:pt-5 pb-3">
+						<div class="flex items-center justify-between gap-2 text-xs uppercase tracking-wide text-[var(--ctp-overlay1)]">
+							<span class="truncate">{$t('dashboard.whereDownload')}</span>
+							<span class="shrink-0">{periodLabel}</span>
 						</div>
-						<!-- svelte-ignore a11y_no_static_element_interactions -->
-						<div class="mt-3" onpointerdown={trackHover} onpointermove={trackHover} onpointerleave={() => (hoverRatio = null)}>
-							<svg viewBox="0 0 {SW} {GH}" preserveAspectRatio="none" class="block w-full h-24 sm:h-28" aria-hidden="true">
-								{#if shares.line}
-									<path d={shares.proxy} fill="var(--ctp-primary)" opacity="0.45" />
-									<path d={shares.direct} fill="var(--ctp-upload)" opacity="0.6" />
-									<path d={shares.line} fill="none" stroke="var(--ctp-text)" stroke-opacity="0.5" stroke-width="1" stroke-linejoin="round" vector-effect="non-scaling-stroke" />
-								{:else}
-									<line x1="0" y1={GH - 0.5} x2={SW} y2={GH - 0.5} stroke="var(--ctp-surface2)" stroke-width="1" vector-effect="non-scaling-stroke" />
-								{/if}
-								{#if splitHoverIdx != null}
-									{@const x = (splitHoverIdx / (splitDirect.length - 1)) * SW}
-									<line x1={x} y1="0" x2={x} y2={GH} stroke="var(--ctp-overlay0)" stroke-opacity="0.45" stroke-width="1" stroke-dasharray="3 3" vector-effect="non-scaling-stroke" />
-								{/if}
-							</svg>
-						</div>
-						<!-- The period's share at a glance, level with the legend beside it. -->
-						<div class="mt-2 h-5 flex items-center">
-							<div class="flex h-2 w-full rounded-full overflow-hidden bg-[var(--ctp-surface2)]">
-								{#if periodPct != null}
-									<div style="width: {periodPct}%; background: var(--ctp-upload)"></div>
-									<div style="width: {100 - periodPct}%; background: var(--ctp-primary)"></div>
+						{#if periodPct != null}
+							<div class="mt-2.5 flex items-baseline gap-5 whitespace-nowrap">
+								<span><span class="text-[22px] xl:text-[28px] leading-none font-semibold tabular-nums text-[var(--ctp-upload)]">{periodPct}</span> <span class="text-xs text-[var(--ctp-overlay1)]">{$t('dashboard.pctDirect')}</span></span>
+								<span><span class="text-[22px] xl:text-[28px] leading-none font-semibold tabular-nums text-[var(--ctp-primary)]">{100 - periodPct}</span> <span class="text-xs text-[var(--ctp-overlay1)]">{$t('dashboard.pctProxy')}</span></span>
+							</div>
+							<div class="mt-3 flex h-2 w-full rounded-full overflow-hidden bg-[var(--ctp-surface2)]">
+								<div style="width: {periodPct}%; background: var(--ctp-upload)"></div>
+								<div style="width: {100 - periodPct}%; background: var(--ctp-primary)"></div>
+							</div>
+							<div class="mt-5 text-xs uppercase tracking-wide text-[var(--ctp-overlay1)]">{$t('dashboard.byExit')}</div>
+							<div class="mt-2.5 flex flex-col gap-2.5">
+								{#each exitRank.items as e (e.leaf)}
+									<div>
+										<div class="flex items-center justify-between gap-2 text-[13px]">
+											<span class="selection-chip truncate" class:route-direct={e.direct}>{e.leaf}</span>
+											<span class="shrink-0 tabular-nums text-[var(--ctp-subtext1)]">{formatBytes(e.bytes)} · {pctOfTotal(e.bytes, exitTotal)} %</span>
+										</div>
+										<div class="mt-1 h-1.5 rounded-full bg-[var(--ctp-surface2)] overflow-hidden">
+											<div class="h-full rounded-full" style="width: {Math.max(1.5, pctOfTotal(e.bytes, exitTotal))}%; background: var({e.direct ? '--ctp-upload' : '--ctp-primary'})"></div>
+										</div>
+									</div>
+								{/each}
+								{#if exitRank.rest.count > 0}
+									<div class="text-xs tabular-nums text-[var(--ctp-overlay1)]">{$t('dashboard.moreItems', { values: { count: exitRank.rest.count } })} · {formatBytes(exitRank.rest.bytes)}</div>
 								{/if}
 							</div>
-						</div>
-						<div class="mt-1 h-[22px] flex items-center gap-x-3 text-xs tabular-nums whitespace-nowrap overflow-hidden">
-							{#if splitHover}
-								<span class="text-[var(--ctp-upload)]">{splitHover.pct} · {splitHover.direct}</span>
-								<span class="text-[var(--ctp-primary)]">{splitHover.proxyPct} · {splitHover.proxy}</span>
-							{:else if periodPct != null}
-								<span class="text-[var(--ctp-upload)]">{$t('dashboard.routeDirect')} {periodPct} %</span>
-								<span class="text-[var(--ctp-primary)]">{$t('dashboard.routeProxy')} {100 - periodPct} %</span>
-							{:else}
-								<span class="text-[var(--ctp-overlay0)]">{$t('dashboard.noTrafficYet')}</span>
-							{/if}
-						</div>
+						{:else}
+							<div class="mt-3 text-xs text-[var(--ctp-overlay0)]" title={histError}>{period !== '60s' && histError ? $t('dashboard.noHistory') : $t('dashboard.noTrafficYet')}</div>
+						{/if}
 					</div>
 				</div>
 				<div class="flex flex-wrap gap-x-6 gap-y-1 px-4 sm:px-5 py-3 border-t border-[var(--ctp-surface2)] text-xs text-[var(--ctp-overlay1)]">
@@ -743,20 +694,17 @@
 				</div>
 			</div>
 
-			<!-- Top Connections with the breakdown ring beside it: the ring gave
-			     its place next to the speed graph to the route graph (#110) and
-			     keeps the third column here. Both columns are a 28px heading over
-			     a card, and the cards stretch to one height, so heads and bottoms
-			     line up. Desktop: the row takes what the card has left and the
-			     list scrolls in it, but never shrinks under the ring (9.75rem). -->
-			<div class="grid grid-cols-1 sm:grid-cols-3 gap-4 lg:flex-1 lg:min-h-[9.75rem] lg:grid-rows-[minmax(0,1fr)]">
-			{#if topConnections.length > 0}
-				<div class="sm:col-span-2 min-w-0 flex flex-col lg:min-h-0">
-					<div class="h-7 mb-2 flex items-center justify-between shrink-0">
+			<!-- Same columns as the traffic card above (#B): one card, one divider,
+			     so the left and right edges line up instead of two cards and a gap.
+			     Desktop: the card takes what the page has left and the list scrolls
+			     (the single row is minmax(0,1fr), so it may shrink below content). -->
+			<div class="bg-[var(--ctp-surface1)] rounded-lg flex flex-col sm:grid sm:grid-cols-[minmax(0,2fr)_minmax(0,1fr)] lg:grid-rows-[minmax(0,1fr)] lg:flex-1 lg:min-h-[9.75rem]">
+				<div class="min-w-0 flex flex-col lg:min-h-0 pt-3 sm:pt-4 pb-1">
+					<div class="h-7 mb-1 px-4 sm:px-5 flex items-center justify-between shrink-0">
 						<h3 class="text-sm font-medium text-[var(--ctp-subtext1)]">Top Connections</h3>
 						<a href="/monitor/connections" class="text-sm text-[var(--ctp-primary)] hover:underline">View all</a>
 					</div>
-					<div class="flex-1 bg-[var(--ctp-surface1)] rounded-lg divide-y divide-[var(--ctp-surface2)] overflow-x-hidden lg:min-h-0 lg:overflow-y-auto">
+					<div class="flex-1 divide-y divide-[var(--ctp-surface2)] border-t border-[var(--ctp-surface2)] overflow-x-hidden lg:min-h-0 lg:overflow-y-auto">
 						{#each topConnections as conn}
 							{@const sourceName = $clientNames.get(conn.metadata.sourceIP)}
 							<!-- Behind the front every source is the loopback (see the
@@ -783,31 +731,51 @@
 									{formatBytes(conn.download)}
 								</div>
 							</div>
+						{:else}
+							<div class="px-4 sm:px-5 py-3 text-xs text-[var(--ctp-overlay0)]">{$t('dashboard.noTrafficYet')}</div>
 						{/each}
 					</div>
 				</div>
-			{/if}
-			<div class="{topConnections.length > 0 ? '' : 'sm:col-span-3'} min-w-0 flex flex-col lg:min-h-0">
-				<div class="h-7 mb-2 flex items-center gap-2 shrink-0">
-					<div class="flex gap-1" role="group" aria-label={$t('dashboard.breakdown')}>
-						<button type="button" class="toggle-btn !py-1 !px-2.5 text-xs whitespace-nowrap {sideDim === 'source' ? 'selected' : ''}" onclick={() => (sideDim = 'source')}>{$t('dashboard.byClients')}</button>
-						<button type="button" class="toggle-btn !py-1 !px-2.5 text-xs whitespace-nowrap {sideDim === 'chain' ? 'selected' : ''}" onclick={() => (sideDim = 'chain')}>{$t('dashboard.byChains')}</button>
+				<div class="min-w-0 border-t sm:border-t-0 sm:border-l border-[var(--ctp-surface2)] px-4 sm:px-5 pt-3 sm:pt-4 pb-3 lg:min-h-0 lg:overflow-y-auto">
+					<div class="h-7 flex items-center justify-between gap-2">
+						<h3 class="text-sm font-medium text-[var(--ctp-subtext1)]">{$t('dashboard.byClients')}</h3>
+						<span class="text-[10px] uppercase tracking-wide text-[var(--ctp-overlay0)] truncate">↓ {periodLabel}</span>
 					</div>
-					<!-- The minute view sums the counters of connections that are open
-					     NOW, each since it opened — the Breakdown page calls that Live.
-					     Only 1h/24h are the graph's own window. -->
-					<span class="text-[10px] uppercase tracking-wide text-[var(--ctp-overlay0)] truncate">{period === '60s' ? $t('dashboard.ringLive') : periodLabel}</span>
-				</div>
-				<!-- Fixed minimum: clients and chains rarely have the same number of
-				     rows, and without it switching moved everything below (#101). -->
-				<div class="flex-1 min-h-[120px] min-w-0 overflow-hidden bg-[var(--ctp-surface1)] rounded-lg px-4 sm:px-5 py-3 flex items-center">
-					{#if sideItems.length > 0}
-						<div class="w-full min-w-0"><PieChart items={sideItems} centerNumber={sideItems.length} topN={4} size={96} /></div>
+					{#if $behindFront}
+						<div class="mt-2 text-xs text-[var(--ctp-overlay1)]">{$t('dashboard.clientsBehindFront')}</div>
+					{:else if clientRank.items.length === 0}
+						<div class="mt-2 text-xs text-[var(--ctp-overlay0)]">{$t('dashboard.noTrafficYet')}</div>
 					{:else}
-						<div class="text-xs text-[var(--ctp-overlay0)]">{$t('dashboard.noTrafficYet')}</div>
+						<div class="mt-1 mb-3 flex gap-3.5 text-[11px] text-[var(--ctp-overlay1)]">
+							<span class="flex items-center gap-1.5"><span class="w-2 h-2 rounded-full" style="background: var(--ctp-upload)"></span>{$t('dashboard.legendDirect')}</span>
+							<span class="flex items-center gap-1.5"><span class="w-2 h-2 rounded-full" style="background: var(--ctp-primary)"></span>{$t('dashboard.legendProxy')}</span>
+						</div>
+						<div class="flex flex-col gap-3">
+							{#each clientRank.items as c (c.source)}
+								{@const total = c.direct + c.proxy}
+								{@const proxyPct = pctOfTotal(c.proxy, total)}
+								<div>
+									<div class="flex items-center justify-between gap-2 text-[13px]">
+										<span class="min-w-0 truncate text-[var(--ctp-text)]">{c.source ? ($clientNames.get(c.source) ?? c.source) : 'unknown'}</span>
+										<span class="shrink-0 tabular-nums text-[var(--ctp-subtext1)]">{formatBytes(total)}</span>
+									</div>
+									<div class="mt-1 h-1.5 rounded-full bg-[var(--ctp-surface2)]">
+										<div class="flex h-full rounded-full overflow-hidden" style="width: {Math.max(1.5, (total / clientMax) * 100)}%">
+											<div style="width: {100 - proxyPct}%; background: var(--ctp-upload)"></div>
+											<div style="width: {proxyPct}%; background: var(--ctp-primary)"></div>
+										</div>
+									</div>
+									<div class="mt-0.5 text-[11px] tabular-nums text-[var(--ctp-overlay1)]">
+										{c.proxy === 0 ? $t('dashboard.allDirect') : c.direct === 0 ? $t('dashboard.allProxy') : $t('dashboard.proxyShare', { values: { pct: proxyPct } })}
+									</div>
+								</div>
+							{/each}
+							{#if clientRank.rest.count > 0}
+								<div class="text-xs tabular-nums text-[var(--ctp-overlay1)]">{$t('dashboard.moreItems', { values: { count: clientRank.rest.count } })} · {formatBytes(clientRank.rest.bytes)}</div>
+							{/if}
+						</div>
 					{/if}
 				</div>
-			</div>
 			</div>
 		{:else}
 			<div class="flex gap-3 flex-wrap">

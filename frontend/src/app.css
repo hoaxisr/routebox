@@ -440,6 +440,12 @@ code, pre {
 	color: var(--ctp-primary);
 }
 
+/* A chip naming a direct outbound (dashboard exits): the route's colour. */
+.selection-chip.route-direct {
+	background-color: color-mix(in srgb, var(--ctp-upload) 20%, transparent);
+	color: var(--ctp-upload);
+}
+
 /* Query type chip (selectable) */
 .query-type-chip {
 	padding: 0.125rem 0.5rem;

@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { directTags, leafRates, liveSplit, sharePaths, leafOf, bucketFlows, localFlows, rankLeaves, rankClients } from './routeSplit';
+import { directTags, leafRates, liveSplit, leafOf, bucketFlows, localFlows, rankLeaves, rankClients } from './routeSplit';
 import type { ClashConnection } from '$lib/types';
 
 const conn = (id: string, download: number, chains: string[], sourceIP = '') =>
@@ -145,18 +145,5 @@ describe('rankClients', () => {
 	});
 	it('leaves out clients with no download', () => {
 		expect(rankClients([{ source: 'a', leaf: 'nl', download: 0 }], direct, 5).items).toEqual([]);
-	});
-});
-
-describe('sharePaths', () => {
-	it('fills direct up to its share and leaves idle points as gaps', () => {
-		// 3 points over w=100: 25 % direct, idle, 100 % direct (lone point → widened)
-		const r = sharePaths([1, 0, 4], [3, 0, 0], 100, 80);
-		expect(r.direct).toBe('M0 60L25 60L25 80L0 80ZM75 0L100 0L100 80L75 80Z');
-		expect(r.proxy).toBe('M0 60L25 60L25 0L0 0ZM75 0L100 0L100 0L75 0Z');
-	});
-	it('is empty without data', () => {
-		expect(sharePaths([], [], 100, 80)).toEqual({ direct: '', proxy: '', line: '' });
-		expect(sharePaths([0, 0], [0, 0], 100, 80).direct).toBe('');
 	});
 });
