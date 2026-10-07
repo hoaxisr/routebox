@@ -113,11 +113,15 @@
 		proxy: splitUnit(formatBytes(splitBytes.proxy))
 	});
 	let periodPct = $derived(pctOf(splitBytes.direct, splitBytes.proxy));
-	// One scale for both series, so a 6 KB/s upload does not look as tall as a
-	// 60 KB/s download drawn over it.
-	let graphMax = $derived(Math.max(1024, ...graphDown, ...graphUp) * 1.15);
-	let downPaths = $derived(areaPaths(graphDown, graphMax, GW, GH));
-	let upPaths = $derived(areaPaths(graphUp, graphMax, GW, GH));
+	// Mirror graph: download above the axis, upload below it on its own scale —
+	// upload is a fraction of download and on one scale it lies flat on the
+	// axis. The scale labels at the right edge say the two halves differ.
+	const DH = 64;
+	const UH = 28;
+	let downMax = $derived(Math.max(1024, ...graphDown) * 1.15);
+	let upMax = $derived(Math.max(1024, ...graphUp) * 1.15);
+	let downPaths = $derived(areaPaths(graphDown, downMax, GW, DH));
+	let upPaths = $derived(areaPaths(graphUp, upMax, GW, UH));
 	let periodLabel = $derived(
 		period === '60s' ? $t('dashboard.lastMinute') : period === '1h' ? $t('dashboard.lastHour') : $t('dashboard.lastDay')
 	);
@@ -533,97 +537,57 @@
 
 	<!-- Status Card -->
 	<div class="bg-[var(--ctp-surface0)] rounded-xl p-6 lg:flex lg:flex-col">
-		<div class="flex items-center justify-between mb-4">
-			<h2 class="text-lg font-semibold text-[var(--ctp-subtext1)]">amnezia-box</h2>
-			{#if loading}
-				<span class="text-[var(--ctp-overlay1)]">{$t('common.loading')}</span>
-			{:else}
-				<span
-					class="px-3 py-1 rounded-full text-sm font-medium text-white"
-					class:bg-[var(--ctp-green)]={status.running}
-					class:bg-[var(--ctp-red)]={!status.running}
-				>
-					{status.running ? $t('status.running') : $t('status.stopped')}
-				</span>
+		<!-- One header row (#B): name and state, what is running and how, the
+		     controls. The version, config and metrics bars it replaces were three
+		     grey strips saying one thing. -->
+		<div class="flex flex-wrap items-center gap-x-6 gap-y-3 mb-4">
+			<div class="flex items-center gap-3">
+				<h2 class="text-lg font-semibold text-[var(--ctp-text)]">amnezia-box</h2>
+				{#if loading}
+					<span class="text-[var(--ctp-overlay1)]">{$t('common.loading')}</span>
+				{:else}
+					<span class="px-3 py-0.5 rounded-full text-xs font-semibold text-white" class:bg-[var(--ctp-green)]={status.running} class:bg-[var(--ctp-red)]={!status.running}>
+						{status.running ? $t('status.running') : $t('status.stopped')}
+					</span>
+				{/if}
+			</div>
+			{#if status.running}
+				<div class="flex flex-1 basis-[26rem] min-w-0 flex-wrap items-center gap-x-3.5 gap-y-1.5 text-[13px] text-[var(--ctp-overlay1)]">
+					{#if $singboxVersion}
+						<span>sing-box <span class="text-[var(--ctp-text)]">{$singboxVersion.version}</span></span>
+						<span class="w-px h-3.5 bg-[var(--ctp-surface2)]"></span>
+					{/if}
+					{#if status.managed_by === 'systemd'}
+						<span>systemd <span class="text-[var(--ctp-text)]">{status.service_name || ''}</span></span>
+					{:else}
+						<span class="text-[var(--ctp-text)]">standalone</span>
+					{/if}
+					<span class="w-px h-3.5 bg-[var(--ctp-surface2)]"></span>
+					<span>PID <span class="tabular-nums text-[var(--ctp-text)]">{status.pid || '-'}</span></span>
+					<span class="w-px h-3.5 bg-[var(--ctp-surface2)]"></span>
+					<span>Uptime <span class="tabular-nums text-[var(--ctp-text)]">{status.uptime || '-'}</span></span>
+					<span class="w-px h-3.5 bg-[var(--ctp-surface2)]"></span>
+					<span>Connections <span class="tabular-nums text-[var(--ctp-text)]">{connectionCount}</span></span>
+					{#if processConfigPath}
+						<span class="w-px h-3.5 bg-[var(--ctp-surface2)]"></span>
+						<span class="min-w-0 truncate font-mono text-xs" title={processConfigPath}>{processConfigPath}</span>
+					{/if}
+				</div>
+				<div class="flex gap-2 w-full sm:w-auto">
+					<button onclick={handleReload} disabled={actionLoading !== ''} title="Hot reload configuration (SIGHUP)" class="flex-1 sm:flex-none min-h-11 sm:min-h-0 px-3.5 py-2 bg-[var(--ctp-primary)] text-white rounded-lg text-sm font-medium hover:opacity-90 disabled:opacity-50 transition-opacity">
+						{actionLoading === 'reload' ? 'Reloading...' : 'Reload Config'}
+					</button>
+					<button onclick={handleRestart} disabled={actionLoading !== ''} title="Full process restart" class="flex-1 sm:flex-none min-h-11 sm:min-h-0 px-3.5 py-2 bg-[var(--ctp-surface2)] text-[var(--ctp-text)] rounded-lg text-sm font-medium hover:bg-[var(--ctp-overlay0)] disabled:opacity-50 transition-colors">
+						{actionLoading === 'restart' ? $t('common.restarting') : $t('dashboard.restart')}
+					</button>
+					<button onclick={handleStop} disabled={actionLoading !== ''} class="flex-1 sm:flex-none min-h-11 sm:min-h-0 px-3.5 py-2 border border-[var(--ctp-red)]/40 text-[var(--ctp-red)] rounded-lg text-sm font-medium hover:bg-[var(--ctp-red)]/10 disabled:opacity-50 transition-colors">
+						{actionLoading === 'stop' ? $t('common.stopping') : $t('dashboard.stop')}
+					</button>
+				</div>
 			{/if}
 		</div>
 
 		{#if status.running}
-			<!-- Control buttons first -->
-			<div class="flex gap-3 flex-wrap mb-4">
-				<button
-					onclick={handleStop}
-					disabled={actionLoading !== ''}
-					class="px-4 py-2 bg-[var(--ctp-red)] text-white rounded-lg font-medium hover:opacity-90 disabled:opacity-50 transition-opacity"
-				>
-					{actionLoading === 'stop' ? $t('common.stopping') : $t('dashboard.stop')}
-				</button>
-				<button
-					onclick={handleReload}
-					disabled={actionLoading !== ''}
-					class="px-4 py-2 bg-[var(--ctp-primary)] text-white rounded-lg font-medium hover:opacity-90 disabled:opacity-50 transition-opacity"
-					title="Hot reload configuration (SIGHUP)"
-				>
-					{actionLoading === 'reload' ? 'Reloading...' : 'Reload Config'}
-				</button>
-				<button
-					onclick={handleRestart}
-					disabled={actionLoading !== ''}
-					class="px-4 py-2 bg-[var(--ctp-surface2)] text-[var(--ctp-text)] rounded-lg font-medium hover:bg-[var(--ctp-overlay0)] disabled:opacity-50 transition-colors"
-					title="Full process restart"
-				>
-					{actionLoading === 'restart' ? $t('common.restarting') : $t('dashboard.restart')}
-				</button>
-			</div>
-
-			<!-- Version + Config path bar -->
-			{#if $singboxVersion || processConfigPath}
-				<div class="bg-[var(--ctp-surface1)] rounded-lg px-4 py-2 flex items-center gap-4 flex-wrap mb-3 text-xs">
-					{#if $singboxVersion}
-						<div class="flex items-center gap-1.5">
-							<span class="text-[var(--ctp-overlay1)]">sing-box</span>
-							<span class="text-[var(--ctp-subtext1)]">{$singboxVersion.version}</span>
-						</div>
-					{/if}
-					{#if $singboxVersion && processConfigPath}
-						<div class="w-px h-[14px] bg-[var(--ctp-surface2)]"></div>
-					{/if}
-					{#if processConfigPath}
-						<div class="flex items-center gap-1.5 min-w-0">
-							<span class="text-[var(--ctp-overlay1)] flex-shrink-0">Config</span>
-							<span class="text-[var(--ctp-subtext1)] truncate">{processConfigPath}</span>
-						</div>
-					{/if}
-				</div>
-			{/if}
-
-			<!-- System metrics bar -->
-			<div class="bg-[var(--ctp-surface1)] rounded-lg px-4 py-3 grid grid-cols-2 gap-x-3 gap-y-2.5 sm:flex sm:items-center sm:gap-5 sm:flex-wrap mb-4">
-				<div class="min-w-0 flex flex-col sm:flex-row sm:items-baseline sm:gap-1.5">
-					<span class="text-[10px] uppercase tracking-wide text-[var(--ctp-overlay1)] flex-shrink-0">Managed by</span>
-					{#if status.managed_by === 'systemd'}
-						<span class="text-sm text-[var(--ctp-primary)] truncate">systemd{#if status.service_name}<span class="ml-1 text-[10px] text-[var(--ctp-overlay0)]">({status.service_name})</span>{/if}</span>
-					{:else}
-						<span class="text-sm text-[var(--ctp-text)]">standalone</span>
-					{/if}
-				</div>
-				<div class="hidden sm:block w-px h-[18px] bg-[var(--ctp-surface2)]"></div>
-				<div class="min-w-0 flex flex-col sm:flex-row sm:items-baseline sm:gap-1.5">
-					<span class="text-[10px] uppercase tracking-wide text-[var(--ctp-overlay1)]">PID</span>
-					<span class="text-sm text-[var(--ctp-text)]">{status.pid || '-'}</span>
-				</div>
-				<div class="hidden sm:block w-px h-[18px] bg-[var(--ctp-surface2)]"></div>
-				<div class="min-w-0 flex flex-col sm:flex-row sm:items-baseline sm:gap-1.5">
-					<span class="text-[10px] uppercase tracking-wide text-[var(--ctp-overlay1)]">Uptime</span>
-					<span class="text-sm text-[var(--ctp-text)]">{status.uptime || '-'}</span>
-				</div>
-				<div class="hidden sm:block w-px h-[18px] bg-[var(--ctp-surface2)]"></div>
-				<div class="min-w-0 flex flex-col sm:flex-row sm:items-baseline sm:gap-1.5">
-					<span class="text-[10px] uppercase tracking-wide text-[var(--ctp-overlay1)]">Connections</span>
-					<span class="text-sm text-[var(--ctp-text)]">{connectionCount}</span>
-				</div>
-			</div>
-
 			<!-- Traffic graph with the host beside it (#99): one graph for both
 			     directions with a period switch; CPU keeps a mini graph, memory is a
 			     number; totals and disk in the footer. -->
@@ -638,11 +602,11 @@
 							     number pushed Upload onto its own line and the graph jumped (#110). -->
 							<div class="grid grid-cols-2 gap-x-6 w-full sm:w-auto min-w-0">
 								<div class="min-w-0 whitespace-nowrap">
-									<div class="h-4 text-xs uppercase tracking-wide text-[var(--ctp-overlay1)]">↓ {$t('dashboard.download')}</div>
+									<div class="h-4 flex items-center gap-1.5 text-xs uppercase tracking-wide text-[var(--ctp-overlay1)]"><span class="w-2 h-2 rounded-full" style="background: var(--ctp-text)"></span>↓ {$t('dashboard.download')}</div>
 									<div class="mt-1 h-8 flex items-end"><span><span class="text-[22px] sm:text-[28px] leading-none font-semibold tabular-nums text-[var(--ctp-text)]">{rate.down.value}</span> <span class="text-xs text-[var(--ctp-overlay1)]">{rate.down.unit}</span></span></div>
 								</div>
 								<div class="min-w-0 whitespace-nowrap">
-									<div class="h-4 text-xs uppercase tracking-wide text-[var(--ctp-overlay1)]">↑ {$t('dashboard.upload')}</div>
+									<div class="h-4 flex items-center gap-1.5 text-xs uppercase tracking-wide text-[var(--ctp-overlay1)]"><span class="w-2 h-2 rounded-full" style="background: var(--ctp-overlay0)"></span>↑ {$t('dashboard.upload')}</div>
 									<div class="mt-1 h-8 flex items-end"><span><span class="text-[22px] sm:text-[28px] leading-none font-semibold tabular-nums text-[var(--ctp-text)]">{rate.up.value}</span> <span class="text-xs text-[var(--ctp-overlay1)]">{rate.up.unit}</span></span></div>
 								</div>
 							</div>
@@ -653,30 +617,38 @@
 							</div>
 						</div>
 						<!-- svelte-ignore a11y_no_static_element_interactions -->
-						<div class="mt-3" onpointerdown={trackHover} onpointermove={trackHover} onpointerleave={() => (hoverRatio = null)}>
-							<svg viewBox="0 0 {GW} {GH}" preserveAspectRatio="none" class="block w-full h-24 sm:h-28" aria-hidden="true">
-								{#if downPaths.line || upPaths.line}
-									<path d={downPaths.area} fill="var(--ctp-primary)" opacity="0.14" />
-									<path d={upPaths.area} fill="var(--ctp-upload)" opacity="0.14" />
-									<path d={downPaths.line} fill="none" stroke="var(--ctp-primary)" stroke-width="1.5" stroke-linejoin="round" vector-effect="non-scaling-stroke" />
-									<path d={upPaths.line} fill="none" stroke="var(--ctp-upload)" stroke-width="1.5" stroke-linejoin="round" vector-effect="non-scaling-stroke" />
-								{:else}
-									<line x1="0" y1={GH - 0.5} x2={GW} y2={GH - 0.5} stroke="var(--ctp-surface2)" stroke-width="1" vector-effect="non-scaling-stroke" />
+						<div class="mt-3 relative" onpointerdown={trackHover} onpointermove={trackHover} onpointerleave={() => (hoverRatio = null)}>
+							<svg viewBox="0 0 {GW} {DH}" preserveAspectRatio="none" class="block w-full h-[4.5rem] sm:h-20" aria-hidden="true">
+								<line x1="0" y1={DH / 2} x2={GW} y2={DH / 2} stroke="var(--ctp-surface2)" stroke-dasharray="3 4" vector-effect="non-scaling-stroke" />
+								{#if downPaths.line}
+									<path d={downPaths.area} fill="var(--ctp-text)" fill-opacity="0.10" />
+									<path d={downPaths.line} fill="none" stroke="var(--ctp-text)" stroke-width="2" stroke-linejoin="round" vector-effect="non-scaling-stroke" />
 								{/if}
 								{#if hoverIdx != null && graphDown.length > 1}
 									{@const x = (hoverIdx / (graphDown.length - 1)) * GW}
-									<!-- Quiet cursor: the line being read must stay the loudest thing (#108). -->
-									<line x1={x} y1="0" x2={x} y2={GH} stroke="var(--ctp-overlay0)" stroke-opacity="0.45" stroke-width="1" stroke-dasharray="3 3" vector-effect="non-scaling-stroke" />
-									<circle cx={x} cy={GH - (Math.min(graphDown[hoverIdx] ?? 0, graphMax) / graphMax) * GH} r="2" fill="var(--ctp-primary)" fill-opacity="0.7" vector-effect="non-scaling-stroke" />
-									<circle cx={x} cy={GH - (Math.min(graphUp[hoverIdx] ?? 0, graphMax) / graphMax) * GH} r="2" fill="var(--ctp-upload)" fill-opacity="0.7" vector-effect="non-scaling-stroke" />
+									<line x1={x} y1="0" x2={x} y2={DH} stroke="var(--ctp-overlay0)" stroke-opacity="0.45" stroke-width="1" stroke-dasharray="3 3" vector-effect="non-scaling-stroke" />
 								{/if}
 							</svg>
+							<div class="h-px bg-[var(--ctp-overlay1)] opacity-60"></div>
+							<!-- Drawn top-down like the half above, then flipped: the area closes
+							     on the axis and grows downward. -->
+							<svg viewBox="0 0 {GW} {UH}" preserveAspectRatio="none" class="block w-full h-8 sm:h-9" style="transform: scaleY(-1)" aria-hidden="true">
+								{#if upPaths.line}
+									<path d={upPaths.area} fill="var(--ctp-overlay0)" fill-opacity="0.75" />
+									<path d={upPaths.line} fill="none" stroke="var(--ctp-overlay1)" stroke-width="1.5" stroke-linejoin="round" vector-effect="non-scaling-stroke" />
+								{/if}
+								{#if hoverIdx != null && graphUp.length > 1}
+									{@const x = (hoverIdx / (graphUp.length - 1)) * GW}
+									<line x1={x} y1="0" x2={x} y2={UH} stroke="var(--ctp-overlay0)" stroke-opacity="0.45" stroke-width="1" stroke-dasharray="3 3" vector-effect="non-scaling-stroke" />
+								{/if}
+							</svg>
+							<span class="pointer-events-none absolute right-0 top-0 text-[10px] tabular-nums text-[var(--ctp-overlay1)]">↓ {formatSpeed(downMax)}</span>
+							<span class="pointer-events-none absolute right-0 bottom-0 text-[10px] tabular-nums text-[var(--ctp-overlay1)]">↑ {formatSpeed(upMax)}</span>
 						</div>
 						<!-- One line, never wrapping: a wrapped legend made this column taller
 						     than the one beside it. Series names only where there is room. -->
-						<div class="mt-2 h-5 flex items-center gap-x-5 overflow-hidden whitespace-nowrap text-xs text-[var(--ctp-overlay1)]">
-							<span class="flex items-center gap-1.5 min-w-0"><span class="w-2 h-2 rounded-full shrink-0" style="background: var(--ctp-primary)"></span><span class="truncate"><span class="hidden xl:inline">{$t('dashboard.download')} ·&nbsp;</span>{trafficNote(graphDown)}</span></span>
-							<span class="flex items-center gap-1.5 min-w-0"><span class="w-2 h-2 rounded-full shrink-0" style="background: var(--ctp-upload)"></span><span class="truncate"><span class="hidden xl:inline">{$t('dashboard.upload')} ·&nbsp;</span>{trafficNote(graphUp)}</span></span>
+						<div class="mt-2 h-5 flex items-center overflow-hidden whitespace-nowrap text-xs text-[var(--ctp-overlay1)]">
+							<span class="truncate">↓ {trafficNote(graphDown)}</span>
 						</div>
 						<!-- One slot of fixed height: the hover pill replaces the period label
 						     instead of re-wrapping anything under the cursor reading it. -->
@@ -684,8 +656,8 @@
 							{#if hoverPoint}
 								<span class="inline-flex items-baseline gap-2 whitespace-nowrap rounded-full border border-[var(--ctp-surface2)] bg-[var(--ctp-base)] px-2.5 py-0.5 tabular-nums">
 									<span class="text-[var(--ctp-overlay1)]">{hoverPoint.time}</span>
-									<span class="text-[var(--ctp-primary)]">↓ {hoverPoint.down}</span>
-									<span class="text-[var(--ctp-upload)]">↑ {hoverPoint.up}</span>
+									<span class="text-[var(--ctp-text)]">↓ {hoverPoint.down}</span>
+									<span class="text-[var(--ctp-overlay1)]">↑ {hoverPoint.up}</span>
 								</span>
 							{:else}
 								<span class="truncate text-[var(--ctp-overlay0)]" title={histError}>{period !== '60s' && histError ? $t('dashboard.noHistory') : periodLabel}</span>
