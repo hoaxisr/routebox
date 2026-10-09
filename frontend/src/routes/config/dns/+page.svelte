@@ -1,4 +1,5 @@
 <script lang="ts">
+	import { reportApplyError } from '$lib/utils/reportApplyError';
 	import { onMount } from 'svelte';
 	import { t } from 'svelte-i18n';
 	import { api } from '$lib/api/client';
@@ -84,7 +85,7 @@
 			hasChanges = false;
 			unsavedChanges.clearChanges();
 		} catch (e) {
-			notifications.error($t('changes.failedApply'));
+			reportApplyError(e);
 		} finally {
 			applying = false;
 		}

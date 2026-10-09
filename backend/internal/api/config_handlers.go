@@ -120,6 +120,38 @@ func (h *Handler) ImportConfig(w http.ResponseWriter, r *http.Request) {
 
 // ApplyConfig saves draft to disk and reloads/restarts (with optional validation)
 func (h *Handler) ApplyConfig(w http.ResponseWriter, r *http.Request) {
+	// One apply at a time: two tabs applying at once would race on the disk
+	// write, and the progress either of them follows would be the other's.
+	if !h.applyMu.TryLock() {
+		writeError(w, http.StatusConflict, "Another apply is already running")
+		return
+	}
+	defer h.applyMu.Unlock()
+
+	seq := h.applyProg.start()
+	rec := &applyRecorder{ResponseWriter: w}
+	defer func() {
+		phase, errMsg, warning := rec.outcome()
+		h.applyProg.set(seq, phase, errMsg, warning)
+	}()
+	h.applyConfig(rec, r, seq)
+}
+
+func (h *Handler) reloadProcess() error {
+	if h.reloader != nil {
+		return h.reloader()
+	}
+	return h.process.Reload()
+}
+
+func (h *Handler) restartProcess(path string) error {
+	if h.restarter != nil {
+		return h.restarter(path)
+	}
+	return h.process.Restart(path)
+}
+
+func (h *Handler) applyConfig(w http.ResponseWriter, r *http.Request, seq int) {
 	gen := h.config.GetDraftGen()
 
 	// Optionally validate draft before applying
@@ -238,11 +270,12 @@ func (h *Handler) ApplyConfig(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	h.applyProg.set(seq, "reloading", "", "")
 	if mode == "reload" {
 		// Try reload first (SIGHUP)
-		if err := h.process.Reload(); err != nil {
+		if err := h.reloadProcess(); err != nil {
 			// Reload failed, try restart as fallback
-			if err := h.process.Restart(h.config.GetPath()); err != nil {
+			if err := h.restartProcess(h.config.GetPath()); err != nil {
 				writeError(w, http.StatusInternalServerError, fmt.Sprintf("Saved but failed to reload/restart: %v", err))
 				return
 			}
@@ -259,7 +292,7 @@ func (h *Handler) ApplyConfig(w http.ResponseWriter, r *http.Request) {
 		})
 	} else {
 		// Force restart
-		if err := h.process.Restart(h.config.GetPath()); err != nil {
+		if err := h.restartProcess(h.config.GetPath()); err != nil {
 			writeError(w, http.StatusInternalServerError, fmt.Sprintf("Saved but failed to restart: %v", err))
 			return
 		}

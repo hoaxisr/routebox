@@ -18,6 +18,7 @@ import (
 	"routebox/backend/internal/updates"
 	"routebox/backend/internal/users"
 	"routebox/backend/internal/util"
+	"sync"
 )
 
 // Handler holds API dependencies
@@ -44,6 +45,8 @@ type Handler struct {
 	sys             sysinfo.Sampler  // host metrics for the dashboard; zero value reads /proc
 	consumers       []consumers.Source
 	live            *consumers.Live
+	applyProg       applyProgress
+	applyMu         sync.Mutex
 
 	// panelMode is a boot-time snapshot: a mode changed in the panel reaches the
 	// traffic sampler on its next tick but not the read filter in
@@ -72,6 +75,11 @@ type Handler struct {
 	// when nil; overridable in tests so GetStatus can be exercised without a
 	// real running process.
 	statusSource func() process.Status
+
+	// reloader/restarter replace h.process.Reload/Restart in tests: the real
+	// ones look up and may even start the amnezia-box binary. nil = real.
+	reloader  func() error
+	restarter func(string) error
 }
 
 // getProcessStatus returns the current process status, using the test override

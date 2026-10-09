@@ -855,6 +855,7 @@ func main() {
 
 			// Config draft system
 			r.Get("/config/status", apiHandler.GetConfigStatus)
+			r.Get("/config/apply/progress", apiHandler.GetApplyProgress)
 			r.Post("/config/discard", apiHandler.DiscardConfig)
 			r.Get("/config/draft-diff", apiHandler.GetDraftDiff)
 			r.Post("/config/save", apiHandler.SaveConfigDraft)

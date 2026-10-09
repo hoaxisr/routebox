@@ -4,6 +4,9 @@
 	import { api } from '$lib/api/client';
 	import { notifications, unsavedChanges, configReadOnly } from '$lib/stores';
 	import SideBySideDiff from '$lib/components/shared/SideBySideDiff.svelte';
+	import { reportApplyError } from '$lib/utils/reportApplyError';
+	import ApplyPhaseLabel from './ApplyPhaseLabel.svelte';
+	import type { ApplyPhase } from '$lib/utils/applyTracker';
 
 	let loading = $state(true);
 	let hasDraft = $state(false);
@@ -12,6 +15,7 @@
 	let draftText = $state('');
 	let showDiff = $state(false);
 	let applying = $state(false);
+	let phase = $state<ApplyPhase | null>(null);
 	let discarding = $state(false);
 
 	async function fetchStatus() {
@@ -37,8 +41,9 @@
 
 	async function handleApply() {
 		applying = true;
+		phase = null;
 		try {
-			const result = await api.applyConfig();
+			const result = await api.applyConfig('reload', (p) => (phase = p));
 			notifications.success($t('changes.configApplied'));
 			// duration 0 = stays until dismissed: this is the one place the
 			// operator learns that naive is still on the previous user list, and
@@ -52,7 +57,7 @@
 			activeText = '';
 			draftText = '';
 		} catch (err) {
-			notifications.error(`Failed to apply: ${err}`);
+			if (reportApplyError(err)) fetchStatus();
 		} finally {
 			applying = false;
 		}
@@ -121,7 +126,7 @@
 					title={$configReadOnly ? $t('readOnly.saveBlocked') : ''}
 					class="px-3 py-1.5 text-sm bg-[var(--ctp-primary)] text-white rounded-lg hover:opacity-90 transition-opacity disabled:opacity-50 disabled:cursor-not-allowed"
 				>
-					{applying ? $t('common.saving') + '...' : $t('changes.applyChanges')}
+					{#if applying}<ApplyPhaseLabel {phase} />{:else}{$t('changes.applyChanges')}{/if}
 				</button>
 			</div>
 		</div>

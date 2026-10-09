@@ -1,4 +1,5 @@
 <script lang="ts">
+	import { reportApplyError } from '$lib/utils/reportApplyError';
 	import { onMount } from 'svelte';
 	import { t } from 'svelte-i18n';
 	import { api } from '$lib/api/client';
@@ -85,7 +86,7 @@
 
 			notifications.success($t('settings.settingsSaved'));
 		} catch (err) {
-			notifications.error(`Failed to apply: ${err}`);
+			reportApplyError(err);
 		} finally {
 			applying = false;
 		}

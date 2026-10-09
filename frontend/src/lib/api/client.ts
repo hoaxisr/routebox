@@ -1,6 +1,7 @@
 import type {
 	SystemInfo, ApiResponse, ProcessStatus, SingboxConfig, Endpoint, Outbound, Inbound, RuleSet, RuleSetUsage, AsnSet, RouteRule, RouteSettings, DnsServer, DnsRule, DnsSettings, LogSettings, ExperimentalSettings, ConnectionsResponse, ProxiesResponse, ClashProxy, TestRouteResponse, ConnectTestResponse, SettingsResponse, RouteBoxSettings, SingBoxVersion, DomainSetInfo, RuleSetSource, ClientEntry, TrafficHistoryResponse, TrafficRange, UpdatesStatus, UpdateProgress, UpdateTargetName, Subscription, SubscriptionInput, PanelUser, AwgStatus, AwgPeer, MtprotoState, MtprotoStatus, MtprotoSettings, MtprotoClient, MtprotoConnection, MtprotoLink, DestNaive, SpeedTestResult, ConsumersResponse, ConsumersLive } from '$lib/types';
 import { canonicalizeConnections } from '$lib/utils/clientIp';
+import { trackApply, type ApplyPhase, type ApplyResult, type ApplyStatus } from '$lib/utils/applyTracker';
 
 const API_BASE = '/api';
 
@@ -67,6 +68,30 @@ async function request<T>(path: string, options: RequestInit = {}): Promise<T> {
 	}
 
 	return data.data as T;
+}
+
+// AbortSignal.timeout is missing on iOS < 16, exactly the phones this is for.
+function timeoutSignal(ms: number): AbortSignal {
+	const ctl = new AbortController();
+	setTimeout(() => ctl.abort(), ms);
+	return ctl.signal;
+}
+
+// The apply response can be lost to the very reload it triggers; trackApply
+// follows the run through /config/status instead (see applyTracker.ts).
+async function applyConfigTracked(mode: string, onPhase?: (p: ApplyPhase) => void): Promise<ApplyResult> {
+	const ctl = new AbortController();
+	try {
+		return await trackApply({
+			post: () => request<ApplyResult>(`/config/apply?mode=${mode}`, { method: 'POST', signal: ctl.signal }),
+			status: () => request<ApplyStatus>('/config/apply/progress', { signal: timeoutSignal(3000) }),
+			sleep: (ms) => new Promise((r) => setTimeout(r, ms)),
+			now: Date.now,
+			onPhase
+		});
+	} finally {
+		ctl.abort(); // a POST stuck on a dead tunnel would otherwise hold a connection
+	}
 }
 
 // Raw request for Clash API endpoints (no wrapper expected)
@@ -160,11 +185,8 @@ export const api = {
 	// `warning` is set when the config was applied but did not reach dest, which
 	// serves naive on its own: those four inbounds have the new user list and
 	// naive still has the old one, so the operator has to be told.
-	applyConfig: (mode: 'reload' | 'restart' = 'reload') =>
-		request<{ message: string; reloaded?: boolean; restarted?: boolean; warning?: string }>(
-			`/config/apply?mode=${mode}`,
-			{ method: 'POST' }
-		),
+	applyConfig: (mode: 'reload' | 'restart' = 'reload', onPhase?: (p: ApplyPhase) => void) =>
+		applyConfigTracked(mode, onPhase),
 
 	// Config backup/restore
 	exportConfig: () => {

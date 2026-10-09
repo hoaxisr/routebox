@@ -4,8 +4,12 @@
 	import { api } from '$lib/api/client';
 	import { notifications } from '$lib/stores';
 	import { onMount } from 'svelte';
+	import { reportApplyError } from '$lib/utils/reportApplyError';
+	import ApplyPhaseLabel from './ApplyPhaseLabel.svelte';
+	import type { ApplyPhase } from '$lib/utils/applyTracker';
 
 	let saving = $state(false);
+	let phase = $state<ApplyPhase | null>(null);
 	let discarding = $state(false);
 	let showDetails = $state(false);
 
@@ -19,8 +23,9 @@
 
 	async function handleApply() {
 		saving = true;
+		phase = null;
 		try {
-			const result = await api.applyConfig();
+			const result = await api.applyConfig('reload', (p) => (phase = p));
 			notifications.success($t('changes.configApplied'));
 			// duration 0 = stays until dismissed: this is the one place the
 			// operator learns that naive is still on the previous user list, and
@@ -31,7 +36,7 @@
 			}
 			unsavedChanges.clearChanges();
 		} catch (err) {
-			notifications.error(`Failed to apply: ${err}`);
+			reportApplyError(err);
 		} finally {
 			saving = false;
 		}
@@ -112,7 +117,7 @@
 								<circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle>
 								<path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
 							</svg>
-							{$t('common.saving')}...
+							<ApplyPhaseLabel {phase} />
 						{:else}
 							{$t('changes.applyChanges')}
 						{/if}
