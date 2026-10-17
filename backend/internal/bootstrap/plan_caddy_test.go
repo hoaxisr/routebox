@@ -30,10 +30,31 @@ func requireLine(t *testing.T, got, want string) {
 	t.Fatalf("Caddyfile has no line %q:\n%s", want, got)
 }
 
-func TestPlanCaddyfileServesStubAtRoot(t *testing.T) {
+func TestPlanCaddyfileCatchAllIsTheWebFront(t *testing.T) {
 	out := caddyfileOK(t, fixture())
+	requireLine(t, out, "reverse_proxy 127.0.0.1:8446 {")
+	requireLine(t, out, "lb_try_duration 5s")
+	requireLine(t, out, "handle_errors 502 503 {")
 	requireLine(t, out, "root * /var/lib/routebox/stub")
 	requireLine(t, out, "file_server")
+	if !strings.HasPrefix(out, CaddyfileHeader) {
+		t.Fatalf("Caddyfile does not start with the generated header:\n%s", out)
+	}
+}
+
+// The stub directory is served by Caddy only when the web front is down: it
+// lives in handle_errors, after the route, never inside it.
+func TestPlanCaddyfileStubIsOnlyTheErrorFallback(t *testing.T) {
+	out := caddyfileOK(t, fixture())
+	route := strings.Index(out, "\troute {")
+	// The tls block closes at the same depth before the route, so look for the
+	// route's own closing brace after it starts.
+	routeEnd := route + strings.Index(out[route:], "\n\t}\n")
+	fs := strings.LastIndex(out, "file_server")
+	errs := strings.Index(out, "handle_errors 502 503 {")
+	if !(route < routeEnd && routeEnd < errs && errs < fs) {
+		t.Fatalf("want route end < handle_errors < file_server, got %d %d %d %d:\n%s", route, routeEnd, errs, fs, out)
+	}
 }
 
 // The secret URL hands out the gate cookie and nothing else: the panel itself
@@ -55,7 +76,7 @@ func TestPlanCaddyfileGateBeatsTheStubSite(t *testing.T) {
 	out := caddyfileOK(t, fixture())
 	gate := strings.Index(out, "route /panel-9c2f1a {")
 	panel := strings.Index(out, "reverse_proxy @panel")
-	stub := strings.Index(out, "root * ") // "file_server" also appears in the global order line
+	stub := strings.Index(out, "reverse_proxy 127.0.0.1:8446")
 	if !(gate < panel && panel < stub) {
 		t.Fatalf("want gate < panel < stub, got %d, %d, %d:\n%s", gate, panel, stub, out)
 	}
@@ -134,10 +155,11 @@ func TestPlanCaddyfileIsDeterministic(t *testing.T) {
 
 func TestPlanCaddyfileRejectsIncompleteInput(t *testing.T) {
 	cases := map[string]func(*Params){
-		"no stub root":    func(p *Params) { p.StubRoot = "" },
-		"no panel port":   func(p *Params) { p.Ports.Panel = 0 },
-		"no panel path":   func(p *Params) { p.Paths.Panel = "" },
-		"panel path bare": func(p *Params) { p.Paths.Panel = "panel-9c2f1a" },
+		"no stub root":      func(p *Params) { p.StubRoot = "" },
+		"no panel port":     func(p *Params) { p.Ports.Panel = 0 },
+		"no web front port": func(p *Params) { p.Ports.WebFront = 0 },
+		"no panel path":     func(p *Params) { p.Paths.Panel = "" },
+		"panel path bare":   func(p *Params) { p.Paths.Panel = "panel-9c2f1a" },
 		// The panel path is also a cookie value and a substring matcher, so a
 		// separator that is harmless in a URL is not harmless here.
 		"semicolon in panel path": func(p *Params) { p.Paths.Panel = "/panel;evil=1" },
@@ -310,8 +332,20 @@ func TestPlanCaddyfileLetsSubscriptionsThroughWithoutTheGate(t *testing.T) {
 	// Before the gate: the panel answers it whether or not a cookie is present.
 	sub := strings.Index(out, "reverse_proxy /sub/*")
 	gate := strings.Index(out, "route /panel-9c2f1a {")
-	stub := strings.Index(out, "root * ")
+	stub := strings.Index(out, "reverse_proxy 127.0.0.1:8446")
 	if !(sub < gate && sub < stub) {
 		t.Fatalf("want the subscription route before the gate and the stub, got %d, %d, %d:\n%s", sub, gate, stub, out)
+	}
+}
+
+// The Caddyfile is re-planned after bootstrap, when the user's credentials and
+// Reality keys are no longer in hand: it must not need them.
+func TestPlanCaddyfileNeedsNoUserOrRealitySecrets(t *testing.T) {
+	p := fixture()
+	p.User = User{}
+	p.Reality = Reality{}
+	caddyfileOK(t, p)
+	if _, err := PlanSingbox(p); err == nil {
+		t.Fatal("PlanSingbox accepted a plan with no user and no reality key")
 	}
 }

@@ -228,27 +228,6 @@ func TestClientIPTrustsIPv6MappedPeer(t *testing.T) {
 	}
 }
 
-func TestParseTrustedProxies(t *testing.T) {
-	got := parseTrustedProxies([]string{
-		"172.18.0.0/16",
-		" 10.0.0.1 ", // bare address, padded
-		"2001:db8::/32",
-		"",            // skipped
-		"nonsense",    // dropped with a log line
-		"999.1.1.1/8", // dropped
-	})
-	if len(got) != 3 {
-		t.Fatalf("parsed %d prefixes, want 3: %v", len(got), got)
-	}
-	// A bare address becomes a host route, not a wildcard.
-	if got[1].Bits() != 32 {
-		t.Errorf("bare IPv4 should parse as /32, got /%d", got[1].Bits())
-	}
-	if got[1].Contains(mustAddr(t, "10.0.0.2")) {
-		t.Error("a bare address must not match its neighbours")
-	}
-}
-
 // TestLockKeySeparatesClients: the lockout key must differ per resolved client,
 // or one user behind a proxy could lock out the rest.
 func TestLockKeySeparatesClients(t *testing.T) {

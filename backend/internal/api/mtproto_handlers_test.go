@@ -12,6 +12,7 @@ import (
 
 	"routebox/backend/internal/mtproto"
 	"routebox/backend/internal/settings"
+	"routebox/backend/internal/webfront"
 )
 
 const testSecret = "00112233445566778899aabbccddeeff"
@@ -30,6 +31,18 @@ func newMtprotoTestHandler(t *testing.T) (*Handler, http.Handler) {
 		mtproto:  mtproto.NewManager(mtproto.NewStore("")),
 		settings: settingsMgr,
 	}
+
+	// A live front on a free port, wired the way main.go wires it, so the WEB
+	// proxy tests exercise real start/stop/rebind rather than a fake.
+	front := webfront.New(webfront.NewStub(t.TempDir()))
+	if err := front.Start(freeAddr(t)); err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = front.Stop() })
+
+	h.mtproto.SetWebFront(front)
+	h.SetWebFront(front)
+	h.SetStubRoot(t.TempDir())
 
 	r := chi.NewRouter()
 	r.Route("/api/mtproto", func(r chi.Router) {

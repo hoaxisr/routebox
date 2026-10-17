@@ -125,30 +125,10 @@ func inPrefixes(addr netip.Addr, prefixes []netip.Prefix) bool {
 	return false
 }
 
-// parseTrustedProxies turns the configured entries into prefixes. A bare
-// address is its own /32 or /128. Unparseable entries are dropped with a log
-// line rather than failing startup: the consequence of ignoring one is the
-// pre-existing behaviour (attribute to the peer), and a panel that refuses to
-// boot over a typo in a rate-limiting hint would be the worse outcome.
+// parseTrustedProxies delegates to the shared parser in settings, which the
+// Telegram WEB proxy also uses so both honour the same trusted_proxies list.
 func parseTrustedProxies(entries []string) []netip.Prefix {
-	var out []netip.Prefix
-	for _, raw := range entries {
-		entry := strings.TrimSpace(raw)
-		if entry == "" {
-			continue
-		}
-		if prefix, err := netip.ParsePrefix(entry); err == nil {
-			out = append(out, netip.PrefixFrom(prefix.Addr().Unmap(), prefix.Bits()))
-			continue
-		}
-		if addr, err := netip.ParseAddr(entry); err == nil {
-			addr = addr.Unmap()
-			out = append(out, netip.PrefixFrom(addr, addr.BitLen()))
-			continue
-		}
-		log.Printf("settings: ignoring security.trusted_proxies entry %q (not an IP or CIDR)", raw)
-	}
-	return out
+	return settings.ParseTrustedProxies(entries)
 }
 
 // trustedProxiesFrom reads and parses the setting. Parsed per call: the list is

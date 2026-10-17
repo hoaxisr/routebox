@@ -11,10 +11,14 @@ import (
 	"strings"
 	"time"
 
+	"github.com/9seconds/mtg/v2/mtglib/web"
 	"github.com/go-chi/chi/v5"
 
+	"routebox/backend/internal/bootstrap"
 	"routebox/backend/internal/config"
 	"routebox/backend/internal/mtproto"
+	"routebox/backend/internal/settings"
+	"routebox/backend/internal/webfront"
 )
 
 // mtprotoClientRow is one roster entry on the wire.
@@ -42,10 +46,47 @@ func (h *Handler) mtprotoReady(w http.ResponseWriter) bool {
 	return true
 }
 
-// mtprotoConfig builds the proxy config from the persisted settings, so Enable
-// and Rebuild always agree about what is being served.
-func (h *Handler) mtprotoConfig() mtproto.Config {
-	s := h.settings.Get().Mtproto
+// MtprotoConfig builds the proxy config from the current settings, so Enable,
+// a settings save and main.go's boot all agree about what is being served.
+//
+// The WEB half is filled only when the feature is on AND there is a hostname to
+// answer to: the handler refuses to build without one, and failing the whole
+// proxy over a half-configured optional feature would take Fake TLS down too.
+func (h *Handler) MtprotoConfig() mtproto.Config {
+	all := h.settings.Get()
+	s := all.Mtproto
+
+	var webCfg *mtproto.WebConfig
+
+	hostname := all.EffectiveWebHostname()
+	if s.WebEnabled && hostname != "" {
+		// A name the handler would refuse fails the whole proxy start, Fake
+		// TLS included. web_hostname is checked on save, but a bootstrapped
+		// install answers to server.public_host, which is validated for a URL
+		// and can still be an IP literal. WEB alone is skipped then, said once
+		// per (re)start, and Fake TLS keeps running.
+		if err := web.ValidateHostname(hostname); err != nil {
+			log.Printf("mtproto: WARNING the WEB proxy is skipped: %v", err)
+
+			hostname = ""
+		}
+	}
+
+	if s.WebEnabled && hostname != "" {
+		// A bootstrapped install's front already serves the stub site to
+		// strangers; the WEB proxy has to show them the same one, or the
+		// answer would change the moment the feature is switched on.
+		stubDir := s.WebPublicDir
+		if all.Server.Bootstrapped {
+			stubDir = h.stubRoot
+		}
+
+		webCfg = &mtproto.WebConfig{
+			Hostname:       hostname,
+			TrustedProxies: settings.ParseTrustedProxies(all.Security.TrustedProxies),
+			Public:         webfront.NewStub(stubDir),
+		}
+	}
 
 	return mtproto.Config{
 		Listen:             s.Listen,
@@ -55,6 +96,7 @@ func (h *Handler) mtprotoConfig() mtproto.Config {
 		PreferIP:           s.PreferIP,
 		DomainFrontingPort: uint(s.DomainFrontingPort),
 		SocksProxy:         mtproto.SocksProxyAddr(s.Outbound, s.SocksPort),
+		Web:                webCfg,
 	}
 }
 
@@ -384,16 +426,33 @@ func (h *Handler) GetMtprotoStatus(w http.ResponseWriter, r *http.Request) {
 	}
 
 	host, port := h.mtprotoPublic()
-	settings := h.settings.Get().Mtproto
+	all := h.settings.Get()
+	mt := all.Mtproto
+	status := h.mtproto.Status()
+	webHostname := all.EffectiveWebHostname()
 
 	writeSuccess(w, map[string]any{
-		"status":   h.mtproto.Status(),
-		"settings": settings,
+		"status":   status,
+		"settings": mt,
+		// The WEB proxy's resolved view: the hostname it actually answers to
+		// (the public host on a bootstrapped install, whatever web_hostname
+		// says), and whether the panel owns its front ("managed"), so the page
+		// can lock the hostname and listen fields when it does.
+		"web": map[string]any{
+			"enabled":        mt.WebEnabled,
+			"managed":        all.Server.Bootstrapped,
+			"hostname":       webHostname,
+			"listen":         mt.WebListen,
+			"public_dir":     mt.WebPublicDir,
+			"can_issue_link": mtproto.CanIssueWebLink(webHostname, status.Web.Enabled, h.webFrontListening()),
+			"sessions":       status.Web.Sessions,
+			"streams":        status.Web.Streams,
+		},
 		// Resolved rather than raw, so the page can grey out the link actions
 		// without duplicating the fallback logic.
 		"public_host":    host,
 		"public_port":    port,
-		"can_issue_link": mtproto.CanIssueLink(settings.MaskingDomain, host),
+		"can_issue_link": mtproto.CanIssueLink(mt.MaskingDomain, host),
 		"read_only":      h.mtproto.Store().IsReadOnly(),
 		// The exit picker's options ride along rather than coming from their own
 		// endpoint: they are a handful of tags, and a separate fetch could show
@@ -417,17 +476,14 @@ func (h *Handler) UpdateMtprotoSettings(w http.ResponseWriter, r *http.Request) 
 		return
 	}
 
-	allowed := map[string]bool{
-		"listen": true, "masking_domain": true, "public_host": true,
-		"public_port": true, "concurrency": true, "idle_timeout_sec": true,
-		"prefer_ip": true, "domain_fronting_port": true,
-		"outbound": true, "socks_port": true,
-	}
+	// The keys a failed save knows how to put back are the keys a save may
+	// carry: one list, so the two cannot drift apart.
+	allowed := mtprotoSettingValues(settings.MtprotoSettings{})
 
 	updates := map[string]any{}
 
 	for key, value := range body {
-		if !allowed[key] {
+		if _, ok := allowed["mtproto."+key]; !ok {
 			// enabled is deliberately excluded: it is owned by
 			// /enable and /disable, which also start and stop the listener.
 			writeError(w, http.StatusBadRequest, "unknown setting: "+key)
@@ -464,6 +520,18 @@ func (h *Handler) UpdateMtprotoSettings(w http.ResponseWriter, r *http.Request) 
 	// applied can be undone below.
 	previous := h.settings.Get().Mtproto
 
+	// A bootstrapped install's dest routes to the front by address, and with
+	// the re-plan switched off nothing would move it: the front would go to
+	// the new address while dest kept sending strangers to the old one, where
+	// nobody listens. Refused up front, before anything changes.
+	if listen, ok := body["web_listen"].(string); ok && listen != previous.WebListen &&
+		h.settings.Get().Server.Bootstrapped && bootstrap.ReplanDisabled() {
+		writeError(w, http.StatusConflict,
+			"web_listen cannot change while BOOTSTRAP_CADDYFILE_REPLAN is off: dest's Caddyfile would keep pointing at the old address. Edit the Caddyfile by hand and restart, or unset BOOTSTRAP_CADDYFILE_REPLAN")
+
+		return
+	}
+
 	if err := h.settings.Update(updates); err != nil {
 		writeError(w, http.StatusBadRequest, err.Error())
 
@@ -475,18 +543,82 @@ func (h *Handler) UpdateMtprotoSettings(w http.ResponseWriter, r *http.Request) 
 	// what is actually running — persisting first and discovering the collision
 	// second would leave the proxy pointed at a listener that was never created.
 	if err := h.syncMtprotoSocks(); err != nil {
-		// Nothing has reached disk yet, so undoing the in-memory commit is all
-		// it takes to leave the panel and the config agreeing again.
-		if rollback := h.settings.Update(map[string]any{
-			"mtproto.outbound":   previous.Outbound,
-			"mtproto.socks_port": previous.SocksPort,
-		}); rollback != nil {
-			log.Printf("mtproto: cannot roll back the routing settings: %v", rollback)
+		// Nothing has reached disk yet, and nothing past this point has run,
+		// so undoing the in-memory commit of every key this PUT carried is all
+		// it takes to leave the panel and the config agreeing again. Every
+		// key, not just the routing ones: a web_listen left committed here
+		// would be written by the next save of anything, and reach the front
+		// on the one after, without this PUT ever having succeeded.
+		previousValues := mtprotoSettingValues(previous)
+		restore := make(map[string]any, len(updates))
+		for key := range updates {
+			restore[key] = previousValues[key]
+		}
+
+		if rollback := h.settings.Update(restore); rollback != nil {
+			log.Printf("mtproto: cannot roll back the settings: %v", rollback)
 		}
 
 		writeError(w, http.StatusInternalServerError, err.Error())
 
 		return
+	}
+
+	// Also ahead of the disk write, for the same reason: a front that cannot
+	// move to the new address must not leave the settings naming it.
+	rollbackWeb := func() {
+		if rollback := h.settings.Update(map[string]any{
+			"mtproto.web_enabled":    previous.WebEnabled,
+			"mtproto.web_hostname":   previous.WebHostname,
+			"mtproto.web_listen":     previous.WebListen,
+			"mtproto.web_public_dir": previous.WebPublicDir,
+		}); rollback != nil {
+			log.Printf("mtproto: cannot roll back the web proxy settings: %v", rollback)
+		}
+	}
+
+	frontBefore := ""
+	if h.webFront != nil {
+		frontBefore = h.webFront.Listen()
+	}
+
+	frontMoved, err := h.syncWebFront(previous)
+	if err != nil {
+		rollbackWeb()
+		writeError(w, http.StatusInternalServerError, err.Error())
+
+		return
+	}
+
+	// The Caddyfile of a bootstrapped install routes to the front by address,
+	// so a front that moved (or came back up) has to be followed by a re-plan
+	// before any of this is kept. One that fails puts the front back where
+	// dest still points and fails the PUT: answering 200 over a dest that
+	// sends strangers to a closed port is the outcome this exists to prevent.
+	if frontMoved && h.caddyReplan != nil {
+		if err := h.caddyReplan(); err != nil {
+			// Only a move is undone. A front that merely came back up on the
+			// address it always had is where dest already points, and taking
+			// it down again would help nobody.
+			target := h.settings.Get().Mtproto.WebListen
+			if target != previous.WebListen {
+				h.restoreWebFront(frontBefore)
+			}
+			rollbackWeb()
+			writeError(w, http.StatusInternalServerError,
+				fmt.Sprintf("dest's Caddyfile could not be re-planned to follow the web front on %s (mtproto.web_listen), so the change was undone: %v", target, err))
+
+			return
+		}
+	}
+
+	// Off a bootstrapped install the front's stub IS web_public_dir (what
+	// strangers get while the WEB proxy is off), so a new directory has to
+	// reach it now — not on the next restart. A bootstrapped install's stub
+	// is dest's stub root, which this setting does not move.
+	if current := h.settings.Get(); h.webFront != nil && !current.Server.Bootstrapped &&
+		current.Mtproto.WebPublicDir != previous.WebPublicDir {
+		h.webFront.SetStub(webfront.NewStub(current.Mtproto.WebPublicDir))
 	}
 
 	if err := h.settings.Save(); err != nil {
@@ -495,17 +627,143 @@ func (h *Handler) UpdateMtprotoSettings(w http.ResponseWriter, r *http.Request) 
 		return
 	}
 
-	// A running proxy has to pick up the new listen address, masking domain or
-	// outbound; a stopped one has nothing to do.
-	if h.mtproto.Status().Running {
-		if err := h.mtproto.Rebuild(); err != nil {
-			writeError(w, http.StatusInternalServerError, err.Error())
+	// A running proxy has to pick up the new listen address, masking domain,
+	// outbound or WEB keys; Reconfigure is a no-op on a stopped one. Not
+	// Rebuild: that reuses the config saved at Start, so none of these would
+	// ever reach it.
+	if err := h.mtproto.Reconfigure(h.MtprotoConfig()); err != nil {
+		writeError(w, http.StatusInternalServerError, err.Error())
 
-			return
-		}
+		return
 	}
 
 	writeSuccess(w, h.settings.Get().Mtproto)
+}
+
+// syncWebFront makes the loopback front match the web_* settings just
+// committed in memory, reporting whether a bootstrapped install's front moved
+// to a new address (the one case its Caddyfile has to follow).
+//
+// On a bootstrapped install the front is always on — it serves the stub site
+// whether or not the WEB proxy is — so only an address change touches it.
+// Elsewhere it exists for the WEB proxy alone: switched on, it is started (or
+// moved) onto web_listen; switched off, it is stopped. Rebind binds the new
+// address before letting go of the old one, so a failure here leaves the
+// previous listener serving.
+//
+// A front that is merely down — its bind failed at boot — is retried by any
+// save, but only a save that asked for the front (a new web_listen, WEB
+// switched on) fails over that retry. One that changed something else, a
+// public port say, has nothing to undo about the front and is not blocked by
+// a port the operator has not freed yet: the failure is logged and the save
+// goes on.
+func (h *Handler) syncWebFront(previous settings.MtprotoSettings) (bool, error) {
+	if h.webFront == nil {
+		return false, nil
+	}
+
+	all := h.settings.Get()
+	current := all.Mtproto
+	listenChanged := current.WebListen != previous.WebListen
+	down := h.webFront.Listen() == ""
+
+	if all.Server.Bootstrapped {
+		if !listenChanged && !down {
+			return false, nil
+		}
+
+		if err := h.webFront.Rebind(current.WebListen); err != nil {
+			if !listenChanged {
+				log.Printf("mtproto: WARNING the web front is still down, cannot listen on %s (mtproto.web_listen): %v", current.WebListen, err)
+
+				return false, nil
+			}
+
+			return false, fmt.Errorf("cannot move the web front to %s (mtproto.web_listen): %w", current.WebListen, err)
+		}
+
+		// A front back up on an unchanged address still needs the re-plan the
+		// failed boot skipped.
+		return true, nil
+	}
+
+	switch {
+	case previous.WebEnabled && !current.WebEnabled:
+		// The handler goes first. A front stopped while it still hands
+		// requests to the handler waits for every parked long poll in it, up
+		// to its whole 15 s drain; a detached handler has already let them
+		// go. The Reconfigure that ends the PUT would have dropped WEB anyway.
+		h.mtproto.DetachWeb()
+
+		if err := h.webFront.Stop(); err != nil {
+			return false, fmt.Errorf("cannot stop the web front: %w", err)
+		}
+
+		return false, nil
+	case current.WebEnabled && (!previous.WebEnabled || listenChanged || down):
+		// Rebind starts a stopped front and is a no-op on the address it
+		// already serves, so "switched on", "moved" and "came back" all land
+		// here.
+		if err := h.webFront.Rebind(current.WebListen); err != nil {
+			if previous.WebEnabled && !listenChanged {
+				log.Printf("mtproto: WARNING the web front is still down, cannot listen on %s (mtproto.web_listen): %v", current.WebListen, err)
+
+				return false, nil
+			}
+
+			return false, fmt.Errorf("cannot start the web front on %s: %w", current.WebListen, err)
+		}
+	}
+
+	return false, nil
+}
+
+// restoreWebFront puts the front back on the address it had before a PUT
+// moved it — or stops it, if it was down — after the Caddyfile could not be
+// re-planned to follow. Logged, not returned: the PUT is already failing, and
+// the error the operator needs is the re-plan's.
+func (h *Handler) restoreWebFront(listen string) {
+	if listen == "" {
+		if err := h.webFront.Stop(); err != nil {
+			log.Printf("mtproto: cannot stop the web front after a failed re-plan: %v", err)
+		}
+
+		return
+	}
+
+	if err := h.webFront.Rebind(listen); err != nil {
+		log.Printf("mtproto: cannot move the web front back to %s after a failed re-plan: %v", listen, err)
+	}
+}
+
+// webFrontListening reports whether the loopback front is up to hand the WEB
+// handler its requests. A handler can be serving behind a front whose bind
+// failed at boot, and a link to it would reach nothing.
+func (h *Handler) webFrontListening() bool {
+	return h.webFront != nil && h.webFront.Listen() != ""
+}
+
+// mtprotoSettingValues maps every key UpdateMtprotoSettings accepts to its
+// value in s, in the form settings.Update takes, so a failed save can put back
+// exactly the keys it committed. It is also the PUT's allow-list, so a key the
+// rollback does not know cannot be saved in the first place.
+func mtprotoSettingValues(s settings.MtprotoSettings) map[string]any {
+	return map[string]any{
+		"mtproto.listen":               s.Listen,
+		"mtproto.masking_domain":       s.MaskingDomain,
+		"mtproto.public_host":          s.PublicHost,
+		"mtproto.public_port":          s.PublicPort,
+		"mtproto.concurrency":          s.Concurrency,
+		"mtproto.idle_timeout_sec":     s.IdleTimeoutSec,
+		"mtproto.prefer_ip":            s.PreferIP,
+		"mtproto.domain_fronting_port": s.DomainFrontingPort,
+		"mtproto.outbound":             s.Outbound,
+		"mtproto.socks_port":           s.SocksPort,
+		"mtproto.web_enabled":          s.WebEnabled,
+		"mtproto.web_hostname":         s.WebHostname,
+		"mtproto.web_listen":           s.WebListen,
+		"mtproto.web_public_dir":       s.WebPublicDir,
+	}
 }
 
 // EnableMtproto starts the proxy and persists the flag. PROTECTED.
@@ -522,7 +780,7 @@ func (h *Handler) EnableMtproto(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	if err := h.mtproto.Start(h.mtprotoConfig()); err != nil {
+	if err := h.mtproto.Start(h.MtprotoConfig()); err != nil {
 		// The two "you forgot something" cases are a 400 naming the field;
 		// anything else is genuinely broken.
 		switch {
@@ -590,10 +848,15 @@ func (h *Handler) GetMtprotoClientLink(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	domain := h.settings.Get().Mtproto.MaskingDomain
+	all := h.settings.Get()
+	domain := all.Mtproto.MaskingDomain
 	host, port := h.mtprotoPublic()
+	webHostname := all.EffectiveWebHostname()
 
-	if !mtproto.CanIssueLink(domain, host) {
+	canFakeTLS := mtproto.CanIssueLink(domain, host)
+	canWeb := mtproto.CanIssueWebLink(webHostname, h.mtproto.Status().Web.Enabled, h.webFrontListening())
+
+	if !canFakeTLS && !canWeb {
 		// A link built from a missing piece is well-formed and fails silently
 		// inside Telegram, so say what is missing instead of handing one over.
 		writeError(w, http.StatusConflict,
@@ -602,10 +865,27 @@ func (h *Handler) GetMtprotoClientLink(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	writeSuccess(w, map[string]any{
-		"tg":  mtproto.ProxyLink(host, port, client.Secret, domain),
-		"web": mtproto.WebLink(host, port, client.Secret, domain),
-	})
+	// Each form is null when it cannot be issued, rather than the whole answer
+	// failing: a WEB link alone is still worth sharing, and the reverse.
+	data := map[string]any{"tg": nil, "web": nil, "webproxy": nil}
+
+	if canFakeTLS {
+		data["tg"] = mtproto.ProxyLink(host, port, client.Secret, domain)
+		data["web"] = mtproto.WebLink(host, port, client.Secret, domain)
+	}
+
+	if canWeb {
+		tg, web, err := mtproto.WebProxyLinks(webHostname, client.Secret)
+		if err != nil {
+			writeError(w, http.StatusInternalServerError, err.Error())
+
+			return
+		}
+
+		data["webproxy"] = map[string]string{"tg": tg, "web": web}
+	}
+
+	writeSuccess(w, data)
 }
 
 // GetMtprotoConnections returns the live matched streams. PROTECTED.

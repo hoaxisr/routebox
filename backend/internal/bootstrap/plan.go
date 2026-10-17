@@ -65,6 +65,7 @@ type Ports struct {
 	VlessGRPC int // loopback, behind dest
 	TrojanWS  int // loopback, behind dest
 	Panel     int // loopback, behind dest — the RouteBox panel itself
+	WebFront  int // loopback, behind dest — RouteBox's web front: stub site and Telegram WEB proxy
 }
 
 // Paths are the secret path-fork addresses of the transport inbounds behind dest.
@@ -165,27 +166,51 @@ func PlanSingbox(p Params) (map[string]interface{}, error) {
 // host by construction.
 const loopback = "127.0.0.1"
 
+// validate is what PlanSingbox needs: everything the Caddyfile needs, plus the
+// user, the Reality keys and the mieru port.
 func (p Params) validate() error {
+	if err := p.validateCaddy(); err != nil {
+		return err
+	}
 	var missing []string
 	for name, empty := range map[string]bool{
-		"domain":              p.Domain == "",
-		"dest host":           p.DestHost == "",
-		"dest port":           p.DestPort <= 0,
 		"user name":           p.User.Name == "",
 		"user uuid":           p.User.UUID == "",
 		"user password":       p.User.Password == "",
 		"reality private key": p.Reality.PrivateKey == "",
 		"reality short id":    p.Reality.ShortID == "",
-		"front port":          p.Ports.Front <= 0,
 		"mieru port":          p.Ports.Mieru <= 0,
-		"vless grpc port":     p.Ports.VlessGRPC <= 0,
-		"trojan ws port":      p.Ports.TrojanWS <= 0,
-		"panel port":          p.Ports.Panel <= 0,
-		"vless grpc path":     p.Paths.VlessGRPC == "",
-		"trojan ws path":      p.Paths.TrojanWS == "",
-		"panel path":          p.Paths.Panel == "",
-		"stub root":           p.StubRoot == "",
-		"naive users path":    p.NaiveUsers == "",
+	} {
+		if empty {
+			missing = append(missing, name)
+		}
+	}
+	if len(missing) > 0 {
+		sort.Strings(missing)
+		return fmt.Errorf("bootstrap params incomplete: %s", strings.Join(missing, ", "))
+	}
+	return nil
+}
+
+// validateCaddy is what PlanCaddyfile needs. The Caddyfile is re-planned after
+// bootstrap, when the user's credentials and the Reality keys are no longer in
+// hand, so it must not ask for them.
+func (p Params) validateCaddy() error {
+	var missing []string
+	for name, empty := range map[string]bool{
+		"domain":           p.Domain == "",
+		"dest host":        p.DestHost == "",
+		"dest port":        p.DestPort <= 0,
+		"front port":       p.Ports.Front <= 0,
+		"vless grpc port":  p.Ports.VlessGRPC <= 0,
+		"trojan ws port":   p.Ports.TrojanWS <= 0,
+		"panel port":       p.Ports.Panel <= 0,
+		"web front port":   p.Ports.WebFront <= 0,
+		"vless grpc path":  p.Paths.VlessGRPC == "",
+		"trojan ws path":   p.Paths.TrojanWS == "",
+		"panel path":       p.Paths.Panel == "",
+		"stub root":        p.StubRoot == "",
+		"naive users path": p.NaiveUsers == "",
 	} {
 		if empty {
 			missing = append(missing, name)

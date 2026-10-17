@@ -598,7 +598,7 @@ func enforcementWarning(deferred string, err error) string {
 		parts = append(parts, "the change is saved but not in force yet: "+deferred)
 	}
 	if err != nil {
-		parts = append(parts, fmt.Sprintf("the change did not reach dest, so naive still uses the previous user list: %v", err))
+		parts = append(parts, destSyncWarning(err))
 	}
 	return strings.Join(parts, "; ")
 }

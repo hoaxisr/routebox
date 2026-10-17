@@ -2,6 +2,7 @@ package util
 
 import (
 	"errors"
+	"io"
 	"os"
 	"path/filepath"
 
@@ -44,15 +45,40 @@ func ClassifyWriteErr(path string, err error) error {
 }
 
 func writeTOMLAtomic(path string, dirPerm os.FileMode, v any) error {
+	return writeAtomic(path, dirPerm, 0600, func(w io.Writer) error {
+		return toml.NewEncoder(w).Encode(v)
+	})
+}
+
+// WriteFileAtomic writes data to path with mode perm the way WriteTOMLAtomic
+// does: sibling ".tmp", fsync, rename, so a crash or a failed write never leaves
+// a half-written target, and a failure naming an unwritable path wraps
+// ErrReadOnly. The parent directory is created 0755 if missing.
+func WriteFileAtomic(path string, data []byte, perm os.FileMode) error {
+	return ClassifyWriteErr(path, writeAtomic(path, 0755, perm, func(w io.Writer) error {
+		_, err := w.Write(data)
+		return err
+	}))
+}
+
+// writeAtomic is the open/write/sync/close/rename sequence both writers share.
+func writeAtomic(path string, dirPerm, perm os.FileMode, write func(io.Writer) error) error {
 	if err := os.MkdirAll(filepath.Dir(path), dirPerm); err != nil {
 		return err
 	}
 	tmp := path + ".tmp"
-	f, err := os.OpenFile(tmp, os.O_WRONLY|os.O_CREATE|os.O_TRUNC, 0600)
+	f, err := os.OpenFile(tmp, os.O_WRONLY|os.O_CREATE|os.O_TRUNC, perm)
 	if err != nil {
 		return err
 	}
-	if err := toml.NewEncoder(f).Encode(v); err != nil {
+	// The open mode is masked by the umask and ignored for a leftover tmp file;
+	// the final mode must be exactly perm.
+	if err := f.Chmod(perm); err != nil {
+		f.Close()
+		os.Remove(tmp)
+		return err
+	}
+	if err := write(f); err != nil {
 		f.Close()
 		os.Remove(tmp)
 		return err

@@ -2,6 +2,7 @@ package api
 
 import (
 	"encoding/json"
+	"errors"
 	"io"
 	"net/http"
 	"net/http/httptest"
@@ -293,5 +294,32 @@ func TestUpdateUser_ReportsADestThatRefused(t *testing.T) {
 	}
 	if !strings.Contains(resp.Data.Warning, "dest says no") {
 		t.Errorf("the warning hides dest's own reason: %q", resp.Data.Warning)
+	}
+}
+
+// The expiry ticker logs a re-plan failure once: a repeat the replanner did
+// not send to dest again is left out, unless the naive half failed too.
+func TestDestErrorIsRepeat(t *testing.T) {
+	refused := errors.New("dest refused the planned Caddyfile")
+	repeat := &destReplanError{err: bootstrap.RepeatedReplan(refused)}
+	naive := &naiveSyncError{err: errors.New("dest did not answer")}
+
+	for _, tt := range []struct {
+		name string
+		err  error
+		want bool
+	}{
+		{"first refusal", &destReplanError{err: refused}, false},
+		{"repeat", errors.Join(repeat, nil), true},
+		{"repeat with a naive failure", errors.Join(repeat, naive), false},
+		{"naive failure", errors.Join(nil, naive), false},
+	} {
+		if got := destErrorIsRepeat(tt.err); got != tt.want {
+			t.Errorf("%s: got %v, want %v", tt.name, got, tt.want)
+		}
+	}
+
+	if got := destSyncWarning(repeat); !strings.Contains(got, refused.Error()) {
+		t.Errorf("warning for a repeat = %q, want it to carry the refusal", got)
 	}
 }

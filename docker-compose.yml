@@ -48,6 +48,9 @@ services:
       # (see the README); either way the port here must match the one in the
       # panel's Telegram settings.
       # - "9443:9443"
+      # On all-in-one installs the MTProto port is 9447 instead (9443 is the
+      # web server's there), and the Telegram WEB proxy needs no port at all:
+      # it rides the domain's 443 through Caddy.
       # Panel and inbounds run as the PUID/PGID user, but Docker sets
       # net.ipv4.ip_unprivileged_port_start=0 in containers, so ports below 1024
       # (including the :80 ACME listener) bind without root or NET_BIND_SERVICE.

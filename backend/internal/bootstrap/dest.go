@@ -2,6 +2,7 @@ package bootstrap
 
 import (
 	"bytes"
+	"errors"
 	"fmt"
 	"io"
 	"net/http"
@@ -23,6 +24,20 @@ const defaultCaddyAdmin = "127.0.0.1:2019"
 // dest that is not answering.
 const caddyReloadTimeout = 15 * time.Second
 
+// ErrDestUnreachable marks a failure where dest's admin API gave no HTTP answer
+// at all (refused, timed out). It is not a verdict on the config, which is why a
+// caller that only wants to know whether dest rejected something tells the two
+// apart with errors.Is.
+var ErrDestUnreachable = errors.New("dest admin API unreachable")
+
+// caddyAdminAddr is where dest's admin API listens.
+func caddyAdminAddr() string {
+	if admin := os.Getenv(CaddyAdminEnv); admin != "" {
+		return admin
+	}
+	return defaultCaddyAdmin
+}
+
 // ReloadCaddy makes dest pick up the current Caddyfile — the generated naive
 // credential list is imported by it, so this is what makes a user change take
 // effect for naive.
@@ -36,10 +51,7 @@ func ReloadCaddy(caddyfile string) error {
 	if err != nil {
 		return fmt.Errorf("read %s: %w", caddyfile, err)
 	}
-	admin := os.Getenv(CaddyAdminEnv)
-	if admin == "" {
-		admin = defaultCaddyAdmin
-	}
+	admin := caddyAdminAddr()
 	req, err := http.NewRequest(http.MethodPost, "http://"+admin+"/load", bytes.NewReader(body))
 	if err != nil {
 		return fmt.Errorf("build the reload request for dest: %w", err)
@@ -49,7 +61,7 @@ func ReloadCaddy(caddyfile string) error {
 
 	resp, err := (&http.Client{Timeout: caddyReloadTimeout}).Do(req)
 	if err != nil {
-		return fmt.Errorf("dest did not answer on %s: %w", admin, err)
+		return fmt.Errorf("dest did not answer on %s: %w: %w", admin, ErrDestUnreachable, err)
 	}
 	defer resp.Body.Close()
 	if resp.StatusCode/100 == 2 {

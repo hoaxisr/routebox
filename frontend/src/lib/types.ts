@@ -1378,6 +1378,25 @@ export interface MtprotoSettings {
 	/** Loopback port of the managed SOCKS inbound that carries it there. Only a
 	 *  setting so a collision with something else on the host is fixable. */
 	socks_port: number;
+	/** Telegram WEB proxy: the HTTPS front on the panel's (or a reverse proxy's) domain. */
+	web_enabled: boolean;
+	web_hostname: string;
+	web_listen: string;
+	web_public_dir: string;
+}
+
+/** The WEB proxy half of GET /api/mtproto. */
+export interface MtprotoWeb {
+	enabled: boolean;
+	/** All-in-one install: the hostname is the panel's domain and the web
+	 *  server is RouteBox's own, so there is nothing for the operator to wire. */
+	managed: boolean;
+	hostname: string;
+	listen: string;
+	public_dir: string;
+	can_issue_link: boolean;
+	sessions: number;
+	streams: number;
 }
 
 /** One exit the Telegram proxy can be routed through. Outbounds and endpoints
@@ -1413,6 +1432,7 @@ export interface MtprotoState {
 	 *  with the status so the picker's options and the chosen tag above can never
 	 *  disagree. Empty in router mode, where there is no sing-box config. */
 	outbounds: RoutableTag[];
+	web: MtprotoWeb;
 }
 
 /** One roster entry. The secret is deliberately absent: this is polled. */
@@ -1431,8 +1451,11 @@ export interface MtprotoConnection {
 	started_at: string;
 }
 
+/** Null when the Fake TLS link cannot be issued (masking domain or public host
+ *  missing) while the WEB proxy link still can be, and the other way round. */
 export interface MtprotoLink {
-	tg: string;
-	web: string;
+	tg: string | null;
+	web: string | null;
+	webproxy: { tg: string; web: string } | null;
 }
 

@@ -22,12 +22,14 @@ require (
 require (
 	github.com/OneOfOne/xxhash v1.2.8 // indirect
 	github.com/dustin/go-humanize v1.0.1 // indirect
+	github.com/mattn/go-colorable v0.1.14 // indirect
 	github.com/mattn/go-isatty v0.0.20 // indirect
 	github.com/ncruces/go-dns v1.3.3 // indirect
 	github.com/ncruces/go-strftime v1.0.0 // indirect
 	github.com/panjf2000/ants/v2 v2.12.0 // indirect
 	github.com/pires/go-proxyproto v0.11.0 // indirect
 	github.com/remyoudompheng/bigfft v0.0.0-20230129092748-24d4a6f8daec // indirect
+	github.com/rs/zerolog v1.35.0 // indirect
 	github.com/tylertreat/BoomFilters v0.0.0-20251117164519-53813c36cc1b // indirect
 	github.com/yl2chen/cidranger v1.0.2 // indirect
 	golang.org/x/net v0.55.0 // indirect
@@ -40,4 +42,4 @@ require (
 	modernc.org/memory v1.11.0 // indirect
 )
 
-replace github.com/9seconds/mtg/v2 => github.com/hoaxisr/mtg/v2 v2.0.0-20260803200644-f322df9295da
+replace github.com/9seconds/mtg/v2 => github.com/AYastrebov/mtg/v2 v2.0.0-20261017111415-962efeccda0c
