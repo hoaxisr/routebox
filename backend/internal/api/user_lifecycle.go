@@ -65,7 +65,9 @@ func (h *Handler) syncRejectRule() (deferred string, err error) {
 	// dest never sees that rule. Change-gated inside, so an unchanged list costs
 	// nothing.
 	if err := h.syncDest(); err != nil {
-		log.Printf("dest: naive user sync failed: %v", err)
+		if !destErrorIsRepeat(err) {
+			log.Printf("dest: sync failed: %v", err)
+		}
 		return deferred, err
 	}
 	return deferred, nil
@@ -127,7 +129,9 @@ func (h *Handler) SyncRejectRuleAndReload() {
 	// The deferral is dropped here on purpose: a pending draft or a read-only
 	// config would otherwise log the same line every 30 seconds forever, and
 	// both states are already on the panel. The handlers answer with it.
-	if _, err := h.syncRejectRule(); err != nil {
+	// A re-plan failure already reported, with nothing changed since, is not
+	// logged again: this runs every 30 seconds.
+	if _, err := h.syncRejectRule(); err != nil && !destErrorIsRepeat(err) {
 		log.Printf("users: lifecycle sync to dest failed: %v", err)
 	}
 }

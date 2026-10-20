@@ -18,6 +18,7 @@ import (
 	"routebox/backend/internal/updates"
 	"routebox/backend/internal/users"
 	"routebox/backend/internal/util"
+	"routebox/backend/internal/webfront"
 	"sync"
 )
 
@@ -41,6 +42,9 @@ type Handler struct {
 	subLimiter      *auth.Limiter
 	awg             *awg.Manager
 	mtproto         *mtproto.Manager
+	webFront        *webfront.Front  // loopback front for the Telegram WEB proxy; nil in router mode
+	caddyReplan     func() error     // re-plans dest's Caddyfile; nil on installs without dest
+	stubRoot        string           // the stub site a bootstrapped install serves to strangers
 	asn             *asnsets.Manager // nil when the settings dir is unknown: list answers [], writes 503
 	sys             sysinfo.Sampler  // host metrics for the dashboard; zero value reads /proc
 	consumers       []consumers.Source
@@ -150,6 +154,27 @@ func (h *Handler) SetASN(m *asnsets.Manager) {
 // nil — which router mode does — makes every /api/mtproto route report 503.
 func (h *Handler) SetMtproto(m *mtproto.Manager) {
 	h.mtproto = m
+}
+
+// SetWebFront wires the loopback front the Telegram WEB proxy is served
+// behind, so the settings page can start, stop and move it live. Leaving it
+// nil makes the web_* keys persist without touching any listener.
+func (h *Handler) SetWebFront(f *webfront.Front) {
+	h.webFront = f
+}
+
+// SetCaddyReplan installs what re-plans dest's Caddyfile; nil on installs
+// without dest. It runs on every apply (see syncDest) and when the front moves,
+// because the Caddyfile names the front's address.
+func (h *Handler) SetCaddyReplan(fn func() error) {
+	h.caddyReplan = fn
+}
+
+// SetStubRoot records the stub site directory of a bootstrapped install. Its
+// front already serves that site to strangers, so the WEB proxy has to serve
+// the same one or a probe could tell the two apart.
+func (h *Handler) SetStubRoot(dir string) {
+	h.stubRoot = dir
 }
 
 // SetSubLimiter wires the dedicated per-IP rate limiter for the public /sub

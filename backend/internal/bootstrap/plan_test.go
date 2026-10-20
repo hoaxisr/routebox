@@ -29,7 +29,7 @@ func fixture() Params {
 			PrivateKey: "aFqZ8sPPy7yHY0Vzs8fyIm0e1uVWvZKPy5Q1G0y3d0A",
 			ShortID:    "0123abcd",
 		},
-		Ports: Ports{Front: 443, Mieru: 443, VlessGRPC: 8444, TrojanWS: 8445, Panel: 8080},
+		Ports: Ports{Front: 443, Mieru: 443, VlessGRPC: 8444, TrojanWS: 8445, Panel: 8080, WebFront: 8446},
 		Paths: Paths{VlessGRPC: "grpc-7a1c9e", TrojanWS: "/ws-4f2b8d", Panel: "/panel-9c2f1a"},
 	}
 }

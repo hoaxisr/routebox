@@ -90,7 +90,7 @@ func TestUpdateMtprotoSettingsWritesTheRouting(t *testing.T) {
 
 	// The proxy must now be told to dial it — a rule with nothing using it would
 	// leave Telegram going out directly while the page claims otherwise.
-	if got := h.mtprotoConfig().SocksProxy; got != "127.0.0.1:1080" {
+	if got := h.MtprotoConfig().SocksProxy; got != "127.0.0.1:1080" {
 		t.Errorf("SocksProxy = %q, want 127.0.0.1:1080", got)
 	}
 
@@ -104,7 +104,7 @@ func TestUpdateMtprotoSettingsWritesTheRouting(t *testing.T) {
 		t.Error("the managed inbound survived a switch back to direct")
 	}
 
-	if got := h.mtprotoConfig().SocksProxy; got != "" {
+	if got := h.MtprotoConfig().SocksProxy; got != "" {
 		t.Errorf("SocksProxy = %q, want empty for a direct exit", got)
 	}
 }
@@ -127,7 +127,7 @@ func TestUpdateMtprotoSettingsHonoursTheSocksPort(t *testing.T) {
 		t.Errorf("listen_port = %v, want 1091", ib["listen_port"])
 	}
 
-	if got := h.mtprotoConfig().SocksProxy; got != "127.0.0.1:1091" {
+	if got := h.MtprotoConfig().SocksProxy; got != "127.0.0.1:1091" {
 		t.Errorf("SocksProxy = %q, want 127.0.0.1:1091", got)
 	}
 }
@@ -214,7 +214,7 @@ func TestUpdateMtprotoSettingsRollsBackWhenTheRoutingCannotBeWritten(t *testing.
 		t.Errorf("outbound = %q after a failed save, want it rolled back to empty", got)
 	}
 
-	if got := h.mtprotoConfig().SocksProxy; got != "" {
+	if got := h.MtprotoConfig().SocksProxy; got != "" {
 		t.Errorf("SocksProxy = %q, want empty — the proxy must not dial a listener that was never created", got)
 	}
 }

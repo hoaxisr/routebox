@@ -15,11 +15,42 @@
 		 *  QR actions stay dead rather than handing out something that fails
 		 *  silently inside Telegram. */
 		canShare: boolean;
+		/** The WEB proxy link can be issued. Enables the share buttons on its own,
+		 *  since that link needs no masking domain. */
+		canShareWeb?: boolean;
+		/** All-in-one install: the Fake TLS port is not published, so the MTProto
+		 *  link is a fallback that will not connect from outside. */
+		webManaged?: boolean;
+		/** WEB proxy is enabled but its link cannot be issued (no hostname, or the
+		 *  proxy is not running). Only changes the wording of the dead buttons. */
+		webBlocked?: boolean;
+		fakeTlsPort?: string;
 		readOnly?: boolean;
 		onChange: () => void | Promise<void>;
 	}
 
-	let { clients, canShare, readOnly = false, onChange }: Props = $props();
+	let {
+		clients,
+		canShare,
+		canShareWeb = false,
+		webManaged = false,
+		webBlocked = false,
+		fakeTlsPort = '',
+		readOnly = false,
+		onChange
+	}: Props = $props();
+
+	const canShareAny = $derived(canShare || canShareWeb);
+	// The buttons are dead only when neither link can be issued. Each reason
+	// that applies is named: the Fake TLS link lacks a masking domain or public
+	// host, the WEB link lacks a hostname or a running proxy.
+	const blockedTitle = $derived(
+		canShareAny
+			? ''
+			: [$t('telegram.linkBlocked'), webBlocked ? $t('telegram.webLinkBlocked') : '']
+					.filter(Boolean)
+					.join(' ')
+	);
 
 	let newName = $state('');
 	let adding = $state(false);
@@ -32,9 +63,14 @@
 	// Share modal state. The secret only ever lives here, for as long as the
 	// modal is open — it is fetched per share action, never with the roster.
 	let shareName = $state<string | null>(null);
-	let shareTg = $state('');
-	let shareWeb = $state('');
-	let qrDataUrl = $state('');
+	// Fake TLS links, absent when the masking domain / public host is missing.
+	let shareTg = $state<string | null>(null);
+	let shareWeb = $state<string | null>(null);
+	// tg://webproxy link of the WEB proxy, null when it cannot be issued.
+	let shareWebProxy = $state<string | null>(null);
+	// One QR per way in, rendered only for the QR button.
+	let qrWeb = $state('');
+	let qrTg = $state('');
 
 	function nowSec(): number {
 		return Math.floor(Date.now() / 1000);
@@ -121,11 +157,14 @@
 			const link = await api.getMtprotoClientLink(c.name);
 			shareTg = link.tg;
 			shareWeb = link.web;
-			// The tg:// form is what a phone should scan: it opens Telegram
-			// directly instead of a browser tab that then redirects.
-			qrDataUrl = withQr
-				? await QRCode.toDataURL(link.tg, { width: 512, margin: 2, errorCorrectionLevel: 'M' })
-				: '';
+			shareWebProxy = link.webproxy?.tg ?? null;
+			// The tg:// forms are what a phone should scan: they open Telegram
+			// directly instead of a browser tab that then redirects. Each way in
+			// gets its own code, so the dialog never has to guess which one the
+			// person wants.
+			const qr = (v: string | null) =>
+				withQr && v ? QRCode.toDataURL(v, { width: 512, margin: 2, errorCorrectionLevel: 'M' }) : Promise.resolve('');
+			[qrWeb, qrTg] = await Promise.all([qr(shareWebProxy), qr(shareTg)]);
 			shareName = c.name;
 		} catch (e) {
 			notifications.error(`${$t('telegram.loadFailed')}: ${e}`);
@@ -134,9 +173,11 @@
 
 	function closeShare() {
 		shareName = null;
-		shareTg = '';
-		shareWeb = '';
-		qrDataUrl = '';
+		shareTg = null;
+		shareWeb = null;
+		shareWebProxy = null;
+		qrWeb = '';
+		qrTg = '';
 	}
 
 	async function copy(value: string) {
@@ -197,11 +238,11 @@
 					<button type="button" class="peer-btn" disabled={readOnly} onclick={() => openRenew(c)}>
 						{c.expires_at ? $t('telegram.renew') : $t('telegram.setExpiry')}
 					</button>
-					<button type="button" class="peer-btn primary" disabled={!canShare} title={canShare ? '' : $t('telegram.linkBlocked')} onclick={() => share(c, true)}>
+					<button type="button" class="peer-btn primary" disabled={!canShareAny} title={blockedTitle} onclick={() => share(c, true)}>
 						<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" width="15" height="15"><rect x="3" y="3" width="7" height="7" rx="1" /><rect x="14" y="3" width="7" height="7" rx="1" /><rect x="3" y="14" width="7" height="7" rx="1" /><line x1="14" y1="14" x2="14" y2="21" /><line x1="21" y1="14" x2="21" y2="21" /><line x1="14" y1="17.5" x2="21" y2="17.5" /></svg>
 						{$t('telegram.qr')}
 					</button>
-					<button type="button" class="peer-btn" disabled={!canShare} title={canShare ? '' : $t('telegram.linkBlocked')} onclick={() => share(c, false)}>
+					<button type="button" class="peer-btn" disabled={!canShareAny} title={blockedTitle} onclick={() => share(c, false)}>
 						<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" width="15" height="15"><path d="M10 13a5 5 0 0 0 7.54.54l3-3a5 5 0 0 0-7.07-7.07l-1.72 1.71" /><path d="M14 11a5 5 0 0 0-7.54-.54l-3 3a5 5 0 0 0 7.07 7.07l1.71-1.71" /></svg>
 						{$t('telegram.share')}
 					</button>
@@ -238,24 +279,45 @@
 
 {#if shareName}
 	<Modal open title={shareName} onClose={closeShare}>
-		<div class="qr-modal">
-			{#if qrDataUrl}
-				<img class="qr-img" src={qrDataUrl} alt={shareName} />
+		<!-- One block per way in. The WEB proxy comes first because it is the
+		     one that works wherever a browser works; on an all-in-one install it
+		     is also the only one that connects from outside. -->
+		<div class="share-grid">
+			{#if shareWebProxy}
+				<section class="share-block">
+					<h3>{$t('telegram.transportWeb')}</h3>
+					{#if qrWeb}
+						<img class="qr-img" src={qrWeb} alt="{shareName}: {$t('telegram.transportWeb')}" />
+					{/if}
+					<div class="link-hint">tg://webproxy</div>
+					<textarea class="link-text" rows="2" readonly value={shareWebProxy}></textarea>
+					<button type="button" class="btn-ghost-sm" onclick={() => copy(shareWebProxy ?? '')}>{$t('telegram.copyLink')}</button>
+				</section>
 			{/if}
-			<div class="qr-text">
-				<div class="qr-title">{$t('telegram.share')}</div>
-				<div class="qr-hint">{$t('telegram.maskingDomainWarning')}</div>
-			</div>
-		</div>
-		<div class="link-modal">
-			<div class="link-hint">tg://proxy</div>
-			<textarea class="link-text" rows="2" readonly value={shareTg}></textarea>
-			<div class="link-hint">https://t.me/proxy</div>
-			<textarea class="link-text" rows="2" readonly value={shareWeb}></textarea>
+			{#if shareTg || shareWeb}
+				<section class="share-block" class:muted={webManaged}>
+					<h3>{$t('telegram.transportMtproto')}</h3>
+					{#if webManaged}
+						<p class="link-note">{$t('telegram.fakeTlsUnpublished', { values: { port: fakeTlsPort } })}</p>
+					{:else if qrTg}
+						<img class="qr-img" src={qrTg} alt="{shareName}: {$t('telegram.transportMtproto')}" />
+					{/if}
+					{#if shareTg}
+						<div class="link-hint">tg://proxy</div>
+						<textarea class="link-text" rows="2" readonly value={shareTg}></textarea>
+					{/if}
+					{#if shareWeb}
+						<div class="link-hint">https://t.me/proxy</div>
+						<textarea class="link-text" rows="2" readonly value={shareWeb}></textarea>
+					{/if}
+					{#if shareTg}
+						<button type="button" class="btn-ghost-sm" onclick={() => copy(shareTg ?? '')}>{$t('telegram.copyLink')}</button>
+					{/if}
+				</section>
+			{/if}
 		</div>
 		{#snippet footer()}
 			<div class="modal-foot">
-				<button type="button" class="btn-ghost-sm" onclick={() => copy(shareTg)}>{$t('telegram.copyLink')}</button>
 				<button type="button" class="btn-ghost-sm" onclick={closeShare}>{$t('telegram.cancel')}</button>
 			</div>
 		{/snippet}
@@ -506,39 +568,44 @@
 		display: block;
 		margin-bottom: 0.2rem;
 	}
-	.qr-modal {
-		display: flex;
+	.share-grid {
+		display: grid;
+		grid-template-columns: repeat(auto-fit, minmax(16rem, 1fr));
 		gap: 1.25rem;
-		align-items: flex-start;
-		flex-wrap: wrap;
-		margin-bottom: 1rem;
+	}
+	.share-block {
+		display: flex;
+		flex-direction: column;
+		gap: 0.4rem;
+		min-width: 0;
+	}
+	.share-block h3 {
+		margin: 0 0 0.25rem;
+		font-size: 0.9375rem;
+		font-weight: 600;
+		color: var(--ctp-text);
+	}
+	/* The all-in-one note replaces its QR: a code nobody can connect with is
+	   worse than no code. */
+	.share-block.muted h3 {
+		color: var(--ctp-subtext1);
+	}
+	.share-block .btn-ghost-sm {
+		align-self: flex-start;
 	}
 	.qr-img {
 		border-radius: 0.5rem;
 		background: #fff;
-		padding: 0.75rem;
-		flex-shrink: 0;
+		padding: 0.6rem;
 		width: 100%;
-		max-width: 320px;
+		max-width: 240px;
 		height: auto;
 		image-rendering: pixelated;
 	}
-	.qr-text {
-		flex: 1;
-		min-width: 12rem;
-	}
-	.qr-title {
-		font-weight: 600;
-		margin-bottom: 0.25rem;
-	}
-	.qr-hint {
-		color: var(--ctp-overlay1);
+	.link-note {
+		margin: 0 0 0.25rem;
 		font-size: 0.8125rem;
-	}
-	.link-modal {
-		display: flex;
-		flex-direction: column;
-		gap: 0.4rem;
+		color: var(--ctp-overlay1);
 	}
 	.link-hint {
 		font-size: 0.8rem;

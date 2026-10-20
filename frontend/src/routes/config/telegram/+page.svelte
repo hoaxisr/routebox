@@ -20,6 +20,10 @@
 
 	const running = $derived(!!proxy?.status.running);
 	const canShare = $derived(!!proxy?.can_issue_link);
+	// Either link is worth handing out: the WEB proxy one needs no Fake TLS port.
+	const canShareWeb = $derived(!!proxy?.web.can_issue_link);
+	// WEB is switched on yet cannot hand out a link: say what it is missing.
+	const webBlocked = $derived(!!proxy?.web.enabled && !proxy.web.can_issue_link);
 	const readOnly = $derived(!!proxy?.read_only);
 	const formDirty = $derived(
 		!!form && !!proxy && JSON.stringify(form) !== JSON.stringify(proxy.settings)
@@ -35,6 +39,25 @@
 				? $t('telegram.needsDomain')
 				: ''
 	);
+
+	const enabledClients = $derived(clients.filter((c) => c.enabled).length);
+
+	// Where each way in answers. MTProto shows what goes into its link; the
+	// listen address is the honest fallback when nothing is in front.
+	const mtprotoAddress = $derived(
+		proxy?.public_host ? `${proxy.public_host}:${proxy.public_port}` : (proxy?.settings.listen ?? '')
+	);
+
+	// The WEB row says what is missing before it says how it is served, so the
+	// strip reads as a checklist until both ways in are up.
+	const webDetail = $derived.by(() => {
+		const w = proxy?.web;
+		if (!w) return '';
+		if (!w.enabled) return $t('telegram.webOff');
+		if (!w.hostname) return $t('telegram.webNoHostname');
+		if (running && !w.can_issue_link) return $t('telegram.webFrontDown', { values: { listen: w.listen } });
+		return w.managed ? $t('telegram.webManagedDetail') : $t('telegram.webBehindProxy', { values: { listen: w.listen } });
+	});
 
 	function cloneSettings(s: MtprotoSettings): MtprotoSettings {
 		return { ...s };
@@ -120,7 +143,11 @@
 				prefer_ip: form.prefer_ip,
 				domain_fronting_port: form.domain_fronting_port,
 				outbound: form.outbound,
-				socks_port: form.socks_port
+				socks_port: form.socks_port,
+				web_enabled: form.web_enabled,
+				web_hostname: form.web_hostname.trim(),
+				web_listen: form.web_listen.trim(),
+				web_public_dir: form.web_public_dir.trim()
 			});
 			notifications.success($t('telegram.settingsSaved'));
 			await refresh();
@@ -158,62 +185,73 @@
 			<div class="status-badge error err-line">{$t('telegram.readOnly')}</div>
 		{/if}
 
-		<!-- Status strip -->
+		<!-- Status strip: one switch for the proxy, then one row per way in.
+		     The rows are the point of the strip — "Running" alone cannot say
+		     which of the two transports a person can actually use. -->
 		<div class="status-strip">
-			<div class="strip-state">
+			<div class="strip-head">
+				<div class="strip-state">
+					{#if running}
+						<span class="live-dot"></span>
+					{:else}
+						<span class="dead-dot"></span>
+					{/if}
+					<div>
+						<div class="label">{running ? $t('telegram.running') : $t('telegram.stopped')}</div>
+						<div class="sub">{$t('telegram.clientsCount', { values: { n: enabledClients } })}</div>
+					</div>
+				</div>
+
+				<div class="strip-spacer"></div>
+
 				{#if running}
-					<span class="live-dot"></span>
-					<div>
-						<div class="label">{$t('telegram.running')}</div>
-						<div class="sub">{proxy.settings.masking_domain}</div>
-					</div>
+					<button type="button" class="btn-toggle-power" onclick={disable} disabled={busy}>
+						<svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M18.36 6.64a9 9 0 1 1-12.73 0" /><line x1="12" y1="2" x2="12" y2="12" /></svg>
+						{$t('telegram.disable')}
+					</button>
 				{:else}
-					<span class="dead-dot"></span>
-					<div>
-						<div class="label">{$t('telegram.stopped')}</div>
-						<div class="sub">{proxy.settings.masking_domain || '—'}</div>
-					</div>
+					<button type="button" class="btn-enable" onclick={enable} disabled={busy || readOnly || !!blockedReason}>
+						<svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M18.36 6.64a9 9 0 1 1-12.73 0" /><line x1="12" y1="2" x2="12" y2="12" /></svg>
+						{busy ? $t('telegram.enabling') : $t('telegram.enable')}
+					</button>
 				{/if}
 			</div>
 
-			<div class="strip-divider"></div>
-
-			<div class="strip-metric">
-				<span class="m-val mono">TCP {proxy.settings.listen.split(':').pop()}</span>
-				<span class="m-key">{$t('telegram.listenPort')}</span>
-			</div>
-
-			<div class="strip-metric">
-				<span class="m-val">{proxy.status.connected} / {proxy.status.clients}</span>
-				<span class="m-key">{$t('telegram.connected')}</span>
-			</div>
-
-			{#if proxy.public_host}
-				<div class="strip-metric">
-					<span class="m-val mono">{proxy.public_host}:{proxy.public_port}</span>
-					<span class="m-key">{$t('telegram.publicAddress')}</span>
+			<div class="transports">
+				<div class="transport">
+					<span class="t-name">{$t('telegram.transportMtproto')}</span>
+					<span class="t-addr">{mtprotoAddress}</span>
+					<span class="t-detail">
+						{proxy.settings.masking_domain
+							? $t('telegram.masksAs', { values: { domain: proxy.settings.masking_domain } })
+							: $t('telegram.noMaskingDomain')}
+					</span>
+					{#if running}
+						<span class="t-count">{$t('telegram.connectedCount', { values: { n: proxy.status.connected } })}</span>
+					{/if}
 				</div>
-			{/if}
-
-			<div class="strip-spacer"></div>
-
-			{#if running}
-				<button type="button" class="btn-toggle-power" onclick={disable} disabled={busy}>
-					<svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M18.36 6.64a9 9 0 1 1-12.73 0" /><line x1="12" y1="2" x2="12" y2="12" /></svg>
-					{$t('telegram.disable')}
-				</button>
-			{:else}
-				<button type="button" class="btn-enable" onclick={enable} disabled={busy || readOnly || !!blockedReason}>
-					<svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M18.36 6.64a9 9 0 1 1-12.73 0" /><line x1="12" y1="2" x2="12" y2="12" /></svg>
-					{busy ? $t('telegram.enabling') : $t('telegram.enable')}
-				</button>
-			{/if}
+				<div class="transport" class:off={!proxy.web.enabled}>
+					<span class="t-name">{$t('telegram.transportWeb')}</span>
+					{#if proxy.web.enabled && proxy.web.hostname}
+						<span class="t-addr">https://{proxy.web.hostname}/</span>
+					{/if}
+					<span class="t-detail">{webDetail}</span>
+					{#if running && proxy.web.can_issue_link}
+						<span class="t-count">{$t('telegram.sessionsCount', { values: { n: proxy.web.sessions } })}</span>
+					{/if}
+				</div>
+			</div>
 		</div>
 
 		{#if !running && blockedReason}
 			<div class="note-line">{blockedReason}</div>
-		{:else if !canShare}
-			<div class="note-line">{$t('telegram.linkBlocked')}</div>
+		{:else}
+			{#if !canShare && !canShareWeb}
+				<div class="note-line">{$t('telegram.linkBlocked')}</div>
+			{/if}
+			{#if webBlocked}
+				<div class="note-line">{$t('telegram.webLinkBlocked')}</div>
+			{/if}
 		{/if}
 
 		<!-- Clients — centerpiece -->
@@ -225,7 +263,7 @@
 				</div>
 			</div>
 			<div class="clients-body">
-				<ClientRoster {clients} {canShare} {readOnly} onChange={refresh} />
+				<ClientRoster {clients} {canShare} {canShareWeb} {webBlocked} webManaged={proxy.web.managed} fakeTlsPort={proxy.settings.listen.split(':').pop() ?? ''} {readOnly} onChange={refresh} />
 			</div>
 		</div>
 
@@ -259,6 +297,7 @@
 						bind:form
 						savedDomain={proxy.settings.masking_domain}
 						outbounds={proxy.outbounds ?? []}
+						web={proxy.web}
 						{saving}
 						dirty={formDirty}
 						onSave={saveSettings}
@@ -297,13 +336,18 @@
 	/* ---- status strip ---- */
 	.status-strip {
 		display: flex;
-		align-items: center;
-		gap: 1.5rem;
+		flex-direction: column;
+		gap: 0.75rem;
 		background: var(--ctp-mantle);
 		border: 1px solid var(--ctp-surface0);
 		border-radius: 0.5rem;
-		padding: 0.875rem 1.25rem;
+		padding: 0.875rem 1.25rem 0.5rem;
 		margin-bottom: 1rem;
+	}
+	.strip-head {
+		display: flex;
+		align-items: center;
+		gap: 1rem;
 		flex-wrap: wrap;
 	}
 	.strip-state {
@@ -336,6 +380,11 @@
 			box-shadow: 0 0 0 0 color-mix(in srgb, var(--ctp-green) 0%, transparent);
 		}
 	}
+	@media (prefers-reduced-motion: reduce) {
+		.live-dot {
+			animation: none;
+		}
+	}
 	.strip-state .label {
 		font-weight: 600;
 		font-size: 0.95rem;
@@ -345,30 +394,76 @@
 		color: var(--ctp-overlay1);
 		font-size: 0.75rem;
 	}
-	.strip-divider {
-		width: 1px;
-		align-self: stretch;
-		background: var(--ctp-surface1);
+	/* One row per way in: name, where it answers, and a live count on the
+	   right. The rows share a hairline so they read as two entries of one
+	   list, not two unrelated badges. */
+	.transports {
+		border-top: 1px solid var(--ctp-surface0);
 	}
-	.strip-metric {
-		display: flex;
-		flex-direction: column;
-		gap: 1px;
+	.transport {
+		display: grid;
+		grid-template-columns: 11rem minmax(0, 1fr) auto;
+		grid-template-rows: auto auto;
+		column-gap: 1rem;
+		row-gap: 0.1rem;
+		align-items: baseline;
+		padding: 0.55rem 0;
+		border-bottom: 1px solid var(--ctp-surface0);
 	}
-	.strip-metric .m-val {
+	.transport:last-child {
+		border-bottom: 0;
+	}
+	.t-name {
+		grid-row: 1 / span 2;
+		align-self: start;
 		font-weight: 600;
-		font-size: 0.95rem;
+		font-size: 0.875rem;
 		color: var(--ctp-text);
 	}
-	.strip-metric .m-val.mono {
+	.transport.off .t-name {
+		color: var(--ctp-overlay1);
+	}
+	.t-addr {
+		grid-column: 2;
 		font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
 		font-size: 0.875rem;
+		color: var(--ctp-text);
+		overflow-wrap: anywhere;
 	}
-	.strip-metric .m-key {
-		color: var(--ctp-overlay0);
-		font-size: 0.6875rem;
-		text-transform: uppercase;
-		letter-spacing: 0.05em;
+	.t-detail {
+		grid-column: 2;
+		font-size: 0.75rem;
+		color: var(--ctp-overlay1);
+	}
+	.t-count {
+		grid-column: 3;
+		grid-row: 1 / span 2;
+		align-self: center;
+		font-weight: 600;
+		font-size: 0.875rem;
+		color: var(--ctp-subtext1);
+		white-space: nowrap;
+	}
+	@media (max-width: 640px) {
+		.transport {
+			grid-template-columns: minmax(0, 1fr) auto;
+		}
+		.t-name {
+			grid-row: 1;
+			grid-column: 1;
+		}
+		.t-addr {
+			grid-column: 1;
+			grid-row: 2;
+		}
+		.t-detail {
+			grid-column: 1 / -1;
+			grid-row: 3;
+		}
+		.t-count {
+			grid-column: 2;
+			grid-row: 1 / span 2;
+		}
 	}
 	.strip-spacer {
 		flex: 1;

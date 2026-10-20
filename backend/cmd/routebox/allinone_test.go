@@ -242,3 +242,54 @@ func TestAllInOnePassesTheACMEContactToDest(t *testing.T) {
 		t.Fatalf("the contact never reached dest:\n%s", caddyfile)
 	}
 }
+
+// An all-in-one install already has everything the Telegram WEB proxy needs —
+// a domain, a certificate, a front behind dest — so it comes up switched on.
+// Fake TLS moves off 9443, which is dest's own loopback port in this layout.
+func TestAllInOneTurnsTheWebProxyOn(t *testing.T) {
+	sm, a, _ := installed(t)
+
+	mt := sm.Get().Mtproto
+	if !mt.WebEnabled {
+		t.Error("the WEB proxy is off on an install that has everything it needs")
+	}
+	if mt.MaskingDomain != "media.example.com" {
+		t.Errorf("masking_domain = %q, want the install's own domain", mt.MaskingDomain)
+	}
+	if mt.Listen != "0.0.0.0:9447" {
+		t.Errorf("listen = %q, want 0.0.0.0:9447 — the default collides with dest", mt.Listen)
+	}
+	// And it is still on after a restart.
+	if reloaded := newVPSSettings(t, filepath.Dir(sm.GetPath())).Get().Mtproto; reloaded != mt {
+		t.Errorf("after a reload the [mtproto] block is %+v, was %+v", reloaded, mt)
+	}
+	caddyfile, err := os.ReadFile(a.CaddyPath)
+	if err != nil {
+		t.Fatalf("read the Caddyfile: %v", err)
+	}
+	if !strings.Contains(string(caddyfile), "reverse_proxy 127.0.0.1:9446 {") {
+		t.Errorf("dest does not hand strangers to the web front:\n%s", caddyfile)
+	}
+}
+
+// The stub root is read by Caddy and served by the front: both have to agree
+// on it, and both run with a different working directory than ours.
+func TestStubRootOfHonoursTheEnv(t *testing.T) {
+	dir := t.TempDir()
+	settingsPath := filepath.Join(dir, "routebox.toml")
+
+	t.Setenv(stubRootEnv, "/srv/stub")
+	if got := stubRootOf(settingsPath, filepath.Join(dir, "config.json")); got != "/srv/stub" {
+		t.Errorf("with %s set: %q, want /srv/stub", stubRootEnv, got)
+	}
+
+	t.Setenv(stubRootEnv, "")
+	got := stubRootOf(settingsPath, filepath.Join(dir, "config.json"))
+	if want := filepath.Join(dir, "stub"); got != want {
+		t.Errorf("without %s: %q, want %q", stubRootEnv, got, want)
+	}
+	// Relative paths resolve here, not in Caddy's working directory.
+	if rel := stubRootOf("routebox.toml", ""); !filepath.IsAbs(rel) {
+		t.Errorf("a relative settings path gave a relative stub root %q", rel)
+	}
+}

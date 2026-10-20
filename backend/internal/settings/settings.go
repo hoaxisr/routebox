@@ -14,10 +14,27 @@ import (
 	"strings"
 	"sync"
 
+	"github.com/9seconds/mtg/v2/mtglib/web"
 	"github.com/BurntSushi/toml"
 	"routebox/backend/internal/auth"
 	"routebox/backend/internal/util"
 )
+
+// EffectiveWebHostname is the name the Telegram WEB proxy answers to. A
+// bootstrapped install serves everything on Server.PublicHost (one external
+// port, one name), so a separate hostname would only be able to disagree with
+// the certificate and the front; otherwise the operator's own setting wins.
+//
+// The public host is normalized on the way out — lowercased, a trailing dot
+// dropped — because it is validated for the panel's URL, not for the WEB
+// proxy, whose handler accepts only the canonical form. web_hostname needs no
+// such step: Update already rejects anything but that form.
+func (s Settings) EffectiveWebHostname() string {
+	if s.Server.Bootstrapped {
+		return strings.TrimSuffix(strings.ToLower(s.Server.PublicHost), ".")
+	}
+	return s.Mtproto.WebHostname
+}
 
 // Settings represents the complete RouteBox configuration
 type Settings struct {
@@ -74,6 +91,26 @@ type MtprotoSettings struct {
 	// setting only so a collision with something else on the host is fixable;
 	// nothing outside the box can reach it.
 	SocksPort int `toml:"socks_port" json:"socks_port"`
+
+	// WebEnabled turns on the Telegram WEB proxy: a web.telegram.org lookalike
+	// the mtg handler serves behind the loopback front, on WebHostname.
+	WebEnabled bool `toml:"web_enabled" json:"web_enabled"`
+
+	// WebHostname is the DNS name the WEB proxy answers to. On a bootstrapped
+	// install it is ignored in favour of Server.PublicHost; see
+	// EffectiveWebHostname.
+	WebHostname string `toml:"web_hostname" json:"web_hostname"`
+
+	// WebListen is the loopback "host:port" the WEB proxy handler binds; the
+	// front relays to it.
+	WebListen string `toml:"web_listen" json:"web_listen"`
+
+	// WebPublicDir is the static site served to anyone who is not a WEB proxy
+	// client, both by the handler and, while the WEB proxy is off, by the
+	// front. Empty (or a directory that is not there) answers every such
+	// request with an empty 404: there is no built-in stub page. Ignored on a
+	// bootstrapped install, whose strangers get dest's stub root.
+	WebPublicDir string `toml:"web_public_dir" json:"web_public_dir"`
 }
 
 // AwgSettings configures the RouteBox-owned AmneziaWG server interface.
@@ -345,6 +382,10 @@ func Default() Settings {
 			// Loopback-only, so the usual SOCKS port is free of the collision
 			// risk that makes 1080 a poor choice on a public interface.
 			SocksPort: 1080,
+			// Off, and loopback-only: the front is what exposes it, so a bare
+			// enable never opens a new public port. 9446 sits clear of the
+			// 9443 MTProto listener and the other loopback defaults.
+			WebListen: "127.0.0.1:9446",
 		},
 	}
 }
@@ -708,6 +749,17 @@ func validateLoopbackAddr(addr string) error {
 		return fmt.Errorf("address %q must be loopback (127.0.0.0/8 or ::1)", addr)
 	}
 	return nil
+}
+
+// WebListenReachesLoopback reports whether a front bound to host (as
+// net.SplitHostPort returns it) answers on 127.0.0.1, which is where a
+// bootstrapped install's Caddyfile dials it: 127.0.0.1 itself, or a wildcard.
+func WebListenReachesLoopback(host string) bool {
+	switch host {
+	case "", "127.0.0.1", "0.0.0.0", "::":
+		return true
+	}
+	return false
 }
 
 func isPlausibleHostname(s string) bool {
@@ -1103,6 +1155,55 @@ func (m *Manager) Update(updates map[string]interface{}) error {
 				return fmt.Errorf("setting %s: must be a port between 1 and 65535", key)
 			}
 			staged.Mtproto.SocksPort = v
+		case "mtproto.web_enabled":
+			v, ok := value.(bool)
+			if !ok {
+				return fmt.Errorf("setting %s: value must be a boolean", key)
+			}
+			staged.Mtproto.WebEnabled = v
+		case "mtproto.web_hostname":
+			v, ok := value.(string)
+			if !ok {
+				return fmt.Errorf("setting %s: value must be a string", key)
+			}
+			// Empty clears it; anything else must be a name the handler will
+			// accept, so a bad value fails here rather than at proxy start.
+			if v != "" {
+				if err := web.ValidateHostname(v); err != nil {
+					return fmt.Errorf("setting %s: %w", key, err)
+				}
+			}
+			staged.Mtproto.WebHostname = v
+		case "mtproto.web_listen":
+			v, ok := value.(string)
+			if !ok {
+				return fmt.Errorf("setting %s: value must be a string", key)
+			}
+			host, portStr, err := net.SplitHostPort(v)
+			if err != nil {
+				return fmt.Errorf("setting %s: must be host:port: %w", key, err)
+			}
+			if port, err := strconv.Atoi(portStr); err != nil || port < 1 || port > 65535 {
+				return fmt.Errorf("setting %s: port must be a number between 1 and 65535", key)
+			}
+			// A bootstrapped install's Caddyfile dials the front at
+			// 127.0.0.1:<port> whatever host this names, so a front bound
+			// anywhere else would be one dest cannot reach. The wildcards
+			// include 127.0.0.1 ([::] too, on Linux's dual-stack binds). A
+			// file that names another host is moved to 127.0.0.1 at boot
+			// (migrateBootstrapMtproto), so the value a failed save rolls back
+			// to always passes; the unchanged value is let through anyway, so
+			// a PUT echoing it back is never refused over it.
+			if staged.Server.Bootstrapped && v != staged.Mtproto.WebListen && !WebListenReachesLoopback(host) {
+				return fmt.Errorf("setting %s: on an all-in-one install dest reaches the web front at 127.0.0.1:%s, so the host must be 127.0.0.1 (or empty, 0.0.0.0 or [::], which include it), not %q", key, portStr, host)
+			}
+			staged.Mtproto.WebListen = v
+		case "mtproto.web_public_dir":
+			v, ok := value.(string)
+			if !ok {
+				return fmt.Errorf("setting %s: value must be a string", key)
+			}
+			staged.Mtproto.WebPublicDir = v
 
 		default:
 			return fmt.Errorf("unknown or non-runtime setting: %s", key)

@@ -1,8 +1,9 @@
 <script lang="ts">
 	import { t } from 'svelte-i18n';
-	import type { MtprotoSettings, RoutableTag } from '$lib/types';
+	import type { MtprotoSettings, MtprotoWeb, RoutableTag } from '$lib/types';
 	import { configReadOnly } from '$lib/stores';
 	import { splitListen, joinListen } from './listenAddr';
+	import { nginxSnippet, caddySnippet } from './webSnippet';
 
 	interface Props {
 		form: MtprotoSettings;
@@ -11,6 +12,8 @@
 		savedDomain: string;
 		/** Outbounds and endpoints Telegram traffic can be routed through. */
 		outbounds?: RoutableTag[];
+		/** WEB proxy state; `managed` decides whether the operator wires a reverse proxy. */
+		web: MtprotoWeb;
 		saving?: boolean;
 		/** Form differs from the saved settings — enables the buttons. */
 		dirty?: boolean;
@@ -22,11 +25,17 @@
 		form = $bindable(),
 		savedDomain,
 		outbounds = [],
+		web,
 		saving = false,
 		dirty = true,
 		onSave,
 		onReset
 	}: Props = $props();
+
+	// What the snippets show: the typed values, so they follow the form as the
+	// operator edits rather than the last save.
+	const snippetHost = $derived(form.web_hostname.trim() || 'proxy.example.com');
+	const snippetListen = $derived(form.web_listen.trim() || '127.0.0.1:9446');
 
 	// Only warn when the domain is genuinely being changed, and only when there
 	// was one to invalidate — on first setup there are no links out yet.
@@ -76,7 +85,8 @@
      between them. They are not: the listen port is the socket, the public port
      is what goes into the link, and they differ only behind a reverse proxy. -->
 <section class="group">
-	<h4 class="group-title">{$t('telegram.groupListen')}</h4>
+	<h4 class="group-title">{$t('telegram.transportMtproto')}</h4>
+	<p class="group-note">{$t('telegram.groupMtprotoNote')}</p>
 	<div class="field-grid">
 		<!-- A row, not a field: `field` would fight this element's own grid, and
 		     which display wins would come down to stylesheet order. -->
@@ -120,13 +130,6 @@
 			<input id="mt-domain" type="text" bind:value={form.masking_domain} placeholder="storage.googleapis.com" />
 			<span class="hint">{$t('telegram.maskingDomainHint')}</span>
 		</div>
-	</div>
-</section>
-
-<section class="group">
-	<h4 class="group-title">{$t('telegram.groupLinks')}</h4>
-	<p class="group-note">{$t('telegram.groupLinksNote')}</p>
-	<div class="field-grid">
 		<div class="field">
 			<label for="mt-host">{$t('telegram.publicHost')}</label>
 			<input id="mt-host" type="text" bind:value={form.public_host} />
@@ -151,7 +154,53 @@
 </section>
 
 <section class="group">
-	<h4 class="group-title">{$t('telegram.groupBehaviour')}</h4>
+	<h4 class="group-title">{$t('telegram.groupWeb')}</h4>
+	<div class="field-grid">
+		<div class="field wide">
+			<label class="check" for="mt-web-enabled">
+				<input id="mt-web-enabled" type="checkbox" bind:checked={form.web_enabled} />
+				{$t('telegram.webEnabled')}
+			</label>
+			<span class="hint">{$t('telegram.webEnabledHint')}</span>
+		</div>
+		{#if web.managed}
+			<p class="group-note wide">{$t('telegram.webManagedNote', { values: { domain: web.hostname } })}</p>
+		{:else}
+			<div class="field">
+				<label for="mt-web-host">{$t('telegram.webHostname')}</label>
+				<input id="mt-web-host" type="text" bind:value={form.web_hostname} placeholder="proxy.example.com" />
+				<span class="hint">{$t('telegram.webHostnameHint')}</span>
+			</div>
+			<div class="field">
+				<label for="mt-web-listen">{$t('telegram.webListen')}</label>
+				<input id="mt-web-listen" type="text" bind:value={form.web_listen} placeholder="127.0.0.1:9446" />
+				<span class="hint">{$t('telegram.webListenHint')}</span>
+			</div>
+			<div class="field wide">
+				<label for="mt-web-dir">{$t('telegram.webPublicDir')}</label>
+				<input id="mt-web-dir" type="text" bind:value={form.web_public_dir} />
+				<span class="hint">{$t('telegram.webPublicDirHint')}</span>
+			</div>
+		{/if}
+	</div>
+	{#if !web.managed}
+		<details class="snippets">
+			<summary>{$t('telegram.webSnippetTitle')}</summary>
+			<div class="field">
+				<label for="mt-web-nginx">{$t('telegram.webSnippetNginx')}</label>
+				<textarea id="mt-web-nginx" class="snippet" rows="14" readonly value={nginxSnippet(snippetHost, snippetListen)}></textarea>
+			</div>
+			<div class="field">
+				<label for="mt-web-caddy">{$t('telegram.webSnippetCaddy')}</label>
+				<textarea id="mt-web-caddy" class="snippet" rows="3" readonly value={caddySnippet(snippetHost, snippetListen)}></textarea>
+			</div>
+		</details>
+	{/if}
+</section>
+
+<section class="group">
+	<h4 class="group-title">{$t('telegram.groupShared')}</h4>
+	<p class="group-note">{$t('telegram.groupSharedNote')}</p>
 	<div class="field-grid">
 		<div class="field">
 			<label for="mt-conc">{$t('telegram.concurrency')}</label>
@@ -288,7 +337,10 @@
 		font-size: 0.75rem;
 		color: var(--ctp-overlay0);
 	}
-	.field input,
+	/* Not the checkbox: this is the text-field skin, and app.css already draws
+	   the 1rem square checkbox — padded and bordered like a text field it
+	   turned into a wide pill with a tick in it. */
+	.field input:not([type='checkbox']),
 	.field select {
 		/* background-color, not the `background` shorthand: the shorthand also
 		   resets background-image, and that is where app.css draws the chevron
@@ -320,7 +372,37 @@
 		font-size: 0.75rem;
 		color: var(--ctp-overlay0);
 	}
-	.field input:focus,
+	.wide {
+		grid-column: 1 / -1;
+	}
+	.field .check {
+		display: flex;
+		align-items: center;
+		gap: 0.5rem;
+	}
+	.snippets {
+		margin-top: 1rem;
+	}
+	.snippets summary {
+		cursor: pointer;
+		font-size: 0.8125rem;
+		color: var(--ctp-subtext1);
+	}
+	.snippets .field {
+		margin-top: 0.75rem;
+	}
+	.snippet {
+		width: 100%;
+		padding: 0.5rem;
+		border-radius: 0.375rem;
+		border: 1px solid var(--ctp-surface2);
+		background: var(--ctp-mantle);
+		color: var(--ctp-text);
+		font-family: ui-monospace, monospace;
+		font-size: 0.75rem;
+		resize: vertical;
+	}
+	.field input:not([type='checkbox']):focus,
 	.field select:focus {
 		outline: none;
 		border-color: var(--ctp-primary);

@@ -129,3 +129,49 @@ func TestCanIssueLinkNeedsBothDomainAndHost(t *testing.T) {
 		})
 	}
 }
+
+func TestWebProxyLinksUseTheDDSecret(t *testing.T) {
+	tg, web, err := WebProxyLinks("proxy.example.com", secretA)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	want := "tg://webproxy?server=proxy.example.com&secret=dd" + secretA
+	if tg != want {
+		t.Fatalf("tg = %q, want %q", tg, want)
+	}
+
+	if !strings.HasPrefix(web, "https://t.me/webproxy?") {
+		t.Fatalf("web = %q", web)
+	}
+}
+
+func TestWebProxyLinksRejectAMalformedKey(t *testing.T) {
+	for _, key := range []string{"zz", "", secretA[:30]} {
+		if _, _, err := WebProxyLinks("h", key); err == nil {
+			t.Errorf("accepted key %q", key)
+		}
+	}
+}
+
+func TestCanIssueWebLink(t *testing.T) {
+	for _, tt := range []struct {
+		name      string
+		hostname  string
+		serving   bool
+		listening bool
+		want      bool
+	}{
+		{"no hostname", "", true, true, false},
+		{"hostname the handler refuses", "1.2.3.4", true, true, false},
+		{"no WEB handler serving", "h", false, true, false},
+		{"front not listening", "h", true, false, false},
+		{"all set", "h", true, true, true},
+	} {
+		t.Run(tt.name, func(t *testing.T) {
+			if got := CanIssueWebLink(tt.hostname, tt.serving, tt.listening); got != tt.want {
+				t.Errorf("got %v, want %v", got, tt.want)
+			}
+		})
+	}
+}

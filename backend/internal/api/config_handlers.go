@@ -243,8 +243,8 @@ func (h *Handler) applyConfig(w http.ResponseWriter, r *http.Request, seq int) {
 	// finding out from a client that cannot connect.
 	respond := writeSuccess
 	if err := h.syncDest(); err != nil {
-		log.Printf("dest: naive user sync failed: %v", err)
-		warning := fmt.Sprintf("the user list did not reach dest, so naive still authenticates against the previous one: %v", err)
+		log.Printf("dest: sync failed: %v", err)
+		warning := destSyncWarning(err)
 		respond = func(w http.ResponseWriter, data interface{}) {
 			if m, ok := data.(map[string]interface{}); ok {
 				m["warning"] = warning
