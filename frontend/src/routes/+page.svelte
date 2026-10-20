@@ -5,6 +5,7 @@
 	import { notifications, formatBytes, formatSpeed, clientNames, panelMode, routerMode, behindFront, refreshStatus } from '$lib/stores';
 	import { singboxVersion, loadVersion } from '$lib/stores/version';
 	import PendingChanges from '$lib/components/shared/PendingChanges.svelte';
+	import Pager from '$lib/components/shared/Pager.svelte';
 	import { splitUnit, areaPaths } from '$lib/utils/sparkline';
 	import { seriesRates } from '$lib/utils/trafficSeries';
 	import { directTags, leafRates, liveSplit, bucketFlows, localFlows, rankLeaves, rankClients, type RouteFlow } from '$lib/utils/routeSplit';
@@ -111,10 +112,19 @@
 	// the share and the exits but are not devices of this box, so they are not
 	// listed as clients (#102).
 	let flows = $derived(period === '60s' ? flowHist.flat() : bucketFlows(histBuckets));
-	let exitRank = $derived(rankLeaves(flows, directSet, 5));
-	let exitTotal = $derived(exitRank.items.reduce((s, x) => s + x.bytes, 0) + exitRank.rest.bytes);
-	let clientRank = $derived(rankClients($routerMode ? localFlows(flows) : flows, directSet, 5));
+	let exitRank = $derived(rankLeaves(flows, directSet, Infinity));
+	let exitTotal = $derived(exitRank.items.reduce((s, x) => s + x.bytes, 0));
+	let clientRank = $derived(rankClients($routerMode ? localFlows(flows) : flows, directSet, Infinity));
 	let clientMax = $derived(clientRank.items.length ? clientRank.items[0].direct + clientRank.items[0].proxy : 0);
+	// The lists page instead of scrolling (#110): three rows is what the
+	// bottom card holds on a 1080p screen. Bars keep the scale of the whole
+	// list, so page two is not drawn as if its top row were the leader.
+	const PAGE = 3;
+	const pageCount = (n: number) => Math.ceil(n / PAGE);
+	const pageOf = <T,>(all: T[], page: number) => all.slice(page * PAGE, page * PAGE + PAGE);
+	let exitPage = $state(0);
+	let connPage = $state(0);
+	let clientPage = $state(0);
 	const pctOfTotal = (x: number, total: number) => (total > 0 ? Math.round((x / total) * 100) : 0);
 	// Mirror graph: download above the axis, upload below it on its own scale —
 	// upload is a fraction of download and on one scale it lies flat on the
@@ -323,7 +333,7 @@
 			}
 			splitPrimed = true;
 			downloadTotal = data.downloadTotal ?? 0;
-			// Get top 5 by download
+			// Top 15 by download: five pages of the list
 			// Router mode only: on a panel every client's source IS a public
 			// address, and filtering here would leave the list empty beside a busy
 			// graph — the same disagreement #102 removed, mirror-imaged.
@@ -331,7 +341,7 @@
 			// Same roster as the client ranking beside it, so the list does not
 			// name a source the ranking just excluded. Copy before sorting: sort
 			// mutates.
-			topConnections = [...liveConns].sort((a, b) => b.download - a.download).slice(0, 5);
+			topConnections = [...liveConns].sort((a, b) => b.download - a.download).slice(0, 15);
 			connectionCount = liveConns.length;
 		});
 	}
@@ -397,14 +407,11 @@
 
 <!-- No page heading: the process card is the headline, and on a 1080p screen
      the heading was what pushed the top connections under the fold (#108). -->
-<!-- Desktop: the page is exactly the viewport minus the header and the main
-     padding, and only the bottom card gives way: the Top Connections list and
-     the clients column each scroll inside it.
-     Everything else keeps its height; the card cannot go below its fixed
-     content plus the bottom card, which never shrinks under its own minimum
-     (#110), so on a too-short screen the page scrolls instead of the graph
-     overlapping the links below. -->
-<div class="space-y-4 lg:h-[calc(100dvh-6.5rem)] lg:flex lg:flex-col">
+<!-- Desktop: the page is at least the viewport minus the header and the main
+     padding, and the bottom card takes what is left. Its lists page three
+     rows at a time instead of scrolling (#110), so on a too-short screen the
+     page grows and scrolls instead of the graph overlapping the links below. -->
+<div class="space-y-4 lg:min-h-[calc(100dvh-6.5rem)] lg:flex lg:flex-col">
 	<!-- System Requirements Warning -->
 	{#if status.system_checks && !status.system_checks.all_checks_passed}
 		<div class="bg-[var(--ctp-red)] rounded-xl p-6 shadow-lg">
@@ -500,9 +507,8 @@
 	<PendingChanges />
 
 	<!-- Status Card. Running, it takes what the page has left; its minimum is
-	     its content with the bottom card at ITS minimum (see contain-size
-	     there), so on a screen with room the lists scroll inside and on a
-	     too-short one the page scrolls. Stopped, it is just the Start button. -->
+	     its content: the lists page instead of scrolling (#110), so on a
+	     too-short screen the page scrolls. Stopped, it is just the Start button. -->
 	<div class="bg-[var(--ctp-surface0)] rounded-xl p-6 lg:flex lg:flex-col {status.running ? 'lg:flex-1' : ''}">
 		<!-- One header row (#B): name and state, what is running and how, the
 		     controls. The version, config and metrics bars it replaces were three
@@ -650,9 +656,12 @@
 								<div style="width: {periodPct}%; background: var(--ctp-upload)"></div>
 								<div style="width: {100 - periodPct}%; background: var(--ctp-primary)"></div>
 							</div>
-							<div class="mt-5 text-xs uppercase tracking-wide text-[var(--ctp-overlay1)]">{$t('dashboard.byExit')}</div>
+							<div class="mt-5 flex items-center justify-between gap-2 text-xs uppercase tracking-wide text-[var(--ctp-overlay1)]">
+								<span class="truncate">{$t('dashboard.byExit')}</span>
+								<Pager bind:page={exitPage} pages={pageCount(exitRank.items.length)} />
+							</div>
 							<div class="mt-2.5 flex flex-col gap-2.5">
-								{#each exitRank.items as e (e.leaf)}
+								{#each pageOf(exitRank.items, exitPage) as e (e.leaf)}
 									<div>
 										<div class="flex items-center justify-between gap-2 text-[13px]">
 											<span class="selection-chip min-w-0 max-w-full" class:route-direct={e.direct}><span class="truncate">{e.leaf}</span></span>
@@ -663,9 +672,6 @@
 										</div>
 									</div>
 								{/each}
-								{#if exitRank.rest.count > 0}
-									<div class="text-xs tabular-nums text-[var(--ctp-overlay1)]">{$t('dashboard.moreItems', { values: { count: exitRank.rest.count } })} · {formatBytes(exitRank.rest.bytes)}</div>
-								{/if}
 							</div>
 						{:else}
 							<div class="mt-3 text-xs text-[var(--ctp-overlay0)]" title={histError}>{period !== '60s' && histError ? $t('dashboard.noHistory') : $t('dashboard.noTrafficYet')}</div>
@@ -700,19 +706,19 @@
 
 			<!-- Same columns as the traffic card above (#B): one card, one divider,
 			     so the left and right edges line up instead of two cards and a gap.
-			     Desktop: the card takes what the page has left and the lists scroll.
-			     contain-size makes the card measure as empty, so its minimum is the
-			     min-h, not its lists (a flex item's intrinsic contribution is its
-			     content whatever its flex-basis), and the single row is
-			     minmax(0,1fr), so it may shrink below content. -->
-			<div class="bg-[var(--ctp-surface1)] rounded-lg flex flex-col sm:grid sm:grid-cols-[minmax(0,2fr)_minmax(0,1fr)] lg:grid-rows-[minmax(0,1fr)] lg:contain-size lg:flex-1 lg:min-h-[9.75rem]">
+			     Desktop: the card takes what the page has left and never shrinks
+			     below its three-row pages, which hold no scroll (#110). -->
+			<div class="bg-[var(--ctp-surface1)] rounded-lg flex flex-col sm:grid sm:grid-cols-[minmax(0,2fr)_minmax(0,1fr)] lg:flex-1">
 				<div class="min-w-0 flex flex-col lg:min-h-0 pt-3 sm:pt-4 pb-1">
 					<div class="h-7 mb-1 px-4 sm:px-5 flex items-center justify-between shrink-0">
 						<h3 class="text-sm font-medium text-[var(--ctp-subtext1)]">Top Connections</h3>
-						<a href="/monitor/connections" class="text-sm text-[var(--ctp-primary)] hover:underline">View all</a>
+						<span class="flex items-center gap-3">
+							<Pager bind:page={connPage} pages={pageCount(topConnections.length)} />
+							<a href="/monitor/connections" class="text-sm text-[var(--ctp-primary)] hover:underline">View all</a>
+						</span>
 					</div>
-					<div class="flex-1 divide-y divide-[var(--ctp-surface2)] border-t border-[var(--ctp-surface2)] overflow-x-hidden lg:min-h-0 lg:overflow-y-auto">
-						{#each topConnections as conn}
+					<div class="flex-1 divide-y divide-[var(--ctp-surface2)] border-t border-[var(--ctp-surface2)] overflow-x-hidden">
+						{#each pageOf(topConnections, connPage) as conn}
 							{@const sourceName = $clientNames.get(conn.metadata.sourceIP)}
 							<!-- Behind the front every source is the loopback (see the
 							     connections monitor), so the column is dropped rather
@@ -758,10 +764,13 @@
 						{/each}
 					</div>
 				</div>
-				<div class="min-w-0 border-t sm:border-t-0 sm:border-l border-[var(--ctp-surface2)] px-4 sm:px-5 pt-3 sm:pt-4 pb-3 lg:min-h-0 lg:overflow-y-auto">
+				<div class="min-w-0 border-t sm:border-t-0 sm:border-l border-[var(--ctp-surface2)] px-4 sm:px-5 pt-3 sm:pt-4 pb-3">
 					<div class="h-7 flex items-center justify-between gap-2">
 						<h3 class="text-sm font-medium text-[var(--ctp-subtext1)]">{$t('dashboard.byClients')}</h3>
-						<span class="text-[10px] uppercase tracking-wide text-[var(--ctp-overlay0)] truncate">↓ {periodLabel}</span>
+						<span class="flex items-center gap-2 min-w-0">
+							<Pager bind:page={clientPage} pages={$behindFront ? 0 : pageCount(clientRank.items.length)} />
+							<span class="text-[10px] uppercase tracking-wide text-[var(--ctp-overlay0)] truncate">↓ {periodLabel}</span>
+						</span>
 					</div>
 					{#if $behindFront}
 						<div class="mt-2 text-xs text-[var(--ctp-overlay1)]">{$t('dashboard.clientsBehindFront')}</div>
@@ -774,7 +783,7 @@
 							<span class="flex items-center gap-1.5"><span class="w-2 h-2 rounded-full" style="background: var(--ctp-primary)"></span>{$t('dashboard.legendProxy')}</span>
 						</div>
 						<div class="flex flex-col gap-3">
-							{#each clientRank.items as c (c.source)}
+							{#each pageOf(clientRank.items, clientPage) as c (c.source)}
 								{@const total = c.direct + c.proxy}
 								{@const proxyPct = pctOfTotal(c.proxy, total)}
 								<div>
@@ -793,9 +802,6 @@
 									</div>
 								</div>
 							{/each}
-							{#if clientRank.rest.count > 0}
-								<div class="text-xs tabular-nums text-[var(--ctp-overlay1)]">{$t('dashboard.moreItems', { values: { count: clientRank.rest.count } })} · {formatBytes(clientRank.rest.bytes)}</div>
-							{/if}
 						</div>
 					{/if}
 				</div>
