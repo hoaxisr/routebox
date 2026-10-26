@@ -22,7 +22,7 @@
 	let testing = $state(false);
 	let delay = $state<number | null>(proxy.history?.[proxy.history.length - 1]?.delay ?? null);
 
-	const isGroup = $derived(proxy.type === 'Selector' || proxy.type === 'URLTest');
+	const isGroup = $derived(['Selector', 'URLTest', 'Fallback'].includes(proxy.type));
 
 	// Speed test (#13, moved here from Outbounds by #90). Nothing to measure
 	// through a proxy that drops the connection or answers DNS, and GLOBAL is not

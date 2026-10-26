@@ -328,7 +328,7 @@ func validateOutbound(ob map[string]interface{}, index int) []string {
 
 	// Type-specific validation
 	switch obType {
-	case "selector", "urltest":
+	case "selector", "urltest", "fallback":
 		// Required: outbounds array
 		if outbounds, ok := ob["outbounds"].([]interface{}); !ok || len(outbounds) == 0 {
 			errors = append(errors, fmt.Sprintf("%s: selector/urltest requires 'outbounds' array", prefix))
@@ -930,7 +930,7 @@ func validateOutboundReferences(ob map[string]interface{}, index int, endpointTa
 	obType, _ := ob["type"].(string)
 
 	switch obType {
-	case "selector", "urltest":
+	case "selector", "urltest", "fallback":
 		// Check that referenced outbounds exist
 		if outbounds, ok := ob["outbounds"].([]interface{}); ok {
 			for _, ref := range outbounds {

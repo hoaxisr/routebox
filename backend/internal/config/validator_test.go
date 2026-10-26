@@ -473,3 +473,17 @@ func TestValidateAllowsDistinctPortsAndListens(t *testing.T) {
 		t.Fatalf("same port on distinct listens must not conflict: %v", errs)
 	}
 }
+
+func TestValidateFallbackGroup(t *testing.T) {
+	if errs := validateOutbound(map[string]interface{}{"type": "fallback", "tag": "fb"}, 0); !hasErrContaining(errs, "requires 'outbounds'") {
+		t.Fatalf("fallback without members must fail, got %v", errs)
+	}
+	ob := map[string]interface{}{"type": "fallback", "tag": "fb", "outbounds": []interface{}{"a", "gone"}}
+	if errs := validateOutbound(ob, 0); len(errs) != 0 {
+		t.Fatalf("unexpected errors: %v", errs)
+	}
+	errs := validateOutboundReferences(ob, 0, map[string]bool{}, map[string]bool{"a": true})
+	if !hasErrContaining(errs, "'gone' does not exist") {
+		t.Fatalf("missing member must be reported, got %v", errs)
+	}
+}

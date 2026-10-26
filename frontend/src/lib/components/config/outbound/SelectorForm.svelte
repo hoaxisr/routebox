@@ -2,7 +2,7 @@
 	import { t } from 'svelte-i18n';
 
 	interface Props {
-		type: 'selector' | 'urltest';
+		type: 'selector' | 'urltest' | 'fallback';
 		availableOutbounds: string[];
 		selectedOutbounds: string[];
 		defaultOutbound: string;
@@ -50,6 +50,9 @@
 			{$t('outbounds.selectedOutbounds')} *
 			<span class="font-normal text-[var(--ctp-overlay0)]">({selectedOutbounds.length} {$t('proxies.selected').toLowerCase()})</span>
 		</label>
+		{#if type === 'fallback'}
+			<p class="mb-2 text-xs text-[var(--ctp-overlay0)]">{$t('outbounds.fallbackOrderHint')}</p>
+		{/if}
 		{#if errors['outbounds']}
 			<p class="mb-2 text-sm text-[var(--ctp-red)]">{errors['outbounds']}</p>
 		{/if}
@@ -67,6 +70,9 @@
 					>
 						<span class="text-[var(--ctp-text)]">{tag}</span>
 						<span class="flex items-center gap-2">
+							{#if type === 'fallback' && selectedOutbounds.includes(tag)}
+								<span class="status-badge info">#{selectedOutbounds.indexOf(tag) + 1}</span>
+							{/if}
 							{#if type === 'selector' && defaultOutbound === tag}
 								<span class="status-badge">{$t('common.default').toLowerCase()}</span>
 							{/if}
@@ -113,7 +119,7 @@
 	{/if}
 
 	<!-- URLTest specific settings -->
-	{#if type === 'urltest'}
+	{#if type === 'urltest' || type === 'fallback'}
 		<div class="bg-[var(--ctp-surface0)] rounded-lg p-4 space-y-4">
 			<h3 class="text-sm font-medium text-[var(--ctp-subtext1)]">{$t('outbounds.urlTestSettings')}</h3>
 			<div>
@@ -126,7 +132,7 @@
 					class="w-full px-3 py-2 bg-[var(--ctp-mantle)] border border-[var(--ctp-surface2)] rounded-lg text-[var(--ctp-text)] placeholder-[var(--ctp-overlay0)] focus:outline-none focus:ring-2 focus:ring-[var(--ctp-primary)] text-sm"
 				/>
 			</div>
-			<div class="grid grid-cols-3 gap-4">
+			<div class="grid {type === 'urltest' ? 'grid-cols-3' : 'grid-cols-2'} gap-4">
 				<div>
 					<label for="urltestInterval" class="block text-xs text-[var(--ctp-overlay0)] mb-1">{$t('outbounds.testInterval')}</label>
 					<input
@@ -137,6 +143,7 @@
 						class="w-full px-3 py-2 bg-[var(--ctp-mantle)] border border-[var(--ctp-surface2)] rounded-lg text-[var(--ctp-text)] placeholder-[var(--ctp-overlay0)] focus:outline-none focus:ring-2 focus:ring-[var(--ctp-primary)] text-sm"
 					/>
 				</div>
+				{#if type === 'urltest'}
 				<div>
 					<label for="urltestTolerance" class="block text-xs text-[var(--ctp-overlay0)] mb-1">{$t('outbounds.tolerance')} (ms)</label>
 					<input
@@ -148,6 +155,7 @@
 						class="w-full px-3 py-2 bg-[var(--ctp-mantle)] border border-[var(--ctp-surface2)] rounded-lg text-[var(--ctp-text)] placeholder-[var(--ctp-overlay0)] focus:outline-none focus:ring-2 focus:ring-[var(--ctp-primary)] text-sm"
 					/>
 				</div>
+				{/if}
 				<div>
 					<label for="urltestIdleTimeout" class="block text-xs text-[var(--ctp-overlay0)] mb-1">{$t('outbounds.idleTimeout')}</label>
 					<input

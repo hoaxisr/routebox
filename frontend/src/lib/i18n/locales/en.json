@@ -407,6 +407,7 @@
     "types": {
       "selector": "Selector",
       "urltest": "URL Test",
+      "fallback": "Fallback",
       "direct": "Direct",
       "block": "Block",
       "dns": "DNS",
@@ -434,6 +435,8 @@
     "blockDesc": "Block all connections",
     "selectorDesc": "Manual proxy selection",
     "urltestDesc": "Auto-select fastest proxy",
+    "fallbackDesc": "First working proxy in order",
+    "fallbackOrderHint": "Priority follows the order you pick members: #1 is used while it passes the check, then #2, and so on. To reorder, unpick and pick again.",
     "vless": "VLESS",
     "vlessDesc": "VLESS proxy protocol",
     "trojan": "Trojan",

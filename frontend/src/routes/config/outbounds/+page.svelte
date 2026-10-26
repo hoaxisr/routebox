@@ -24,7 +24,7 @@
 	let saving = $state(false);
 
 	// Service outbound types (groups/selectors)
-	const serviceTypes = ['selector', 'urltest'];
+	const serviceTypes = ['selector', 'urltest', 'fallback'];
 
 	// Split outbounds into service and real
 	let serviceOutbounds = $derived(outbounds.filter(o => serviceTypes.includes(o.type)));
@@ -57,7 +57,7 @@
 		const proxy = clashProxies[tag];
 		let delay: number | null = null;
 		if (proxy) {
-			if ((proxy.type === 'Selector' || proxy.type === 'URLTest') && proxy.now) {
+			if (['Selector', 'URLTest', 'Fallback'].includes(proxy.type) && proxy.now) {
 				const activeProxy = clashProxies[proxy.now];
 				const lastHistory = activeProxy?.history?.[activeProxy.history.length - 1];
 				delay = lastHistory?.delay ?? null;
@@ -180,6 +180,8 @@
 				return 'var(--ctp-blue)';
 			case 'urltest':
 				return 'var(--ctp-teal)';
+			case 'fallback':
+				return 'var(--ctp-mauve)';
 			case 'direct':
 				return 'var(--ctp-green)';
 			case 'block':
@@ -197,6 +199,8 @@
 				return 'M4 6h16M4 12h16m-7 6h7'; // menu/list
 			case 'urltest':
 				return 'M13 10V3L4 14h7v7l9-11h-7z'; // lightning
+			case 'fallback':
+				return 'M3 4h13M3 8h9m-9 4h6m4 0l4-4m0 0l4 4m-4-4v12'; // sort ascending
 			case 'direct':
 				return 'M5 12h14'; // arrow right
 			case 'block':

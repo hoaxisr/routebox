@@ -68,9 +68,9 @@
 		// Filter by type
 		if (filterType !== 'all') {
 			result = result.filter(p => {
-				if (filterType === 'selector') return p.type === 'Selector' || p.type === 'URLTest';
+				if (filterType === 'selector') return ['Selector', 'URLTest', 'Fallback'].includes(p.type);
 				if (filterType === 'direct') return p.type === 'Direct' || p.type === 'Block' || p.type === 'Reject';
-				if (filterType === 'endpoint') return !['Selector', 'URLTest', 'Direct', 'Block', 'Reject'].includes(p.type);
+				if (filterType === 'endpoint') return !['Selector', 'URLTest', 'Fallback', 'Direct', 'Block', 'Reject'].includes(p.type);
 				return true;
 			});
 		}

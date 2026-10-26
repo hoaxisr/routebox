@@ -84,7 +84,7 @@
 	let saving = $state(false);
 
 	// Service outbound types (groups/selectors)
-	const serviceTypes = ['selector', 'urltest'];
+	const serviceTypes = ['selector', 'urltest', 'fallback'];
 
 	// Find which service outbounds (selector/urltest) contain each endpoint tag
 	let containedIn = $derived.by(() => {

@@ -1,7 +1,7 @@
 import type { Outbound } from '$lib/types';
 
 /** Outbound types that pick a member at dial time rather than dialling themselves. */
-const GROUP_TYPES = ['selector', 'urltest'];
+const GROUP_TYPES = ['selector', 'urltest', 'fallback'];
 
 export function groupTags(outbounds: Outbound[]): Set<string> {
 	return new Set(outbounds.filter((o) => GROUP_TYPES.includes(o.type)).map((o) => o.tag));

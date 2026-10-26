@@ -209,7 +209,7 @@
 
 	// Available outbounds for selector
 	let availableForSelection = $derived.by(() => {
-		if (type === 'selector' || type === 'urltest') {
+		if (type === 'selector' || type === 'urltest' || type === 'fallback') {
 			// Exclude the managed 'awg-server' endpoint — it's a server inbound, not a routable member.
 			const endpointTags = endpoints.filter((e) => e.tag !== 'awg-server').map((e) => e.tag);
 			const otherOutbounds = outbounds.filter((o) => o.tag !== outbound?.tag).map((o) => o.tag);
@@ -374,7 +374,7 @@
 		const tagResult = validateRequired(tag, 'Tag');
 		if (!tagResult.valid) errors['tag'] = tagResult.error!;
 
-		if (type === 'selector' || type === 'urltest') {
+		if (type === 'selector' || type === 'urltest' || type === 'fallback') {
 			const outboundsResult = validateNonEmptyArray(selectedOutbounds, 'Outbounds');
 			if (!outboundsResult.valid) errors['outbounds'] = outboundsResult.error!;
 		}
@@ -474,16 +474,16 @@
 
 		const ob: Outbound = { type, tag: tag.trim() };
 
-		if (type === 'selector' || type === 'urltest') {
+		if (type === 'selector' || type === 'urltest' || type === 'fallback') {
 			ob.outbounds = selectedOutbounds;
 			if (type === 'selector' && defaultOutbound) ob.default = defaultOutbound;
 			if (interruptExistConnections) ob.interrupt_exist_connections = true;
 		}
 
-		if (type === 'urltest') {
+		if (type === 'urltest' || type === 'fallback') {
 			if (urltestUrl.trim()) ob.url = urltestUrl.trim();
 			if (urltestInterval && urltestInterval !== '3m') ob.interval = urltestInterval;
-			if (urltestTolerance && urltestTolerance !== 150) ob.tolerance = urltestTolerance;
+			if (type === 'urltest' && urltestTolerance && urltestTolerance !== 150) ob.tolerance = urltestTolerance;
 			if (urltestIdleTimeout.trim()) ob.idle_timeout = urltestIdleTimeout.trim();
 		}
 
@@ -742,6 +742,7 @@
 	const groupTypes = [
 		{ value: 'selector', labelKey: 'outbounds.types.selector', descKey: 'outbounds.selectorDesc' },
 		{ value: 'urltest', labelKey: 'outbounds.types.urltest', descKey: 'outbounds.urltestDesc' },
+		{ value: 'fallback', labelKey: 'outbounds.types.fallback', descKey: 'outbounds.fallbackDesc' },
 		{ value: 'direct', labelKey: 'outbounds.types.direct', descKey: 'outbounds.directDesc' },
 		{ value: 'block', labelKey: 'outbounds.types.block', descKey: 'outbounds.blockDesc' }
 	];
@@ -784,14 +785,14 @@
 		</div>
 		<div>
 			<div class="text-xs font-medium text-[var(--ctp-overlay0)] uppercase tracking-wide mb-2">{$t('outbounds.pickerGroups')}</div>
-			<div class="grid grid-cols-2 sm:grid-cols-4 gap-2">
+			<div class="grid grid-cols-2 sm:grid-cols-3 gap-2">
 				{#each groupTypes as ot}{@render typeButton(ot)}{/each}
 			</div>
 		</div>
 	</div>
 
 	<!-- Type-specific forms -->
-	{#if type === 'selector' || type === 'urltest'}
+	{#if type === 'selector' || type === 'urltest' || type === 'fallback'}
 		<SelectorForm
 			{type}
 			availableOutbounds={availableForSelection}
