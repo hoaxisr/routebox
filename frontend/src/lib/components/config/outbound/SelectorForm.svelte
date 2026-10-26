@@ -41,6 +41,12 @@
 			}
 		}
 	}
+
+	function move(from: number, to: number) {
+		const next = [...selectedOutbounds];
+		[next[from], next[to]] = [next[to], next[from]];
+		selectedOutbounds = next;
+	}
 </script>
 
 <div class="space-y-4">
@@ -87,6 +93,31 @@
 			{/if}
 		</div>
 	</div>
+
+	{#if type === 'fallback' && selectedOutbounds.length > 1}
+		<!-- Fallback tries members in array order, so the order is the queue. -->
+		<div>
+			<div class="block text-sm font-medium text-[var(--ctp-subtext1)] mb-2">{$t('outbounds.fallbackOrder')}</div>
+			<div class="bg-[var(--ctp-surface0)] rounded-lg border border-[var(--ctp-surface2)] divide-y divide-[var(--ctp-surface2)]">
+				{#each selectedOutbounds as tag, i (tag)}
+					<div class="px-4 py-1.5 flex items-center gap-3">
+						<span class="status-badge info">#{i + 1}</span>
+						<span class="flex-1 min-w-0 truncate text-[var(--ctp-text)]">{tag}</span>
+						<button type="button" class="step-btn" disabled={i === 0}
+							title={$t('common.moveUp')} aria-label={$t('common.moveUp')}
+							onclick={() => move(i, i - 1)}>
+							<svg class="w-4 h-4" fill="none" stroke="currentColor" stroke-width="2.5" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M5 15l7-7 7 7" /></svg>
+						</button>
+						<button type="button" class="step-btn" disabled={i === selectedOutbounds.length - 1}
+							title={$t('common.moveDown')} aria-label={$t('common.moveDown')}
+							onclick={() => move(i, i + 1)}>
+							<svg class="w-4 h-4" fill="none" stroke="currentColor" stroke-width="2.5" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M19 9l-7 7-7-7" /></svg>
+						</button>
+					</div>
+				{/each}
+			</div>
+		</div>
+	{/if}
 
 	{#if selectedOutbounds.length > 0}
 		{#if type === 'selector'}
