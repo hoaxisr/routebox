@@ -7,6 +7,7 @@
 	import type { ClashConnection, ConnectionsResponse } from '$lib/types';
 	import ConnectionTable from '$lib/components/monitor/ConnectionTable.svelte';
 	import { groupTags } from '$lib/utils/chainLabel';
+	import { directTags } from '$lib/utils/routeSplit';
 
 	// State
 	let connections = $state<ClashConnection[]>([]);
@@ -117,10 +118,15 @@
 	// names one and nothing else (#79). A failure leaves the set empty, which
 	// marks nothing — better than mislabelling.
 	let groups = $state<Set<string>>(new Set());
+	// Direct tags for the blue chips; without the config only the implicit "direct".
+	let direct = $state(directTags(undefined));
 
 	onMount(() => {
 		api.listOutbounds()
-			.then((obs) => (groups = groupTags(obs)))
+			.then((obs) => {
+				groups = groupTags(obs);
+				direct = directTags(obs);
+			})
 			.catch(() => {});
 		if (useWebSocket) {
 			startStream();
@@ -215,6 +221,6 @@
 			</svg>
 		</div>
 	{:else}
-		<ConnectionTable {connections} onClose={closeConnection} {groups} />
+		<ConnectionTable {connections} onClose={closeConnection} {groups} {direct} />
 	{/if}
 </div>

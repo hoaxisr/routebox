@@ -116,12 +116,14 @@
 	let exitTotal = $derived(exitRank.items.reduce((s, x) => s + x.bytes, 0));
 	let clientRank = $derived(rankClients($routerMode ? localFlows(flows) : flows, directSet, Infinity));
 	let clientMax = $derived(clientRank.items.length ? clientRank.items[0].direct + clientRank.items[0].proxy : 0);
-	// The lists page instead of scrolling (#110): three rows is what the
-	// bottom card holds on a 1080p screen. Bars keep the scale of the whole
-	// list, so page two is not drawn as if its top row were the leader.
+	// The lists page instead of scrolling (#110): three exits or clients, five
+	// connections (#116) — the shorter connection rows fill the same bottom
+	// card height. Bars keep the scale of the whole list, so page two is not
+	// drawn as if its top row were the leader.
 	const PAGE = 3;
-	const pageCount = (n: number) => Math.ceil(n / PAGE);
-	const pageOf = <T,>(all: T[], page: number) => all.slice(page * PAGE, page * PAGE + PAGE);
+	const CONN_PAGE = 5;
+	const pageCount = (n: number, size = PAGE) => Math.ceil(n / size);
+	const pageOf = <T,>(all: T[], page: number, size = PAGE) => all.slice(page * size, page * size + size);
 	let exitPage = $state(0);
 	let connPage = $state(0);
 	let clientPage = $state(0);
@@ -547,14 +549,14 @@
 					<span class="w-px h-3.5 bg-[var(--ctp-surface2)]"></span>
 					<span>Connections <span class="tabular-nums text-[var(--ctp-text)]">{connectionCount}</span></span>
 				</div>
-				<div class="flex gap-2 w-full sm:w-auto">
-					<button onclick={handleReload} disabled={actionLoading !== ''} title="Hot reload configuration (SIGHUP)" class="flex-1 sm:flex-none min-h-11 sm:min-h-0 px-3.5 py-2 bg-[var(--ctp-primary)] text-white rounded-lg text-sm font-medium hover:opacity-90 disabled:opacity-50 transition-opacity">
+				<div class="flex flex-wrap gap-2 w-full sm:w-auto">
+					<button onclick={handleReload} disabled={actionLoading !== ''} title="Hot reload configuration (SIGHUP)" class="flex-auto sm:flex-none whitespace-nowrap h-8 sm:h-auto px-2.5 sm:px-3.5 py-0 sm:py-2 bg-[var(--ctp-primary)] text-white rounded-lg text-sm font-medium hover:opacity-90 disabled:opacity-50 transition-opacity">
 						{actionLoading === 'reload' ? 'Reloading...' : 'Reload Config'}
 					</button>
-					<button onclick={handleRestart} disabled={actionLoading !== ''} title="Full process restart" class="flex-1 sm:flex-none min-h-11 sm:min-h-0 px-3.5 py-2 bg-[var(--ctp-surface2)] text-[var(--ctp-text)] rounded-lg text-sm font-medium hover:bg-[var(--ctp-overlay0)] disabled:opacity-50 transition-colors">
+					<button onclick={handleRestart} disabled={actionLoading !== ''} title="Full process restart" class="flex-auto sm:flex-none whitespace-nowrap h-8 sm:h-auto px-2.5 sm:px-3.5 py-0 sm:py-2 bg-[var(--ctp-surface2)] text-[var(--ctp-text)] rounded-lg text-sm font-medium hover:bg-[var(--ctp-overlay0)] disabled:opacity-50 transition-colors">
 						{actionLoading === 'restart' ? $t('common.restarting') : $t('dashboard.restart')}
 					</button>
-					<button onclick={handleStop} disabled={actionLoading !== ''} class="flex-1 sm:flex-none min-h-11 sm:min-h-0 px-3.5 py-2 border border-[var(--ctp-red)]/40 text-[var(--ctp-red)] rounded-lg text-sm font-medium hover:bg-[var(--ctp-red)]/10 disabled:opacity-50 transition-colors">
+					<button onclick={handleStop} disabled={actionLoading !== ''} class="flex-auto sm:flex-none whitespace-nowrap h-8 sm:h-auto px-2.5 sm:px-3.5 py-0 sm:py-2 border border-[var(--ctp-red)]/40 text-[var(--ctp-red)] rounded-lg text-sm font-medium hover:bg-[var(--ctp-red)]/10 disabled:opacity-50 transition-colors">
 						{actionLoading === 'stop' ? $t('common.stopping') : $t('dashboard.stop')}
 					</button>
 				</div>
@@ -713,12 +715,12 @@
 					<div class="h-7 mb-1 px-4 sm:px-5 flex items-center justify-between shrink-0">
 						<h3 class="text-sm font-medium text-[var(--ctp-subtext1)]">Top Connections</h3>
 						<span class="flex items-center gap-3">
-							<Pager bind:page={connPage} pages={pageCount(topConnections.length)} />
+							<Pager bind:page={connPage} pages={pageCount(topConnections.length, CONN_PAGE)} />
 							<a href="/monitor/connections" class="text-sm text-[var(--ctp-primary)] hover:underline">View all</a>
 						</span>
 					</div>
 					<div class="flex-1 divide-y divide-[var(--ctp-surface2)] border-t border-[var(--ctp-surface2)] overflow-x-hidden">
-						{#each pageOf(topConnections, connPage) as conn}
+						{#each pageOf(topConnections, connPage, CONN_PAGE) as conn}
 							{@const sourceName = $clientNames.get(conn.metadata.sourceIP)}
 							<!-- Behind the front every source is the loopback (see the
 							     connections monitor), so the column is dropped rather
@@ -732,7 +734,7 @@
 									     host, where the columns below have no room of their own. -->
 									<div class="md:hidden mt-0.5 flex flex-wrap items-center gap-x-1.5 gap-y-1 text-[11px] text-[var(--ctp-overlay1)]">
 										{#each conn.chains as chain}
-											<span class="selection-chip">{chain}</span>
+											<span class="selection-chip" class:route-direct={directSet.has(chain)}>{chain}</span>
 										{/each}
 										{#if !$behindFront}
 											<span class="min-w-0 truncate tabular-nums" title={conn.metadata.sourceIP}>
@@ -752,7 +754,7 @@
 								     goes and the chain column gives way before the domain does. -->
 								<div class="hidden md:flex items-center justify-end gap-1 min-w-0 max-w-[13.5rem] overflow-hidden xl:w-[13.5rem] xl:flex-shrink-0">
 									{#each conn.chains as chain}
-										<span class="selection-chip">{chain}</span>
+										<span class="selection-chip" class:route-direct={directSet.has(chain)}>{chain}</span>
 									{/each}
 								</div>
 								<div class="w-[5.5rem] text-right text-xs sm:text-sm font-mono text-[var(--ctp-subtext1)] tabular-nums flex-shrink-0">

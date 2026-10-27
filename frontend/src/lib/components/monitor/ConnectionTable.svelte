@@ -11,9 +11,11 @@
 		/** Tags of selector/urltest outbounds, for spotting a chain that names a
 		 *  group and nothing else (#79). Empty = claim nothing. */
 		groups?: Set<string>;
+		/** Direct outbound tags: their chips are blue, as on the dashboard (#116). */
+		direct?: Set<string>;
 	}
 
-	let { connections, onClose, groups = new Set() }: Props = $props();
+	let { connections, onClose, groups = new Set(), direct = new Set() }: Props = $props();
 
 	// A chain that is only a group says the traffic went through it but not which
 	// member carried it — the connection was opened before the group had picked
@@ -403,7 +405,7 @@
 									<svg class="w-4 h-4 transition-transform text-[var(--ctp-overlay1)] {expandedGroups.has(group.chain) ? 'rotate-90' : ''}" fill="none" stroke="currentColor" viewBox="0 0 24 24">
 										<path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 5l7 7-7 7" />
 									</svg>
-									<span class="selection-chip">{group.chain}</span>
+									<span class="selection-chip" class:route-direct={direct.has(group.chain)}>{group.chain}</span>
 									<span class="shrink-0 text-xs text-[var(--ctp-overlay0)] tabular-nums">
 										({group.connections.length})
 									</span>
@@ -532,7 +534,7 @@
 			{:else}
 				<div class="flex flex-wrap gap-1 justify-center">
 					{#each conn.chains as chain}
-						<span class="selection-chip">
+						<span class="selection-chip" class:route-direct={direct.has(chain)}>
 							{chain}
 						</span>
 					{/each}
@@ -634,7 +636,7 @@
 			<path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 5l7 7-7 7" />
 		</svg>
 		<span class="font-medium text-sm text-[var(--ctp-text)] truncate">
-			{#if groupByChain}<span class="selection-chip">{key}</span>{#if groupOnly(key)}<span class="chain-partial flex-shrink-0" title={$t('connections.chainGroupOnlyHint')}>?</span>{/if}
+			{#if groupByChain}<span class="selection-chip" class:route-direct={direct.has(key)}>{key}</span>{#if groupOnly(key)}<span class="chain-partial flex-shrink-0" title={$t('connections.chainGroupOnlyHint')}>?</span>{/if}
 			{:else if name}{name}
 			{:else}<span class="font-mono">{key}</span>{/if}
 		</span>
