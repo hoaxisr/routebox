@@ -48,8 +48,9 @@ func TestListDir(t *testing.T) {
 			t.Fatal(err)
 		}
 	}
-	// Symlinks are shown as what they point to; a dangling one is dropped.
-	for name, target := range map[string]string{"link-dir": filepath.Join(srs, "old"), "link.srs": filepath.Join(srs, "B.srs"), "dead.srs": filepath.Join(dir, "nope")} {
+	// Symlinks are shown as what they point to; a dangling one, or one to a
+	// file with another extension, is dropped.
+	for name, target := range map[string]string{"link-dir": filepath.Join(srs, "old"), "link.srs": filepath.Join(srs, "B.srs"), "dead.srs": filepath.Join(dir, "nope"), "link.txt": filepath.Join(srs, "notes.txt")} {
 		if err := os.Symlink(target, filepath.Join(srs, name)); err != nil {
 			t.Fatal(err)
 		}

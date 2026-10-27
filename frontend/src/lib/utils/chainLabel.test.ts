@@ -9,11 +9,12 @@ describe('groupTags', () => {
 		const tags = groupTags([
 			ob('auto', 'urltest'),
 			ob('manual', 'selector'),
+			ob('fb', 'fallback'),
 			ob('d1', 'direct'),
 			ob('vl', 'vless'),
 			ob('wg', 'wireguard')
 		]);
-		expect([...tags].sort()).toEqual(['auto', 'manual']);
+		expect([...tags].sort()).toEqual(['auto', 'fb', 'manual']);
 	});
 
 	it('is empty when the list has no groups at all', () => {

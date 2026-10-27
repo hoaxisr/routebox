@@ -56,7 +56,8 @@
 			{$t('outbounds.selectedOutbounds')} *
 			<span class="font-normal text-[var(--ctp-overlay0)]">({selectedOutbounds.length} {$t('proxies.selected').toLowerCase()})</span>
 		</label>
-		{#if type === 'fallback'}
+		<!-- The hint points at the arrows of the queue below, shown from two members. -->
+		{#if type === 'fallback' && selectedOutbounds.length > 1}
 			<p class="mb-2 text-xs text-[var(--ctp-overlay0)]">{$t('outbounds.fallbackOrderHint')}</p>
 		{/if}
 		{#if errors['outbounds']}

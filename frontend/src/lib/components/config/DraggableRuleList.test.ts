@@ -33,6 +33,17 @@ describe('DraggableRuleList: logical rule summary', () => {
 		})).toBe('NOT (a.com OR (port 443 AND TCP))');
 	});
 
+	it('a single nested rule needs no parentheses; an empty one is all traffic', () => {
+		expect(summary({ type: 'logical', mode: 'and', rules: [{ inbound: ['tun'], rule_set: ['tg'] }] })).toBe('From tun · ruleset: tg');
+		expect(summary({ type: 'logical', mode: 'or', rules: [] })).toBe('All traffic');
+	});
+
+	it('the tooltip carries the whole summary', () => {
+		const { container } = render(DraggableRuleList, { props: { rules: [{ type: 'logical', mode: 'and', rules: [{ domain: ['a.com'] }, { network: 'udp' }] }], onReorder: () => {}, onEdit: () => {}, onDelete: () => {} } });
+		const span = container.querySelector('span.font-medium.truncate')!;
+		expect(span.getAttribute('title')).toBe(span.textContent?.trim());
+	});
+
 	it('a plain rule is unchanged', () => {
 		expect(summary({ domain_suffix: ['t.me'], outbound: 'awg' })).toBe('*.t.me');
 	});

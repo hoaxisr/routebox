@@ -165,6 +165,12 @@ func (h *Handler) applyConfig(w http.ResponseWriter, r *http.Request, seq int) {
 			writeError(w, http.StatusBadRequest, fmt.Sprintf("Config validation failed: %v", pathErrs))
 			return
 		}
+		// Group errors amnezia-box only raises on start: check passes them and the
+		// reload that follows kills the process.
+		if groupErrs := config.ValidateGroups(h.config.Get()); len(groupErrs) > 0 {
+			writeError(w, http.StatusBadRequest, fmt.Sprintf("Config validation failed: %v", groupErrs))
+			return
+		}
 		valid, checkErrs, checkedGen := h.config.CheckDraft()
 		if !valid {
 			writeError(w, http.StatusBadRequest, fmt.Sprintf("Config validation failed: %v", checkErrs))

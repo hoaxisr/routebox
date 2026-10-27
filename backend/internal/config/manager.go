@@ -822,7 +822,7 @@ func stripAnsi(s string) string {
 // for the failures whose text names an internal field rather than the thing the
 // operator has to change.
 func explainCheckErrors(errs []string) []string {
-	return missingDomainResolverHint(mieruUnsupportedHint(errs))
+	return missingDomainResolverHint(fallbackUnsupportedHint(mieruUnsupportedHint(errs)))
 }
 
 // missingDomainResolverHint detects sing-box's `missing-domain-resolver`
@@ -835,6 +835,17 @@ func missingDomainResolverHint(errs []string) []string {
 			return append(errs, "With two or more DNS servers, amnezia-box needs to be told which one resolves "+
 				"the addresses of outgoing connections, and refuses to start without it. Set Routing → Settings → "+
 				"Default domain resolver to one of your DNS servers, or go back to a single DNS server.")
+		}
+	}
+	return errs
+}
+
+// fallbackUnsupportedHint: the fallback group type came with
+// amnezia-box 1.15.0-alpha.13-awgm.35; older builds reject it at decode.
+func fallbackUnsupportedHint(errs []string) []string {
+	for _, e := range errs {
+		if strings.Contains(e, "type: fallback") && strings.Contains(e, "unknown") {
+			return append(errs, "This amnezia-box build does not support fallback groups. Update the binary to 1.15.0-alpha.13-awgm.35 or newer, or change the group to Selector or URL Test.")
 		}
 	}
 	return errs

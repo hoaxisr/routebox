@@ -171,12 +171,15 @@
 				{$t('proxies.selected')}: <span class="text-[var(--ctp-primary)]">{proxy.now || $t('common.none')}</span>
 			</div>
 			<div class="flex flex-wrap gap-1">
+				<!-- Only a Selector switches by hand: URLTest and Fallback pick their own
+				     member, and the Clash API answers "Must be a Selector" for them. -->
 				{#each proxy.all as option}
 					<button
 						onclick={() => switchTo(option)}
-						class="px-2 py-1 text-xs rounded transition-colors {proxy.now === option
+						disabled={proxy.type !== 'Selector'}
+						class="px-2 py-1 text-xs rounded transition-colors disabled:cursor-default {proxy.now === option
 							? 'bg-[var(--ctp-primary)] text-white'
-							: 'bg-[var(--ctp-surface1)] text-[var(--ctp-subtext1)] hover:bg-[var(--ctp-surface2)]'}"
+							: 'bg-[var(--ctp-surface1)] text-[var(--ctp-subtext1)] enabled:hover:bg-[var(--ctp-surface2)]'}"
 					>
 						{option}
 					</button>

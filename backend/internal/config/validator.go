@@ -9,6 +9,7 @@ import (
 	"regexp"
 	"strconv"
 	"strings"
+	"time"
 
 	"routebox/backend/internal/util"
 )
@@ -922,6 +923,105 @@ func validateInboundTransport(ib map[string]interface{}, prefix string) []string
 }
 
 // validateOutboundReferences validates that outbound references point to existing objects
+// ValidateGroups catches the group errors amnezia-box raises only when it
+// starts the groups. `check` builds outbounds without starting them, so these
+// pass check, get written to disk and then kill the process on reload: a
+// member that no longer exists, groups that reference each other in a cycle,
+// and a urltest/fallback interval longer than its idle_timeout.
+func ValidateGroups(config map[string]interface{}) []string {
+	var errs []string
+	known := map[string]bool{}
+	members := map[string][]string{}
+	var order []string
+	for _, key := range []string{"endpoints", "outbounds"} {
+		arr, _ := config[key].([]interface{})
+		for _, item := range arr {
+			obj, ok := item.(map[string]interface{})
+			if !ok {
+				continue
+			}
+			tag, _ := obj["tag"].(string)
+			known[tag] = true
+			switch t, _ := obj["type"].(string); t {
+			case "selector", "urltest", "fallback":
+				refs, _ := obj["outbounds"].([]interface{})
+				for _, r := range refs {
+					if m, ok := r.(string); ok {
+						members[tag] = append(members[tag], m)
+					}
+				}
+				order = append(order, tag)
+				if t != "selector" {
+					interval := groupDuration(obj["interval"], 3*time.Minute)
+					idle := groupDuration(obj["idle_timeout"], 30*time.Minute)
+					if interval > idle {
+						errs = append(errs, fmt.Sprintf("group %q: interval %v is longer than idle_timeout %v (an empty idle_timeout means 30m) — amnezia-box would refuse to start it", tag, interval, idle))
+					}
+				}
+			}
+		}
+	}
+	for _, g := range order {
+		for _, m := range members[g] {
+			if !known[m] {
+				errs = append(errs, fmt.Sprintf("group %q: member %q does not exist", g, m))
+			}
+		}
+	}
+	// Cycle search over group → member edges; only groups have outgoing edges.
+	const (
+		unseen = iota
+		onPath
+		done
+	)
+	state := map[string]int{}
+	var path []string
+	var visit func(string) bool
+	visit = func(tag string) bool {
+		state[tag] = onPath
+		path = append(path, tag)
+		for _, m := range members[tag] {
+			if state[m] == onPath {
+				i := 0
+				for path[i] != m {
+					i++
+				}
+				errs = append(errs, fmt.Sprintf("groups reference each other in a cycle: %s -> %s", strings.Join(path[i:], " -> "), m))
+				return true
+			}
+			if state[m] == unseen && visit(m) {
+				return true
+			}
+		}
+		path = path[:len(path)-1]
+		state[tag] = done
+		return false
+	}
+	for _, g := range order {
+		if state[g] == unseen && visit(g) {
+			break // one cycle is enough to refuse the apply
+		}
+	}
+	return errs
+}
+
+// groupDuration reads a sing-box duration ("3m", "1h30m", "1d"); empty or
+// unparseable falls back to def — a malformed value is check's to report.
+func groupDuration(v interface{}, def time.Duration) time.Duration {
+	s, _ := v.(string)
+	if s == "" {
+		return def
+	}
+	if n, err := strconv.Atoi(strings.TrimSuffix(s, "d")); err == nil && strings.HasSuffix(s, "d") {
+		return time.Duration(n) * 24 * time.Hour
+	}
+	d, err := time.ParseDuration(s)
+	if err != nil {
+		return def
+	}
+	return d
+}
+
 func validateOutboundReferences(ob map[string]interface{}, index int, endpointTags, outboundTags map[string]bool) []string {
 	var errors []string
 	prefix := fmt.Sprintf("outbounds[%d]", index)
