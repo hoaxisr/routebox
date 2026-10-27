@@ -75,20 +75,34 @@ jobs:
       # an install script gets to do. The fork matters: upstream forwardproxy
       # does not speak naive. So does the `=` replace — klzgrad's fork still
       # declares the upstream module path, and xcaddy refuses --with without it.
+      # Built the way the fork's author builds it (its .github/workflows/build.yml):
+      # the Caddy release named in the fork's CADDY_VERSION, with the fork's two
+      # Caddy patches applied (sing-quic BBRv1, read idle timeout). The fork
+      # calls Caddy API that only those patches add — against plain Caddy it
+      # stopped compiling on 2026-10-22, which broke the first v0.38.5 build.
+      # Only the fork commit is pinned here; the Caddy version and the patches
+      # come from that commit, so the two cannot drift apart.
       - name: Build dest (Caddy + naive forwardproxy)
         # GOTOOLCHAIN=auto только здесь: setup-go выставляет "local", чтобы
         # версия из go.mod была последним словом для НАШЕГО кода, и это верно.
-        # Caddy — чужая зависимость со своим требованием к тулчейну (2.11.4
-        # хочет go >= 1.25.1), и поднимать из-за него go.mod всего проекта
-        # значило бы менять то, чем собирается RouteBox, ради постороннего.
+        # Caddy — чужая зависимость со своим требованием к тулчейну, и
+        # поднимать из-за него go.mod всего проекта значило бы менять то, чем
+        # собирается RouteBox, ради постороннего.
         env:
           GOTOOLCHAIN: auto
+          FORWARDPROXY_REV: e747854e7874
         run: |
           go install github.com/caddyserver/xcaddy/cmd/xcaddy@v0.4.7
+          git clone -q https://github.com/klzgrad/forwardproxy.git .forwardproxy
+          git -C .forwardproxy checkout -q "$FORWARDPROXY_REV"
+          CADDY_VERSION="$(<.forwardproxy/CADDY_VERSION)"
+          git clone -q --depth 1 --branch "$CADDY_VERSION" https://github.com/caddyserver/caddy.git .caddy-naive
+          git -C .caddy-naive apply ../.forwardproxy/caddy-sing-quic-bbrv1.patch ../.forwardproxy/caddy-read-idle-timeout.patch
           for arch in amd64 arm64; do
             CGO_ENABLED=0 GOOS=linux GOARCH="$arch" \
-              "$(go env GOPATH)/bin/xcaddy" build v2.11.4 \
-              --with github.com/caddyserver/forwardproxy=github.com/klzgrad/forwardproxy@naive \
+              "$(go env GOPATH)/bin/xcaddy" build "$CADDY_VERSION" \
+              --replace "github.com/caddyserver/caddy/v2=$PWD/.caddy-naive" \
+              --with "github.com/caddyserver/forwardproxy=$PWD/.forwardproxy" \
               --output "dist/routebox-dest-linux-${arch}"
           done
 
