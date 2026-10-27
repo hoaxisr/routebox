@@ -87,6 +87,17 @@ describe('RuleSetForm: local type', () => {
 		expect(container.querySelector('#url')).toBeNull();
 	});
 
+	it('typing a .json path switches the format to source', async () => {
+		const { saved } = await (async () => {
+			const onSave = vi.fn();
+			const { container } = render(RuleSetForm, { props: { existingTags: [], outbounds, ruleSet: local, onSave, onCancel: () => {} } });
+			await fireEvent.input(container.querySelector('#path')!, { target: { value: '/opt/srs/list.json' } });
+			await fireEvent.submit(container.querySelector('form')!);
+			return { saved: onSave.mock.calls[0][0] as RuleSet };
+		})();
+		expect(saved).toMatchObject({ path: '/opt/srs/list.json', format: 'source' });
+	});
+
 	it('Local without a path is refused', async () => {
 		const onSave = vi.fn();
 		const { container, getByText } = render(RuleSetForm, { props: { existingTags: [], outbounds, onSave, onCancel: () => {} } });

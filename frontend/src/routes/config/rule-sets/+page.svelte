@@ -6,6 +6,7 @@
 	import type { RuleSet, RuleSetUsage, Outbound, Endpoint, AsnSet } from '$lib/types';
 	import RuleSetForm from '$lib/components/config/RuleSetForm.svelte';
 	import { formatAsn, agoParts } from '$lib/utils/asn';
+	import { saveEditedRuleSet } from '$lib/utils/ruleSets';
 
 	let ruleSets = $state<RuleSet[]>([]);
 	// ASN sets (#103) are `local` rule sets RouteBox refreshes itself; keyed by tag
@@ -68,9 +69,7 @@
 	async function handleSave(ruleSet: RuleSet) {
 		try {
 			if (editingRuleSet) {
-				// Delete old and create new (no update endpoint for rule sets)
-				await api.deleteRuleSet(editingRuleSet.tag);
-				await api.createRuleSet(ruleSet);
+				await saveEditedRuleSet(editingRuleSet.tag, ruleSet);
 				ruleSets = ruleSets.map(rs => rs.tag === editingRuleSet!.tag ? ruleSet : rs);
 				unsavedChanges.markChanged($t('ruleSets.title'), `${$t('common.update')} "${ruleSet.tag}"`);
 				notifications.success($t('common.saved'));

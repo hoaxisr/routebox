@@ -7,15 +7,22 @@ import (
 	"net/url"
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 
 	"routebox/backend/internal/config"
 )
 
-func listDir(t *testing.T, h *Handler, path string) (int, fsListing) {
+func listDirRaw(t *testing.T, h *Handler, path string) *httptest.ResponseRecorder {
 	t.Helper()
 	rec := httptest.NewRecorder()
 	h.ListDir(rec, httptest.NewRequest(http.MethodGet, "/api/fs/list?path="+url.QueryEscape(path), nil))
+	return rec
+}
+
+func listDir(t *testing.T, h *Handler, path string) (int, fsListing) {
+	t.Helper()
+	rec := listDirRaw(t, h, path)
 	var resp struct {
 		Data fsListing `json:"data"`
 	}
@@ -30,13 +37,20 @@ func TestListDir(t *testing.T) {
 		t.Fatal(err)
 	}
 	srs := filepath.Join(dir, "srs")
-	for _, d := range []string{srs, filepath.Join(srs, "old")} {
+	for _, d := range []string{srs, filepath.Join(srs, "old"), filepath.Join(dir, "empty")} {
 		if err := os.MkdirAll(d, 0755); err != nil {
 			t.Fatal(err)
 		}
 	}
-	for name, body := range map[string]string{"b.srs": "12345", "A.json": "{}", "notes.txt": "x"} {
+	files := map[string]string{"B.srs": "12345", "a.json": "{}", "C.SRS": "1", "notes.txt": "x", "bad\xff.srs": "x"}
+	for name, body := range files {
 		if err := os.WriteFile(filepath.Join(srs, name), []byte(body), 0644); err != nil {
+			t.Fatal(err)
+		}
+	}
+	// Symlinks are shown as what they point to; a dangling one is dropped.
+	for name, target := range map[string]string{"link-dir": filepath.Join(srs, "old"), "link.srs": filepath.Join(srs, "B.srs"), "dead.srs": filepath.Join(dir, "nope")} {
+		if err := os.Symlink(target, filepath.Join(srs, name)); err != nil {
 			t.Fatal(err)
 		}
 	}
@@ -46,12 +60,16 @@ func TestListDir(t *testing.T) {
 	}
 	h := &Handler{config: cm}
 
-	// Folders first, then .srs/.json by name; other files hidden.
-	code, got := listDir(t, h, srs)
+	// Folders first, then .srs/.json (any case) by case-insensitive name; other
+	// files and non-UTF-8 names hidden. Trailing slash is cleaned.
+	code, got := listDir(t, h, srs+"/")
 	if code != http.StatusOK {
 		t.Fatalf("code %d", code)
 	}
-	want := []fsEntry{{Name: "old", Dir: true}, {Name: "A.json", Size: 2}, {Name: "b.srs", Size: 5}}
+	want := []fsEntry{
+		{Name: "link-dir", Dir: true}, {Name: "old", Dir: true},
+		{Name: "a.json", Size: 2}, {Name: "B.srs", Size: 5}, {Name: "C.SRS", Size: 1}, {Name: "link.srs", Size: 5},
+	}
 	if len(got.Entries) != len(want) {
 		t.Fatalf("entries %+v, want %+v", got.Entries, want)
 	}
@@ -60,8 +78,8 @@ func TestListDir(t *testing.T) {
 			t.Errorf("entry %d = %+v, want %+v", i, got.Entries[i], want[i])
 		}
 	}
-	if got.Parent != dir {
-		t.Errorf("parent %q, want %q", got.Parent, dir)
+	if got.Path != srs || got.Parent != dir {
+		t.Errorf("path %q parent %q, want %q %q", got.Path, got.Parent, srs, dir)
 	}
 
 	// Empty path → config dir; relative path resolves against it.
@@ -77,7 +95,22 @@ func TestListDir(t *testing.T) {
 		t.Errorf("root parent %q", got.Parent)
 	}
 
+	// An empty folder is [], not null: the UI reads entries.length.
+	if body := listDirRaw(t, h, filepath.Join(dir, "empty")).Body.String(); !strings.Contains(body, `"entries":[]`) {
+		t.Errorf("empty dir body %s", body)
+	}
+
 	if code, _ := listDir(t, h, filepath.Join(dir, "missing")); code != http.StatusNotFound {
 		t.Errorf("missing dir → %d, want 404", code)
+	}
+
+	if os.Geteuid() != 0 {
+		locked := filepath.Join(dir, "locked")
+		if err := os.Mkdir(locked, 0); err != nil {
+			t.Fatal(err)
+		}
+		if code, _ := listDir(t, h, locked); code != http.StatusForbidden {
+			t.Errorf("unreadable dir → %d, want 403", code)
+		}
 	}
 }

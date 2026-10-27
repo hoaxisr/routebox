@@ -4,6 +4,7 @@
 	import { notifications, configReadOnly } from '$lib/stores';
 	import AsnSetForm from './AsnSetForm.svelte';
 	import LocalFilePicker from './LocalFilePicker.svelte';
+	import { formatForPath } from '$lib/utils/ruleSets';
 
 	interface Props {
 		existingTags: string[];
@@ -41,8 +42,7 @@
 	function pickFile(p: string) {
 		path = p;
 		browsing = false;
-		if (p.endsWith('.srs')) format = 'binary';
-		else if (p.endsWith('.json')) format = 'source';
+		format = formatForPath(p, format);
 	}
 	// Remote-specific options
 	// http_client {detour} = download through that outbound; absent = direct.
@@ -302,6 +302,7 @@
 						id="path"
 						type="text"
 						bind:value={path}
+						oninput={(e) => (format = formatForPath(e.currentTarget.value, format))}
 						placeholder="/opt/srs/geosite.srs"
 						class="flex-1 min-w-0 px-3 py-2 bg-[var(--ctp-surface0)] border rounded-lg text-[var(--ctp-text)] placeholder-[var(--ctp-overlay0)] focus:outline-none focus:ring-2 focus:ring-[var(--ctp-primary)] font-mono text-sm {errors['path'] ? 'border-[var(--ctp-red)]' : 'border-[var(--ctp-surface2)]'}"
 					/>
