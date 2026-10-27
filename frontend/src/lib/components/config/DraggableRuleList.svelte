@@ -91,6 +91,7 @@
 	type ConditionType = 'domain' | 'ip' | 'port' | 'process' | 'ruleset' | 'protocol' | 'network' | 'inbound' | 'private';
 
 	function getConditionTypes(rule: RouteRule): ConditionType[] {
+		if (rule.type === 'logical') return [...new Set((rule.rules ?? []).flatMap(getConditionTypes))];
 		const types: ConditionType[] = [];
 		if (rule.inbound?.length) types.push('inbound');
 		if (rule.ip_is_private) types.push('private');
@@ -118,6 +119,20 @@
 				main: 'Redirect DNS queries',
 				details: []
 			};
+		}
+
+		// A logical rule keeps every condition in its nested rules; read off the
+		// top level it has none and rendered as "All traffic" (#115) — with
+		// action reject, a box-wide kill switch it is not.
+		if (rule.type === 'logical') {
+			const nested = rule.rules ?? [];
+			const parts = nested.map((r) => {
+				const p = getRuleDescriptionParts(r);
+				const text = [p.main, ...p.details].join(' · ');
+				return nested.length > 1 && (p.details.length || r.type === 'logical') ? `(${text})` : text;
+			});
+			const main = parts.join(rule.mode === 'or' ? ' OR ' : ' AND ') || 'All traffic';
+			return { main: rule.invert ? `NOT (${main})` : main, details: [] };
 		}
 
 		const details: string[] = [];
@@ -367,7 +382,8 @@
 					</div>
 				{:else}
 					<div class="flex flex-col">
-						<span class="text-sm font-medium text-[var(--ctp-text)] truncate">{desc.main}</span>
+						<!-- Long logical rules truncate: the tooltip carries the whole summary. -->
+						<span class="text-sm font-medium text-[var(--ctp-text)] truncate" title={[desc.main, ...desc.details].join(' · ')}>{desc.main}</span>
 						{#if desc.details.length > 0}
 							<span class="text-xs text-[var(--ctp-overlay1)] truncate">{desc.details.join(' · ')}</span>
 						{/if}
