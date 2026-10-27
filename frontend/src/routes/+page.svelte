@@ -550,7 +550,7 @@
 					<span>Connections <span class="tabular-nums text-[var(--ctp-text)]">{connectionCount}</span></span>
 				</div>
 				<div class="flex flex-wrap gap-2 w-full sm:w-auto">
-					<button onclick={handleReload} disabled={actionLoading !== ''} title="Hot reload configuration (SIGHUP)" class="flex-auto sm:flex-none whitespace-nowrap h-8 sm:h-auto px-2.5 sm:px-3.5 py-0 sm:py-2 bg-[var(--ctp-primary)] text-white rounded-lg text-sm font-medium hover:opacity-90 disabled:opacity-50 transition-opacity">
+					<button onclick={handleReload} disabled={actionLoading !== ''} title="Hot reload configuration (SIGHUP)" class="flex-auto sm:flex-none whitespace-nowrap h-8 sm:h-auto px-2.5 sm:px-3.5 py-0 sm:py-2 border border-[var(--ctp-primary)] bg-[var(--ctp-primary)]/10 text-[var(--ctp-primary)] rounded-lg text-sm font-medium hover:bg-[var(--ctp-primary)]/20 disabled:opacity-50 transition-colors">
 						{actionLoading === 'reload' ? 'Reloading...' : 'Reload Config'}
 					</button>
 					<button onclick={handleRestart} disabled={actionLoading !== ''} title="Full process restart" class="flex-auto sm:flex-none whitespace-nowrap h-8 sm:h-auto px-2.5 sm:px-3.5 py-0 sm:py-2 bg-[var(--ctp-surface2)] text-[var(--ctp-text)] rounded-lg text-sm font-medium hover:bg-[var(--ctp-overlay0)] disabled:opacity-50 transition-colors">
