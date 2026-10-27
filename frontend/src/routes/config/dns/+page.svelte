@@ -1,9 +1,8 @@
 <script lang="ts">
-	import { reportApplyError } from '$lib/utils/reportApplyError';
 	import { onMount } from 'svelte';
 	import { t } from 'svelte-i18n';
 	import { api } from '$lib/api/client';
-	import { notifications, unsavedChanges, configReadOnly } from '$lib/stores';
+	import { notifications, unsavedChanges } from '$lib/stores';
 	import type { DnsServer, DnsRule, DnsSettings, RuleSet, Outbound, Endpoint, AsnSet } from '$lib/types';
 	import DnsServerForm from '$lib/components/config/DnsServerForm.svelte';
 	import DnsRuleForm from '$lib/components/config/DnsRuleForm.svelte';
@@ -37,8 +36,6 @@
 		...endpoints.map((e) => ({ tag: e.tag, type: e.type }) as Outbound)
 	]);
 	let loading = $state(true);
-	let hasChanges = $state(false);
-	let applying = $state(false);
 
 	// Modal states
 	let showServerForm = $state(false);
@@ -77,20 +74,6 @@
 		}
 	}
 
-	async function applyChanges() {
-		applying = true;
-		try {
-			await api.applyConfig();
-			notifications.success($t('changes.configApplied'));
-			hasChanges = false;
-			unsavedChanges.clearChanges();
-		} catch (e) {
-			reportApplyError(e);
-		} finally {
-			applying = false;
-		}
-	}
-
 	// Server handlers
 	async function handleCreateServer(server: DnsServer) {
 		try {
@@ -98,7 +81,6 @@
 			dnsServers = [...dnsServers, server];
 			showServerForm = false;
 			editingServer = undefined;
-			hasChanges = true;
 			unsavedChanges.markChanged('DNS', `Created server "${server.tag}"`);
 			notifications.success($t('dns.serverCreated'));
 		} catch (e) {
@@ -113,7 +95,6 @@
 			dnsServers = dnsServers.map(s => s.tag === editingServer!.tag ? server : s);
 			showServerForm = false;
 			editingServer = undefined;
-			hasChanges = true;
 			unsavedChanges.markChanged('DNS', `Updated server "${server.tag}"`);
 			notifications.success($t('dns.serverUpdated'));
 		} catch (e) {
@@ -126,7 +107,6 @@
 		try {
 			await api.deleteDnsServer(tag);
 			dnsServers = dnsServers.filter(s => s.tag !== tag);
-			hasChanges = true;
 			unsavedChanges.markChanged('DNS', `Deleted server "${tag}"`);
 			notifications.success($t('dns.serverDeleted'));
 		} catch (e) {
@@ -166,7 +146,6 @@
 				// The backend slots a new rule in front of the fallback tail; mirror that.
 				dnsRules = [...dnsRules.slice(0, tailStart), rule, ...dnsRules.slice(tailStart)];
 				showRuleForm = false;
-				hasChanges = true;
 				unsavedChanges.markChanged('DNS', 'Created DNS rule');
 				notifications.success($t('dns.ruleCreated'));
 			} catch (e) {
@@ -186,7 +165,6 @@
 				dnsRules = dnsRules.map((r, i) => i === index ? rule : r);
 				showRuleForm = false;
 				editingRuleIndex = null;
-				hasChanges = true;
 				unsavedChanges.markChanged('DNS', `Updated DNS rule #${index + 1}`);
 				notifications.success($t('dns.ruleUpdated'));
 			} catch (e) {
@@ -202,7 +180,6 @@
 			try {
 				await api.deleteDnsRule(i);
 				dnsRules = dnsRules.filter((_, j) => j !== i);
-				hasChanges = true;
 				unsavedChanges.markChanged('DNS', `Deleted DNS rule #${i + 1}`);
 				notifications.success($t('dns.ruleDeleted'));
 			} catch (e) {
@@ -224,7 +201,6 @@
 				await api.reorderDnsRules(f, t);
 				// Same contract as the backend: `to` is where the rule ends up.
 				dnsRules = reorderArray(dnsRules, f, t);
-				hasChanges = true;
 				unsavedChanges.markChanged('DNS', 'Reordered DNS rules');
 			} catch (e) {
 				notifications.error(`${e}`);
@@ -304,7 +280,6 @@
 	async function handleSettingsChange() {
 		try {
 			await api.updateDnsSettings(settings);
-			hasChanges = true;
 			unsavedChanges.markChanged('DNS', 'Updated DNS settings');
 		} catch (e) {
 			notifications.error(`${e}`);
@@ -357,22 +332,6 @@
 	<!-- Header -->
 	<div class="flex items-center justify-between">
 		<h1 class="text-2xl font-bold text-[var(--ctp-text)]">{$t('dns.title')}</h1>
-		{#if hasChanges}
-			<button
-				onclick={applyChanges}
-				disabled={applying || $configReadOnly}
-				title={$configReadOnly ? $t('readOnly.saveBlocked') : ''}
-				class="px-4 py-2 bg-[var(--ctp-primary)] text-white rounded-lg hover:opacity-90 transition-opacity disabled:opacity-50 disabled:cursor-not-allowed flex items-center gap-2"
-			>
-				{#if applying}
-					<svg class="w-4 h-4 animate-spin" fill="none" viewBox="0 0 24 24">
-						<circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle>
-						<path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
-					</svg>
-				{/if}
-				{$t('changes.applyChanges')}
-			</button>
-		{/if}
 	</div>
 
 	{#if loading}
@@ -846,7 +805,6 @@
 					onCancel={() => { showRuleForm = false; editingRuleIndex = null; }}
 					onRuleSetCreated={(ruleSet) => {
 						ruleSets = [...ruleSets, ruleSet];
-						hasChanges = true;
 						unsavedChanges.markChanged('DNS', `Created rule set "${ruleSet.tag}"`);
 					}}
 				/>

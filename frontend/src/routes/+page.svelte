@@ -804,6 +804,16 @@
 									</div>
 								</div>
 							{/each}
+							<!-- A short page keeps the height of a full one, so the card does
+							     not grow when a third client shows up (#117). The phone stacks
+							     the columns and has nothing to line up with. -->
+							{#each { length: PAGE - pageOf(clientRank.items, clientPage).length } as _}
+								<div class="hidden sm:block invisible" aria-hidden="true">
+									<div class="text-[13px]">&nbsp;</div>
+									<div class="mt-1 h-1.5"></div>
+									<div class="mt-0.5 text-[11px]">&nbsp;</div>
+								</div>
+							{/each}
 						</div>
 					{/if}
 				</div>

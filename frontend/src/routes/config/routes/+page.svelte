@@ -1,9 +1,8 @@
 <script lang="ts">
-	import { reportApplyError } from '$lib/utils/reportApplyError';
 	import { onMount } from 'svelte';
 	import { t } from 'svelte-i18n';
 	import { api } from '$lib/api/client';
-	import { notifications, unsavedChanges, featureFlags, configReadOnly } from '$lib/stores';
+	import { notifications, unsavedChanges, featureFlags } from '$lib/stores';
 	import type { RouteRule, RuleSet, Outbound, Inbound, RouteSettings, Endpoint, RuleSetUsage } from '$lib/types';
 	import RuleForm from '$lib/components/config/RuleForm.svelte';
 	import RuleTemplates from '$lib/components/config/RuleTemplates.svelte';
@@ -46,8 +45,6 @@
 			.map(e => ({ tag: e.tag, type: `${e.type} ${$t('routes.serverEndpoint')}` } as Inbound))
 	]);
 	let loading = $state(true);
-	let hasChanges = $state(false);
-	let applying = $state(false);
 
 	// Collapsed sections state
 	// Open by default: with rule-sets and full rules merged into one list, this
@@ -83,20 +80,6 @@
 			notifications.error(`Failed to load: ${e}`);
 		} finally {
 			loading = false;
-		}
-	}
-
-	async function applyChanges() {
-		applying = true;
-		try {
-			await api.applyConfig();
-			notifications.success($t('changes.configApplied'));
-			hasChanges = false;
-			unsavedChanges.clearChanges();
-		} catch (e) {
-			reportApplyError(e);
-		} finally {
-			applying = false;
 		}
 	}
 
@@ -158,7 +141,6 @@
 				await api.createRule(rule);
 				rules = [...rules, rule];
 				showRuleForm = false;
-				hasChanges = true;
 				unsavedChanges.markChanged('Routes', 'Created routing rule');
 				notifications.success($t('routes.ruleCreated'));
 			} catch (e) {
@@ -179,7 +161,6 @@
 				rules = rules.map((r, i) => i === index ? rule : r);
 				showRuleForm = false;
 				editingRuleIndex = null;
-				hasChanges = true;
 				unsavedChanges.markChanged('Routes', `Updated rule #${index + 1}`);
 				notifications.success($t('routes.ruleUpdated'));
 			} catch (e) {
@@ -202,7 +183,6 @@
 			try {
 				await api.deleteRule(i);
 				rules = rules.filter((_, j) => j !== i);
-				hasChanges = true;
 				unsavedChanges.markChanged('Routes', tag ? `Removed route for ${tag}` : `Deleted rule #${i + 1}`);
 				notifications.success($t('routes.ruleDeleted'));
 			} catch (e) {
@@ -224,7 +204,6 @@
 		try {
 			await api.deleteRuleSet(tag);
 			ruleSets = ruleSets.filter((rs) => rs.tag !== tag);
-			hasChanges = true;
 			unsavedChanges.markChanged('Routes', `Deleted rule set ${tag}`);
 			notifications.success($t('ruleSets.ruleSetDeleted'));
 		} catch (e) {
@@ -247,7 +226,6 @@
 				await api.reorderRules(f, t);
 				// Same contract as the backend: `to` is where the rule ends up.
 				rules = reorderArray(rules, f, t);
-				hasChanges = true;
 				unsavedChanges.markChanged('Routes', 'Reordered rules');
 			} catch (e) {
 				notifications.error(`${e}`);
@@ -281,7 +259,6 @@
 				await api.createRule(rule);
 				rules = [...rules, rule];
 
-				hasChanges = true;
 				unsavedChanges.markChanged('Routes', `Added ${ruleSet.tag} from template`);
 				notifications.success($t('routes.ruleSetAdded', { values: { tag: ruleSet.tag } }));
 			} catch (e) {
@@ -296,7 +273,6 @@
 			try {
 				await api.createRule(rule);
 				rules = [...rules, rule];
-				hasChanges = true;
 				unsavedChanges.markChanged('Routes', 'Created rule via wizard');
 				notifications.success($t('routes.ruleCreated'));
 			} catch (e) {
@@ -307,7 +283,6 @@
 
 	function handleRuleSetCreated(ruleSet: RuleSet) {
 		ruleSets = [...ruleSets, ruleSet];
-		hasChanges = true;
 		unsavedChanges.markChanged('Routes', `Created rule set "${ruleSet.tag}"`);
 	}
 
@@ -321,7 +296,6 @@
 			try {
 				await api.updateRule(i, updatedRule);
 				rules = rules.map((r, j) => j === i ? updatedRule : r);
-				hasChanges = true;
 				unsavedChanges.markChanged('Routes', `Changed outbound for ${tag ?? `rule #${i + 1}`}`);
 			} catch (e) {
 				// The select is one-way bound, so a failed write would leave the
@@ -341,7 +315,6 @@
 			try {
 				await api.createRule(rule);
 				rules = [...rules, rule];
-				hasChanges = true;
 				unsavedChanges.markChanged('Routes', `Added route for ${ruleSetTag}`);
 			} catch (e) {
 				// Reset the picker: nothing was created (see handleMappingOutboundChange).
@@ -355,7 +328,7 @@
 	async function handleSettingsChange() {
 		try {
 			await api.updateRouteSettings(settings);
-			hasChanges = true;
+			unsavedChanges.markChanged('Routes', 'Updated route settings');
 		} catch (e) {
 			notifications.error(`${e}`);
 			// A refused edit (e.g. clearing the domain resolver with two DNS
@@ -440,22 +413,6 @@
 						</div>
 					{/if}
 				</div>
-			{/if}
-			{#if hasChanges && activeTab === 'rules'}
-				<button
-					onclick={applyChanges}
-					disabled={applying || $configReadOnly}
-					title={$configReadOnly ? $t('readOnly.saveBlocked') : ''}
-					class="px-4 py-2 bg-[var(--ctp-primary)] text-white rounded-lg hover:opacity-90 transition-opacity disabled:opacity-50 disabled:cursor-not-allowed flex items-center gap-2"
-				>
-					{#if applying}
-						<svg class="w-4 h-4 animate-spin" fill="none" viewBox="0 0 24 24">
-							<circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle>
-							<path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
-						</svg>
-					{/if}
-					{$t('changes.applyChanges')}
-				</button>
 			{/if}
 		</div>
 	</div>

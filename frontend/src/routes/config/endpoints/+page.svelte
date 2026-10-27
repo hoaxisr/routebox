@@ -3,10 +3,8 @@
 	import { t } from 'svelte-i18n';
 	import { api } from '$lib/api/client';
 	import { notifications, unsavedChanges } from '$lib/stores';
-	import type { Endpoint, Outbound, DnsServer, RouteSettings, ClashProxy, SpeedTestResult } from '$lib/types';
+	import type { Endpoint, Outbound, DnsServer, RouteSettings, ClashProxy } from '$lib/types';
 	import Modal from '$lib/components/shared/Modal.svelte';
-	import SpeedTestButton from '$lib/components/shared/SpeedTestButton.svelte';
-	import SpeedTestSummary from '$lib/components/shared/SpeedTestSummary.svelte';
 	import EndpointForm from '$lib/components/config/EndpointForm.svelte';
 	import { getAWGVersion } from '$lib/utils/awgVersion';
 
@@ -25,28 +23,6 @@
 	let hasDefaultResolver = $derived(!!routeSettings?.default_domain_resolver);
 
 	let proxyDelays = $state<Map<string, number | null>>(new Map());
-
-	// Speed test (#92). One run at a time — the server enforces it too, because
-	// two measurements share one uplink and both come back wrong.
-	let speedRunning = $state('');
-	// The measurement runs against the APPLIED config, but this page lists the
-	// draft — an endpoint created and not yet applied is not dialable, and the
-	// binary would answer "outbound not found". proxyDelays comes from the Clash
-	// API, i.e. from what is actually running, so it is the honest gate.
-	const measurable = $derived((tag: string) => proxyDelays.has(tag));
-	let speedResults = $state<Record<string, SpeedTestResult>>({});
-
-	async function runSpeedTest(tag: string) {
-		if (speedRunning) return;
-		speedRunning = tag;
-		try {
-			speedResults = { ...speedResults, [tag]: await api.speedTestEndpoint(tag) };
-		} catch (e) {
-			notifications.error(`${$t('outbounds.speedTestFailed')}: ${e}`);
-		} finally {
-			speedRunning = '';
-		}
-	}
 
 	async function fetchProxyDelays() {
 		try {
@@ -111,12 +87,6 @@
 				api.getRouteSettings()
 			]);
 			endpoints = ep;
-			// A measurement belongs to the endpoint that was there when it ran.
-			// Keyed by tag alone it would outlive a delete and reappear under a new
-			// endpoint that happens to reuse the name — or survive an edit that
-			// repointed this one at a different server. Any change to the list drops
-			// the lot; a measurement is twelve seconds away.
-			speedResults = {};
 			outbounds = ob;
 			dnsServers = dns;
 			routeSettings = rs;
@@ -263,12 +233,6 @@
 						</div>
 
 						<div class="flex items-center gap-2">
-							<SpeedTestButton
-								tag={endpoint.tag}
-								running={speedRunning === endpoint.tag}
-								disabled={!!speedRunning || !measurable(endpoint.tag)}
-								onclick={() => runSpeedTest(endpoint.tag)}
-							/>
 							<button
 								onclick={() => openEdit(endpoint)}
 								disabled={managed}
@@ -291,10 +255,6 @@
 							</button>
 						</div>
 					</div>
-
-					{#if speedResults[endpoint.tag]}
-						<SpeedTestSummary speed={speedResults[endpoint.tag]} />
-					{/if}
 
 					{#if endpoint.type === 'awg' || endpoint.type === 'wireguard'}
 						{@const awgVersion = getAWGVersion(endpoint)}
