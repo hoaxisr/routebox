@@ -1,11 +1,15 @@
 package api
 
 import (
+	"encoding/json"
 	"errors"
 	"fmt"
 	"net/http"
+	"os"
 	"slices"
+	"strings"
 
+	"routebox/backend/internal/config"
 	"routebox/backend/internal/process"
 )
 
@@ -191,8 +195,40 @@ func writeControlError(w http.ResponseWriter, err error) {
 	writeError(w, http.StatusInternalServerError, err.Error())
 }
 
+// startPreflight refuses a start the process would not survive, the way apply
+// refuses a config: the config on disk goes through the installed binary's
+// check (a binary swapped by hand for an older build rejects what it lacks,
+// e.g. fallback groups) and through the group errors amnezia-box raises only
+// on start. A missing binary skips the check, as it does on apply. Both read
+// the file the process starts from: it can differ from the config in memory
+// when edited by hand.
+func (h *Handler) startPreflight(w http.ResponseWriter) bool {
+	path := h.config.GetPath()
+	onDisk := h.config.GetActive()
+	if b, err := os.ReadFile(path); err == nil {
+		var cfg map[string]interface{}
+		if json.Unmarshal(b, &cfg) == nil {
+			onDisk = cfg
+		}
+	}
+	errs := config.ValidateGroups(onDisk)
+	if len(errs) == 0 {
+		if ok, checkErrs := h.config.CheckConfig(path); !ok {
+			errs = checkErrs
+		}
+	}
+	if len(errs) > 0 {
+		writeError(w, http.StatusBadRequest, "amnezia-box would not start with the current config: "+strings.Join(errs, "; "))
+		return false
+	}
+	return true
+}
+
 // Start starts the amnezia-box process
 func (h *Handler) Start(w http.ResponseWriter, r *http.Request) {
+	if !h.startPreflight(w) {
+		return
+	}
 	if err := h.process.Start(h.config.GetPath()); err != nil {
 		writeControlError(w, err)
 		return
@@ -215,6 +251,9 @@ func (h *Handler) Stop(w http.ResponseWriter, r *http.Request) {
 
 // Restart restarts the amnezia-box process
 func (h *Handler) Restart(w http.ResponseWriter, r *http.Request) {
+	if !h.startPreflight(w) {
+		return
+	}
 	if err := h.process.Restart(h.config.GetPath()); err != nil {
 		writeControlError(w, err)
 		return
