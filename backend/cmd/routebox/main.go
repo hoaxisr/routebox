@@ -944,6 +944,9 @@ func main() {
 				r.Post("/password", apiHandler.GeneratePassword)
 			})
 
+			// File browser for picking local rule-set files
+			r.Get("/fs/list", apiHandler.ListDir)
+
 			// Route Rule Sets CRUD
 			r.Route("/route/rule-sets", func(r chi.Router) {
 				r.Get("/", apiHandler.ListRuleSets)

@@ -849,6 +849,13 @@ export interface SpeedTestResult {
 	duration_sec: number;
 }
 
+// GET /api/fs/list: one directory for the local rule-set file picker.
+export interface FsListing {
+	path: string;
+	parent?: string;
+	entries: { name: string; dir: boolean; size?: number }[];
+}
+
 export interface RuleSetUsage {
 	route_rules: number[];
 	dns_rules: number[];

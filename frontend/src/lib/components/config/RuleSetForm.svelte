@@ -3,6 +3,7 @@
 	import type { RuleSet, Outbound, AsnSet } from '$lib/types';
 	import { notifications, configReadOnly } from '$lib/stores';
 	import AsnSetForm from './AsnSetForm.svelte';
+	import LocalFilePicker from './LocalFilePicker.svelte';
 
 	interface Props {
 		existingTags: string[];
@@ -30,11 +31,19 @@
 
 	// Form state - initialize from ruleSet if editing
 	let tag = $state(ruleSet?.tag || '');
-	let type = $state<'remote' | 'inline' | 'asn'>(
-		asnSet ? 'asn' : ruleSet?.type === 'inline' ? 'inline' : 'remote'
-	);
+	let type = $state<'remote' | 'inline' | 'local' | 'asn'>(asnSet ? 'asn' : ruleSet?.type ?? 'remote');
 	let format = $state<'binary' | 'source'>(ruleSet?.format || 'binary');
 	let url = $state(ruleSet?.url || '');
+	// Local-specific: file on the RouteBox host, picked via the folder browser.
+	let path = $state(ruleSet?.path || '');
+	let browsing = $state(false);
+
+	function pickFile(p: string) {
+		path = p;
+		browsing = false;
+		if (p.endsWith('.srs')) format = 'binary';
+		else if (p.endsWith('.json')) format = 'source';
+	}
 	// Remote-specific options
 	// http_client {detour} = download through that outbound; absent = direct.
 	// A string http_client is a shared-client tag: kept as is, not editable here.
@@ -64,6 +73,10 @@
 
 		if (type === 'remote' && !url.trim()) {
 			errors['url'] = $t('dns.validation.serverRequired');
+		}
+
+		if (type === 'local' && !path.trim()) {
+			errors['path'] = $t('routes.localPathRequired');
 		}
 
 		if (type === 'inline') {
@@ -100,6 +113,8 @@
 			if (httpClientRef) newRuleSet.http_client = httpClientRef;
 			else if (downloadDetour && outbounds.find((o) => o.tag === downloadDetour)?.type !== 'direct') newRuleSet.http_client = { detour: downloadDetour };
 			if (updateInterval && updateInterval !== '24h') newRuleSet.update_interval = updateInterval;
+		} else if (type === 'local') {
+			newRuleSet.path = path.trim();
 		} else if (type === 'inline') {
 			newRuleSet.rules = JSON.parse(inlineRulesJson);
 		}
@@ -113,7 +128,7 @@
 	<AsnSetForm {existingTags} {asnSet} onSaved={(s) => onSaveAsn?.(s)} {onCancel} />
 {:else}
 <div class="space-y-6">
-	<!-- Three-way type row, above everything: ASN replaces the whole classic form (#103).
+	<!-- Type row with ASN, above everything: ASN replaces the whole classic form (#103).
 	     Only when creating: an existing remote/inline set cannot turn into an ASN set
 	     (AsnSetForm would create a second set under a tag the host treats as an edit). -->
 	{#if onSaveAsn && !isEditing}
@@ -125,6 +140,9 @@
 				</button>
 				<button type="button" onclick={() => type = 'inline'} class="toggle-btn flex-1 whitespace-nowrap {type === 'inline' ? 'selected' : ''}">
 					{$t('routes.ruleSetTypes.inline')}
+				</button>
+				<button type="button" onclick={() => type = 'local'} class="toggle-btn flex-1 whitespace-nowrap {type === 'local' ? 'selected' : ''}">
+					{$t('routes.ruleSetTypes.local')}
 				</button>
 				<button type="button" onclick={() => type = 'asn'} class="toggle-btn flex-1 whitespace-nowrap {type === 'asn' ? 'selected' : ''}">
 					{$t('asnSets.type')}
@@ -176,7 +194,7 @@
 			{/if}
 		</div>
 
-		<!-- Type (two-way: host cannot take ASN sets, or an existing remote/inline set is being edited) -->
+		<!-- Type (no ASN: host cannot take ASN sets, or an existing set is being edited) -->
 		{#if !onSaveAsn || isEditing}
 		<div class="mb-4">
 			<label class="block text-sm font-medium text-[var(--ctp-subtext1)] mb-2">{$t('common.type')}</label>
@@ -194,6 +212,13 @@
 					class="toggle-btn flex-1 {type === 'inline' ? 'selected' : ''}"
 				>
 					{$t('routes.ruleSetTypes.inline')}
+				</button>
+				<button
+					type="button"
+					onclick={() => type = 'local'}
+					class="toggle-btn flex-1 {type === 'local' ? 'selected' : ''}"
+				>
+					{$t('routes.ruleSetTypes.local')}
 				</button>
 			</div>
 		</div>
@@ -265,6 +290,31 @@
 					/>
 					<p class="mt-1 text-xs text-[var(--ctp-overlay0)]">{$t('routes.updateIntervalHint')}</p>
 				</div>
+			</div>
+		{/if}
+
+		<!-- File path (for local) -->
+		{#if type === 'local'}
+			<div class="mb-4">
+				<label for="path" class="block text-sm font-medium text-[var(--ctp-subtext1)] mb-1">{$t('routes.localPath')} *</label>
+				<div class="flex gap-2">
+					<input
+						id="path"
+						type="text"
+						bind:value={path}
+						placeholder="/opt/srs/geosite.srs"
+						class="flex-1 min-w-0 px-3 py-2 bg-[var(--ctp-surface0)] border rounded-lg text-[var(--ctp-text)] placeholder-[var(--ctp-overlay0)] focus:outline-none focus:ring-2 focus:ring-[var(--ctp-primary)] font-mono text-sm {errors['path'] ? 'border-[var(--ctp-red)]' : 'border-[var(--ctp-surface2)]'}"
+					/>
+					<button type="button" class="px-3 py-2 bg-[var(--ctp-surface1)] rounded-lg hover:bg-[var(--ctp-surface2)] whitespace-nowrap" onclick={() => (browsing = !browsing)}>
+						{$t('routes.localPicker.browse')}
+					</button>
+				</div>
+				{#if browsing}
+					<LocalFilePicker start={path.trim()} onPick={pickFile} onCancel={() => (browsing = false)} />
+				{/if}
+				{#if errors['path']}
+					<p class="mt-1 text-sm text-[var(--ctp-red)]">{errors['path']}</p>
+				{/if}
 			</div>
 		{/if}
 

@@ -564,9 +564,7 @@
     "ruleSetCreated": "Rule set created",
     "ruleSetDeleted": "Rule set deleted",
     "createNew": "Create New",
-    "newRuleSet": "New Rule Set",
-    "legacyTooltip": "Legacy local rule-set (read-only — recreate as inline to edit)",
-    "legacySuffix": " (legacy)"
+    "newRuleSet": "New Rule Set"
   },
   "domains": {
     "title": "Domain Sets",
@@ -799,6 +797,14 @@
     "protocolHint": "Detected protocols: http, tls, quic, dns, stun, bittorrent",
     "moreOptions": "More options (Domain exact, regex, port range...)",
     "domainExact": "Domain (exact match)",
+    "localPath": "File",
+    "localPathRequired": "File path is required",
+    "localPicker": {
+      "browse": "Browse…",
+      "select": "Select",
+      "empty": "No folders or .srs/.json files here",
+      "hint": "Only folders and .srs/.json files are shown. Double-click a file to select it."
+    },
     "ruleSetTypes": {
       "remote": "Remote",
       "local": "Local",

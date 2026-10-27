@@ -1,5 +1,5 @@
 import type {
-	SystemInfo, ApiResponse, ProcessStatus, SingboxConfig, Endpoint, Outbound, Inbound, RuleSet, RuleSetUsage, AsnSet, RouteRule, RouteSettings, DnsServer, DnsRule, DnsSettings, LogSettings, ExperimentalSettings, ConnectionsResponse, ProxiesResponse, ClashProxy, TestRouteResponse, ConnectTestResponse, SettingsResponse, RouteBoxSettings, SingBoxVersion, DomainSetInfo, RuleSetSource, ClientEntry, TrafficHistoryResponse, TrafficRange, UpdatesStatus, UpdateProgress, UpdateTargetName, Subscription, SubscriptionInput, PanelUser, AwgStatus, AwgPeer, MtprotoState, MtprotoStatus, MtprotoSettings, MtprotoClient, MtprotoConnection, MtprotoLink, DestNaive, SpeedTestResult, ConsumersResponse, ConsumersLive } from '$lib/types';
+	SystemInfo, ApiResponse, ProcessStatus, SingboxConfig, Endpoint, Outbound, Inbound, RuleSet, RuleSetUsage, AsnSet, FsListing, RouteRule, RouteSettings, DnsServer, DnsRule, DnsSettings, LogSettings, ExperimentalSettings, ConnectionsResponse, ProxiesResponse, ClashProxy, TestRouteResponse, ConnectTestResponse, SettingsResponse, RouteBoxSettings, SingBoxVersion, DomainSetInfo, RuleSetSource, ClientEntry, TrafficHistoryResponse, TrafficRange, UpdatesStatus, UpdateProgress, UpdateTargetName, Subscription, SubscriptionInput, PanelUser, AwgStatus, AwgPeer, MtprotoState, MtprotoStatus, MtprotoSettings, MtprotoClient, MtprotoConnection, MtprotoLink, DestNaive, SpeedTestResult, ConsumersResponse, ConsumersLive } from '$lib/types';
 import { canonicalizeConnections } from '$lib/utils/clientIp';
 import { trackApply, type ApplyPhase, type ApplyResult, type ApplyStatus } from '$lib/utils/applyTracker';
 
@@ -419,6 +419,9 @@ export const api = {
 		request<AsnSet>(`/route/rule-sets/asn/${encodeURIComponent(tag)}`, { method: 'PUT', body: JSON.stringify(body) }),
 	refreshAsnSet: (tag: string) =>
 		request<AsnSet>(`/route/rule-sets/asn/${encodeURIComponent(tag)}/refresh`, { method: 'POST' }),
+
+	// File browser for local rule-set files: one directory, folders + .srs/.json.
+	listDir: (path = '') => request<FsListing>(`/fs/list?path=${encodeURIComponent(path)}`),
 
 	// Route Rules CRUD
 	listRules: () => request<RouteRule[]>('/route/rules'),

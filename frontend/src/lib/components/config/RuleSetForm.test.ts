@@ -74,3 +74,25 @@ describe('RuleSetForm: ASN type', () => {
 		expect(typeButtons(container)).not.toContain('ASN');
 	});
 });
+
+// Local sets: a file on the RouteBox host. Editing one must keep it local —
+// the form used to fall back to remote for anything not inline.
+describe('RuleSetForm: local type', () => {
+	const local: RuleSet = { tag: 'yt', type: 'local', format: 'binary', path: '/opt/srs/yt.srs' };
+
+	it('an existing local set opens as Local and saves its path', async () => {
+		const { saved, container } = await submit(local);
+		expect(saved).toEqual(local);
+		expect((container.querySelector('#path') as HTMLInputElement).value).toBe('/opt/srs/yt.srs');
+		expect(container.querySelector('#url')).toBeNull();
+	});
+
+	it('Local without a path is refused', async () => {
+		const onSave = vi.fn();
+		const { container, getByText } = render(RuleSetForm, { props: { existingTags: [], outbounds, onSave, onCancel: () => {} } });
+		await fireEvent.input(container.querySelector('#tag')!, { target: { value: 'x' } });
+		await fireEvent.click(getByText('Local'));
+		await fireEvent.submit(container.querySelector('form')!);
+		expect(onSave).not.toHaveBeenCalled();
+	});
+});
