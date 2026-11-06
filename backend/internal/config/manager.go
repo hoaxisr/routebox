@@ -301,6 +301,9 @@ func (m *Manager) Load() error {
 		notes = append(notes, "tun stack removed (sing-box 1.15's own stack is faster and is what runs when the option is absent)")
 	}
 	notes = append(notes, NormalizeInlineRuleSets(config)...)
+	if applyDNSRuleSetMatchSource(config) {
+		notes = append(notes, "dns rules with rule_set: rule_set_ip_cidr_match_source set (a set with IP entries is fatal at start without it)")
+	}
 	if enableCacheFile(config, filepath.Dir(m.path)) {
 		notes = append(notes, "cache_file enabled: it had a path but no 'enabled', which sing-box treats as off")
 	}
@@ -615,6 +618,7 @@ func (m *Manager) saveDraftToDisk() error {
 		return err
 	}
 
+	applyDNSRuleSetMatchSource(m.draftConfig)
 	data, err := encodeConfig(m.draftConfig)
 	if err != nil {
 		return fmt.Errorf("failed to marshal draft config: %w", err)

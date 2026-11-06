@@ -4,6 +4,7 @@
 	import { api } from '$lib/api/client';
 	import { t } from 'svelte-i18n';
 	import RuleSetForm from './RuleSetForm.svelte';
+	import { isDnsAddressFilterRuleSet } from '$lib/utils/ruleSets';
 
 	interface Props {
 		rule?: DnsRule;
@@ -31,6 +32,8 @@
 	let ipCidr = $state(rule?.ip_cidr?.join('\n') ?? '');
 	let queryType = $state(rule?.query_type?.join(', ') ?? '');
 	let selectedRuleSets = $state<string[]>(rule?.rule_set ?? []);
+	// A set an existing rule already uses stays listed, so it can be taken off.
+	let dnsRuleSets = $derived(ruleSets.filter((rs) => !isDnsAddressFilterRuleSet(rs) || selectedRuleSets.includes(rs.tag)));
 
 	// Action settings
 	// evaluate/respond exist only in the generated fallback tail (#68), which this
@@ -407,7 +410,7 @@
 			</div>
 		{:else if activeTab === 'ruleset'}
 			<div class="space-y-4">
-				{#if ruleSets.length === 0}
+				{#if dnsRuleSets.length === 0}
 					<div class="p-8 text-center text-[var(--ctp-overlay0)]">
 						<p>{$t('routes.noRuleSets')}</p>
 						<p class="text-sm mt-1">{$t('routes.noRuleSetsHint')}</p>
@@ -415,7 +418,7 @@
 				{:else}
 					<p class="text-sm text-[var(--ctp-overlay1)]">{$t('dns.selectRuleSetsHint')}</p>
 					<div class="bg-[var(--ctp-surface0)] rounded-lg border border-[var(--ctp-surface2)] divide-y divide-[var(--ctp-surface2)]">
-						{#each ruleSets as rs}
+						{#each dnsRuleSets as rs}
 							<button
 								type="button"
 								onclick={() => toggleRuleSet(rs.tag)}

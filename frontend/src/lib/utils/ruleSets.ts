@@ -32,3 +32,18 @@ export function formatForPath(path: string, current: 'binary' | 'source'): 'bina
 	if (p.endsWith('.json')) return 'source';
 	return current;
 }
+
+// An IP set in a DNS rule without match_response matches nothing: the backend
+// flags such rules rule_set_ip_cidr_match_source, and sing-box refuses a purely
+// IP set at start while `check` passes. So the DNS form does not offer them.
+// Same test as awg-manager; a remote set's content is unknown, hence the names.
+export function isDnsAddressFilterRuleSet(rs: RuleSet): boolean {
+	if (/^geoip([-_:]|$)/i.test(rs.tag)) return true;
+	const url = rs.url ?? '';
+	if (/[?&]kind=geoip\b/i.test(url) || /\/geoip(?:[-_/]|\.srs|\b)/i.test(url)) return true;
+	if (rs.path && /geoip/i.test(rs.path)) return true;
+	return (
+		rs.type === 'inline' &&
+		(rs.rules ?? []).some((rule) => (rule.ip_cidr?.length ?? 0) > 0)
+	);
+}

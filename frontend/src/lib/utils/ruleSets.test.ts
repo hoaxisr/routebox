@@ -5,7 +5,7 @@ vi.mock('$lib/api/client', () => ({
 }));
 
 import { api } from '$lib/api/client';
-import { formatForPath, saveEditedRuleSet } from './ruleSets';
+import { formatForPath, saveEditedRuleSet, isDnsAddressFilterRuleSet } from './ruleSets';
 import type { RuleSet } from '$lib/types';
 
 const local: RuleSet = { tag: 'yt', type: 'local', format: 'binary', path: '/opt/srs/yt.srs' };
@@ -48,5 +48,22 @@ describe('formatForPath', () => {
 
 	it('unknown extension keeps the current format', () => {
 		expect(formatForPath('/a/x', 'source')).toBe('source');
+	});
+});
+
+describe('isDnsAddressFilterRuleSet', () => {
+	const rs = (over: Partial<RuleSet>): RuleSet => ({ tag: 'x', type: 'remote', ...over });
+
+	it('flags IP sets by tag, url, path and inline content', () => {
+		expect(isDnsAddressFilterRuleSet(rs({ tag: 'geoip-ru' }))).toBe(true);
+		expect(isDnsAddressFilterRuleSet(rs({ url: 'https://x/geoip-ru.srs' }))).toBe(true);
+		expect(isDnsAddressFilterRuleSet(rs({ type: 'local', path: '/opt/geoip/ru.srs' }))).toBe(true);
+		expect(isDnsAddressFilterRuleSet(rs({ type: 'inline', rules: [{ ip_cidr: ['1.1.1.0/24'] }] }))).toBe(true);
+	});
+
+	it('keeps domain sets, mixed remote ones included', () => {
+		expect(isDnsAddressFilterRuleSet(rs({ tag: 'geosite-ru', url: 'https://x/geosite-ru.srs' }))).toBe(false);
+		expect(isDnsAddressFilterRuleSet(rs({ tag: 'zapret', url: 'https://x/antizapret.srs' }))).toBe(false);
+		expect(isDnsAddressFilterRuleSet(rs({ type: 'inline', rules: [{ domain_suffix: ['a.com'] }] }))).toBe(false);
 	});
 });
