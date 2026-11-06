@@ -32,6 +32,7 @@ func (h *Handler) SaveConfig(w http.ResponseWriter, r *http.Request) {
 
 	// Same migrations as Load, before validation would reject the old spellings.
 	config.MigrateSingbox115(newConfig)
+	config.NormalizeInlineRuleSets(newConfig)
 	errors := h.config.Validate(newConfig)
 	if len(errors) > 0 {
 		writeError(w, http.StatusBadRequest, fmt.Sprintf("Validation errors: %v", errors))
@@ -163,6 +164,10 @@ func (h *Handler) applyConfig(w http.ResponseWriter, r *http.Request, seq int) {
 		configDir := filepath.Dir(h.config.GetPath())
 		if pathErrs := config.ValidateLocalRuleSetPaths(h.config.Get(), configDir); len(pathErrs) > 0 {
 			writeError(w, http.StatusBadRequest, fmt.Sprintf("Config validation failed: %v", pathErrs))
+			return
+		}
+		if inlineErrs := config.ValidateInlineRuleSets(h.config.Get()); len(inlineErrs) > 0 {
+			writeError(w, http.StatusBadRequest, fmt.Sprintf("Config validation failed: %v", inlineErrs))
 			return
 		}
 		// Group errors amnezia-box only raises on start: check passes them and the

@@ -51,7 +51,7 @@
 	let downloadDetour = $state(typeof ruleSet?.http_client === 'object' ? ruleSet.http_client.detour || '' : '');
 	let updateInterval = $state(ruleSet?.update_interval || '24h');
 	// Inline-specific options
-	let inlineRulesJson = $state(ruleSet?.rules ? JSON.stringify(ruleSet.rules, null, 2) : '[\n  {\n    "domain_suffix": [".example.com"]\n  }\n]');
+	let inlineRulesJson = $state(ruleSet?.rules ? JSON.stringify(ruleSet.rules, null, 2) : '[\n  {\n    "domain_suffix": ["example.com"]\n  }\n]');
 
 	let errors = $state<Record<string, string>>({});
 

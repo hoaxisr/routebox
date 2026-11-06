@@ -43,3 +43,27 @@ func TestApplyConfig_RefusesGroupThatFailsOnStart(t *testing.T) {
 		t.Errorf("active config was rewritten: %s", b)
 	}
 }
+
+// An emptied domain set passes every save and only surfaces as a FATAL that
+// names no set; apply must say which one.
+func TestApplyConfig_RefusesEmptyInlineRuleSet(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "config.json")
+	if err := os.WriteFile(path, []byte(`{"outbounds":[{"type":"direct","tag":"direct"}]}`), 0644); err != nil {
+		t.Fatal(err)
+	}
+	m, err := config.NewManager(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := m.CreateRuleSet(map[string]interface{}{"tag": "youtube", "type": "inline", "rules": []interface{}{}}); err != nil {
+		t.Fatal(err)
+	}
+	h := &Handler{config: m}
+	h.statusSource = func() process.Status { return process.Status{Running: false} }
+
+	rr := httptest.NewRecorder()
+	h.ApplyConfig(rr, httptest.NewRequest("POST", "/api/config/apply", nil))
+	if rr.Code != http.StatusBadRequest || !strings.Contains(rr.Body.String(), "youtube") {
+		t.Fatalf("status %d body %s", rr.Code, rr.Body.String())
+	}
+}

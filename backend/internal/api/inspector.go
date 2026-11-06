@@ -379,6 +379,9 @@ func checkRuleMatch(input, inputType string, rule map[string]interface{}, ruleSe
 					if location == "" {
 						location = rsPath
 					}
+					if location == "" {
+						location, _ = rs["type"].(string)
+					}
 					reasons = append(reasons, fmt.Sprintf("rule_set %s: no match (%s)", rsTag, location))
 				}
 			} else {
@@ -509,6 +512,26 @@ func checkRuleSetMatch(input string, ruleSet map[string]interface{}, configDir s
 				format = "source"
 			}
 		}
+	} else if rsType == "inline" {
+		// `rule-set match` only reads files. Version 1 is accepted by every fork;
+		// source files are not gated by version, so newer fields still parse.
+		data, err := json.Marshal(map[string]interface{}{"version": 1, "rules": ruleSet["rules"]})
+		if err != nil {
+			return false, err
+		}
+		f, err := os.CreateTemp("", "routebox-inline-*.json")
+		if err != nil {
+			return false, err
+		}
+		defer os.Remove(f.Name())
+		_, err = f.Write(data)
+		if cerr := f.Close(); err == nil {
+			err = cerr
+		}
+		if err != nil {
+			return false, err
+		}
+		ruleSetPath, format = f.Name(), "source"
 	} else {
 		return false, fmt.Errorf("invalid rule set: type=%s, url=%s, path=%s", rsType, rsURL, rsPath)
 	}

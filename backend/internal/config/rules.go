@@ -81,6 +81,7 @@ func (m *Manager) CreateRuleSet(rs map[string]interface{}) error {
 	}
 
 	// Modify draft
+	normalizeInlineRuleSet(rs)
 	route := m.getDraftRoute()
 	draftArr := m.getDraftRouteArray("rule_set")
 	route["rule_set"] = append(draftArr, rs)
@@ -179,6 +180,7 @@ func (m *Manager) UpdateRuleSet(tag string, rs map[string]interface{}) error {
 
 	// Preserve the tag (don't allow tag changes through this endpoint)
 	rs["tag"] = tag
+	normalizeInlineRuleSet(rs)
 	draftArr[draftIdx] = rs
 	route["rule_set"] = draftArr
 	ensureRuleSetHTTPClient(m.draftConfig)

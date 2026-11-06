@@ -7,6 +7,8 @@ import (
 	"strings"
 
 	"github.com/go-chi/chi/v5"
+
+	"routebox/backend/internal/config"
 )
 
 // deepCopyRuleSet returns a deep copy of a rule-set map so callers can mutate
@@ -210,7 +212,7 @@ func (h *Handler) AddDomain(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusBadRequest, fmt.Sprintf("invalid JSON: %v", err))
 		return
 	}
-	domain := strings.TrimSpace(body.Domain)
+	domain := config.NormalizeDomainSuffix(body.Domain)
 	if domain == "" {
 		writeError(w, http.StatusBadRequest, "domain is required")
 		return
@@ -326,7 +328,7 @@ func (h *Handler) ImportDomains(w http.ResponseWriter, r *http.Request) {
 	}
 	added := 0
 	for _, d := range body.Domains {
-		d = strings.TrimSpace(d)
+		d = config.NormalizeDomainSuffix(d)
 		if d == "" || existing[d] {
 			continue
 		}

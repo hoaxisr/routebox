@@ -300,6 +300,7 @@ func (m *Manager) Load() error {
 	if stripTunStack(config) {
 		notes = append(notes, "tun stack removed (sing-box 1.15's own stack is faster and is what runs when the option is absent)")
 	}
+	notes = append(notes, NormalizeInlineRuleSets(config)...)
 	if Singbox115Migration {
 		notes = append(notes, migrateSingbox115(config)...)
 	} else {
@@ -308,9 +309,9 @@ func (m *Manager) Load() error {
 	if len(notes) > 0 {
 		if data, err := encodeConfig(config); err == nil {
 			if err := m.noteWrite(m.writeActiveLocked(data)); err != nil {
-				log.Printf("could not rewrite %s with sing-box 1.15 migrations (%v): %v — RouteBox runs on the migrated config in memory", m.path, notes, err)
+				log.Printf("could not rewrite %s with migrations (%v): %v — RouteBox runs on the migrated config in memory", m.path, notes, err)
 			} else {
-				log.Printf("migrated %s for sing-box 1.15: %v", m.path, notes)
+				log.Printf("migrated %s: %v", m.path, notes)
 			}
 		}
 	}
