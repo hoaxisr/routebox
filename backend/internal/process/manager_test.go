@@ -430,13 +430,16 @@ func TestPinnedBinaryDoesNotFallBackToPATH(t *testing.T) {
 // non-systemd host): systemctl restart tracks the unit's cgroup instead.
 func TestExeMatchesSurvivesTheUpdateSwap(t *testing.T) {
 	// Needs a real ELF: /proc/<pid>/exe of a script points at the interpreter.
-	sleepBin, err := exec.LookPath("sleep")
+	// The test binary itself, not a copy of sleep: on Ubuntu 26.04 coreutils is a
+	// multi-call binary that picks the tool by argv[0], so a sleep renamed to
+	// amnezia-box exits at once and /proc/<pid>/exe is gone before the check.
+	self, err := os.Executable()
 	if err != nil {
-		t.Skip("sleep not available")
+		t.Fatal(err)
 	}
-	payload, err := os.ReadFile(sleepBin)
+	payload, err := os.ReadFile(self)
 	if err != nil {
-		t.Skip("cannot read sleep binary")
+		t.Fatal(err)
 	}
 	dir := t.TempDir()
 	bin := filepath.Join(dir, "amnezia-box")
@@ -444,7 +447,8 @@ func TestExeMatchesSurvivesTheUpdateSwap(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	cmd := exec.Command(bin, "30")
+	cmd := exec.Command(bin, "-test.run=^TestHelperStayAlive$")
+	cmd.Env = append(os.Environ(), "ROUTEBOX_TEST_STAY_ALIVE=1")
 	if err := cmd.Start(); err != nil {
 		t.Fatal(err)
 	}
@@ -469,4 +473,13 @@ func TestExeMatchesSurvivesTheUpdateSwap(t *testing.T) {
 	if !m.exeMatches(pid) {
 		t.Fatal("the running process became invisible after the binary swap — Restart would start a second one beside it")
 	}
+}
+
+// TestHelperStayAlive is the long-running process of
+// TestExeMatchesSurvivesTheUpdateSwap, not a test of its own.
+func TestHelperStayAlive(t *testing.T) {
+	if os.Getenv("ROUTEBOX_TEST_STAY_ALIVE") == "" {
+		t.Skip("helper process")
+	}
+	time.Sleep(30 * time.Second)
 }
