@@ -25,9 +25,9 @@
 	// Popular presets
 	const PRESETS = [
 		{ tag: 'antizapret', name: 'Antizapret', url: 'https://github.com/savely-krasovsky/antizapret-sing-box/releases/latest/download/antizapret.srs' },
-		{ tag: 'geosite-ru', name: 'GeoSite Russia', url: 'https://github.com/SagerNet/sing-geosite/releases/latest/download/geosite-category-ru.srs' },
-		{ tag: 'geoip-ru', name: 'GeoIP Russia', url: 'https://github.com/SagerNet/sing-geoip/releases/latest/download/geoip-ru.srs' },
-		{ tag: 'adblock', name: 'AdBlock', url: 'https://github.com/SagerNet/sing-geosite/releases/latest/download/geosite-category-ads-all.srs' }
+		{ tag: 'geosite-ru', name: 'GeoSite Russia', url: 'https://raw.githubusercontent.com/SagerNet/sing-geosite/rule-set/geosite-category-ru.srs' },
+		{ tag: 'geoip-ru', name: 'GeoIP Russia', url: 'https://raw.githubusercontent.com/SagerNet/sing-geoip/rule-set/geoip-ru.srs' },
+		{ tag: 'adblock', name: 'AdBlock', url: 'https://raw.githubusercontent.com/SagerNet/sing-geosite/rule-set/geosite-category-ads-all.srs' }
 	];
 
 	// Form state - initialize from ruleSet if editing

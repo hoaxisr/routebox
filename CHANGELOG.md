@@ -16,6 +16,9 @@ All notable changes to RouteBox are documented here.
 - **Чистые IP-наборы не попадают в DNS-правила.** Наборы geoip и inline с
   `ip_cidr` не предлагаются в форме DNS-правила, а Apply останавливается с именем
   набора: с такими sing-box не стартует даже с новым флагом.
+- **Рабочие адреса у пресетов наборов правил.** GeoSite Russia, GeoIP Russia и
+  AdBlock указывали на адреса, отдающие 404, и sing-box с таким набором не
+  стартовал. Теперь это `raw.githubusercontent.com/.../rule-set/...`.
 
 ## [0.38.7]
 
