@@ -32,16 +32,17 @@
 	function handleChange() {
 		const newSettings: ExperimentalSettings = {};
 
-		// Build cache_file if enabled or has path
-		if (cacheEnabled || cachePath.trim()) {
-			newSettings.cache_file = {
-				enabled: cacheEnabled || undefined,
-				path: cachePath.trim() || undefined,
-				cache_id: cacheId.trim() || undefined,
-				store_fakeip: storeFakeip || undefined,
-				store_dns: storeDns || undefined
-			};
-		}
+		// Off is stated, not left out: the backend keeps a block it did not receive,
+		// and on load it reads a bare path as "on".
+		newSettings.cache_file = cacheEnabled
+			? {
+					enabled: true,
+					path: cachePath.trim() || undefined,
+					cache_id: cacheId.trim() || undefined,
+					store_fakeip: storeFakeip || undefined,
+					store_dns: storeDns || undefined
+				}
+			: { enabled: false };
 
 		// Build clash_api if has controller
 		if (externalController.trim()) {

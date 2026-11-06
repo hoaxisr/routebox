@@ -301,6 +301,9 @@ func (m *Manager) Load() error {
 		notes = append(notes, "tun stack removed (sing-box 1.15's own stack is faster and is what runs when the option is absent)")
 	}
 	notes = append(notes, NormalizeInlineRuleSets(config)...)
+	if enableCacheFile(config, filepath.Dir(m.path)) {
+		notes = append(notes, "cache_file enabled: it had a path but no 'enabled', which sing-box treats as off")
+	}
 	if Singbox115Migration {
 		notes = append(notes, migrateSingbox115(config)...)
 	} else {

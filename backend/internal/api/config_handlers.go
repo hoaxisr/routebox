@@ -8,6 +8,7 @@ import (
 	"log"
 	"net/http"
 	"path/filepath"
+	"strings"
 	"time"
 
 	"routebox/backend/internal/config"
@@ -252,13 +253,19 @@ func (h *Handler) applyConfig(w http.ResponseWriter, r *http.Request, seq int) {
 	// the change — but not swallowed either: the answer carries a warning, so
 	// the operator learns that naive is still on the previous list instead of
 	// finding out from a client that cannot connect.
-	respond := writeSuccess
+	var warnings []string
 	if err := h.syncDest(); err != nil {
 		log.Printf("dest: sync failed: %v", err)
-		warning := destSyncWarning(err)
+		warnings = append(warnings, destSyncWarning(err))
+	}
+	if warning := config.RuleSetDownloadWarning(h.config.GetActive()); warning != "" {
+		warnings = append(warnings, warning)
+	}
+	respond := writeSuccess
+	if len(warnings) > 0 {
 		respond = func(w http.ResponseWriter, data interface{}) {
 			if m, ok := data.(map[string]interface{}); ok {
-				m["warning"] = warning
+				m["warning"] = strings.Join(warnings, " ")
 			}
 			writeSuccess(w, data)
 		}
@@ -287,7 +294,7 @@ func (h *Handler) applyConfig(w http.ResponseWriter, r *http.Request, seq int) {
 		if err := h.reloadProcess(); err != nil {
 			// Reload failed, try restart as fallback
 			if err := h.restartProcess(h.config.GetPath()); err != nil {
-				writeError(w, http.StatusInternalServerError, fmt.Sprintf("Saved but failed to reload/restart: %v", err))
+				writeError(w, http.StatusInternalServerError, strings.Join(append([]string{fmt.Sprintf("Saved but failed to reload/restart: %v.", err)}, warnings...), " "))
 				return
 			}
 			respond(w, map[string]interface{}{
@@ -304,7 +311,7 @@ func (h *Handler) applyConfig(w http.ResponseWriter, r *http.Request, seq int) {
 	} else {
 		// Force restart
 		if err := h.restartProcess(h.config.GetPath()); err != nil {
-			writeError(w, http.StatusInternalServerError, fmt.Sprintf("Saved but failed to restart: %v", err))
+			writeError(w, http.StatusInternalServerError, strings.Join(append([]string{fmt.Sprintf("Saved but failed to restart: %v.", err)}, warnings...), " "))
 			return
 		}
 		respond(w, map[string]interface{}{
