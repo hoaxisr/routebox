@@ -14,7 +14,7 @@ import (
 var awgPeerStatsHTTPClient = &http.Client{Timeout: 5 * time.Second}
 
 // ErrAwgPeerStatsUnsupported means the running amnezia-box binary predates
-// the /awg/{tag}/peers route (hoaxisr/amnezia-box, "expose real per-peer AWG
+// the /awg/{tag}/peers route (hoaxisr/awgm-box, "expose real per-peer AWG
 // handshake/tx/rx via UAPI") — an expected, steady-state condition on an
 // unpatched binary, not a transient failure. Callers use it to fall back
 // without treating every poll as an error worth logging.
@@ -31,7 +31,7 @@ type PeerStat struct {
 }
 
 // FetchAwgPeerStats calls the AWG-endpoint peer-stats extension added to
-// hoaxisr/amnezia-box, returning real per-peer handshake/traffic state keyed
+// hoaxisr/awgm-box, returning real per-peer handshake/traffic state keyed
 // by base64 public key — the same identity ListPeers already keys the store
 // by, so no address/tunnel-IP translation is needed the way the traffic-based
 // fallback (SetPeerLiveness) requires.

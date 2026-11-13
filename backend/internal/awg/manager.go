@@ -663,7 +663,7 @@ func peerSummaryFor(p Peer, lastHandshake, now int64, kind PeerStatsKind, why Pe
 //
 // sing-box serves AWG from a userspace endpoint: there is no awg-rb0 for
 // `awg show` to query, so the kernel path above cannot be reused directly.
-// amnezia-box (hoaxisr/amnezia-box) exposes the same handshake/tx/rx state
+// amnezia-box (hoaxisr/awgm-box) exposes the same handshake/tx/rx state
 // `wg show`/`awg show` would read off a kernel interface through its Clash
 // API instead (GET /awg/{tag}/peers) — see FetchAwgPeerStats — which is why
 // this can key straight off PublicKey exactly like the kernel path does.

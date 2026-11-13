@@ -46,7 +46,7 @@ jobs:
         run: |
           set -e
           rel=$(curl -fsSL -H "Accept: application/vnd.github+json" \
-            https://api.github.com/repos/hoaxisr/amnezia-box/releases/latest)
+            https://api.github.com/repos/hoaxisr/awgm-box/releases/latest)
           url=$(echo "$rel" | jq -r '[.assets[] | select(.name | endswith("linux-amd64"))][0].browser_download_url')
           sha=$(echo "$rel" | jq -r '[.assets[] | select(.name | endswith("linux-amd64.sha256"))][0].browser_download_url')
           curl -fsSL -o /tmp/amnezia-box "$url"

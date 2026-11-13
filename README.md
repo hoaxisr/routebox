@@ -4,7 +4,7 @@
 [![License](https://img.shields.io/badge/license-MIT-blue)](#лицензия)
 ![Platform](https://img.shields.io/badge/platform-linux%20amd64%20%7C%20arm64-lightgrey)
 
-Веб-панель для [amnezia-box](https://github.com/hoaxisr/amnezia-box) (форк sing-box). Один бинарник со встроенным интерфейсом, два сценария: VPN-роутер для домашней сети и панель управления прокси-сервером на VPS.
+Веб-панель для [amnezia-box](https://github.com/hoaxisr/awgm-box) (форк sing-box). Один бинарник со встроенным интерфейсом, два сценария: VPN-роутер для домашней сети и панель управления прокси-сервером на VPS.
 
 ![Дашборд: статус amnezia-box, скорость и объём трафика, топ-соединения](assets/01-dashboard.png)
 
@@ -541,7 +541,7 @@ sudo cp routebox /usr/local/bin/
 sudo mkdir -p /etc/routebox /etc/amnezia-box
 ```
 
-Также понадобится бинарник amnezia-box из [релизов форка](https://github.com/hoaxisr/amnezia-box/releases) в `/usr/local/bin/amnezia-box`.
+Также понадобится бинарник amnezia-box из [релизов форка](https://github.com/hoaxisr/awgm-box/releases) в `/usr/local/bin/amnezia-box`.
 
 Systemd-сервис:
 
