@@ -104,7 +104,7 @@ func happyTarget(dir string, restartCount *int32, restartErr func() error) (Targ
 	path := filepath.Join(dir, "fake-box")
 	return Target{
 		Name:           "amnezia-box",
-		Repo:           "hoaxisr/amnezia-box",
+		Repo:           "hoaxisr/awgm-box",
 		AssetSuffix:    func(string) (string, bool) { return "linux-amd64", true },
 		BinaryPath:     func() string { return path },
 		CurrentVersion: func() (string, error) { return "1.0.0", nil },

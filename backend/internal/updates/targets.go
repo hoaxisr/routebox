@@ -11,7 +11,7 @@ import "os"
 func AmneziaTarget(binaryPath func() string, currentVersion func() (string, error), restart func() error, preflight func(newBinaryPath string) error) Target {
 	return Target{
 		Name: "amnezia-box",
-		Repo: "hoaxisr/amnezia-box",
+		Repo: "hoaxisr/awgm-box",
 		Preflight: preflight,
 		AssetSuffix: func(arch string) (string, bool) {
 			switch arch {

@@ -56,7 +56,7 @@ func newTestChecker(t *testing.T, base, arch string) *Checker {
 func amneziaTestTarget() Target {
 	return Target{
 		Name: "amnezia-box",
-		Repo: "hoaxisr/amnezia-box",
+		Repo: "hoaxisr/awgm-box",
 		AssetSuffix: func(arch string) (string, bool) {
 			switch arch {
 			case "amd64":

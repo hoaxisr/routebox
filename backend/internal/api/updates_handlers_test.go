@@ -36,7 +36,7 @@ func newUpdatesHandler(t *testing.T) *Handler {
 
 	target := updates.Target{
 		Name:           "amnezia-box",
-		Repo:           "hoaxisr/amnezia-box",
+		Repo:           "hoaxisr/awgm-box",
 		AssetSuffix:    func(string) (string, bool) { return "linux-amd64", true },
 		BinaryPath:     func() string { return "/tmp/fake-box" },
 		CurrentVersion: func() (string, error) { return "1.0.0", nil },

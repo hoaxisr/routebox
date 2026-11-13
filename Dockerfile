@@ -46,7 +46,7 @@ RUN set -e; \
     esac; \
     if [ -n "$AMNEZIA_BOX_VERSION" ]; then ref="tags/$AMNEZIA_BOX_VERSION"; else ref="latest"; fi; \
     rel=$(curl -fsSL -H "Accept: application/vnd.github+json" \
-        "https://api.github.com/repos/hoaxisr/amnezia-box/releases/$ref"); \
+        "https://api.github.com/repos/hoaxisr/awgm-box/releases/$ref"); \
     url=$(echo "$rel" | jq -r --arg suffix "$suffix" \
         '[.assets[] | select(.name | endswith($suffix))][0].browser_download_url'); \
     sha_url=$(echo "$rel" | jq -r --arg suffix "$suffix.sha256" \
